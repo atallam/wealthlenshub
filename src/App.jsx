@@ -689,6 +689,12 @@ export default function App() {
   const [alerts,   setAlerts]   = useState([]);
   const [loaded,   setLoaded]   = useState(false);
 
+  // ── Hub: profile, currency, asset types, settings ───────────────
+  const [profile,       setProfile]       = useState(null);
+  const [userCurrency,  setUserCurrency]  = useState("INR");
+  const [assetTypes,    setAssetTypes]    = useState([]);
+  const [showSettings,  setShowSettings]  = useState(false);
+
   const [syncSt,   setSyncSt]   = useState("idle");
   const [priceRefreshing, setPriceRefreshing] = useState(false);
   const [lastPriceRefresh, setLastPriceRefresh] = useState(null);
@@ -819,6 +825,15 @@ export default function App() {
         if(fetched.length) setLastPriceRefresh(new Date(Math.max(...fetched)));
       } catch(e){ console.error("Load error",e); }
       setLoaded(true);
+      // Load Hub profile and asset types
+      try {
+        const [prof, ats] = await Promise.all([
+          api("/api/profile"),
+          api("/api/asset-types")
+        ]);
+        if(prof){ setProfile(prof); const c=prof.currency||"INR"; setUserCurrency(c); _activeCurrency=c; }
+        if(ats?.length) setAssetTypes(ats);
+      } catch(e){ console.warn("Profile load:", e.message); }
     })();
   },[user]);
 
