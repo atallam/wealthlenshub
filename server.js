@@ -24,7 +24,11 @@ const supabase = createClient(
 );
 
 app.use(express.json({ limit: "10mb" }));
-app.use(express.static(path.join(__dirname, "dist")));
+const distPath = path.join(process.cwd(), "dist");
+console.log("📁 Serving static files from:", distPath);
+console.log("📁 __dirname:", __dirname);
+console.log("📁 process.cwd():", process.cwd());
+app.use(express.static(distPath, { maxAge: "1d" }));
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -813,7 +817,15 @@ app.delete("/api/artifacts/:id", auth, async (req, res) => {
 });
 
 // ── Serve React app for all other routes ─────────────────────────
-app.get("*", (_, res) => res.sendFile(path.join(__dirname, "dist", "index.html")));
+app.get("*", (_, res) => {
+  const indexPath = path.join(process.cwd(), "dist", "index.html");
+  res.sendFile(indexPath, err => {
+    if (err) {
+      console.error("❌ Failed to serve index.html from:", indexPath, err.message);
+      res.status(404).send("Build error — dist/index.html not found.");
+    }
+  });
+});
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅  Wealth Lens Hub running on port ${PORT} (public multi-tenant)`);
