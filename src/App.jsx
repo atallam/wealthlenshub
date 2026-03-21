@@ -87,6 +87,64 @@ const fmtSize=b=>b>1e6?`${(b/1e6).toFixed(1)}MB`:b>1e3?`${(b/1e3).toFixed(0)}KB`
 const BF={member_id:"",type:"IN_STOCK",name:"",ticker:"",scheme_code:"",interest_rate:"",start_date:"",maturity_date:"",purchase_value:"",current_value:"",principal:"",usd_inr_rate:"83.2"};
 // Transaction form
 const BT={holding_id:"",txn_type:"BUY",units:"",price:"",price_usd:"",txn_date:new Date().toISOString().slice(0,10),notes:""};
+
+// ── Demo seed data (used on first login) ─────────────────────────
+const m1="mbr_demo1", m2="mbr_demo2";
+const SEED = {
+  members: [
+    { id:m1, name:"Rahul",   relation:"Self"   },
+    { id:m2, name:"Priya",   relation:"Spouse" },
+  ],
+  goals: [
+    { id:"g1", name:"Retirement Corpus",    targetAmount:30000000, targetDate:"2040-03-31", category:"Retirement",    color:"#c9a84c", priority:1, linkedMembers:["all"],  monthlyContribution:50000, notes:"Target 3Cr by 55" },
+    { id:"g2", name:"Daughter's Education", targetAmount:5000000,  targetDate:"2032-06-01", category:"Education",     color:"#a084ca", priority:2, linkedMembers:[m1,m2], monthlyContribution:15000, notes:"Engineering + Masters" },
+    { id:"g3", name:"Dream Home Upgrade",   targetAmount:8000000,  targetDate:"2028-12-31", category:"Real Estate",   color:"#5a9ce0", priority:3, linkedMembers:["all"],  monthlyContribution:25000, notes:"Upgrade to 3BHK" },
+    { id:"g4", name:"Emergency Fund",       targetAmount:1500000,  targetDate:"2025-12-31", category:"Emergency Fund",color:"#4caf9a", priority:4, linkedMembers:["all"],  monthlyContribution:20000, notes:"6 months expenses" },
+  ],
+  alerts: [
+    { id:"al1", type:"ALLOCATION_DRIFT",   assetType:"IN_STOCK", threshold:60, label:"Equity over 60% — rebalance needed", active:true },
+    { id:"al2", type:"CONCENTRATION",      assetType:"FD",       threshold:10, label:"FD below 10% — add fixed income",    active:true },
+    { id:"al3", type:"RETURN_TARGET",      assetType:"",         threshold:10, label:"Portfolio return below 10%",          active:true },
+  ],
+  holdings: [
+    // Rahul's holdings
+    { id:"h1",  user_id:"",member_id:m1, type:"MF",       name:"Mirae Asset Large Cap Fund - Direct Plan - Growth",          scheme_code:"118834", ticker:"",           purchase_value:250000,  current_value:347500 },
+    { id:"h2",  user_id:"",member_id:m1, type:"MF",       name:"Axis Midcap Fund - Direct Plan - Growth",                    scheme_code:"120843", ticker:"",           purchase_value:180000,  current_value:267300 },
+    { id:"h3",  user_id:"",member_id:m1, type:"MF",       name:"Parag Parikh Flexi Cap Fund - Direct Plan - Growth",         scheme_code:"122639", ticker:"",           purchase_value:300000,  current_value:498000 },
+    { id:"h4",  user_id:"",member_id:m1, type:"IN_STOCK", name:"Reliance Industries Ltd",                                    ticker:"RELIANCE",    scheme_code:"",      purchase_value:150000,  current_value:189000 },
+    { id:"h5",  user_id:"",member_id:m1, type:"IN_STOCK", name:"HDFC Bank Ltd",                                              ticker:"HDFCBANK",    scheme_code:"",      purchase_value:120000,  current_value:138000 },
+    { id:"h6",  user_id:"",member_id:m1, type:"IN_STOCK", name:"Infosys Ltd",                                                ticker:"INFY",        scheme_code:"",      purchase_value:95000,   current_value:121600 },
+    { id:"h7",  user_id:"",member_id:m1, type:"US_STOCK", name:"NVIDIA Corporation",                                         ticker:"NVDA",        scheme_code:"",      purchase_value:210000,  current_value:378000,  usd_inr_rate:83.2 },
+    { id:"h8",  user_id:"",member_id:m1, type:"US_STOCK", name:"Apple Inc",                                                  ticker:"AAPL",        scheme_code:"",      purchase_value:125000,  current_value:148750,  usd_inr_rate:83.2 },
+    { id:"h9",  user_id:"",member_id:m1, type:"IN_ETF",   name:"Nippon India ETF Nifty 50 BeES",                             ticker:"NIFTYBEES",   scheme_code:"",      purchase_value:80000,   current_value:103200 },
+    { id:"h10", user_id:"",member_id:m1, type:"FD",       name:"HDFC Bank FD - 7.25% p.a.",                                  ticker:"",            scheme_code:"",      principal:500000,       current_value:537500,  interest_rate:7.25, start_date:"2024-04-01", maturity_date:"2025-04-01" },
+    { id:"h11", user_id:"",member_id:m1, type:"PPF",      name:"PPF Account - SBI",                                          ticker:"",            scheme_code:"",      principal:150000,       current_value:162000,  start_date:"2020-04-01" },
+    // Priya's holdings
+    { id:"h12", user_id:"",member_id:m2, type:"MF",       name:"SBI Bluechip Fund - Direct Plan - Growth",                   scheme_code:"119598", ticker:"",           purchase_value:200000,  current_value:278000 },
+    { id:"h13", user_id:"",member_id:m2, type:"MF",       name:"Kotak Emerging Equity Fund - Direct Plan - Growth",          scheme_code:"120505", ticker:"",           purchase_value:160000,  current_value:227200 },
+    { id:"h14", user_id:"",member_id:m2, type:"IN_STOCK", name:"Tata Consultancy Services Ltd",                              ticker:"TCS",         scheme_code:"",      purchase_value:175000,  current_value:224000 },
+    { id:"h15", user_id:"",member_id:m2, type:"IN_ETF",   name:"ICICI Prudential Gold ETF",                                  ticker:"ICICIGOLD",   scheme_code:"",      purchase_value:90000,   current_value:121500 },
+    { id:"h16", user_id:"",member_id:m2, type:"FD",       name:"ICICI Bank FD - 7.10% p.a.",                                 ticker:"",            scheme_code:"",      principal:300000,       current_value:321300,  interest_rate:7.10, start_date:"2024-06-01", maturity_date:"2025-06-01" },
+    { id:"h17", user_id:"",member_id:m2, type:"EPF",      name:"EPF Account",                                                ticker:"",            scheme_code:"",      principal:280000,       current_value:302400,  start_date:"2018-07-01" },
+    { id:"h18", user_id:"",member_id:m1, type:"REAL_ESTATE",name:"2BHK Apartment - Hyderabad",                               ticker:"",            scheme_code:"",      purchase_value:4500000, current_value:5850000 },
+  ],
+  transactions: {
+    // scheme_code → [{date, amount}] for MFs; ticker → [{date,units,price}] for stocks
+    "h1":  [{date:"2022-04-05",units:3245.8,price:77.02,type:"BUY"},{date:"2022-10-05",units:2891.3,price:86.48,type:"BUY"},{date:"2023-04-05",units:2445.2,price:102.24,type:"BUY"},{date:"2023-10-05",units:2187.4,price:114.28,type:"BUY"}],
+    "h2":  [{date:"2022-06-10",units:1456.2,price:61.82,type:"BUY"},{date:"2023-01-10",units:1123.5,price:80.12,type:"BUY"},{date:"2023-09-10",units:892.4,price:100.87,type:"BUY"}],
+    "h3":  [{date:"2021-12-01",units:2145.6,price:46.61,type:"BUY"},{date:"2022-06-01",units:1876.3,price:53.19,type:"BUY"},{date:"2023-01-01",units:1543.2,price:64.82,type:"BUY"},{date:"2023-07-01",units:1234.5,price:80.19,type:"BUY"}],
+    "h4":  [{date:"2022-03-15",units:62,price:2419.35,type:"BUY"},{date:"2023-08-15",units:40,price:2450.00,type:"BUY"}],
+    "h5":  [{date:"2022-05-20",units:85,price:1411.76,type:"BUY"},{date:"2023-11-20",units:55,price:1445.45,type:"BUY"}],
+    "h6":  [{date:"2022-07-10",units:65,price:1461.54,type:"BUY"},{date:"2023-05-10",units:45,price:1311.11,type:"BUY"}],
+    "h7":  [{date:"2023-01-20",units:18,price:462.78,type:"BUY"},{date:"2023-09-20",units:14,price:434.86,type:"BUY"}],
+    "h8":  [{date:"2022-11-15",units:55,price:748.18,type:"BUY"},{date:"2023-08-15",units:40,price:756.25,type:"BUY"}],
+    "h9":  [{date:"2022-08-01",units:420,price:190.48,type:"BUY"}],
+    "h12": [{date:"2022-04-08",units:2341.2,price:42.46,type:"BUY"},{date:"2022-10-08",units:1987.6,price:50.31,type:"BUY"},{date:"2023-04-08",units:1654.3,price:60.45,type:"BUY"},{date:"2023-10-08",units:1342.1,price:74.50,type:"BUY"}],
+    "h13": [{date:"2022-05-15",units:1876.5,price:42.63,type:"BUY"},{date:"2023-02-15",units:1432.8,price:55.84,type:"BUY"},{date:"2023-11-15",units:1123.4,price:71.21,type:"BUY"}],
+    "h14": [{date:"2022-02-28",units:45,price:3888.89,type:"BUY"},{date:"2023-06-28",units:30,price:3733.33,type:"BUY"}],
+    "h15": [{date:"2022-09-01",units:210,price:428.57,type:"BUY"}],
+  }
+};
 const BG={name:"",targetAmount:"",targetDate:"",linkedMembers:["all"],category:"Retirement",color:"#c9a84c",notes:"",priority:1,monthlyContribution:""};
 const BA={type:"ALLOCATION_DRIFT",assetType:"IN_STOCK",threshold:"",label:"",active:true};
 
@@ -810,14 +868,37 @@ export default function App() {
           setGoals(portfolio.goals||[]);
           setAlerts(portfolio.alerts||[]);
         } else {
-          // First time loading — seed with sample data and save to DB
+          // First time — seed with demo data
           setMembers(SEED.members);
           setGoals(SEED.goals);
           setAlerts(SEED.alerts);
-          api("/api/portfolio", {
-            method: "POST",
-            body: JSON.stringify({ members: SEED.members, goals: SEED.goals, alerts: SEED.alerts })
-          }).catch(() => {});
+          // Save portfolio metadata
+          api("/api/portfolio",{method:"POST",body:JSON.stringify({members:SEED.members,goals:SEED.goals,alerts:SEED.alerts})}).catch(()=>{});
+          // Seed demo holdings + transactions in background
+          (async()=>{
+            try{
+              const createdIds = {};
+              for(const h of SEED.holdings){
+                const id = h.id+"_"+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+                const payload={id,member_id:h.member_id,type:h.type,name:h.name,ticker:h.ticker||"",scheme_code:h.scheme_code||"",
+                  purchase_value:h.purchase_value||0,current_value:h.current_value||0,principal:h.principal||null,
+                  interest_rate:h.interest_rate||null,start_date:h.start_date||null,maturity_date:h.maturity_date||null,
+                  usd_inr_rate:h.usd_inr_rate||83.2,current_price:null,notes:"__demo__"};
+                await api("/api/holdings",{method:"POST",body:JSON.stringify(payload)}).catch(()=>{});
+                createdIds[h.id]=id;
+                // Add transactions
+                const txns=SEED.transactions[h.id]||[];
+                for(const t of txns){
+                  await api("/api/transactions",{method:"POST",body:JSON.stringify({
+                    holding_id:id,txn_type:t.type||"BUY",units:t.units,price:t.price,txn_date:t.date,notes:"Demo data __demo__"
+                  })}).catch(()=>{});
+                }
+              }
+              // Reload holdings after seeding
+              const freshHlds=await api("/api/holdings");
+              setHoldings(freshHlds||[]);
+            }catch(e){console.warn("Demo seed error:",e.message);}
+          })();
         }
         setHoldings(hlds||[]);
         // Compute last price refresh time from holdings
@@ -1297,6 +1378,30 @@ ${alertLines||"  None"}`;
 
         {/* ── OVERVIEW ── */}
         {tab==="overview"&&(<>
+          {/* Option 3: Demo data banner */}
+          {holdings.some(h=>(h.notes||"").includes("__demo__"))&&(
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:".6rem",
+              padding:".7rem 1rem",marginBottom:"1rem",
+              background:"rgba(160,132,202,.08)",border:"1px solid rgba(160,132,202,.25)",borderRadius:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:".6rem"}}>
+                <span style={{fontSize:"1.1rem"}}>👋</span>
+                <div>
+                  <div style={{fontSize:".8rem",color:"rgba(160,132,202,.9)",fontWeight:500}}>You're viewing demo data</div>
+                  <div style={{fontSize:".7rem",color:"rgba(232,224,208,.4)",marginTop:".1rem"}}>Add your first real holding to get started — demo data clears automatically.</div>
+                </div>
+              </div>
+              <button className="btn-sm" style={{borderColor:"rgba(160,132,202,.4)",color:"rgba(160,132,202,.8)",whiteSpace:"nowrap"}}
+                onClick={async()=>{
+                  const demoIds=holdings.filter(h=>(h.notes||"").includes("__demo__")).map(h=>h.id);
+                  for(const id of demoIds) await api(`/api/holdings/${id}`,{method:"DELETE"}).catch(()=>{});
+                  // Also clear portfolio so goals/members reset cleanly
+                  await api("/api/portfolio",{method:"POST",body:JSON.stringify({members:[],goals:[],alerts:[]})}).catch(()=>{});
+                  setHoldings([]); setMembers([]); setGoals([]); setAlerts([]);
+                }}>
+                🗑 Clear Demo Data
+              </button>
+            </div>
+          )}
           <div className="mg">
             {[{label:"Portfolio Value",val:fmtCr(totCur),sub:`${visH.length} holdings`},{label:"Amount Invested",val:fmtCr(totInv)},{label:"Total Gains",val:(totGain>=0?"+":"")+fmtCr(totGain),sub:fmtPct(totPct),c:totGain>=0?"gain":"loss"},{label:"Return",val:fmtPct(totPct),c:totPct>=0?"gain":"loss",sub:"P&L %"}].map(m=>(
               <div key={m.label} className="mc"><div className="mclbl">{m.label}</div><div className={`mcval${m.c?" "+m.c:""}`}>{m.val}</div>{m.sub&&<div className={`mcsub${m.c?" "+m.c:""}`}>{m.sub}</div>}</div>

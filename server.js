@@ -123,6 +123,15 @@ app.get("/api/holdings", auth, async (req, res) => {
 
 app.post("/api/holdings", auth, async (req, res) => {
   const { first_transaction, ...holdingData } = req.body;
+
+  // Option 1: Auto-clear all demo data when user adds their first real holding
+  if (!holdingData.notes?.includes("__demo__")) {
+    await supabase.from("holdings")
+      .delete()
+      .eq("user_id", req.user.id)
+      .like("notes", "%__demo__%");
+  }
+
   const { error } = await supabase.from("holdings").insert(sanitizeDates({ ...holdingData, user_id: req.user.id }));
   if (error) return res.status(500).json({ error: error.message });
 
