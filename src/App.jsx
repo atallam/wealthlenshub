@@ -1211,7 +1211,7 @@ ${alertLines||"  None"}`;
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 1000,
-          system: `You are a private wealth advisor assistant for an Indian family portfolio management app called WealthLens. You have access to the family's complete, real portfolio data below. Answer questions about their portfolio directly and specifically — use actual numbers, names, and holdings from the data. Be concise and conversational. Use ₹ for values, Indian number formatting (Cr, L). Do not give generic financial advice — always refer to their specific holdings and numbers.\n\n${portfolioCtx}`,
+          system: `You are a private wealth advisor assistant for Wealth Lens Hub, a personal portfolio intelligence platform. You have access to the family's complete, real portfolio data below. Answer questions about their portfolio directly and specifically — use actual numbers, names, and holdings from the data. Be concise and conversational. Use ₹ for values, Indian number formatting (Cr, L). Do not give generic financial advice — always refer to their specific holdings and numbers.\n\n${portfolioCtx}`,
           messages: history,
         })
       });
@@ -1301,7 +1301,7 @@ ${alertLines||"  None"}`;
 
       {/* HEADER */}
       <header className="hdr">
-        <div className="logo">Wealth<span>Lens</span> <span style={{fontSize:".6rem",letterSpacing:".1em",color:"rgba(201,168,76,.5)",verticalAlign:"middle"}}>PRO</span></div>
+        <div className="logo">Wealth<span>Lens</span> <span style={{fontSize:".6rem",letterSpacing:".1em",color:"rgba(201,168,76,.5)",verticalAlign:"middle"}}>HUB</span></div>
         <div className="hdr-r">
           {trigAlerts.length>0&&<div className="alert-pill" onClick={()=>setTab("alerts")}>⚠ {trigAlerts.length} alert{trigAlerts.length>1?"s":""}</div>}
           {/* Sync dot */}
@@ -1325,7 +1325,7 @@ ${alertLines||"  None"}`;
               ?<img src={user.user_metadata.avatar_url} alt="" style={{width:26,height:26,borderRadius:"50%",border:"1px solid rgba(201,168,76,.3)"}}/>
               :<div style={{width:26,height:26,borderRadius:"50%",background:"rgba(201,168,76,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".72rem",color:"#c9a84c",fontWeight:600}}>{user.email?.[0]?.toUpperCase()||"?"}</div>
             }
-            <button className="btn-o" style={{padding:".26rem .6rem",fontSize:".62rem",opacity:.7}} onClick={()=>setShowSettings(true)}>⚙️</button>
+            <button className="btn-o" style={{padding:".26rem .6rem",fontSize:".62rem",opacity:.7}} onClick={()=>setShowSettings(true)}>Settings</button>
             <button className="btn-o" style={{padding:".26rem .6rem",fontSize:".62rem",opacity:.6}} onClick={signOut}>Sign out</button>
           </div>
         </div>
