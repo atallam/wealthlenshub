@@ -27,4 +27,10 @@ export const resetPassword = (email) =>
     redirectTo: window.location.origin + "/reset-password"
   });
 
+export const signInWithGitHub = () =>
+  supabase.auth.signInWithOAuth({
+    provider: "github",
+    options: { redirectTo: window.location.origin }
+  });
+
 export const signOut = () => supabase.auth.signOut();
