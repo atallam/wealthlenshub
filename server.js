@@ -1594,11 +1594,10 @@ function parseTransactionCSV(text) {
   return { format: "Generic Transactions", transactions, warnings };
 }
 
-// ── IMPORT: Detect format + preview (no DB write) ─────────────────
+// ── IMPORT: Auto-detect format + type + preview (no DB write) ─────
 app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file" });
   const ext = req.file.originalname.split(".").pop().toLowerCase();
-  const importType = req.body.import_type || "holdings";
 
   let text = "";
   try {
@@ -1615,24 +1614,94 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
     return res.status(400).json({ error: "Parse error: " + e.message });
   }
 
-  if (importType === "transactions") return res.json(parseTransactionCSV(text));
+  // ── Auto-detect: try both parsers, score and pick the better one ──
+  const holdingsResult = detectAndParseHoldings(text, req.file.originalname);
+  const txnResult = parseTransactionCSV(text);
 
-  const result = detectAndParseHoldings(text, req.file.originalname);
+  // Score each result based on quality signals
+  const hScore = scoreHoldings(holdingsResult, text);
+  const tScore = scoreTransactions(txnResult, text);
 
-  // Duplicate detection
+  const detectedType = tScore > hScore ? "transactions" : "holdings";
+
+  if (detectedType === "transactions") {
+    return res.json({ ...txnResult, detected_type: "transactions" });
+  }
+
+  // Holdings path: add duplicate detection
   const { data: existing } = await supabase.from("holdings")
     .select("name, ticker, scheme_code, type").eq("user_id", req.user.id);
   const existingSet = new Set(
     (existing || []).map(h => `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`)
   );
-  result.holdings = result.holdings.map(h => ({
+  holdingsResult.holdings = holdingsResult.holdings.map(h => ({
     ...h, _duplicate: existingSet.has(`${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`),
   }));
-  const dupCount = result.holdings.filter(h => h._duplicate).length;
-  if (dupCount > 0) result.warnings.push(`${dupCount} holding(s) already exist (marked as duplicates)`);
+  const dupCount = holdingsResult.holdings.filter(h => h._duplicate).length;
+  if (dupCount > 0) holdingsResult.warnings.push(`${dupCount} holding(s) already exist (marked as duplicates)`);
 
-  res.json(result);
+  res.json({ ...holdingsResult, detected_type: "holdings" });
 });
+
+/**
+ * Score how well the parsed result looks like a holdings file.
+ * Higher = more likely to be holdings.
+ */
+function scoreHoldings(result, text) {
+  let score = 0;
+  if (result.holdings.length === 0) return -10;
+  score += result.holdings.length * 2;                              // more rows = better
+  if (result.format !== "Unknown" && result.format !== "Generic CSV (best-effort)") score += 20; // named format detected
+
+  // Holdings signals: avg cost, LTP, market value columns in header
+  const lower = text.toLowerCase();
+  if (/avg\.?\s*(cost|price)|average\s*price|purchase\s*price/i.test(lower)) score += 15;
+  if (/ltp|market\s*value|current\s*value|close\s*price|cmp/i.test(lower)) score += 10;
+
+  // Unique symbols = holdings (each row is a different asset)
+  const symbols = result.holdings.map(h => (h.ticker || h.name).toLowerCase());
+  const uniqueRatio = new Set(symbols).size / (symbols.length || 1);
+  if (uniqueRatio > 0.8) score += 15;     // mostly unique rows → holdings
+
+  // Negative: date column + buy/sell column = probably transactions
+  if (/trade\s*date|txn\s*date|transaction\s*date/i.test(lower)) score -= 10;
+  if (/trade\s*type|buy|sell|side|action/i.test(lower) && /date/i.test(lower)) score -= 15;
+
+  return score;
+}
+
+/**
+ * Score how well the parsed result looks like a transactions file.
+ * Higher = more likely to be transactions.
+ */
+function scoreTransactions(result, text) {
+  let score = 0;
+  if (result.transactions.length === 0) return -10;
+  score += result.transactions.length;                               // more rows = better
+  if (result.format !== "unknown" && result.format !== "Generic Transactions") score += 20;
+
+  const lower = text.toLowerCase();
+  // Strong transaction signals
+  if (/trade\s*date|transaction\s*date/i.test(lower)) score += 15;
+  if (/trade\s*type/i.test(lower)) score += 15;
+  if (/buy|sell/i.test(lower) && /date/i.test(lower)) score += 10;
+  if (/tradebook|trade\s*book|order\s*book|order\s*history/i.test(lower)) score += 20;
+
+  // Repeated symbols = transactions (multiple buy/sell per asset)
+  const symbols = result.transactions.map(t => (t._symbol || "").toLowerCase());
+  const uniqueRatio = new Set(symbols).size / (symbols.length || 1);
+  if (uniqueRatio < 0.5) score += 15;      // same symbol repeats → transactions
+
+  // Many rows with dates = transactions
+  const withDates = result.transactions.filter(t => t.txn_date).length;
+  if (withDates > 10) score += 10;
+
+  // Negative: avg cost, market value columns = probably holdings
+  if (/avg\.?\s*(cost|price)|average\s*price|market\s*value|current\s*value/i.test(lower)) score -= 10;
+  if (/ltp|cmp/i.test(lower)) score -= 10;
+
+  return score;
+}
 
 // ── IMPORT: Bulk import holdings ──────────────────────────────────
 app.post("/api/holdings/import", auth, async (req, res) => {

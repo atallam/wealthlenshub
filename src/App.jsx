@@ -1246,31 +1246,31 @@ ${alertLines||"  None"}`;
     setTimeout(()=>aiBottomRef.current?.scrollIntoView({behavior:"smooth"}),50);
   }
 
-  // ── Smart Import ──
-  async function handleImportFile(file, importType = "holdings") {
+  // ── Smart Import (auto-detect holdings vs transactions) ──
+  async function handleImportFile(file) {
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
     if (!["csv", "xlsx", "xls", "txt"].includes(ext)) {
       setImportState(s => ({ ...s, warnings: ["Unsupported file type. Use CSV, XLSX, or XLS."] }));
       return;
     }
-    setImportState(s => ({ ...s, step: "preview", mode: importType, warnings: [], format: "Detecting…" }));
+    setImportState(s => ({ ...s, step: "preview", warnings: [], format: "Detecting…", mode: null }));
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || "";
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("import_type", importType);
       const res = await fetch("/api/import/detect", {
         method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: fd,
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      if (importType === "transactions") {
-        setImportState(s => ({ ...s, step: "preview", format: data.format || "Unknown",
+      const detectedType = data.detected_type || "holdings";
+      if (detectedType === "transactions") {
+        setImportState(s => ({ ...s, step: "preview", mode: "transactions", format: data.format || "Unknown",
           transactions: data.transactions || [], warnings: data.warnings || [] }));
       } else {
-        setImportState(s => ({ ...s, step: "preview", format: data.format || "Unknown",
+        setImportState(s => ({ ...s, step: "preview", mode: "holdings", format: data.format || "Unknown",
           holdings: data.holdings || [], warnings: data.warnings || [] }));
       }
     } catch (e) {
@@ -1312,9 +1312,8 @@ ${alertLines||"  None"}`;
       warnings: [], progress: 0, result: null, dragOver: false, skipDuplicates: true, assignMember: "" });
   }
 
-  function openImportModal(mode = "holdings") {
+  function openImportModal() {
     resetImport();
-    setImportState(s => ({ ...s, mode }));
     setModal("import");
   }
 
@@ -1381,8 +1380,8 @@ ${alertLines||"  None"}`;
             {priceRefreshing?"⟳ Fetching…":"⟳ Live Prices"}
           </button>
           {lastPriceRefresh&&<span style={{fontSize:".62rem",color:"rgba(232,224,208,.28)",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{ago(lastPriceRefresh)}</span>}
-          <button className="btn-o" onClick={()=>openImportModal("holdings")}>⇑ Import</button>
-          <input ref={importFileRef} type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){handleImportFile(e.target.files[0],importState.mode||"holdings");e.target.value="";}}}/>
+          <button className="btn-o" onClick={()=>openImportModal()}>⇑ Import</button>
+          <input ref={importFileRef} type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){handleImportFile(e.target.files[0]);e.target.value="";}}}/>
           <button className="btn-g" onClick={generatePDF}>⤓ PDF</button>
           <button className="btn-o" onClick={()=>{setForm(BF);setEditHolding(null);setModal("holding");}}>+ Holding</button>
           <button className="btn-p" onClick={()=>{setTxnForm(BT);setGlobalTxnModal(true);}}>+ Transaction</button>
@@ -3859,14 +3858,8 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
     <Overlay onClose={onClose} wide>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1.2rem"}}>
         <div className="modtitle" style={{margin:0}}>
-          {step==="done"?"✓ Import Complete":step==="importing"?"Importing…":mode==="transactions"?"Import Transactions":"Import Portfolio"}
+          {step==="done"?"✓ Import Complete":step==="importing"?"Importing…":step==="preview"?(mode==="transactions"?"Import Transactions":"Import Portfolio"):"Import Portfolio or Transactions"}
         </div>
-        {step==="upload"&&(
-          <button className="btn-o" style={{fontSize:".68rem",padding:".3rem .7rem"}}
-            onClick={()=>setImportState(s=>({...s,mode:s.mode==="transactions"?"holdings":"transactions"}))}>
-            {mode==="holdings"?"Switch to Transactions":"Switch to Holdings"}
-          </button>
-        )}
       </div>
 
       {step==="upload"&&(<>
@@ -3876,12 +3869,14 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
           onClick={()=>importFileRef.current?.click()}
           onDragOver={e=>{e.preventDefault();setImportState(s=>({...s,dragOver:true}));}}
           onDragLeave={()=>setImportState(s=>({...s,dragOver:false}))}
-          onDrop={e=>{e.preventDefault();setImportState(s=>({...s,dragOver:false}));const f=e.dataTransfer.files[0];if(f)handleImportFile(f,mode);}}>
-          <div style={{fontSize:"2.2rem",marginBottom:".6rem"}}>{mode==="transactions"?"📋":"📊"}</div>
+          onDrop={e=>{e.preventDefault();setImportState(s=>({...s,dragOver:false}));const f=e.dataTransfer.files[0];if(f)handleImportFile(f);}}>
+          <div style={{fontSize:"2.2rem",marginBottom:".6rem"}}>📂</div>
           <div style={{fontSize:".85rem",color:"rgba(232,224,208,.7)",fontWeight:500}}>
-            Drag & drop your {mode==="transactions"?"tradebook":"portfolio"} file here
+            Drag & drop your broker export here
           </div>
-          <div style={{fontSize:".72rem",color:"rgba(232,224,208,.35)",marginTop:".4rem"}}>CSV, XLSX, or XLS — up to 5 MB</div>
+          <div style={{fontSize:".72rem",color:"rgba(232,224,208,.35)",marginTop:".4rem"}}>
+            Holdings or tradebook — auto-detected · CSV, XLSX, XLS
+          </div>
           <button className="btns" style={{marginTop:"1rem",fontSize:".75rem"}}>Browse Files</button>
         </div>
         <div style={{fontSize:".65rem",letterSpacing:".08em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".6rem",fontWeight:600}}>Auto-detected formats</div>
@@ -3917,6 +3912,12 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
           <span style={{fontSize:".72rem",padding:".25rem .65rem",borderRadius:5,
             background:"rgba(201,168,76,.12)",color:"#c9a84c",fontWeight:600,border:"1px solid rgba(201,168,76,.2)"}}>
             {format}
+          </span>
+          <span style={{fontSize:".68rem",padding:".22rem .55rem",borderRadius:5,
+            background:mode==="transactions"?"rgba(160,132,202,.12)":"rgba(76,175,154,.12)",
+            color:mode==="transactions"?"#a084ca":"#4caf9a",fontWeight:600,
+            border:`1px solid ${mode==="transactions"?"rgba(160,132,202,.25)":"rgba(76,175,154,.25)"}`}}>
+            {mode==="transactions"?"📋 Transactions":"📊 Holdings"}
           </span>
           <span style={{fontSize:".75rem",color:"rgba(232,224,208,.6)"}}>
             {items.length} {mode==="transactions"?"transaction":"holding"}{items.length!==1?"s":""} found
