@@ -250,10 +250,15 @@ app.delete("/api/asset-types/:id", auth, async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── FOREX RATE — live USD/INR ─────────────────────────────────────
+// ── FOREX RATE — live multi-currency rates ────────────────────────
 app.get("/api/forex/usdinr", auth, async (req, res) => {
   const result = await fetchUsdInr();
   res.json({ ...result, fetched_at: new Date().toISOString() });
+});
+
+app.get("/api/forex/rates", auth, async (req, res) => {
+  const rates = await fetchAllFxRates();
+  res.json({ rates, base: "USD", fetched_at: new Date().toISOString() });
 });
 
 // ── SIP BATCH NAV — fetch NAVs for a date range for SIP import ───
@@ -700,25 +705,34 @@ function scoreMf(name, qLower, qWords) {
   return hits > 0 ? Math.round(40 * hits / qWords.length) : 0;
 }
 
-// ── FX RATE: exchangerate-api → Yahoo → 83.5 ─────────────────────
-async function fetchUsdInr() {
-  // Primary: exchangerate-api (free tier, 1500 req/month, no key needed for open endpoint)
+// ── FX RATE: exchangerate-api → Yahoo → fallback ─────────────────
+const FX_CACHE = { rates: {}, ts: 0 };
+const FX_FALLBACKS = { INR: 83.5, EUR: 0.92, GBP: 0.79, SGD: 1.34, AED: 3.67, AUD: 1.53, JPY: 149.5, CAD: 1.36, CHF: 0.88 };
+
+async function fetchAllFxRates() {
+  // Cache for 10 minutes
+  if (Date.now() - FX_CACHE.ts < 600_000 && Object.keys(FX_CACHE.rates).length > 0) return FX_CACHE.rates;
   try {
     const r = await timedFetch("https://open.er-api.com/v6/latest/USD", {}, 5000);
     if (r.ok) {
       const data = await r.json();
-      const rate = data?.rates?.INR;
-      if (rate && rate > 50 && rate < 200) return { rate, source: "exchangerate-api" };
+      if (data?.rates) { FX_CACHE.rates = data.rates; FX_CACHE.ts = Date.now(); return data.rates; }
     }
   } catch { /* fall through */ }
+  return FX_FALLBACKS;
+}
 
-  // Fallback 1: Yahoo Finance
+async function fetchUsdInr() {
+  const rates = await fetchAllFxRates();
+  const rate = rates?.INR;
+  if (rate && rate > 50 && rate < 200) return { rate, source: FX_CACHE.ts > 0 ? "exchangerate-api" : "fallback" };
+
+  // Fallback: Yahoo Finance
   try {
-    const rate = await yahooPrice("USDINR=X");
-    if (rate && rate > 50 && rate < 200) return { rate, source: "yahoo" };
+    const yRate = await yahooPrice("USDINR=X");
+    if (yRate && yRate > 50 && yRate < 200) return { rate: yRate, source: "yahoo" };
   } catch { /* fall through */ }
 
-  // Fallback 2: hardcoded
   return { rate: FX_FALLBACK, source: "hardcoded" };
 }
 
@@ -755,6 +769,20 @@ app.post("/api/prices/refresh", auth, async (req, res) => {
 
       } else if (h.type === "US_STOCK" && h.ticker) {
         const q = await stockPrice(h.ticker.toUpperCase());
+        if (q?.price) patch = { current_price: q.price, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
+
+      } else if (h.type === "US_ETF" && h.ticker) {
+        const q = await stockPrice(h.ticker.toUpperCase());
+        if (q?.price) patch = { current_price: q.price, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
+
+      } else if (h.type === "US_BOND" && h.ticker) {
+        const q = await stockPrice(h.ticker.toUpperCase());
+        if (q?.price) patch = { current_price: q.price, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
+
+      } else if (h.type === "CRYPTO" && h.ticker) {
+        // Yahoo uses BTC-USD, ETH-USD format for crypto
+        const sym = h.ticker.toUpperCase().includes("-") ? h.ticker.toUpperCase() : `${h.ticker.toUpperCase()}-USD`;
+        const q = await stockPrice(sym);
         if (q?.price) patch = { current_price: q.price, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
       }
     } catch { /* skip failed holding */ }
@@ -1053,6 +1081,37 @@ function detectAndParseHoldings(text, fileName = "") {
     if (h.some(c => c === "name") && h.some(c => c === "type")) {
       return parseNativeCSVHoldings(rows, headerIdx);
     }
+
+    // ── US BROKER FORMATS ────────────────────────────────────────
+
+    // Schwab (Symbol, Description, Quantity, Price, Price Change %, Market Value, Day Change %, ...)
+    if (h.some(c => c === "symbol") && h.some(c => c === "description") && h.some(c => /market\s*value/i.test(c))) {
+      return parseSchwabHoldings(rows, headerIdx);
+    }
+    // Fidelity (Account Name/Number, Symbol, Description, Quantity, Last Price, Current Value, ...)
+    if (h.some(c => /account/i.test(c)) && h.some(c => c === "symbol") && h.some(c => /last\s*price/i.test(c))) {
+      return parseFidelityHoldings(rows, headerIdx);
+    }
+    // Robinhood (Instrument, Quantity, Average Cost, Equity, ...)
+    if (h.some(c => c === "instrument") && h.some(c => /average\s*cost/i.test(c)) && h.some(c => /equity/i.test(c))) {
+      return parseRobinhoodHoldings(rows, headerIdx);
+    }
+    // Vanguard (Account Number, Investment Name, Symbol, Shares, Share Price, Total Value)
+    if (h.some(c => /investment\s*name/i.test(c)) && h.some(c => /share\s*price/i.test(c))) {
+      return parseVanguardHoldings(rows, headerIdx);
+    }
+    // Interactive Brokers (Symbol, Description, Asset Class, Currency, Quantity, Cost Price, Close Price, Value, Unrealized P&L)
+    if (h.some(c => /asset\s*class/i.test(c)) && h.some(c => /cost\s*price/i.test(c) || /cost\s*basis/i.test(c))) {
+      return parseIBKRHoldings(rows, headerIdx);
+    }
+    // E*TRADE / TD Ameritrade (Symbol, Description, Qty, Price Paid, Market Value, ...)
+    if (h.some(c => c === "symbol") && h.some(c => /price\s*paid/i.test(c))) {
+      return parseETRADEHoldings(rows, headerIdx);
+    }
+    // Coinbase (Asset, Quantity, Cost Basis, Value, ...)
+    if (h.some(c => c === "asset") && h.some(c => /cost\s*basis/i.test(c)) && h.some(c => /spot\s*price|value/i.test(c))) {
+      return parseCoinbaseHoldings(rows, headerIdx);
+    }
   }
   return parseGenericHoldings(rows, headerIdx >= 0 ? headerIdx : 0);
 }
@@ -1253,6 +1312,204 @@ function parseNativeCSVHoldings(rows, headerIdx) {
     });
   }
   return { format: "WealthLens CSV", holdings, warnings };
+}
+
+// ── US Broker Parsers ─────────────────────────────────────────────
+
+function classifyUSAsset(symbol, name, type) {
+  const nm = (name || "").toLowerCase();
+  const sym = (symbol || "").toUpperCase();
+  if (/crypto|bitcoin|ethereum|btc|eth|sol|ada|doge|bnb/i.test(nm) || sym.includes("-USD") || sym.includes("-BTC")) return "CRYPTO";
+  if (/etf|index|vanguard.*index|ishares|spdr|qqq|voo|vti|spy|iwm|arkk|dia|eem|vxus|bnd|agg|tlt|schd/i.test(nm + " " + sym)) return "US_ETF";
+  if (/bond|treasury|t-bill|note|fixed.income|tips/i.test(nm)) return "US_BOND";
+  if (type && /etf/i.test(type)) return "US_ETF";
+  return "US_STOCK";
+}
+
+function parseSchwabHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => c === "symbol"),
+    name:   h.findIndex(c => c === "description"),
+    qty:    h.findIndex(c => /quantity/i.test(c)),
+    price:  h.findIndex(c => c === "price"),
+    mv:     h.findIndex(c => /market\s*value/i.test(c)),
+    cb:     h.findIndex(c => /cost\s*basis/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol || symbol === "Account Total" || symbol === "Cash & Cash Investments") continue;
+    const name = (r[col.name] || symbol).trim();
+    const units = pNum(r[col.qty]);
+    const price = pNum(r[col.price]);
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero quantity`); continue; }
+    const mv = pNum(r[col.mv]);
+    const cb = pNum(r[col.cb]);
+    const type = classifyUSAsset(symbol, name);
+    holdings.push({ name, type, ticker: symbol, units,
+      purchase_price: cb && units ? cb / units : price, current_price: price,
+      purchase_value: cb || units * price, current_value: mv || units * price });
+  }
+  return { format: "Charles Schwab", holdings, warnings };
+}
+
+function parseFidelityHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => c === "symbol"),
+    name:   h.findIndex(c => c === "description"),
+    qty:    h.findIndex(c => /quantity/i.test(c)),
+    price:  h.findIndex(c => /last\s*price/i.test(c)),
+    cv:     h.findIndex(c => /current\s*value/i.test(c)),
+    cb:     h.findIndex(c => /cost\s*basis/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol || /pending|cash|core|total/i.test(symbol)) continue;
+    const name = (r[col.name] || symbol).trim();
+    const units = pNum(r[col.qty]);
+    const price = pNum(r[col.price]);
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero quantity`); continue; }
+    const cv = pNum(r[col.cv]), cb = pNum(r[col.cb]);
+    const type = classifyUSAsset(symbol, name);
+    holdings.push({ name, type, ticker: symbol, units,
+      purchase_price: cb && units ? cb / units : price, current_price: price,
+      purchase_value: cb || units * price, current_value: cv || units * price });
+  }
+  return { format: "Fidelity", holdings, warnings };
+}
+
+function parseRobinhoodHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    name:   h.findIndex(c => c === "instrument"),
+    qty:    h.findIndex(c => /quantity/i.test(c)),
+    avg:    h.findIndex(c => /average\s*cost/i.test(c)),
+    equity: h.findIndex(c => /equity/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const name = (r[col.name] || "").trim();
+    if (!name) continue;
+    const units = pNum(r[col.qty]), avg = pNum(r[col.avg]);
+    if (units === 0) { warnings.push(`Skipped "${name}": zero quantity`); continue; }
+    const equity = pNum(r[col.equity]);
+    // Robinhood instrument names are like "AAPL" or "Apple Inc - Class A"
+    const ticker = name.length <= 6 && /^[A-Z]+$/.test(name) ? name : name.split(/\s*[-–]\s*/)[0].trim();
+    const type = classifyUSAsset(ticker, name);
+    holdings.push({ name, type, ticker: ticker.toUpperCase(), units,
+      purchase_price: avg, current_price: equity && units ? equity / units : avg,
+      purchase_value: units * avg, current_value: equity || units * avg });
+  }
+  return { format: "Robinhood", holdings, warnings };
+}
+
+function parseVanguardHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    name:   h.findIndex(c => /investment\s*name/i.test(c)),
+    symbol: h.findIndex(c => c === "symbol"),
+    shares: h.findIndex(c => /shares/i.test(c)),
+    price:  h.findIndex(c => /share\s*price/i.test(c)),
+    value:  h.findIndex(c => /total\s*value/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const name = (r[col.name] || "").trim();
+    const symbol = (r[col.symbol] || "").trim();
+    if (!name && !symbol) continue;
+    const units = pNum(r[col.shares]), price = pNum(r[col.price]);
+    if (units === 0) { warnings.push(`Skipped "${name || symbol}": zero shares`); continue; }
+    const value = pNum(r[col.value]);
+    const type = classifyUSAsset(symbol, name);
+    holdings.push({ name: name || symbol, type, ticker: symbol.toUpperCase(), units,
+      purchase_price: price, current_price: price,
+      purchase_value: units * price, current_value: value || units * price });
+  }
+  return { format: "Vanguard", holdings, warnings };
+}
+
+function parseIBKRHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol:   h.findIndex(c => c === "symbol"),
+    name:     h.findIndex(c => c === "description"),
+    asset:    h.findIndex(c => /asset\s*class/i.test(c)),
+    currency: h.findIndex(c => c === "currency"),
+    qty:      h.findIndex(c => /quantity/i.test(c)),
+    costP:    h.findIndex(c => /cost\s*price/i.test(c) || /cost\s*basis.*price/i.test(c)),
+    closeP:   h.findIndex(c => /close\s*price/i.test(c) || /mark.*price/i.test(c)),
+    value:    h.findIndex(c => /value/i.test(c) && !/unrealized/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol || /total|^$/i.test(symbol)) continue;
+    const name = (r[col.name] || symbol).trim();
+    const units = pNum(r[col.qty]), costP = pNum(r[col.costP]), closeP = pNum(r[col.closeP]);
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero quantity`); continue; }
+    const assetClass = (r[col.asset] || "").toUpperCase();
+    let type = classifyUSAsset(symbol, name);
+    if (assetClass === "OPT" || assetClass === "FOP") { warnings.push(`Skipped "${symbol}": options not supported`); continue; }
+    if (assetClass === "BOND") type = "US_BOND";
+    if (assetClass === "CRYPTO") type = "CRYPTO";
+    holdings.push({ name, type, ticker: symbol, units,
+      purchase_price: costP, current_price: closeP || costP,
+      purchase_value: units * costP, current_value: pNum(r[col.value]) || units * (closeP || costP) });
+  }
+  return { format: "Interactive Brokers", holdings, warnings };
+}
+
+function parseETRADEHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => c === "symbol"),
+    name:   h.findIndex(c => c === "description" || c === "name"),
+    qty:    h.findIndex(c => /qty|quantity/i.test(c)),
+    pp:     h.findIndex(c => /price\s*paid/i.test(c)),
+    mv:     h.findIndex(c => /market\s*value/i.test(c)),
+    price:  h.findIndex(c => /last\s*price|current\s*price/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol || /total|cash/i.test(symbol)) continue;
+    const name = col.name >= 0 ? (r[col.name] || symbol).trim() : symbol;
+    const units = pNum(r[col.qty]), pp = pNum(r[col.pp]);
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero quantity`); continue; }
+    const price = col.price >= 0 ? pNum(r[col.price]) : pp;
+    const type = classifyUSAsset(symbol, name);
+    holdings.push({ name, type, ticker: symbol, units,
+      purchase_price: pp, current_price: price,
+      purchase_value: units * pp, current_value: pNum(r[col.mv]) || units * price });
+  }
+  return { format: "E*TRADE / TD Ameritrade", holdings, warnings };
+}
+
+function parseCoinbaseHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    asset:    h.findIndex(c => c === "asset"),
+    qty:      h.findIndex(c => /quantity/i.test(c)),
+    cb:       h.findIndex(c => /cost\s*basis/i.test(c)),
+    value:    h.findIndex(c => /value/i.test(c) && !/cost/i.test(c)),
+    spot:     h.findIndex(c => /spot\s*price/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const asset = (r[col.asset] || "").trim();
+    if (!asset) continue;
+    const units = pNum(r[col.qty]);
+    if (units === 0) { warnings.push(`Skipped "${asset}": zero quantity`); continue; }
+    const cb = pNum(r[col.cb]), value = pNum(r[col.value]), spot = pNum(r[col.spot]);
+    // Coinbase ticker format: BTC → BTC-USD for Yahoo
+    holdings.push({ name: asset, type: "CRYPTO", ticker: `${asset.toUpperCase()}-USD`, units,
+      purchase_price: cb && units ? cb / units : spot, current_price: spot || (value && units ? value / units : 0),
+      purchase_value: cb || units * spot, current_value: value || units * spot });
+  }
+  return { format: "Coinbase", holdings, warnings };
 }
 
 function parseGenericHoldings(rows, headerIdx) {

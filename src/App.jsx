@@ -11,8 +11,12 @@ const AT = {
   IN_STOCK:    { label:"Indian Stocks", color:"#e07c5a", icon:"📈", cat:"Market" },
   IN_ETF:      { label:"Indian ETF",   color:"#f0a050", icon:"🔷", cat:"Market" },
   US_STOCK:    { label:"US Stocks",     color:"#5a9ce0", icon:"🇺🇸", cat:"Market" },
+  US_ETF:      { label:"US ETF",        color:"#4a8cd8", icon:"🔵", cat:"Market" },
+  US_BOND:     { label:"US Bonds",      color:"#7095b0", icon:"📜", cat:"Debt" },
+  CRYPTO:      { label:"Crypto",        color:"#f7931a", icon:"₿",  cat:"Market" },
   REAL_ESTATE: { label:"Real Estate",  color:"#7cb87c", icon:"🏠", cat:"Physical" },
 };
+const USD_TYPES = new Set(["US_STOCK","US_ETF","US_BOND","CRYPTO"]);
 const PPF_R=7.1, EPF_R=8.15;
 
 // ── Math ─────────────────────────────────────────────────────────
@@ -27,7 +31,10 @@ function getVal(h){
     case"MF":          return units*(h.current_nav||h.purchase_nav||0);
     case"IN_STOCK":
     case"IN_ETF":      return units*(h.current_price||h.purchase_price||0);
-    case"US_STOCK":    return units*(h.current_price||h.purchase_price||0)*(h.usd_inr_rate||83.2);
+    case"US_STOCK":
+    case"US_ETF":
+    case"US_BOND":
+    case"CRYPTO":      return units*(h.current_price||h.purchase_price||0)*(h.usd_inr_rate||83.2);
     case"REAL_ESTATE": return h.current_value||h.purchase_value||0;
     default:           return h.principal||0;
   }
@@ -39,7 +46,10 @@ function getInv(h){
     case"MF":          return(h.units||0)*(h.purchase_nav||0);
     case"IN_STOCK":
     case"IN_ETF":      return(h.units||0)*(h.purchase_price||0);
-    case"US_STOCK":    return(h.units||0)*(h.purchase_price||0)*(h.usd_inr_rate||83.2);
+    case"US_STOCK":
+    case"US_ETF":
+    case"US_BOND":
+    case"CRYPTO":      return(h.units||0)*(h.purchase_price||0)*(h.usd_inr_rate||83.2);
     case"REAL_ESTATE": return h.purchase_value||0;
     default:           return h.principal||0;
   }
@@ -115,6 +125,8 @@ const SEED = {
     { id:"h6",  user_id:"",member_id:m1, type:"IN_STOCK", name:"Infosys Ltd",                                                ticker:"INFY",        scheme_code:"",      purchase_value:95000,   current_value:121600 },
     { id:"h7",  user_id:"",member_id:m1, type:"US_STOCK", name:"NVIDIA Corporation",                                         ticker:"NVDA",        scheme_code:"",      purchase_value:210000,  current_value:378000,  usd_inr_rate:83.2 },
     { id:"h8",  user_id:"",member_id:m1, type:"US_STOCK", name:"Apple Inc",                                                  ticker:"AAPL",        scheme_code:"",      purchase_value:125000,  current_value:148750,  usd_inr_rate:83.2 },
+    { id:"h8a", user_id:"",member_id:m1, type:"US_ETF",   name:"Vanguard S&P 500 ETF",                                       ticker:"VOO",         scheme_code:"",      purchase_value:180000,  current_value:215000,  usd_inr_rate:83.2 },
+    { id:"h8b", user_id:"",member_id:m1, type:"CRYPTO",   name:"Bitcoin",                                                    ticker:"BTC-USD",     scheme_code:"",      purchase_value:100000,  current_value:165000,  usd_inr_rate:83.2 },
     { id:"h9",  user_id:"",member_id:m1, type:"IN_ETF",   name:"Nippon India ETF Nifty 50 BeES",                             ticker:"NIFTYBEES",   scheme_code:"",      purchase_value:80000,   current_value:103200 },
     { id:"h10", user_id:"",member_id:m1, type:"FD",       name:"HDFC Bank FD - 7.25% p.a.",                                  ticker:"",            scheme_code:"",      principal:500000,       current_value:537500,  interest_rate:7.25, start_date:"2024-04-01", maturity_date:"2025-04-01" },
     { id:"h11", user_id:"",member_id:m1, type:"PPF",      name:"PPF Account - SBI",                                          ticker:"",            scheme_code:"",      principal:150000,       current_value:162000,  start_date:"2020-04-01" },
@@ -220,7 +232,7 @@ function TransactionPanel({ holding, onAddTxn, onReload, onDeleteTxn, txnForm, s
   const sells = txns.filter(t=>t.txn_type==="SELL");
   const netUnits = buys.reduce((s,t)=>s+Number(t.units),0) - sells.reduce((s,t)=>s+Number(t.units),0);
   const avgCost  = buys.length>0 ? buys.reduce((s,t)=>s+Number(t.units)*Number(t.price),0)/buys.reduce((s,t)=>s+Number(t.units),0) : 0;
-  const isUS   = holding.type==="US_STOCK";
+  const isUS   = USD_TYPES.has(holding.type);
   const isMF   = holding.type==="MF";
   const priceLabel = isMF ? "NAV" : isUS ? "Price $" : "Price ₹";
   const fx = +(holding.usd_inr_rate||fxRate||83.2);
@@ -308,7 +320,7 @@ function TransactionPanel({ holding, onAddTxn, onReload, onDeleteTxn, txnForm, s
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1.2rem"}}>
           <div>
             <div className="modtitle" style={{marginBottom:".15rem"}}>📋 Transactions</div>
-            <div style={{fontSize:".73rem",color:"rgba(232,224,208,.38)"}}>{holding.name} {isUS&&<span style={{fontSize:".65rem",color:"#5a9ce0",marginLeft:4}}>🇺🇸 USD input</span>}</div>
+            <div style={{fontSize:".73rem",color:"rgba(232,224,208,.38)"}}>{holding.name} {isUS&&<span style={{fontSize:".65rem",color:"#5a9ce0",marginLeft:4}}>{holding.type==="CRYPTO"?"₿":"🇺🇸"} USD input</span>}</div>
           </div>
           <div style={{display:"flex",gap:".4rem",alignItems:"center"}}>
             {isMF&&holding.scheme_code&&(
@@ -816,7 +828,7 @@ export default function App() {
   const [calMonth,          setCalMonth]          = useState(()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;});
 
   // ── Rebalancing state ────────────────────────────────────────
-  const [targetAlloc, setTargetAlloc] = useState({IN_STOCK:40,MF:30,IN_ETF:10,US_STOCK:10,FD:5,PPF:3,EPF:2,REAL_ESTATE:0});
+  const [targetAlloc, setTargetAlloc] = useState({IN_STOCK:35,MF:25,IN_ETF:5,US_STOCK:10,US_ETF:5,US_BOND:0,CRYPTO:3,FD:5,PPF:5,EPF:5,REAL_ESTATE:2});
   const [rebalMember, setRebalMember] = useState("all");
   const [rebalCash,   setRebalCash]   = useState("");
   const [txnFilterMember, setTxnFilterMember] = useState("all");
@@ -978,7 +990,7 @@ export default function App() {
       setHoldings(hlds||[]);
       setModal(null); setForm(BF); setEditHolding(null);
       // For stock/MF holdings — auto-open Add Transaction so user records first buy immediately
-      if(!editHolding && ["IN_STOCK","IN_ETF","US_STOCK","MF"].includes(h.type)){
+      if(!editHolding && ["IN_STOCK","IN_ETF","US_STOCK","US_ETF","US_BOND","CRYPTO","MF"].includes(h.type)){
         const newH = hlds.find(x=>x.id===h.id);
         if(newH){ setTxnForm({...BT,holding_id:newH.id}); setGlobalTxnModal(true); }
       }
@@ -1756,7 +1768,7 @@ ${alertLines||"  None"}`;
                     const units   = h.net_units ?? h.units ?? null;
                     const avgCost = h.avg_cost  ?? h.purchase_price ?? h.purchase_nav ?? null;
                     const fx      = h.usd_inr_rate || 83.2;
-                    const isUS    = h.type === "US_STOCK";
+                    const isUS    = USD_TYPES.has(h.type);
 
                     // Avg price display
                     const avgDisplay = avgCost
@@ -1816,7 +1828,7 @@ ${alertLines||"  None"}`;
                             ?<span style={{fontSize:".62rem",background:"rgba(76,175,154,.12)",color:"#4caf9a",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(76,175,154,.25)"}}>● Live · {ago(h.price_fetched_at)}</span>
                             :(h.type==="FD"||h.type==="PPF"||h.type==="EPF")
                               ?<span style={{fontSize:".62rem",color:"rgba(232,224,208,.3)"}}>Auto-calc</span>
-                              :h.type==="US_STOCK"
+                              :USD_TYPES.has(h.type)
                                 ?<span title="Add ticker and click Live Prices" style={{fontSize:".62rem",color:"rgba(224,124,90,.7)",cursor:"help"}}>⚠ Add ticker for live</span>
                                 :<span style={{fontSize:".62rem",color:"rgba(232,224,208,.28)"}}>Manual</span>
                           }
@@ -2454,12 +2466,14 @@ ${alertLines||"  None"}`;
                 <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".85rem"}}>📥 Ways to Import Your Positions</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:".75rem",marginBottom:"1rem"}}>
                   {[
-                    {icon:"📄",title:"Broker CSV / Excel",desc:"Zerodha, Groww, ICICI Direct, HDFC Securities, Upstox, Angel One — auto-detected from column headers.",badge:"Auto-Detect"},
-                    {icon:"📊",title:"Excel / XLSX",desc:"Any spreadsheet with Name, Qty, Avg Cost columns. Drag and drop directly into the import modal.",badge:"Auto-Detect"},
+                    {icon:"📄",title:"Indian Broker CSV",desc:"Zerodha, Groww, ICICI Direct, HDFC Securities, Upstox, Angel One — auto-detected from column headers.",badge:"Auto-Detect"},
+                    {icon:"🇺🇸",title:"US Broker CSV",desc:"Schwab, Fidelity, Robinhood, Vanguard, Interactive Brokers, E*TRADE — auto-detected. Stocks, ETFs, bonds classified automatically.",badge:"Auto-Detect"},
+                    {icon:"₿",title:"Crypto (Coinbase)",desc:"Coinbase portfolio export with assets, quantities, cost basis. Auto-classified as crypto with USD pricing.",badge:"Auto-Detect"},
                     {icon:"📋",title:"Tradebook Import",desc:"Import buy/sell transactions from broker tradebook exports. Auto-matches to your existing holdings.",badge:"New"},
                     {icon:"💰",title:"Kuvera / MF Export",desc:"Mutual fund portfolio exports with scheme name, units, NAV. Scheme codes auto-mapped.",badge:"Auto-Detect"},
-                    {icon:"🔗",title:"CDSL / NSDL CAS",desc:"Request your Consolidated Account Statement from CDSL or NSDL. Contains all demat holdings across all brokers.",badge:"Coming Soon"},
-                    {icon:"🤖",title:"Account Aggregator (AA)",desc:"India's RBI-regulated AA framework (Finvu, Setu) provides bank-grade consent-based import.",badge:"Roadmap"},
+                    {icon:"📊",title:"Excel / XLSX",desc:"Any spreadsheet with Name, Qty, Avg Cost columns. Drag and drop directly into the import modal.",badge:"Auto-Detect"},
+                    {icon:"🔗",title:"CDSL / NSDL CAS",desc:"Consolidated Account Statement from CDSL or NSDL with all demat holdings across brokers.",badge:"Coming Soon"},
+                    {icon:"🤖",title:"Account Aggregator",desc:"India's RBI-regulated AA framework (Finvu, Setu) for consent-based auto-sync.",badge:"Roadmap"},
                   ].map(tip=>(
                     <div key={tip.title} style={{padding:".75rem .9rem",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:8}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:".4rem"}}>
@@ -2796,10 +2810,10 @@ ${alertLines||"  None"}`;
                 <div className="card">
                   <div className="ctitle">Quick Presets</div>
                   {[
-                    {name:"Conservative",alloc:{IN_STOCK:15,MF:20,IN_ETF:5,US_STOCK:0,FD:30,PPF:15,EPF:15,REAL_ESTATE:0}},
-                    {name:"Balanced",    alloc:{IN_STOCK:30,MF:30,IN_ETF:10,US_STOCK:10,FD:10,PPF:5,EPF:5,REAL_ESTATE:0}},
-                    {name:"Aggressive",  alloc:{IN_STOCK:40,MF:30,IN_ETF:10,US_STOCK:15,FD:3,PPF:1,EPF:1,REAL_ESTATE:0}},
-                    {name:"Equity Heavy",alloc:{IN_STOCK:50,MF:35,IN_ETF:10,US_STOCK:5,FD:0,PPF:0,EPF:0,REAL_ESTATE:0}},
+                    {name:"Conservative",alloc:{IN_STOCK:15,MF:20,IN_ETF:5,US_STOCK:0,US_ETF:0,US_BOND:5,CRYPTO:0,FD:25,PPF:15,EPF:15,REAL_ESTATE:0}},
+                    {name:"Balanced",    alloc:{IN_STOCK:25,MF:25,IN_ETF:5,US_STOCK:8,US_ETF:5,US_BOND:0,CRYPTO:2,FD:10,PPF:10,EPF:10,REAL_ESTATE:0}},
+                    {name:"Aggressive",  alloc:{IN_STOCK:30,MF:25,IN_ETF:5,US_STOCK:15,US_ETF:5,US_BOND:0,CRYPTO:5,FD:5,PPF:5,EPF:5,REAL_ESTATE:0}},
+                    {name:"Global Growth",alloc:{IN_STOCK:20,MF:15,IN_ETF:5,US_STOCK:20,US_ETF:15,US_BOND:0,CRYPTO:5,FD:5,PPF:5,EPF:5,REAL_ESTATE:5}},
                   ].map(p=>(
                     <div key={p.name} onClick={()=>setTargetAlloc(p.alloc)}
                       style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:".55rem .7rem",
@@ -3036,7 +3050,7 @@ ${alertLines||"  None"}`;
         </div>
         <div className="frow">
           <FG label="Member"><select className="fi fs" value={form.member_id} onChange={e=>setForm(f=>({...f,member_id:e.target.value}))}><option value="">Select</option>{members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></FG>
-          <FG label="Asset Type"><select className="fi fs" value={form.type} onChange={e=>{setForm(f=>({...f,type:e.target.value}));setStockInfo(null);if(e.target.value==="US_STOCK")fetchUsdInr();}}>{Object.entries(AT).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}</select></FG>
+          <FG label="Asset Type"><select className="fi fs" value={form.type} onChange={e=>{setForm(f=>({...f,type:e.target.value}));setStockInfo(null);if(USD_TYPES.has(e.target.value))fetchUsdInr();}}>{Object.entries(AT).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}</select></FG>
         </div>
         <FG label="Name"><input className="fi" placeholder="e.g. Reliance Industries" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/></FG>
         {form.type==="IN_STOCK"&&(
@@ -3170,11 +3184,11 @@ ${alertLines||"  None"}`;
             )}
           </div>
         )}
-        {form.type==="US_STOCK"&&(
+        {USD_TYPES.has(form.type)&&(
           <div style={{marginBottom:".85rem"}}>
-            <label className="flbl">Search US Stock (company name or ticker)</label>
+            <label className="flbl">{form.type==="CRYPTO"?"Search Cryptocurrency":form.type==="US_ETF"?"Search US ETF":form.type==="US_BOND"?"Search US Bond / Treasury ETF":"Search US Stock (company name or ticker)"}</label>
             <div style={{position:"relative"}}>
-              <input className="fi" placeholder="e.g. Apple, NVDA, Microsoft, Tesla…"
+              <input className="fi" placeholder={form.type==="CRYPTO"?"e.g. Bitcoin, ETH, Solana…":form.type==="US_ETF"?"e.g. VOO, SPY, QQQ, VTI, SCHD…":"e.g. Apple, NVDA, Microsoft, Tesla…"}
                 value={usSearch}
                 onChange={e=>{
                   const v=e.target.value;
@@ -3328,7 +3342,7 @@ ${alertLines||"  None"}`;
         {(form.type==="PPF"||form.type==="EPF")&&<FG label={`Current Corpus ₹ (auto-grows at ${form.type==="PPF"?PPF_R:EPF_R}% p.a.)`}><input type="number" className="fi" value={form.principal||""} onChange={e=>setForm(f=>({...f,principal:e.target.value}))}/></FG>}
         {form.type==="REAL_ESTATE"&&<div className="frow"><FG label="Purchase Value ₹" style={{marginBottom:"1.5rem"}}><FmtInput value={form.purchase_value||""} placeholder="e.g. 5000000" onChange={e=>setForm(f=>({...f,purchase_value:e.target.value}))}/></FG><FG label="Current Value ₹" style={{marginBottom:"1.5rem"}}><FmtInput value={form.current_value||""} placeholder="e.g. 7500000" onChange={e=>setForm(f=>({...f,current_value:e.target.value}))}/></FG></div>}
         <FG label="Start Date"><input type="date" className="fi" value={form.start_date||""} onChange={e=>setForm(f=>({...f,start_date:e.target.value}))}/></FG>
-        {["IN_STOCK","IN_ETF","US_STOCK","MF"].includes(form.type)&&!editHolding&&(
+        {["IN_STOCK","IN_ETF","US_STOCK","US_ETF","US_BOND","CRYPTO","MF"].includes(form.type)&&!editHolding&&(
           <div style={{fontSize:".72rem",color:"#4caf9a",padding:".55rem .8rem",background:"rgba(76,175,154,.07)",border:"1px solid rgba(76,175,154,.2)",borderRadius:6,marginTop:".25rem"}}>
             ✓ After saving, "+ Transaction" will open automatically to record your first buy.
           </div>
@@ -3340,14 +3354,14 @@ ${alertLines||"  None"}`;
     {/* Global Add Transaction modal */}
     {globalTxnModal&&(()=>{
       const selHolding = holdings.find(h=>h.id===txnForm.holding_id);
-      const isUS = selHolding?.type==="US_STOCK";
+      const isUS = USD_TYPES.has(selHolding?.type);
       const fxRate = +(selHolding?.usd_inr_rate||usdInrRate||83.2);
       const priceUsd = isUS ? +txnForm.price_usd||0 : 0;
       const totalUsd = isUS ? priceUsd * +txnForm.units : 0;
       const totalInr = isUS ? totalUsd * fxRate : +txnForm.price * +txnForm.units;
       // Filter holdings by selected member + type
       const filteredHoldings = holdings
-        .filter(h=>["IN_STOCK","IN_ETF","US_STOCK","MF"].includes(h.type))
+        .filter(h=>["IN_STOCK","IN_ETF","US_STOCK","US_ETF","US_BOND","CRYPTO","MF"].includes(h.type))
         .filter(h=>txnFilterMember==="all"||h.member_id===txnFilterMember)
         .filter(h=>txnFilterType==="ALL"||h.type===txnFilterType);
       return (
@@ -3367,7 +3381,7 @@ ${alertLines||"  None"}`;
             <div style={{fontSize:".63rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(232,224,208,.35)",marginBottom:".35rem"}}>Asset Type</div>
             <select className="fi fs" style={{marginBottom:0}} value={txnFilterType} onChange={e=>{setTxnFilterType(e.target.value);setTxnForm(p=>({...p,holding_id:"",price:"",price_usd:"",units:""}));setGlobalMfAmount("");setGlobalMfNav(null);setGlobalNavError("");}}>
               <option value="ALL">All Types</option>
-              {["IN_STOCK","IN_ETF","MF","US_STOCK"].map(t=><option key={t} value={t}>{AT[t].icon} {AT[t].label}</option>)}
+              {["IN_STOCK","IN_ETF","MF","US_STOCK","US_ETF","US_BOND","CRYPTO"].map(t=><option key={t} value={t}>{AT[t].icon} {AT[t].label}</option>)}
             </select>
           </div>
         </div>
@@ -3377,7 +3391,7 @@ ${alertLines||"  None"}`;
             const h=holdings.find(x=>x.id===e.target.value);
             setTxnForm(p=>({...p,holding_id:e.target.value,price:"",price_usd:"",units:""}));
             setGlobalMfAmount(""); setGlobalMfNav(null); setGlobalNavError("");
-            if(h?.type==="US_STOCK") fetchUsdInr();
+            if(h && USD_TYPES.has(h.type)) fetchUsdInr();
           }}>
             <option value="">Select holding…</option>
             {filteredHoldings.map(h=>{
@@ -3834,8 +3848,11 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
     { name: "Zerodha", color: "#e5483e" }, { name: "Groww", color: "#00d09c" },
     { name: "ICICI Direct", color: "#f58220" }, { name: "HDFC Sec", color: "#004b8d" },
     { name: "Upstox", color: "#6b3fa0" }, { name: "Angel One", color: "#1d4aa7" },
-    { name: "Kuvera / MF", color: "#2e7d32" }, { name: "Excel", color: "#217346" },
-    { name: "Generic CSV", color: "#888" },
+    { name: "Schwab", color: "#00a3e0" }, { name: "Fidelity", color: "#4a8c2a" },
+    { name: "Robinhood", color: "#00c805" }, { name: "Vanguard", color: "#c22e2e" },
+    { name: "IBKR", color: "#d81b3c" }, { name: "E*TRADE", color: "#6633cc" },
+    { name: "Coinbase", color: "#0052ff" }, { name: "Kuvera / MF", color: "#2e7d32" },
+    { name: "Excel", color: "#217346" }, { name: "Generic CSV", color: "#888" },
   ];
 
   return (
@@ -3885,7 +3902,12 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
           <strong style={{color:"rgba(232,224,208,.5)"}}>How to export:</strong><br/>
           • Zerodha → Console → Holdings → Export CSV<br/>
           • Groww → Portfolio → Download → CSV<br/>
-          • ICICI Direct → Portfolio → Holdings → Download<br/>
+          • Schwab → Accounts → Positions → Export<br/>
+          • Fidelity → Positions → Download<br/>
+          • Robinhood → Account → Statements → Portfolio CSV<br/>
+          • Vanguard → My Accounts → Holdings → Download<br/>
+          • IBKR → Reports → Activity → CSV<br/>
+          • Coinbase → Taxes → Export → Transaction history<br/>
           • Any spreadsheet with Name, Qty, Avg Cost columns
         </div>
       </>)}
