@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import Papa from "papaparse";
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from "./supabase.js";
 
 const GF = `@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');`;
@@ -774,7 +773,11 @@ export default function App() {
   const [newMember,      setNewMember]      = useState({name:"",relation:""});
   const [goalForm,       setGoalForm]       = useState(BG);
   const [alertForm,      setAlertForm]      = useState(BA);
-  const [csvPreview,     setCsvPreview]     = useState([]);
+  const [importState, setImportState] = useState({
+    mode: null, step: "upload", format: "", holdings: [], transactions: [],
+    warnings: [], progress: 0, result: null, dragOver: false,
+    skipDuplicates: true, assignMember: "",
+  });
   const [pdfState,       setPdfState]       = useState({loading:false,summary:""});
   const [artifactHolding,setArtifactHolding]= useState(null);
   const [txnHolding,     setTxnHolding]     = useState(null);
@@ -846,7 +849,7 @@ export default function App() {
   const [aiLoading,      setAiLoading]      = useState(false);
   const aiBottomRef = useRef();
 
-  const csvRef   = useRef();
+  const importFileRef = useRef();
   const saveTimer = useRef(null);
   const txnSaving = useRef(false);
 
@@ -1231,31 +1234,76 @@ ${alertLines||"  None"}`;
     setTimeout(()=>aiBottomRef.current?.scrollIntoView({behavior:"smooth"}),50);
   }
 
-  // ── CSV import ──
-  function handleCSV(file){
-    Papa.parse(file,{header:true,skipEmptyLines:true,complete:({data})=>{
-      const rows=data.map((r,i)=>({
-        id:uid(), member_id:members.find(m=>m.name===r.Member)?.id||members[0]?.id||"",
-        type:(r.Type||"IN_STOCK").toUpperCase(), name:r.Name||`Asset ${i+1}`,
-        ticker:r.Ticker||"", scheme_code:r.SchemeCode||"",
-        units:+r.Units||0, purchase_price:+r.PurchasePrice||0, current_price:+r.CurrentPrice||0,
-        purchase_nav:+r.PurchaseNAV||0, current_nav:+r.CurrentNAV||0,
-        principal:+r.Principal||0, interest_rate:+r.InterestRate||0,
-        start_date:r.StartDate||"", maturity_date:r.MaturityDate||"",
-        purchase_value:+r.PurchaseValue||0, current_value:+r.CurrentValue||0,
-        usd_inr_rate:+r.USDINRRate||83.2,
-      }));
-      setCsvPreview(rows); setModal("csv");
-    }});
+  // ── Smart Import ──
+  async function handleImportFile(file, importType = "holdings") {
+    if (!file) return;
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (!["csv", "xlsx", "xls", "txt"].includes(ext)) {
+      setImportState(s => ({ ...s, warnings: ["Unsupported file type. Use CSV, XLSX, or XLS."] }));
+      return;
+    }
+    setImportState(s => ({ ...s, step: "preview", mode: importType, warnings: [], format: "Detecting…" }));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("import_type", importType);
+      const res = await fetch("/api/import/detect", {
+        method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: fd,
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (importType === "transactions") {
+        setImportState(s => ({ ...s, step: "preview", format: data.format || "Unknown",
+          transactions: data.transactions || [], warnings: data.warnings || [] }));
+      } else {
+        setImportState(s => ({ ...s, step: "preview", format: data.format || "Unknown",
+          holdings: data.holdings || [], warnings: data.warnings || [] }));
+      }
+    } catch (e) {
+      setImportState(s => ({ ...s, step: "upload", warnings: [`Error: ${e.message}`] }));
+    }
   }
 
-  async function importCSV(){
-    for(const h of csvPreview){
-      await api("/api/holdings",{method:"POST",body:JSON.stringify(h)}).catch(()=>{});
+  async function executeImport() {
+    const { mode, holdings: impHoldings, transactions: impTxns, skipDuplicates, assignMember } = importState;
+    setImportState(s => ({ ...s, step: "importing", progress: 0 }));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
+      let result;
+      if (mode === "transactions") {
+        const res = await fetch("/api/transactions/import", {
+          method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ transactions: impTxns }),
+        });
+        result = await res.json();
+      } else {
+        const toImport = skipDuplicates ? impHoldings.filter(h => !h._duplicate) : impHoldings;
+        const res = await fetch("/api/holdings/import", {
+          method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ holdings: toImport, member_id: assignMember || members[0]?.id || "", skip_duplicates: skipDuplicates }),
+        });
+        result = await res.json();
+      }
+      setImportState(s => ({ ...s, step: "done", progress: 100, result }));
+      const hlds = await api("/api/holdings");
+      setHoldings(hlds || []);
+    } catch (e) {
+      setImportState(s => ({ ...s, step: "upload", warnings: [`Import failed: ${e.message}`] }));
     }
-    const hlds=await api("/api/holdings");
-    setHoldings(hlds||[]);
-    setCsvPreview([]); setModal(null);
+  }
+
+  function resetImport() {
+    setImportState({ mode: null, step: "upload", format: "", holdings: [], transactions: [],
+      warnings: [], progress: 0, result: null, dragOver: false, skipDuplicates: true, assignMember: "" });
+  }
+
+  function openImportModal(mode = "holdings") {
+    resetImport();
+    setImportState(s => ({ ...s, mode }));
+    setModal("import");
   }
 
   // ── PDF report ──
@@ -1321,8 +1369,8 @@ ${alertLines||"  None"}`;
             {priceRefreshing?"⟳ Fetching…":"⟳ Live Prices"}
           </button>
           {lastPriceRefresh&&<span style={{fontSize:".62rem",color:"rgba(232,224,208,.28)",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{ago(lastPriceRefresh)}</span>}
-          <button className="btn-o" onClick={()=>csvRef.current?.click()}>⇑ CSV</button>
-          <input ref={csvRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){handleCSV(e.target.files[0]);e.target.value="";}}}/>
+          <button className="btn-o" onClick={()=>openImportModal("holdings")}>⇑ Import</button>
+          <input ref={importFileRef} type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){handleImportFile(e.target.files[0],importState.mode||"holdings");e.target.value="";}}}/>
           <button className="btn-g" onClick={generatePDF}>⤓ PDF</button>
           <button className="btn-o" onClick={()=>{setForm(BF);setEditHolding(null);setModal("holding");}}>+ Holding</button>
           <button className="btn-p" onClick={()=>{setTxnForm(BT);setGlobalTxnModal(true);}}>+ Transaction</button>
@@ -2406,19 +2454,19 @@ ${alertLines||"  None"}`;
                 <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".85rem"}}>📥 Ways to Import Your Positions</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:".75rem",marginBottom:"1rem"}}>
                   {[
-                    {icon:"📄",title:"Broker Statement CSV",desc:"Download contract notes or portfolio statements from Zerodha, Groww, HDFC Securities, ICICI Direct, Upstox etc. Most export as CSV or Excel.",badge:"Supported"},
-                    {icon:"📊",title:"Excel / XLSX",desc:"Any spreadsheet with columns: Name, Type, Ticker, Member, Units, Price, Date. Drag and drop directly.",badge:"Supported"},
-                    {icon:"🔗",title:"CDSL / NSDL CAS",desc:"Request your Consolidated Account Statement from CDSL or NSDL. Contains all demat holdings across all brokers in one file.",badge:"Coming Soon"},
-                    {icon:"📱",title:"Zerodha Console Export",desc:"Holdings > Export to CSV. Includes all equity and F&O positions with average cost.",badge:"Supported"},
-                    {icon:"🌐",title:"Groww / Kuvera Export",desc:"Portfolio > Download holdings. Export as CSV and import directly.",badge:"Supported"},
-                    {icon:"🤖",title:"Account Aggregator (AA)",desc:"India's RBI-regulated AA framework (Finvu, Setu) provides bank-grade consent-based import. Best for keeping positions in sync automatically.",badge:"Roadmap"},
+                    {icon:"📄",title:"Broker CSV / Excel",desc:"Zerodha, Groww, ICICI Direct, HDFC Securities, Upstox, Angel One — auto-detected from column headers.",badge:"Auto-Detect"},
+                    {icon:"📊",title:"Excel / XLSX",desc:"Any spreadsheet with Name, Qty, Avg Cost columns. Drag and drop directly into the import modal.",badge:"Auto-Detect"},
+                    {icon:"📋",title:"Tradebook Import",desc:"Import buy/sell transactions from broker tradebook exports. Auto-matches to your existing holdings.",badge:"New"},
+                    {icon:"💰",title:"Kuvera / MF Export",desc:"Mutual fund portfolio exports with scheme name, units, NAV. Scheme codes auto-mapped.",badge:"Auto-Detect"},
+                    {icon:"🔗",title:"CDSL / NSDL CAS",desc:"Request your Consolidated Account Statement from CDSL or NSDL. Contains all demat holdings across all brokers.",badge:"Coming Soon"},
+                    {icon:"🤖",title:"Account Aggregator (AA)",desc:"India's RBI-regulated AA framework (Finvu, Setu) provides bank-grade consent-based import.",badge:"Roadmap"},
                   ].map(tip=>(
                     <div key={tip.title} style={{padding:".75rem .9rem",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:8}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:".4rem"}}>
                         <div style={{fontSize:"1.1rem"}}>{tip.icon}</div>
                         <span style={{fontSize:".58rem",padding:"1px 6px",borderRadius:3,
-                          background:tip.badge==="Supported"?"rgba(76,175,154,.15)":tip.badge==="Coming Soon"?"rgba(201,168,76,.15)":"rgba(90,156,224,.15)",
-                          color:tip.badge==="Supported"?"#4caf9a":tip.badge==="Coming Soon"?"#c9a84c":"#5a9ce0",border:`1px solid ${tip.badge==="Supported"?"rgba(76,175,154,.3)":tip.badge==="Coming Soon"?"rgba(201,168,76,.3)":"rgba(90,156,224,.3)"}`}}>
+                          background:tip.badge==="Auto-Detect"?"rgba(76,175,154,.15)":tip.badge==="New"?"rgba(160,132,202,.15)":tip.badge==="Coming Soon"?"rgba(201,168,76,.15)":"rgba(90,156,224,.15)",
+                          color:tip.badge==="Auto-Detect"?"#4caf9a":tip.badge==="New"?"#a084ca":tip.badge==="Coming Soon"?"#c9a84c":"#5a9ce0",border:`1px solid ${tip.badge==="Auto-Detect"?"rgba(76,175,154,.3)":tip.badge==="New"?"rgba(160,132,202,.3)":tip.badge==="Coming Soon"?"rgba(201,168,76,.3)":"rgba(90,156,224,.3)"}`}}>
                           {tip.badge}
                         </span>
                       </div>
@@ -3618,7 +3666,7 @@ ${alertLines||"  None"}`;
 
     <GoalPlanModal open={modal==="goalplan"} onClose={()=>setModal(null)} goals={goals} members={members} holdings={holdings} allCur={allCur} allInv={allInv}/>
     {modal==="alert"&&(<Overlay onClose={()=>setModal(null)} narrow><div className="modtitle">New Alert Rule</div><FG label="Alert Type"><select className="fi fs" value={alertForm.type} onChange={e=>setAlertForm(p=>({...p,type:e.target.value}))}><option value="ALLOCATION_DRIFT">Over-weight</option><option value="CONCENTRATION">Under-weight</option><option value="RETURN_TARGET">Return below target</option></select></FG>{alertForm.type!=="RETURN_TARGET"&&<FG label="Asset Class"><select className="fi fs" value={alertForm.assetType} onChange={e=>setAlertForm(p=>({...p,assetType:e.target.value}))}>{Object.entries(AT).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}</select></FG>}<FG label={alertForm.type==="RETURN_TARGET"?"Target Return %":"Threshold %"}><input type="number" className="fi" value={alertForm.threshold} onChange={e=>setAlertForm(p=>({...p,threshold:e.target.value}))}/></FG><FG label="Description"><input className="fi" value={alertForm.label} onChange={e=>setAlertForm(p=>({...p,label:e.target.value}))}/></FG><MA><button className="btnc" onClick={()=>setModal(null)}>Cancel</button><button className="btns" onClick={addAlert} disabled={!alertForm.threshold||!alertForm.label}>Add Alert</button></MA></Overlay>)}
-    {modal==="csv"&&(<Overlay onClose={()=>setModal(null)} wide><div className="modtitle">Preview — {csvPreview.length} Holdings</div><div style={{overflowX:"auto",maxHeight:300,overflowY:"auto"}}><table className="ht" style={{fontSize:".73rem"}}><thead><tr><th>Name</th><th>Type</th><th>Ticker/Code</th><th>Member</th><th className="r">Invested</th></tr></thead><tbody>{csvPreview.map((h,i)=>{const inv=getInv(h);return<tr key={i}><td>{h.name}</td><td><span className="tbadge2" style={{background:AT[h.type]?.color+"22",color:AT[h.type]?.color}}>{AT[h.type]?.icon} {AT[h.type]?.label||h.type}</span></td><td className="mono dim">{h.ticker||h.scheme_code||"—"}</td><td className="dim">{members.find(m=>m.id===h.member_id)?.name||"—"}</td><td className="r mono dim">{fmt(inv)}</td></tr>;})}</tbody></table></div><MA><button className="btnc" onClick={()=>setModal(null)}>Cancel</button><button className="btns" onClick={importCSV}>Import All</button></MA></Overlay>)}
+    {modal==="import"&&(<ImportModal importState={importState} setImportState={setImportState} members={members} AT={AT} handleImportFile={handleImportFile} executeImport={executeImport} resetImport={resetImport} importFileRef={importFileRef} onClose={()=>{setModal(null);resetImport();}} fmt={fmt}/>)}
     {modal==="pdf"&&(<Overlay onClose={()=>setModal(null)}><div className="modtitle">Portfolio Report</div>{pdfState.loading?(<div style={{textAlign:"center",padding:"2.5rem 0"}}><div style={{width:34,height:34,border:"2px solid rgba(201,168,76,.2)",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 1rem"}}/><div style={{fontSize:".8rem",color:"rgba(232,224,208,.38)"}}>Generating AI commentary…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>):(<><div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".7rem"}}>AI Advisor Commentary</div><div style={{background:"rgba(201,168,76,.05)",border:"1px solid rgba(201,168,76,.14)",borderRadius:8,padding:"1rem 1.2rem",fontSize:".8rem",lineHeight:1.72,color:"rgba(232,224,208,.7)",maxHeight:260,overflowY:"auto",whiteSpace:"pre-wrap"}}>{pdfState.summary}</div></>)}<MA><button className="btnc" onClick={()=>setModal(null)}>Close</button></MA></Overlay>)}
     </>
   );
@@ -3774,6 +3822,180 @@ function DonutChart({data,total}){
         ))}
       </div>
     </div>
+  );
+}
+function ImportModal({ importState, setImportState, members, AT, handleImportFile, executeImport, resetImport, importFileRef, onClose, fmt }) {
+  const { mode, step, format, holdings, transactions, warnings, result, dragOver, skipDuplicates, assignMember } = importState;
+  const items = mode === "transactions" ? transactions : holdings;
+  const dupCount = holdings.filter(h => h._duplicate).length;
+  const importCount = mode === "transactions" ? transactions.length : (skipDuplicates ? holdings.filter(h => !h._duplicate).length : holdings.length);
+
+  const FORMATS = [
+    { name: "Zerodha", color: "#e5483e" }, { name: "Groww", color: "#00d09c" },
+    { name: "ICICI Direct", color: "#f58220" }, { name: "HDFC Sec", color: "#004b8d" },
+    { name: "Upstox", color: "#6b3fa0" }, { name: "Angel One", color: "#1d4aa7" },
+    { name: "Kuvera / MF", color: "#2e7d32" }, { name: "Excel", color: "#217346" },
+    { name: "Generic CSV", color: "#888" },
+  ];
+
+  return (
+    <Overlay onClose={onClose} wide>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1.2rem"}}>
+        <div className="modtitle" style={{margin:0}}>
+          {step==="done"?"✓ Import Complete":step==="importing"?"Importing…":mode==="transactions"?"Import Transactions":"Import Portfolio"}
+        </div>
+        {step==="upload"&&(
+          <button className="btn-o" style={{fontSize:".68rem",padding:".3rem .7rem"}}
+            onClick={()=>setImportState(s=>({...s,mode:s.mode==="transactions"?"holdings":"transactions"}))}>
+            {mode==="holdings"?"Switch to Transactions":"Switch to Holdings"}
+          </button>
+        )}
+      </div>
+
+      {step==="upload"&&(<>
+        <div style={{border:`2px dashed ${dragOver?"#c9a84c":"rgba(232,224,208,.15)"}`,borderRadius:12,
+          padding:"2.5rem 1.5rem",textAlign:"center",cursor:"pointer",
+          background:dragOver?"rgba(201,168,76,.06)":"rgba(255,255,255,.02)",transition:"all .25s",marginBottom:"1.2rem"}}
+          onClick={()=>importFileRef.current?.click()}
+          onDragOver={e=>{e.preventDefault();setImportState(s=>({...s,dragOver:true}));}}
+          onDragLeave={()=>setImportState(s=>({...s,dragOver:false}))}
+          onDrop={e=>{e.preventDefault();setImportState(s=>({...s,dragOver:false}));const f=e.dataTransfer.files[0];if(f)handleImportFile(f,mode);}}>
+          <div style={{fontSize:"2.2rem",marginBottom:".6rem"}}>{mode==="transactions"?"📋":"📊"}</div>
+          <div style={{fontSize:".85rem",color:"rgba(232,224,208,.7)",fontWeight:500}}>
+            Drag & drop your {mode==="transactions"?"tradebook":"portfolio"} file here
+          </div>
+          <div style={{fontSize:".72rem",color:"rgba(232,224,208,.35)",marginTop:".4rem"}}>CSV, XLSX, or XLS — up to 5 MB</div>
+          <button className="btns" style={{marginTop:"1rem",fontSize:".75rem"}}>Browse Files</button>
+        </div>
+        <div style={{fontSize:".65rem",letterSpacing:".08em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".6rem",fontWeight:600}}>Auto-detected formats</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:".4rem",marginBottom:".8rem"}}>
+          {FORMATS.map(f=>(
+            <span key={f.name} style={{fontSize:".67rem",padding:".22rem .55rem",borderRadius:4,
+              background:f.color+"18",color:f.color,border:`1px solid ${f.color}33`,whiteSpace:"nowrap"}}>
+              {f.name}
+            </span>
+          ))}
+        </div>
+        {warnings.length>0&&(
+          <div style={{background:"rgba(224,124,90,.1)",border:"1px solid rgba(224,124,90,.25)",borderRadius:8,padding:".7rem .9rem",marginTop:".6rem"}}>
+            {warnings.map((w,i)=>(<div key={i} style={{fontSize:".73rem",color:"#e07c5a",marginBottom:i<warnings.length-1?".3rem":0}}>⚠ {w}</div>))}
+          </div>
+        )}
+        <div style={{fontSize:".68rem",color:"rgba(232,224,208,.3)",marginTop:"1rem",lineHeight:1.6}}>
+          <strong style={{color:"rgba(232,224,208,.5)"}}>How to export:</strong><br/>
+          • Zerodha → Console → Holdings → Export CSV<br/>
+          • Groww → Portfolio → Download → CSV<br/>
+          • ICICI Direct → Portfolio → Holdings → Download<br/>
+          • Any spreadsheet with Name, Qty, Avg Cost columns
+        </div>
+      </>)}
+
+      {step==="preview"&&(<>
+        <div style={{display:"flex",alignItems:"center",gap:".7rem",marginBottom:".8rem",flexWrap:"wrap"}}>
+          <span style={{fontSize:".72rem",padding:".25rem .65rem",borderRadius:5,
+            background:"rgba(201,168,76,.12)",color:"#c9a84c",fontWeight:600,border:"1px solid rgba(201,168,76,.2)"}}>
+            {format}
+          </span>
+          <span style={{fontSize:".75rem",color:"rgba(232,224,208,.6)"}}>
+            {items.length} {mode==="transactions"?"transaction":"holding"}{items.length!==1?"s":""} found
+          </span>
+          {dupCount>0&&<span style={{fontSize:".72rem",color:"#e07c5a"}}>({dupCount} duplicate{dupCount>1?"s":""})</span>}
+        </div>
+        {mode==="holdings"&&(
+          <div style={{display:"flex",gap:"1rem",alignItems:"center",marginBottom:".8rem",flexWrap:"wrap"}}>
+            {dupCount>0&&(
+              <label style={{display:"flex",alignItems:"center",gap:".4rem",fontSize:".73rem",color:"rgba(232,224,208,.6)",cursor:"pointer"}}>
+                <input type="checkbox" checked={skipDuplicates} onChange={e=>setImportState(s=>({...s,skipDuplicates:e.target.checked}))} style={{accentColor:"#c9a84c"}}/>
+                Skip duplicates
+              </label>
+            )}
+            {members.length>1&&(
+              <label style={{display:"flex",alignItems:"center",gap:".4rem",fontSize:".73rem",color:"rgba(232,224,208,.6)"}}>
+                Assign to:
+                <select className="fi" style={{padding:".25rem .5rem",fontSize:".72rem",width:"auto"}}
+                  value={assignMember} onChange={e=>setImportState(s=>({...s,assignMember:e.target.value}))}>
+                  <option value="">First member</option>
+                  {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </label>
+            )}
+          </div>
+        )}
+        {warnings.length>0&&(
+          <div style={{background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.15)",borderRadius:8,padding:".55rem .75rem",marginBottom:".7rem"}}>
+            {warnings.map((w,i)=>(<div key={i} style={{fontSize:".7rem",color:"#c9a84c"}}>⚠ {w}</div>))}
+          </div>
+        )}
+        <div style={{overflowX:"auto",maxHeight:340,overflowY:"auto",borderRadius:8,border:"1px solid rgba(255,255,255,.06)"}}>
+          {mode==="transactions"?(
+            <table className="ht" style={{fontSize:".72rem"}}><thead><tr><th>Date</th><th>Symbol</th><th>Type</th><th className="r">Units</th><th className="r">Price</th></tr></thead>
+            <tbody>{transactions.slice(0,200).map((t,i)=>(
+              <tr key={i}><td className="mono dim">{t.txn_date}</td><td>{t._symbol}</td>
+              <td><span style={{fontSize:".65rem",padding:".15rem .4rem",borderRadius:3,
+                background:t.txn_type==="BUY"?"rgba(76,175,154,.15)":"rgba(224,124,90,.15)",
+                color:t.txn_type==="BUY"?"#4caf9a":"#e07c5a"}}>{t.txn_type}</span></td>
+              <td className="r mono">{t.units}</td><td className="r mono dim">{fmt(t.price)}</td></tr>
+            ))}</tbody></table>
+          ):(
+            <table className="ht" style={{fontSize:".72rem"}}><thead><tr><th style={{width:30}}></th><th>Name</th><th>Type</th><th>Ticker/Code</th><th className="r">Units</th><th className="r">Avg Cost</th><th className="r">Invested</th></tr></thead>
+            <tbody>{holdings.map((h,i)=>{
+              const inv=h.purchase_value||(h.units*(h.purchase_price||h.purchase_nav||0));
+              const dimmed=h._duplicate&&skipDuplicates;
+              return(<tr key={i} style={{opacity:dimmed?.35:1}}>
+                <td>{h._duplicate&&<span title="Already in portfolio" style={{fontSize:".75rem"}}>⚠️</span>}</td>
+                <td style={{fontWeight:500}}>{h.name}</td>
+                <td><span className="tbadge2" style={{background:(AT[h.type]?.color||"#888")+"22",color:AT[h.type]?.color||"#888"}}>{AT[h.type]?.icon||"📦"} {AT[h.type]?.label||h.type}</span></td>
+                <td className="mono dim">{h.ticker||h.scheme_code||"—"}</td>
+                <td className="r mono">{h.units||"—"}</td>
+                <td className="r mono dim">{fmt(h.purchase_price||h.purchase_nav||0)}</td>
+                <td className="r mono">{fmt(inv)}</td>
+              </tr>);
+            })}</tbody></table>
+          )}
+        </div>
+        {items.length>200&&<div style={{fontSize:".68rem",color:"rgba(232,224,208,.3)",textAlign:"center",marginTop:".4rem"}}>Showing first 200 of {items.length} rows</div>}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:"1rem",gap:".6rem"}}>
+          <button className="btnc" onClick={()=>setImportState(s=>({...s,step:"upload",holdings:[],transactions:[],warnings:[]}))}>← Back</button>
+          <div style={{display:"flex",gap:".5rem"}}>
+            <button className="btnc" onClick={onClose}>Cancel</button>
+            <button className="btns" onClick={executeImport} disabled={importCount===0}>
+              Import {importCount} {mode==="transactions"?"Transaction":"Holding"}{importCount!==1?"s":""}
+            </button>
+          </div>
+        </div>
+      </>)}
+
+      {step==="importing"&&(
+        <div style={{textAlign:"center",padding:"2.5rem 1rem"}}>
+          <div style={{width:40,height:40,margin:"0 auto 1rem",border:"3px solid rgba(201,168,76,.2)",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
+          <div style={{fontSize:".85rem",color:"rgba(232,224,208,.7)"}}>Importing {items.length} {mode==="transactions"?"transactions":"holdings"}…</div>
+          <div style={{fontSize:".7rem",color:"rgba(232,224,208,.3)",marginTop:".4rem"}}>Creating entries and first transactions</div>
+        </div>
+      )}
+
+      {step==="done"&&result&&(
+        <div style={{padding:".5rem 0"}}>
+          <div style={{background:"rgba(76,175,154,.08)",border:"1px solid rgba(76,175,154,.2)",borderRadius:10,padding:"1rem 1.2rem",marginBottom:".8rem"}}>
+            <div style={{fontSize:"1.1rem",fontWeight:600,color:"#4caf9a",marginBottom:".3rem"}}>✓ {result.imported_count||0} imported</div>
+            {result.skipped_count>0&&<div style={{fontSize:".75rem",color:"rgba(232,224,208,.5)"}}>{result.skipped_count} skipped (duplicates)</div>}
+            {result.unmatched_count>0&&(<div style={{fontSize:".75rem",color:"#e07c5a",marginTop:".3rem"}}>
+              ⚠ {result.unmatched_count} transaction{result.unmatched_count>1?"s":""} not matched to holdings:
+              <div style={{fontSize:".7rem",color:"rgba(232,224,208,.4)",marginTop:".2rem"}}>{result.unmatched?.join(", ")}</div>
+            </div>)}
+            {result.error_count>0&&<div style={{fontSize:".75rem",color:"#e07c5a",marginTop:".3rem"}}>{result.error_count} error{result.error_count>1?"s":""}</div>}
+          </div>
+          {result.errors?.length>0&&(
+            <div style={{background:"rgba(224,124,90,.08)",borderRadius:8,padding:".6rem .8rem",marginBottom:".7rem"}}>
+              {result.errors.map((e,i)=>(<div key={i} style={{fontSize:".7rem",color:"#e07c5a"}}>• {e}</div>))}
+            </div>
+          )}
+          <div style={{display:"flex",justifyContent:"flex-end",gap:".5rem"}}>
+            <button className="btnc" onClick={resetImport}>Import More</button>
+            <button className="btns" onClick={onClose}>Done</button>
+          </div>
+        </div>
+      )}
+    </Overlay>
   );
 }
 function Overlay({onClose,children,narrow,wide}){return<div className="ovl" onClick={e=>e.target===e.currentTarget&&onClose()}><div className="mod" style={{maxWidth:narrow?380:wide?700:540}}>{children}</div></div>;}

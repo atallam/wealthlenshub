@@ -996,6 +996,474 @@ function parseDate(val) {
   return null;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  SMART PORTFOLIO & TRANSACTION IMPORT
+// ═══════════════════════════════════════════════════════════════════
+
+function pNum(val) {
+  if (val === null || val === undefined || val === "") return 0;
+  const n = parseFloat(String(val).replace(/[₹$,\s]/g, "").trim());
+  return isNaN(n) ? 0 : n;
+}
+
+/**
+ * Detect the broker/format from CSV headers and return parsed holdings.
+ */
+function detectAndParseHoldings(text, fileName = "") {
+  const result = Papa.parse(text.trim(), { header: false, skipEmptyLines: true });
+  const rows = result.data;
+  if (!rows.length) return { format: "unknown", holdings: [], warnings: ["Empty file"] };
+
+  const headerIdx = rows.findIndex(r =>
+    r.some(c => /instrument|stock|symbol|scrip|isin|scheme|fund|name|ticker/i.test(c || ""))
+  );
+
+  if (headerIdx >= 0) {
+    const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+
+    // Zerodha Console
+    if (h.some(c => c === "instrument") && h.some(c => /avg\.?\s*cost/i.test(c))) {
+      return parseZerodhaHoldings(rows, headerIdx);
+    }
+    // Groww
+    if (h.some(c => c === "symbol") && h.some(c => /company\s*name/i.test(c)) && h.some(c => /avg\s*price/i.test(c))) {
+      return parseGrowwHoldings(rows, headerIdx);
+    }
+    // ICICI Direct
+    if (h.some(c => /stock\s*symbol/i.test(c)) && h.some(c => /avg\s*buy/i.test(c))) {
+      return parseICICIDirectHoldings(rows, headerIdx);
+    }
+    // HDFC Securities
+    if (h.some(c => /scrip\s*name/i.test(c)) && h.some(c => /avg\s*cost/i.test(c))) {
+      return parseHDFCSecHoldings(rows, headerIdx);
+    }
+    // Upstox
+    if (h.some(c => /trading\s*symbol/i.test(c)) && h.some(c => /average\s*price/i.test(c))) {
+      return parseUpstoxHoldings(rows, headerIdx);
+    }
+    // Angel One
+    if (h.some(c => c === "scrip") && h.some(c => /avg\s*price/i.test(c)) && h.some(c => /overall/i.test(c))) {
+      return parseAngelOneHoldings(rows, headerIdx);
+    }
+    // Mutual Fund Export (Kuvera / CAS-like)
+    if (h.some(c => /scheme\s*name/i.test(c)) && h.some(c => /unit/i.test(c)) && h.some(c => /nav/i.test(c))) {
+      return parseMFExportHoldings(rows, headerIdx);
+    }
+    // WealthLens native
+    if (h.some(c => c === "name") && h.some(c => c === "type")) {
+      return parseNativeCSVHoldings(rows, headerIdx);
+    }
+  }
+  return parseGenericHoldings(rows, headerIdx >= 0 ? headerIdx : 0);
+}
+
+function parseZerodhaHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    name: h.findIndex(c => c === "instrument"),
+    qty:  h.findIndex(c => /^qty/i.test(c)),
+    avg:  h.findIndex(c => /avg\.?\s*cost/i.test(c)),
+    ltp:  h.findIndex(c => c === "ltp"),
+    cv:   h.findIndex(c => /cur\.?\s*val/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const name = (r[col.name] || "").trim();
+    if (!name) continue;
+    const units = pNum(r[col.qty]), avg = pNum(r[col.avg]), ltp = pNum(r[col.ltp]);
+    if (units === 0 && avg === 0) { warnings.push(`Skipped "${name}": zero quantity`); continue; }
+    holdings.push({ name, type: "IN_STOCK", ticker: name.replace(/\s+/g, "").toUpperCase(),
+      units, purchase_price: avg, current_price: ltp || avg,
+      purchase_value: units * avg, current_value: pNum(r[col.cv]) || units * (ltp || avg) });
+  }
+  return { format: "Zerodha Console", holdings, warnings };
+}
+
+function parseGrowwHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => c === "symbol"),
+    name:   h.findIndex(c => /company\s*name/i.test(c)),
+    qty:    h.findIndex(c => /quantity/i.test(c)),
+    avg:    h.findIndex(c => /avg\s*price/i.test(c)),
+    ltp:    h.findIndex(c => c === "ltp"),
+    cv:     h.findIndex(c => /current\s*value/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const name = (r[col.name] || r[col.symbol] || "").trim();
+    if (!name) continue;
+    const units = pNum(r[col.qty]), avg = pNum(r[col.avg]);
+    if (units === 0) { warnings.push(`Skipped "${name}": zero quantity`); continue; }
+    holdings.push({ name, type: "IN_STOCK", ticker: (r[col.symbol] || "").trim().toUpperCase(),
+      units, purchase_price: avg, current_price: pNum(r[col.ltp]) || avg,
+      purchase_value: units * avg, current_value: pNum(r[col.cv]) || units * avg });
+  }
+  return { format: "Groww", holdings, warnings };
+}
+
+function parseICICIDirectHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => /stock\s*symbol/i.test(c)),
+    name:   h.findIndex(c => /stock\s*name/i.test(c)),
+    qty:    h.findIndex(c => /^qty/i.test(c)),
+    avg:    h.findIndex(c => /avg\s*buy/i.test(c)),
+    cmp:    h.findIndex(c => c === "cmp"),
+    cv:     h.findIndex(c => /current\s*value/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const name = (r[col.name] || r[col.symbol] || "").trim();
+    if (!name) continue;
+    const units = pNum(r[col.qty]), avg = pNum(r[col.avg]);
+    if (units === 0) { warnings.push(`Skipped "${name}": zero quantity`); continue; }
+    holdings.push({ name, type: "IN_STOCK", ticker: (r[col.symbol] || "").trim().toUpperCase(),
+      units, purchase_price: avg, current_price: pNum(r[col.cmp]) || avg,
+      purchase_value: units * avg, current_value: pNum(r[col.cv]) || units * avg });
+  }
+  return { format: "ICICI Direct", holdings, warnings };
+}
+
+function parseHDFCSecHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    name: h.findIndex(c => /scrip\s*name/i.test(c)),
+    qty:  h.findIndex(c => /quantity/i.test(c)),
+    avg:  h.findIndex(c => /avg\s*cost/i.test(c)),
+    mp:   h.findIndex(c => /market\s*price/i.test(c)),
+    mv:   h.findIndex(c => /market\s*value/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const name = (r[col.name] || "").trim();
+    if (!name) continue;
+    const units = pNum(r[col.qty]), avg = pNum(r[col.avg]);
+    if (units === 0) { warnings.push(`Skipped "${name}": zero quantity`); continue; }
+    holdings.push({ name, type: "IN_STOCK", ticker: name.split(/\s+/)[0].toUpperCase(),
+      units, purchase_price: avg, current_price: pNum(r[col.mp]) || avg,
+      purchase_value: units * avg, current_value: pNum(r[col.mv]) || units * avg });
+  }
+  return { format: "HDFC Securities", holdings, warnings };
+}
+
+function parseUpstoxHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => /trading\s*symbol/i.test(c)),
+    qty:    h.findIndex(c => /quantity/i.test(c)),
+    avg:    h.findIndex(c => /average\s*price/i.test(c)),
+    ltp:    h.findIndex(c => c === "ltp"),
+    close:  h.findIndex(c => /close\s*price/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol) continue;
+    const units = pNum(r[col.qty]), avg = pNum(r[col.avg]);
+    const ltp = pNum(r[col.ltp]) || pNum(r[col.close]) || avg;
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero quantity`); continue; }
+    holdings.push({ name: symbol, type: "IN_STOCK", ticker: symbol.toUpperCase(),
+      units, purchase_price: avg, current_price: ltp,
+      purchase_value: units * avg, current_value: units * ltp });
+  }
+  return { format: "Upstox", holdings, warnings };
+}
+
+function parseAngelOneHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    scrip: h.findIndex(c => c === "scrip"),
+    qty:   h.findIndex(c => /^qty/i.test(c)),
+    avg:   h.findIndex(c => /avg\s*price/i.test(c)),
+    ltp:   h.findIndex(c => c === "ltp"),
+    cv:    h.findIndex(c => /current\s*value/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const name = (r[col.scrip] || "").trim();
+    if (!name) continue;
+    const units = pNum(r[col.qty]), avg = pNum(r[col.avg]);
+    if (units === 0) { warnings.push(`Skipped "${name}": zero quantity`); continue; }
+    holdings.push({ name, type: "IN_STOCK", ticker: name.toUpperCase(),
+      units, purchase_price: avg, current_price: pNum(r[col.ltp]) || avg,
+      purchase_value: units * avg, current_value: pNum(r[col.cv]) || units * avg });
+  }
+  return { format: "Angel One", holdings, warnings };
+}
+
+function parseMFExportHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    scheme: h.findIndex(c => /scheme\s*name/i.test(c)),
+    units:  h.findIndex(c => /unit/i.test(c)),
+    nav:    h.findIndex(c => /nav/i.test(c)),
+    cv:     h.findIndex(c => /current\s*value/i.test(c)),
+    inv:    h.findIndex(c => /invest/i.test(c)),
+    code:   h.findIndex(c => /amfi|scheme\s*code/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const name = (r[col.scheme] || "").trim();
+    if (!name) continue;
+    const units = pNum(r[col.units]), nav = pNum(r[col.nav]);
+    if (units === 0) { warnings.push(`Skipped "${name}": zero units`); continue; }
+    holdings.push({ name, type: "MF", ticker: "",
+      scheme_code: col.code >= 0 ? (r[col.code] || "").trim() : "",
+      units, purchase_nav: col.inv >= 0 ? pNum(r[col.inv]) / (units || 1) : nav, current_nav: nav,
+      purchase_value: pNum(r[col.inv]) || units * nav,
+      current_value: pNum(r[col.cv]) || units * nav });
+  }
+  return { format: "Mutual Fund Export", holdings, warnings };
+}
+
+function parseNativeCSVHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const ci = (patterns) => h.findIndex(c => patterns.some(p => typeof p === "string" ? c === p : p.test(c)));
+  const col = {
+    name: ci(["name"]), type: ci(["type"]), ticker: ci(["ticker"]),
+    code: ci(["schemecode", /scheme.?code/i]), units: ci(["units"]),
+    pp: ci(["purchaseprice", /purchase.?price/i]), cp: ci(["currentprice", /current.?price/i]),
+    pnav: ci(["purchasenav", /purchase.?nav/i]), cnav: ci(["currentnav", /current.?nav/i]),
+    pv: ci(["purchasevalue", /purchase.?value/i, /invested/i]), cv: ci(["currentvalue", /current.?value/i]),
+    principal: ci(["principal"]), rate: ci(["interestrate", /interest.?rate/i]),
+    start: ci(["startdate", /start.?date/i]), maturity: ci(["maturitydate", /maturity.?date/i]),
+    member: ci(["member"]),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const name = col.name >= 0 ? (r[col.name] || "").trim() : "";
+    if (!name) continue;
+    holdings.push({
+      name, type: col.type >= 0 ? (r[col.type] || "IN_STOCK").toUpperCase() : "IN_STOCK",
+      ticker: col.ticker >= 0 ? (r[col.ticker] || "").trim() : "",
+      scheme_code: col.code >= 0 ? (r[col.code] || "").trim() : "",
+      units: col.units >= 0 ? pNum(r[col.units]) : 0,
+      purchase_price: col.pp >= 0 ? pNum(r[col.pp]) : 0,
+      current_price: col.cp >= 0 ? pNum(r[col.cp]) : 0,
+      purchase_nav: col.pnav >= 0 ? pNum(r[col.pnav]) : 0,
+      current_nav: col.cnav >= 0 ? pNum(r[col.cnav]) : 0,
+      purchase_value: col.pv >= 0 ? pNum(r[col.pv]) : 0,
+      current_value: col.cv >= 0 ? pNum(r[col.cv]) : 0,
+      principal: col.principal >= 0 ? pNum(r[col.principal]) : 0,
+      interest_rate: col.rate >= 0 ? pNum(r[col.rate]) : 0,
+      start_date: col.start >= 0 ? (r[col.start] || "") : "",
+      maturity_date: col.maturity >= 0 ? (r[col.maturity] || "") : "",
+      _member_name: col.member >= 0 ? (r[col.member] || "").trim() : "",
+    });
+  }
+  return { format: "WealthLens CSV", holdings, warnings };
+}
+
+function parseGenericHoldings(rows, headerIdx) {
+  const h = (rows[headerIdx] || []).map(c => (c || "").toLowerCase().trim());
+  const ci = (patterns) => h.findIndex(c => patterns.some(p => c.includes(p)));
+  const nameI  = ci(["name", "instrument", "scrip", "stock", "symbol", "fund", "scheme"]);
+  const qtyI   = ci(["qty", "quantity", "units", "shares"]);
+  const priceI = ci(["avg", "cost", "buy price", "purchase"]);
+  const ltpI   = ci(["ltp", "market price", "current price", "cmp", "close"]);
+  const valI   = ci(["current value", "market value", "value"]);
+  const holdings = [], warnings = [];
+  if (nameI < 0) { warnings.push("Could not identify a Name/Instrument column."); return { format: "Unknown", holdings, warnings }; }
+  for (const r of rows.slice(headerIdx + 1)) {
+    const name = (r[nameI] || "").trim();
+    if (!name) continue;
+    const units = qtyI >= 0 ? pNum(r[qtyI]) : 0;
+    const avg = priceI >= 0 ? pNum(r[priceI]) : 0;
+    const ltp = ltpI >= 0 ? pNum(r[ltpI]) : avg;
+    holdings.push({ name, type: "IN_STOCK", ticker: name.split(/\s+/)[0].toUpperCase(),
+      units, purchase_price: avg, current_price: ltp,
+      purchase_value: units * avg, current_value: valI >= 0 ? pNum(r[valI]) : units * ltp });
+  }
+  return { format: "Generic CSV (best-effort)", holdings, warnings };
+}
+
+// ── Transaction CSV Parsers ───────────────────────────────────────
+
+function parseTransactionCSV(text) {
+  const result = Papa.parse(text.trim(), { header: false, skipEmptyLines: true });
+  const rows = result.data;
+  if (!rows.length) return { format: "unknown", transactions: [], warnings: ["Empty file"] };
+  const headerIdx = rows.findIndex(r =>
+    r.some(c => /date|trade|type|buy|sell|units|quantity|price|amount/i.test(c || ""))
+  );
+  if (headerIdx < 0) return { format: "unknown", transactions: [], warnings: ["No recognizable header row"] };
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const dataRows = rows.slice(headerIdx + 1);
+
+  // Zerodha Tradebook
+  if (h.some(c => /trade\s*date/i.test(c)) && h.some(c => /trade\s*type/i.test(c))) {
+    const col = { date: h.findIndex(c => /trade\s*date/i.test(c)), symbol: h.findIndex(c => /symbol/i.test(c)),
+      type: h.findIndex(c => /trade\s*type/i.test(c)), qty: h.findIndex(c => /quantity/i.test(c)), price: h.findIndex(c => /price/i.test(c)) };
+    const transactions = [], warnings = [];
+    for (const r of dataRows) {
+      const symbol = (r[col.symbol] || "").trim(); if (!symbol) continue;
+      const date = parseDate(r[col.date]); if (!date) { warnings.push(`Skipped: invalid date "${r[col.date]}"`); continue; }
+      transactions.push({ _symbol: symbol, txn_type: (r[col.type] || "").toUpperCase().includes("SELL") ? "SELL" : "BUY",
+        units: pNum(r[col.qty]), price: pNum(r[col.price]), txn_date: date, notes: "Zerodha tradebook import" });
+    }
+    return { format: "Zerodha Tradebook", transactions, warnings };
+  }
+
+  // Groww Transactions
+  if (h.some(c => c === "symbol") && h.some(c => /type/i.test(c)) && h.some(c => /quantity/i.test(c))) {
+    const col = { date: h.findIndex(c => /date/i.test(c)), symbol: h.findIndex(c => /symbol/i.test(c)),
+      type: h.findIndex(c => /type/i.test(c)), qty: h.findIndex(c => /quantity|units/i.test(c)), price: h.findIndex(c => /price/i.test(c)) };
+    const transactions = [], warnings = [];
+    for (const r of dataRows) {
+      const symbol = (r[col.symbol] || "").trim(); if (!symbol) continue;
+      const date = parseDate(r[col.date]); if (!date) { warnings.push(`Skipped: invalid date "${r[col.date]}"`); continue; }
+      transactions.push({ _symbol: symbol, txn_type: (r[col.type] || "").toUpperCase().includes("SELL") ? "SELL" : "BUY",
+        units: pNum(r[col.qty]), price: pNum(r[col.price]), txn_date: date, notes: "Groww import" });
+    }
+    return { format: "Groww Transactions", transactions, warnings };
+  }
+
+  // Generic
+  const ci = (patterns) => h.findIndex(c => patterns.some(p => c.includes(p)));
+  const col = { date: ci(["date"]), symbol: ci(["symbol", "ticker", "name", "instrument", "scrip"]),
+    type: ci(["type", "buy", "sell", "side", "action"]), qty: ci(["qty", "quantity", "units", "shares"]),
+    price: ci(["price", "rate", "nav"]), notes: ci(["notes", "remark", "narration"]) };
+  const transactions = [], warnings = [];
+  for (const r of dataRows) {
+    const symbol = col.symbol >= 0 ? (r[col.symbol] || "").trim() : ""; if (!symbol) continue;
+    const date = col.date >= 0 ? parseDate(r[col.date]) : null;
+    if (!date) { warnings.push(`Skipped "${symbol}": missing date`); continue; }
+    transactions.push({ _symbol: symbol,
+      txn_type: col.type >= 0 && ((r[col.type] || "").toUpperCase().includes("SELL") || (r[col.type] || "").toUpperCase().includes("REDEEM")) ? "SELL" : "BUY",
+      units: col.qty >= 0 ? pNum(r[col.qty]) : 0, price: col.price >= 0 ? pNum(r[col.price]) : 0,
+      txn_date: date, notes: col.notes >= 0 ? (r[col.notes] || "").trim() : "CSV import" });
+  }
+  return { format: "Generic Transactions", transactions, warnings };
+}
+
+// ── IMPORT: Detect format + preview (no DB write) ─────────────────
+app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file" });
+  const ext = req.file.originalname.split(".").pop().toLowerCase();
+  const importType = req.body.import_type || "holdings";
+
+  let text = "";
+  try {
+    if (ext === "csv" || ext === "txt") {
+      text = req.file.buffer.toString("utf8");
+    } else if (ext === "xlsx" || ext === "xls") {
+      const wb = XLSX.read(req.file.buffer, { type: "buffer" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      text = XLSX.utils.sheet_to_csv(ws);
+    } else {
+      return res.status(400).json({ error: "Unsupported format. Use CSV, XLS, or XLSX." });
+    }
+  } catch (e) {
+    return res.status(400).json({ error: "Parse error: " + e.message });
+  }
+
+  if (importType === "transactions") return res.json(parseTransactionCSV(text));
+
+  const result = detectAndParseHoldings(text, req.file.originalname);
+
+  // Duplicate detection
+  const { data: existing } = await supabase.from("holdings")
+    .select("name, ticker, scheme_code, type").eq("user_id", req.user.id);
+  const existingSet = new Set(
+    (existing || []).map(h => `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`)
+  );
+  result.holdings = result.holdings.map(h => ({
+    ...h, _duplicate: existingSet.has(`${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`),
+  }));
+  const dupCount = result.holdings.filter(h => h._duplicate).length;
+  if (dupCount > 0) result.warnings.push(`${dupCount} holding(s) already exist (marked as duplicates)`);
+
+  res.json(result);
+});
+
+// ── IMPORT: Bulk import holdings ──────────────────────────────────
+app.post("/api/holdings/import", auth, async (req, res) => {
+  const { holdings, member_id, skip_duplicates } = req.body;
+  if (!holdings?.length) return res.status(400).json({ error: "No holdings to import" });
+
+  let existingSet = new Set();
+  if (skip_duplicates) {
+    const { data: existing } = await supabase.from("holdings")
+      .select("name, ticker, scheme_code, type").eq("user_id", req.user.id);
+    existingSet = new Set(
+      (existing || []).map(h => `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`)
+    );
+  }
+
+  // Clear demo holdings
+  await supabase.from("holdings").delete().eq("user_id", req.user.id).like("notes", "%__demo__%");
+
+  const imported = [], skipped = [], errors = [];
+  for (const h of holdings) {
+    const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
+    if (skip_duplicates && existingSet.has(key)) { skipped.push(h.name); continue; }
+
+    const id = "h_" + Date.now() + Math.random().toString(36).slice(2, 8);
+    const { error } = await supabase.from("holdings").insert(sanitizeDates({
+      id, user_id: req.user.id, member_id: member_id || h.member_id || null,
+      type: h.type || "IN_STOCK", name: h.name,
+      ticker: h.ticker || "", scheme_code: h.scheme_code || "",
+      units: h.units || 0, purchase_price: h.purchase_price || 0,
+      current_price: h.current_price || 0, purchase_nav: h.purchase_nav || 0,
+      current_nav: h.current_nav || 0, purchase_value: h.purchase_value || 0,
+      current_value: h.current_value || 0, principal: h.principal || 0,
+      interest_rate: h.interest_rate || 0, start_date: h.start_date || null,
+      maturity_date: h.maturity_date || null, usd_inr_rate: h.usd_inr_rate || 83.2,
+    }));
+    if (error) { errors.push(`${h.name}: ${error.message}`); continue; }
+    imported.push(h.name);
+
+    // Auto-create first BUY transaction
+    const price = h.purchase_price || h.purchase_nav || 0;
+    if (h.units && price) {
+      await supabase.from("transactions").insert({
+        id: "t_" + Date.now() + Math.random().toString(36).slice(2, 6),
+        holding_id: id, user_id: req.user.id, txn_type: "BUY",
+        units: h.units, price, txn_date: h.start_date || new Date().toISOString().slice(0, 10),
+        notes: "Imported from CSV",
+      });
+    }
+  }
+  res.json({ ok: true, imported_count: imported.length, skipped_count: skipped.length,
+    error_count: errors.length, imported, skipped, errors });
+});
+
+// ── IMPORT: Bulk import transactions ──────────────────────────────
+app.post("/api/transactions/import", auth, async (req, res) => {
+  const { transactions } = req.body;
+  if (!transactions?.length) return res.status(400).json({ error: "No transactions to import" });
+
+  const { data: userHoldings } = await supabase.from("holdings")
+    .select("id, name, ticker, scheme_code, type").eq("user_id", req.user.id);
+  const holdingMap = {};
+  for (const h of (userHoldings || [])) {
+    if (h.ticker) holdingMap[h.ticker.toLowerCase()] = h.id;
+    if (h.scheme_code) holdingMap[h.scheme_code.toLowerCase()] = h.id;
+    holdingMap[h.name.toLowerCase()] = h.id;
+  }
+
+  const imported = [], unmatched = [], errors = [];
+  for (const t of transactions) {
+    const sym = (t._symbol || "").toLowerCase();
+    const holdingId = holdingMap[sym] || holdingMap[sym.replace(/\s+/g, "")] ||
+      Object.entries(holdingMap).find(([k]) => k.includes(sym))?.[1];
+    if (!holdingId) { unmatched.push(t._symbol); continue; }
+
+    const { error } = await supabase.from("transactions").insert({
+      id: "t_" + Date.now() + Math.random().toString(36).slice(2, 6),
+      holding_id: holdingId, user_id: req.user.id,
+      txn_type: t.txn_type || "BUY", units: Number(t.units) || 0,
+      price: Number(t.price) || 0, txn_date: t.txn_date || new Date().toISOString().slice(0, 10),
+      notes: t.notes || "Bulk import",
+    });
+    if (error) errors.push(`${t._symbol}: ${error.message}`);
+    else imported.push(t._symbol);
+  }
+  res.json({ ok: true, imported_count: imported.length, unmatched_count: unmatched.length,
+    error_count: errors.length, unmatched: [...new Set(unmatched)], errors });
+});
+
 // ── BUDGET: Upload + Parse Statement ─────────────────────────────
 app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file" });
