@@ -3843,14 +3843,19 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
   const dupCount = holdings.filter(h => h._duplicate).length;
   const importCount = mode === "transactions" ? transactions.length : (skipDuplicates ? holdings.filter(h => !h._duplicate).length : holdings.length);
 
-  const FORMATS = [
-    { name: "Zerodha", color: "#e5483e" }, { name: "Groww", color: "#00d09c" },
-    { name: "ICICI Direct", color: "#f58220" }, { name: "HDFC Sec", color: "#004b8d" },
-    { name: "Upstox", color: "#6b3fa0" }, { name: "Angel One", color: "#1d4aa7" },
+  const US_FORMATS = [
     { name: "Schwab", color: "#00a3e0" }, { name: "Fidelity", color: "#4a8c2a" },
     { name: "Robinhood", color: "#00c805" }, { name: "Vanguard", color: "#c22e2e" },
     { name: "IBKR", color: "#d81b3c" }, { name: "E*TRADE", color: "#6633cc" },
-    { name: "Coinbase", color: "#0052ff" }, { name: "Kuvera / MF", color: "#2e7d32" },
+    { name: "Coinbase", color: "#0052ff" },
+  ];
+  const IN_FORMATS = [
+    { name: "Zerodha", color: "#e5483e" }, { name: "Groww", color: "#00d09c" },
+    { name: "ICICI Direct", color: "#f58220" }, { name: "HDFC Sec", color: "#004b8d" },
+    { name: "Upstox", color: "#6b3fa0" }, { name: "Angel One", color: "#1d4aa7" },
+    { name: "Kuvera / MF", color: "#2e7d32" },
+  ];
+  const OTHER_FORMATS = [
     { name: "Excel", color: "#217346" }, { name: "Generic CSV", color: "#888" },
   ];
 
@@ -3880,31 +3885,46 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
           <button className="btns" style={{marginTop:"1rem",fontSize:".75rem"}}>Browse Files</button>
         </div>
         <div style={{fontSize:".65rem",letterSpacing:".08em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".6rem",fontWeight:600}}>Auto-detected formats</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:".4rem",marginBottom:".8rem"}}>
-          {FORMATS.map(f=>(
-            <span key={f.name} style={{fontSize:".67rem",padding:".22rem .55rem",borderRadius:4,
-              background:f.color+"18",color:f.color,border:`1px solid ${f.color}33`,whiteSpace:"nowrap"}}>
-              {f.name}
-            </span>
-          ))}
+        <div style={{marginBottom:".8rem"}}>
+          <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".45rem"}}>
+            <span style={{fontSize:".6rem",color:"rgba(232,224,208,.35)",letterSpacing:".06em",textTransform:"uppercase",minWidth:"1.8rem"}}>US</span>
+            <div style={{display:"flex",flexWrap:"wrap",gap:".35rem"}}>
+              {US_FORMATS.map(f=>(
+                <span key={f.name} style={{fontSize:".67rem",padding:".22rem .55rem",borderRadius:4,
+                  background:f.color+"18",color:f.color,border:`1px solid ${f.color}33`,whiteSpace:"nowrap"}}>
+                  {f.name}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".45rem"}}>
+            <span style={{fontSize:".6rem",color:"rgba(232,224,208,.35)",letterSpacing:".06em",textTransform:"uppercase",minWidth:"1.8rem"}}>IN</span>
+            <div style={{display:"flex",flexWrap:"wrap",gap:".35rem"}}>
+              {IN_FORMATS.map(f=>(
+                <span key={f.name} style={{fontSize:".67rem",padding:".22rem .55rem",borderRadius:4,
+                  background:f.color+"18",color:f.color,border:`1px solid ${f.color}33`,whiteSpace:"nowrap"}}>
+                  {f.name}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:".5rem"}}>
+            <span style={{fontSize:".6rem",color:"rgba(232,224,208,.35)",minWidth:"1.8rem"}}></span>
+            <div style={{display:"flex",flexWrap:"wrap",gap:".35rem"}}>
+              {OTHER_FORMATS.map(f=>(
+                <span key={f.name} style={{fontSize:".67rem",padding:".22rem .55rem",borderRadius:4,
+                  background:f.color+"18",color:f.color,border:`1px solid ${f.color}33`,whiteSpace:"nowrap"}}>
+                  {f.name}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
         {warnings.length>0&&(
           <div style={{background:"rgba(224,124,90,.1)",border:"1px solid rgba(224,124,90,.25)",borderRadius:8,padding:".7rem .9rem",marginTop:".6rem"}}>
             {warnings.map((w,i)=>(<div key={i} style={{fontSize:".73rem",color:"#e07c5a",marginBottom:i<warnings.length-1?".3rem":0}}>⚠ {w}</div>))}
           </div>
         )}
-        <div style={{fontSize:".68rem",color:"rgba(232,224,208,.3)",marginTop:"1rem",lineHeight:1.6}}>
-          <strong style={{color:"rgba(232,224,208,.5)"}}>How to export:</strong><br/>
-          • Zerodha → Console → Holdings → Export CSV<br/>
-          • Groww → Portfolio → Download → CSV<br/>
-          • Schwab → Accounts → Positions → Export<br/>
-          • Fidelity → Positions → Download<br/>
-          • Robinhood → Account → Statements → Portfolio CSV<br/>
-          • Vanguard → My Accounts → Holdings → Download<br/>
-          • IBKR → Reports → Activity → CSV<br/>
-          • Coinbase → Taxes → Export → Transaction history<br/>
-          • Any spreadsheet with Name, Qty, Avg Cost columns
-        </div>
       </>)}
 
       {step==="preview"&&(<>
