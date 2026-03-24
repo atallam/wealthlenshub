@@ -1841,16 +1841,39 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
 
         let pdf;
         try {
-          const opts = { data: new Uint8Array(req.file.buffer) };
-          if (pdfPassword) opts.password = pdfPassword;
-          const loadingTask = pdfjsLib.getDocument(opts);
+          const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(req.file.buffer) });
+          // Handle password-protected PDFs via callback
+          let passwordAttempted = false;
+          loadingTask.onPassword = (updateCallback, reason) => {
+            // reason: 1 = NEED_PASSWORD, 2 = INCORRECT_PASSWORD
+            if (reason === 2 || passwordAttempted) {
+              // Already tried or explicitly wrong — reject via Error passed to callback
+              updateCallback(new Error(pdfPassword ? "Incorrect PDF password" : "Password required"));
+              return;
+            }
+            if (pdfPassword) {
+              passwordAttempted = true;
+              updateCallback(pdfPassword);
+            } else {
+              updateCallback(new Error("Password required"));
+            }
+          };
           pdf = await loadingTask.promise;
         } catch (pdfOpenErr) {
-          // Check if it's a password error
-          if (/password/i.test(pdfOpenErr.message) || pdfOpenErr.code === 1) {
+          const msg = (pdfOpenErr?.message || "").toLowerCase();
+          // Detect password errors
+          if (msg.includes("password") || msg.includes("encrypted") || pdfOpenErr?.code === 1 || pdfOpenErr?.code === 2) {
+            if (pdfPassword) {
+              // Password was provided but wrong
+              return res.status(400).json({
+                error: "password_incorrect",
+                message: "Incorrect password. Check your PAN number (uppercase).",
+                needs_password: true,
+              });
+            }
             return res.status(400).json({
               error: "password_required",
-              message: "This PDF is password-protected. Enter your PAN + DOB to unlock.",
+              message: "This PDF is password-protected. Enter your PAN to unlock.",
               needs_password: true,
             });
           }

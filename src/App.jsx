@@ -1291,7 +1291,14 @@ ${alertLines||"  None"}`;
       });
       const data = await res.json();
       // Handle password-protected PDF
-      if (data.needs_password || data.error === "password_required") {
+      if (data.needs_password || data.error === "password_required" || data.error === "password_incorrect") {
+        if (data.error === "password_incorrect") {
+          // Wrong password — show form again with error
+          setImportState(s => ({ ...s, step: "cas_password", needsPassword: true,
+            pendingFile: s.pendingFile || file,
+            warnings: ["Incorrect PAN. Password is your PAN in uppercase."] }));
+          return;
+        }
         // Try loading saved credentials
         let savedPan = "", savedDob = "";
         try {
@@ -1318,21 +1325,14 @@ ${alertLines||"  None"}`;
   }
 
   async function submitCASPassword() {
-    const { pendingFile, casPan, casDob, casRemember } = importState;
-    if (!pendingFile || !casPan || !casDob) return;
-    // Build password: PAN (uppercase) + DOB (DDMMYYYY)
+    const { pendingFile, casPan, casRemember } = importState;
+    if (!pendingFile || !casPan) return;
+    // CAS PDF password is just PAN in uppercase
     const pan = casPan.toUpperCase().trim();
-    const dobParts = casDob.includes("-") ? casDob.split("-") : casDob.includes("/") ? casDob.split("/") : null;
-    let dobFormatted = casDob.replace(/[^0-9]/g, "");
-    if (dobParts && dobParts.length === 3) {
-      // Handle YYYY-MM-DD or DD/MM/YYYY
-      if (dobParts[0].length === 4) dobFormatted = dobParts[2] + dobParts[1] + dobParts[0]; // YYYY-MM-DD → DDMMYYYY
-      else dobFormatted = dobParts[0].padStart(2,"0") + dobParts[1].padStart(2,"0") + dobParts[2]; // DD/MM/YYYY → DDMMYYYY
-    }
-    const password = pan + dobFormatted;
-    // Save credentials if remember is checked
+    const password = pan;
+    // Save PAN if remember is checked
     if (casRemember) {
-      api("/api/profile", { method: "PUT", body: JSON.stringify({ pan, dob: casDob }) }).catch(() => {});
+      api("/api/profile", { method: "PUT", body: JSON.stringify({ pan }) }).catch(() => {});
     }
     // Retry with password
     handleImportFile(pendingFile, password);
@@ -3973,31 +3973,27 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
         <div style={{maxWidth:400,margin:"0 auto"}}>
           <div style={{textAlign:"center",marginBottom:"1.2rem"}}>
             <div style={{fontSize:"2rem",marginBottom:".5rem"}}>🔐</div>
-            <div style={{fontSize:".85rem",color:"rgba(232,224,208,.7)",marginBottom:".3rem"}}>This is a password-protected NSDL/CDSL CAS PDF</div>
-            <div style={{fontSize:".72rem",color:"rgba(232,224,208,.4)"}}>Password format: PAN (uppercase) + DOB (DDMMYYYY)</div>
+            <div style={{fontSize:".85rem",color:"rgba(232,224,208,.7)",marginBottom:".3rem"}}>This PDF is password-protected</div>
+            <div style={{fontSize:".72rem",color:"rgba(232,224,208,.4)"}}>NSDL/CDSL CAS password is your PAN number</div>
           </div>
           <div style={{marginBottom:".8rem"}}>
             <label style={{fontSize:".68rem",color:"rgba(232,224,208,.5)",letterSpacing:".05em",textTransform:"uppercase",display:"block",marginBottom:".3rem"}}>PAN Number</label>
             <input className="fi" value={casPan} onChange={e=>setImportState(s=>({...s,casPan:e.target.value.toUpperCase()}))}
               placeholder="ABCDE1234F" maxLength={10} style={{fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:".1em"}}/>
           </div>
-          <div style={{marginBottom:".8rem"}}>
-            <label style={{fontSize:".68rem",color:"rgba(232,224,208,.5)",letterSpacing:".05em",textTransform:"uppercase",display:"block",marginBottom:".3rem"}}>Date of Birth</label>
-            <input className="fi" type="date" value={casDob} onChange={e=>setImportState(s=>({...s,casDob:e.target.value}))}/>
-          </div>
           <label style={{display:"flex",alignItems:"center",gap:".5rem",fontSize:".73rem",color:"rgba(232,224,208,.5)",marginBottom:"1.2rem",cursor:"pointer"}}>
             <input type="checkbox" checked={casRemember} onChange={e=>setImportState(s=>({...s,casRemember:e.target.checked}))}
               style={{accentColor:"#c9a84c"}}/>
             Remember for future imports (encrypted)
           </label>
-          {casPan&&casDob&&(
-            <div style={{fontSize:".68rem",color:"rgba(232,224,208,.3)",marginBottom:".8rem",fontFamily:"'DM Mono',monospace",background:"rgba(255,255,255,.03)",padding:".5rem .75rem",borderRadius:6}}>
-              Password preview: {casPan.toUpperCase()}{(()=>{const p=casDob.split("-");return p.length===3?p[2]+p[1]+p[0]:casDob.replace(/[^0-9]/g,"");})()}
+          {warnings.length>0&&(
+            <div style={{background:"rgba(224,124,90,.1)",border:"1px solid rgba(224,124,90,.25)",borderRadius:8,padding:".55rem .75rem",marginBottom:".8rem"}}>
+              {warnings.map((w,i)=>(<div key={i} style={{fontSize:".73rem",color:"#e07c5a"}}>⚠ {w}</div>))}
             </div>
           )}
           <div style={{display:"flex",gap:".7rem"}}>
             <button className="btnc" onClick={()=>setImportState(s=>({...s,step:"upload",needsPassword:false,pendingFile:null}))}>Cancel</button>
-            <button className="btns" disabled={!casPan||casPan.length!==10||!casDob} onClick={submitCASPassword}>
+            <button className="btns" disabled={!casPan||casPan.length!==10} onClick={submitCASPassword}>
               Unlock & Import
             </button>
           </div>
