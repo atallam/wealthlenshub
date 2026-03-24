@@ -812,12 +812,8 @@ export default function App() {
   const [selectedTxnIds,    setSelectedTxnIds]    = useState(new Set());
   const [bulkCatTarget,     setBulkCatTarget]     = useState("");
 
-  // ── Net Worth Timeline + Benchmark + Calendar ─────────────────
-  const [benchmarkData,     setBenchmarkData]     = useState([]);
-  const [benchmarkLoading,  setBenchmarkLoading]  = useState(false);
-  const [benchmarkPeriod,   setBenchmarkPeriod]   = useState("1Y");
+  // ── Net Worth Timeline + Calendar ─────────────────────────────
   const [nwMember,          setNwMember]          = useState("all");
-  const [benchmarkMember,   setBenchmarkMember]   = useState("all");
   const [calMonth,          setCalMonth]          = useState(()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;});
 
   // ── Rebalancing state ────────────────────────────────────────
@@ -1388,10 +1384,10 @@ ${alertLines||"  None"}`;
             {priceRefreshing?"⟳ Fetching…":"⟳ Live Prices"}
           </button>
           {lastPriceRefresh&&<span style={{fontSize:".62rem",color:"rgba(232,224,208,.28)",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{ago(lastPriceRefresh)}</span>}
-          <button className="btn-o" onClick={()=>openImportModal()}>⇑ Import</button>
-          <input ref={importFileRef} type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){handleImportFile(e.target.files[0]);e.target.value="";}}}/>
           <button className="btn-g" onClick={generatePDF}>⤓ PDF</button>
           <button className="btn-p" onClick={()=>setModal("add")}>+ Add</button>
+          <input ref={importFileRef} type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){handleImportFile(e.target.files[0]);e.target.value="";}}}/>
+
           {/* User */}
           <div style={{display:"flex",alignItems:"center",gap:".4rem",paddingLeft:".4rem",borderLeft:"1px solid rgba(255,255,255,.07)"}}>
             {user.user_metadata?.avatar_url
@@ -1617,145 +1613,6 @@ ${alertLines||"  None"}`;
                 <div><span style={{color:"rgba(232,224,208,.35)"}}>Current: </span><span style={{fontFamily:"'DM Mono',monospace",color:"#e8e0d0"}}>{fmtCr(nwCur)}</span></div>
                 <div><span style={{color:"rgba(232,224,208,.35)"}}>Gain: </span><span style={{fontFamily:"'DM Mono',monospace",color:nwCur>=nwInv?"#4caf9a":"#e07c5a"}}>{fmtCr(nwCur-nwInv)} ({fmtPct(nwInv>0?(nwCur-nwInv)/nwInv*100:0)})</span></div>
               </div>
-            </div>);
-          })()}
-
-          {/* ── XIRR vs BENCHMARK — all market holdings ── */}
-          {(()=>{
-            // Benchmark CAGR from fetched prices
-            const benchCagr = benchmarkData.length>=2?(()=>{
-              const first=benchmarkData[0]?.value,last=benchmarkData[benchmarkData.length-1]?.value;
-              if(!first||!last) return null;
-              const yrs=(new Date(benchmarkData[benchmarkData.length-1].date+"-01")-new Date(benchmarkData[0].date+"-01"))/(864e5*365.25);
-              return yrs>0?(Math.pow(last/first,1/yrs)-1)*100:null;
-            })():null;
-
-            // All market holdings (US + Indian MF/ETF/Stocks) filtered by member
-            const mktH = holdings.filter(h=>["MF","IN_ETF","IN_STOCK","US_STOCK","US_ETF","CRYPTO"].includes(h.type)
-              &&(benchmarkMember==="all"||h.member_id===benchmarkMember)
-              &&getVal(h)>0&&getXIRR(h)!==null);
-
-            // Aggregate XIRR for the filtered set
-            const aggXirr=(()=>{
-              const cfs=[],dates=[];
-              for(const h of mktH){
-                for(const t of (h.transactions||[])){
-                  cfs.push(t.txn_type==="BUY"?-(+t.units)*(+t.price):(+t.units)*(+t.price));
-                  dates.push(new Date(t.txn_date));
-                }
-              }
-              const totalCur=mktH.reduce((s,h)=>s+getVal(h),0);
-              if(!totalCur) return null;
-              cfs.push(totalCur); dates.push(new Date());
-              return xirr(cfs,dates);
-            })();
-
-            // Benchmark mapping per holding category
-            const BENCH_MAP={
-              "US_STOCK":"S&P 500","US_ETF":"S&P 500","CRYPTO":"Bitcoin",
-              "MF-Large Cap":"Nifty 100","MF-Mid Cap":"Nifty Midcap 150",
-              "MF-Small Cap":"Nifty Smallcap 250","MF-Flexi Cap":"Nifty 500",
-              "MF-Index":"Nifty 50","IN_ETF-Gold":"Gold","IN_ETF-Index":"Nifty 50",
-              "IN_STOCK":"Nifty 50","Default":"S&P 500",
-            };
-            const getBenchLabel=(h)=>{
-              if(["US_STOCK","US_ETF"].includes(h.type)) return "S&P 500";
-              if(h.type==="CRYPTO") return "Bitcoin";
-              if(h.type==="IN_STOCK") return "Nifty 50";
-              const n=h.name.toLowerCase();
-              if(n.includes("gold")) return "Gold";
-              if(n.includes("midcap")||n.includes("mid cap")) return "Nifty Midcap 150";
-              if(n.includes("smallcap")||n.includes("small cap")) return "Nifty Smallcap 250";
-              if(n.includes("flexi")||n.includes("multi")) return "Nifty 500";
-              if(n.includes("nifty 50")||n.includes("index")) return "Nifty 50";
-              if(n.includes("sensex")) return "Sensex";
-              if(n.includes("nasdaq")||n.includes("us")||n.includes("s&p")) return "S&P 500";
-              return "Nifty 50";
-            };
-
-            const sortedH=[...mktH].sort((a,b)=>getVal(b)-getVal(a));
-            const maxXr=Math.max(...sortedH.map(h=>Math.abs(getXIRR(h)||0)),1);
-
-            return(
-            <div className="card">
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem",flexWrap:"wrap",gap:".5rem"}}>
-                <div className="ctitle" style={{margin:0}}>XIRR vs Benchmark</div>
-                <div style={{display:"flex",gap:".5rem",alignItems:"center",flexWrap:"wrap"}}>
-                  <select className="fi fs" style={{width:140,marginBottom:0,fontSize:".72rem",padding:".28rem .6rem"}}
-                    value={benchmarkMember} onChange={e=>setBenchmarkMember(e.target.value)}>
-                    <option value="all">All Members</option>
-                    {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
-                  {["1Y","3Y","ALL"].map(p=>(
-                    <div key={p} onClick={async()=>{
-                      setBenchmarkPeriod(p);setBenchmarkLoading(true);
-                      try{const d=await api(`/api/benchmark?period=${p}&index=NIFTY`);setBenchmarkData(d.prices||[]);}catch{}
-                      setBenchmarkLoading(false);
-                    }} style={{padding:".2rem .55rem",borderRadius:4,cursor:"pointer",fontSize:".68rem",
-                      background:benchmarkPeriod===p?"rgba(201,168,76,.18)":"rgba(255,255,255,.04)",
-                      border:`1px solid ${benchmarkPeriod===p?"rgba(201,168,76,.4)":"rgba(255,255,255,.1)"}`,
-                      color:benchmarkPeriod===p?"#c9a84c":"rgba(232,224,208,.4)"}}>
-                      {p}
-                    </div>
-                  ))}
-                  {benchmarkLoading&&<span style={{fontSize:".68rem",color:"rgba(232,224,208,.3)"}}>…</span>}
-                </div>
-              </div>
-
-              {/* Aggregate XIRR vs Nifty */}
-              <div style={{display:"flex",gap:"1rem",marginBottom:"1rem",flexWrap:"wrap"}}>
-                {[
-                  {label:"Your Portfolio XIRR",val:aggXirr,color:"#c9a84c"},
-                  {label:`Nifty 50 / S&P 500 CAGR (${benchmarkPeriod})`,val:benchCagr,color:"#5a9ce0"},
-                ].map(item=>(
-                  <div key={item.label} style={{flex:1,minWidth:140,padding:".7rem .9rem",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:7}}>
-                    <div style={{fontSize:".63rem",color:"rgba(232,224,208,.35)",letterSpacing:".06em",textTransform:"uppercase",marginBottom:".35rem"}}>{item.label}</div>
-                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.3rem",color:item.val==null?"rgba(232,224,208,.25)":item.val>=0?item.color:"#e07c5a"}}>
-                      {item.val==null?"—":`${item.val>=0?"+":""}${item.val.toFixed(1)}%`}
-                    </div>
-                    {item.val!=null&&aggXirr!=null&&item.label.includes("CAGR")&&(
-                      <div style={{fontSize:".68rem",marginTop:".25rem",color:aggXirr>item.val?"#4caf9a":"#e07c5a",fontWeight:500}}>
-                        {aggXirr>item.val?`↑ Outperforming by ${(aggXirr-item.val).toFixed(1)}%`:`↓ Underperforming by ${(item.val-aggXirr).toFixed(1)}%`}
-                      </div>
-                    )}
-                    {benchmarkData.length===0&&item.label.includes("CAGR")&&(
-                      <div style={{fontSize:".65rem",color:"rgba(232,224,208,.25)",marginTop:".2rem"}}>Select a period to load benchmark</div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Per-holding XIRR with benchmark label */}
-              {sortedH.length===0?<div className="empty">No market holdings{benchmarkMember!=="all"?" for this member":""}</div>:(
-                <div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:".4rem .75rem",fontSize:".68rem",
-                    color:"rgba(232,224,208,.28)",letterSpacing:".07em",textTransform:"uppercase",marginBottom:".4rem",paddingBottom:".4rem",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
-                    <div>Fund</div><div style={{textAlign:"right"}}>Benchmark</div><div style={{textAlign:"right",minWidth:60}}>XIRR</div>
-                  </div>
-                  {sortedH.map(h=>{
-                    const xr=getXIRR(h)||0;
-                    const barW=Math.min(Math.abs(xr)/maxXr*100,100);
-                    const bench=getBenchLabel(h);
-                    const mn=members.find(m=>m.id===h.member_id)?.name||"";
-                    return(
-                    <div key={h.id} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:".4rem .75rem",marginBottom:".55rem",alignItems:"center"}}>
-                      <div>
-                        <div style={{fontSize:".73rem",color:"rgba(232,224,208,.75)",marginBottom:".2rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                          {AT[h.type]?.icon} {h.name.length>30?h.name.slice(0,30)+"…":h.name}
-                        </div>
-                        <div style={{height:5,background:"rgba(255,255,255,.06)",borderRadius:3,overflow:"hidden"}}>
-                          <div style={{height:"100%",width:`${barW}%`,background:xr>=0?"#4caf9a":"#e07c5a",borderRadius:3}}/>
-                        </div>
-                        {mn&&<div style={{fontSize:".62rem",color:"rgba(232,224,208,.28)",marginTop:".15rem"}}>{mn}</div>}
-                      </div>
-                      <div style={{fontSize:".65rem",color:"rgba(90,156,224,.6)",textAlign:"right",whiteSpace:"nowrap"}}>{bench}</div>
-                      <div style={{fontFamily:"'DM Mono',monospace",fontSize:".78rem",color:xr>=0?"#4caf9a":"#e07c5a",minWidth:60,textAlign:"right",fontWeight:600}}>
-                        {xr>=0?"+":""}{xr.toFixed(1)}%
-                      </div>
-                    </div>);
-                  })}
-                </div>
-              )}
             </div>);
           })()}
         </>)}
