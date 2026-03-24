@@ -22,36 +22,48 @@ const PPF_R=7.1, EPF_R=8.15;
 // ── Math ─────────────────────────────────────────────────────────
 function calcFD(p,r,s,mat){const start=new Date(s),now=new Date(),m=new Date(mat);const end=now<m?now:m;const y=Math.max(0,(end-start)/(864e5*365.25));return p*Math.pow(1+r/400,y*4);}
 function calcAccr(p,rate,s){const y=Math.max(0,(new Date()-new Date(s))/(864e5*365.25));return p*Math.pow(1+rate/100,y);}
+// FX factor: converts a holding's native currency to the user's display currency
+function fxFor(h){
+  const isUSD = USD_TYPES.has(h.type);
+  const rate = h.usd_inr_rate || 83.2;
+  if(_activeCurrency === "USD"){
+    return isUSD ? 1 : 1/rate;  // INR holdings → divide by rate to show in USD
+  }
+  // _activeCurrency === "INR"
+  return isUSD ? rate : 1;      // USD holdings → multiply by rate to show in INR
+}
 function getVal(h){
   const units = h.net_units!=null ? h.net_units : (h.units||0);
+  const fx = fxFor(h);
   switch(h.type){
-    case"FD":          return calcFD(h.principal,h.interest_rate,h.start_date,h.maturity_date);
-    case"PPF":         return calcAccr(h.principal,PPF_R,h.start_date);
-    case"EPF":         return calcAccr(h.principal,EPF_R,h.start_date);
-    case"MF":          return units*(h.current_nav||h.purchase_nav||0);
+    case"FD":          return calcFD(h.principal,h.interest_rate,h.start_date,h.maturity_date)*fx;
+    case"PPF":         return calcAccr(h.principal,PPF_R,h.start_date)*fx;
+    case"EPF":         return calcAccr(h.principal,EPF_R,h.start_date)*fx;
+    case"MF":          return units*(h.current_nav||h.purchase_nav||0)*fx;
     case"IN_STOCK":
-    case"IN_ETF":      return units*(h.current_price||h.purchase_price||0);
+    case"IN_ETF":      return units*(h.current_price||h.purchase_price||0)*fx;
     case"US_STOCK":
     case"US_ETF":
     case"US_BOND":
-    case"CRYPTO":      return units*(h.current_price||h.purchase_price||0)*(h.usd_inr_rate||83.2);
-    case"REAL_ESTATE": return h.current_value||h.purchase_value||0;
-    default:           return h.principal||0;
+    case"CRYPTO":      return units*(h.current_price||h.purchase_price||0)*fx;
+    case"REAL_ESTATE": return(h.current_value||h.purchase_value||0)*fx;
+    default:           return(h.principal||0)*fx;
   }
 }
 function getInv(h){
-  // If transactions exist, avg_cost is already in INR (price field stores INR)
-  if(h.avg_cost!=null && h.net_units!=null) return h.net_units * h.avg_cost;
+  const fx = fxFor(h);
+  // If transactions exist, avg_cost is stored in the holding's native currency
+  if(h.avg_cost!=null && h.net_units!=null) return h.net_units * h.avg_cost * fx;
   switch(h.type){
-    case"MF":          return(h.units||0)*(h.purchase_nav||0);
+    case"MF":          return(h.units||0)*(h.purchase_nav||0)*fx;
     case"IN_STOCK":
-    case"IN_ETF":      return(h.units||0)*(h.purchase_price||0);
+    case"IN_ETF":      return(h.units||0)*(h.purchase_price||0)*fx;
     case"US_STOCK":
     case"US_ETF":
     case"US_BOND":
-    case"CRYPTO":      return(h.units||0)*(h.purchase_price||0)*(h.usd_inr_rate||83.2);
-    case"REAL_ESTATE": return h.purchase_value||0;
-    default:           return h.principal||0;
+    case"CRYPTO":      return(h.units||0)*(h.purchase_price||0)*fx;
+    case"REAL_ESTATE": return(h.purchase_value||0)*fx;
+    default:           return(h.principal||0)*fx;
   }
 }
 function xirr(cfs,dates){if(cfs.length<2)return null;const d0=dates[0],yrs=dates.map(d=>(d-d0)/(864e5*365.25));const npv=r=>cfs.reduce((s,c,i)=>s+c/Math.pow(1+r,yrs[i]),0);const dnpv=r=>cfs.reduce((s,c,i)=>s-yrs[i]*c/Math.pow(1+r,yrs[i]+1),0);let r=0.1;for(let i=0;i<100;i++){const f=npv(r),df=dnpv(r);if(Math.abs(df)<1e-12)break;const nr=r-f/df;if(Math.abs(nr-r)<1e-7){r=nr;break;}r=nr;if(r<-0.999)r=-0.999;}return isFinite(r)?r*100:null;}
@@ -1647,30 +1659,21 @@ ${alertLines||"  None"}`;
                     const avgCost = h.avg_cost  ?? h.purchase_price ?? h.purchase_nav ?? null;
                     const fx      = h.usd_inr_rate || 83.2;
                     const isUS    = USD_TYPES.has(h.type);
+                    const nativeSym = isUS ? "$" : "₹";
 
-                    // Avg price display
+                    // Avg price display (native currency of the holding)
                     const avgDisplay = avgCost
-                      ? isUS
-                        ? <><div style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(232,224,208,.7)"}}>₹{avgCost.toLocaleString("en-IN",{maximumFractionDigits:0})}</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:".65rem",color:"rgba(232,224,208,.35)"}}>${(avgCost/fx).toFixed(2)}</div></>
-                        : h.type==="MF"
-                          ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(232,224,208,.7)"}}>₹{Number(avgCost).toFixed(4)}</span>
-                          : <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(232,224,208,.7)"}}>₹{Number(avgCost).toLocaleString("en-IN",{maximumFractionDigits:2})}</span>
+                      ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(232,224,208,.7)"}}>
+                          {nativeSym}{h.type==="MF"?Number(avgCost).toFixed(4):Number(avgCost).toLocaleString(isUS?"en-US":"en-IN",{maximumFractionDigits:2})}
+                        </span>
                       : <span style={{color:"rgba(232,224,208,.25)"}}>—</span>;
 
-                    // Current price per unit display
-                    const cpUsd = isUS ? h.current_price : null;
-                    const cpInr = isUS
-                      ? (h.current_price ? h.current_price * fx : null)
-                      : (h.type==="MF" ? (h.current_nav||h.purchase_nav||null) : (h.current_price||h.purchase_price||null));
-                    const curPriceDisplay = (cpUsd||cpInr)
-                      ? isUS
-                        ? cpUsd
-                          ? <><div style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"#e8e0d0"}}>${cpUsd.toFixed(2)}</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:".65rem",color:"rgba(232,224,208,.45)"}}>₹{(cpUsd*fx).toLocaleString("en-IN",{maximumFractionDigits:0})}</div></>
-                          : <span style={{color:"rgba(232,224,208,.25)"}}>—</span>
-                        : h.type==="MF"
-                          ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"#e8e0d0"}}>₹{Number(cpInr).toFixed(4)}</span>
-                          : cpInr ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"#e8e0d0"}}>₹{Number(cpInr).toLocaleString("en-IN",{maximumFractionDigits:2})}</span>
-                          : <span style={{color:"rgba(232,224,208,.25)"}}>—</span>
+                    // Current price per unit display (native currency of the holding)
+                    const rawPrice = h.type==="MF" ? (h.current_nav||h.purchase_nav||null) : (h.current_price||h.purchase_price||null);
+                    const curPriceDisplay = rawPrice
+                      ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"#e8e0d0"}}>
+                          {nativeSym}{h.type==="MF"?Number(rawPrice).toFixed(4):Number(rawPrice).toLocaleString(isUS?"en-US":"en-IN",{maximumFractionDigits:2})}
+                        </span>
                       : <span style={{color:"rgba(232,224,208,.25)"}}>—</span>;
 
                     return(
