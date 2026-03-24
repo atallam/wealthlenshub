@@ -1703,31 +1703,32 @@ function scoreTransactions(result, text) {
   return score;
 }
 
-// ── IMPORT: Bulk import holdings ──────────────────────────────────
+// ── IMPORT: Bulk import holdings (upsert — update existing, insert new) ──
 app.post("/api/holdings/import", auth, async (req, res) => {
-  const { holdings, member_id, skip_duplicates } = req.body;
+  const { holdings, member_id } = req.body;
   if (!holdings?.length) return res.status(400).json({ error: "No holdings to import" });
 
-  let existingSet = new Set();
-  if (skip_duplicates) {
-    const { data: existing } = await supabase.from("holdings")
-      .select("name, ticker, scheme_code, type").eq("user_id", req.user.id);
-    existingSet = new Set(
-      (existing || []).map(h => `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`)
-    );
+  // Fetch existing holdings for this user
+  const { data: existing } = await supabase.from("holdings")
+    .select("id, name, ticker, scheme_code, type").eq("user_id", req.user.id);
+
+  // Build lookup: key → existing holding id
+  const existingMap = {};
+  for (const h of (existing || [])) {
+    const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
+    existingMap[key] = h.id;
   }
 
   // Clear demo holdings
   await supabase.from("holdings").delete().eq("user_id", req.user.id).like("notes", "%__demo__%");
 
-  const imported = [], skipped = [], errors = [];
+  const inserted = [], updated = [], errors = [];
   for (const h of holdings) {
     const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
-    if (skip_duplicates && existingSet.has(key)) { skipped.push(h.name); continue; }
+    const existingId = existingMap[key];
 
-    const id = "h_" + Date.now() + Math.random().toString(36).slice(2, 8);
-    const { error } = await supabase.from("holdings").insert(sanitizeDates({
-      id, user_id: req.user.id, member_id: member_id || h.member_id || null,
+    const payload = sanitizeDates({
+      member_id: member_id || h.member_id || null,
       type: h.type || "IN_STOCK", name: h.name,
       ticker: h.ticker || "", scheme_code: h.scheme_code || "",
       units: h.units || 0, purchase_price: h.purchase_price || 0,
@@ -1736,23 +1737,34 @@ app.post("/api/holdings/import", auth, async (req, res) => {
       current_value: h.current_value || 0, principal: h.principal || 0,
       interest_rate: h.interest_rate || 0, start_date: h.start_date || null,
       maturity_date: h.maturity_date || null, usd_inr_rate: h.usd_inr_rate || 83.2,
-    }));
-    if (error) { errors.push(`${h.name}: ${error.message}`); continue; }
-    imported.push(h.name);
+    });
 
-    // Auto-create first BUY transaction
-    const price = h.purchase_price || h.purchase_nav || 0;
-    if (h.units && price) {
-      await supabase.from("transactions").insert({
-        id: "t_" + Date.now() + Math.random().toString(36).slice(2, 6),
-        holding_id: id, user_id: req.user.id, txn_type: "BUY",
-        units: h.units, price, txn_date: h.start_date || new Date().toISOString().slice(0, 10),
-        notes: "Imported from CSV",
-      });
+    if (existingId) {
+      // ── UPDATE existing holding with new numbers ──
+      const { error } = await supabase.from("holdings").update(payload).eq("id", existingId);
+      if (error) { errors.push(`${h.name}: ${error.message}`); continue; }
+      updated.push(h.name);
+    } else {
+      // ── INSERT new holding ──
+      const id = "h_" + Date.now() + Math.random().toString(36).slice(2, 8);
+      const { error } = await supabase.from("holdings").insert({ ...payload, id, user_id: req.user.id });
+      if (error) { errors.push(`${h.name}: ${error.message}`); continue; }
+      inserted.push(h.name);
+
+      // Auto-create first BUY transaction for new holdings
+      const price = h.purchase_price || h.purchase_nav || 0;
+      if (h.units && price) {
+        await supabase.from("transactions").insert({
+          id: "t_" + Date.now() + Math.random().toString(36).slice(2, 6),
+          holding_id: id, user_id: req.user.id, txn_type: "BUY",
+          units: h.units, price, txn_date: h.start_date || new Date().toISOString().slice(0, 10),
+          notes: "Imported from CSV",
+        });
+      }
     }
   }
-  res.json({ ok: true, imported_count: imported.length, skipped_count: skipped.length,
-    error_count: errors.length, imported, skipped, errors });
+  res.json({ ok: true, inserted_count: inserted.length, updated_count: updated.length,
+    error_count: errors.length, inserted, updated, errors });
 });
 
 // ── IMPORT: Bulk import transactions ──────────────────────────────

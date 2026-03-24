@@ -4,16 +4,16 @@ import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWi
 const GF = `@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');`;
 
 const AT = {
+  US_STOCK:    { label:"US Stocks",     color:"#5a9ce0", icon:"🇺🇸", cat:"US Market" },
+  US_ETF:      { label:"US ETF",        color:"#4a8cd8", icon:"🔵", cat:"US Market" },
+  CRYPTO:      { label:"Crypto",        color:"#f7931a", icon:"₿",  cat:"US Market" },
+  US_BOND:     { label:"US Bonds",      color:"#7095b0", icon:"📜", cat:"US Market" },
+  IN_STOCK:    { label:"Indian Stocks", color:"#e07c5a", icon:"📈", cat:"Indian Market" },
+  IN_ETF:      { label:"Indian ETF",   color:"#f0a050", icon:"🔷", cat:"Indian Market" },
+  MF:          { label:"Mutual Fund",   color:"#a084ca", icon:"📊", cat:"Indian Market" },
   FD:          { label:"Fixed Deposit", color:"#c9a84c", icon:"🏦", cat:"Debt" },
   PPF:         { label:"PPF",           color:"#4caf9a", icon:"📗", cat:"Debt" },
   EPF:         { label:"EPF",           color:"#6ec0c9", icon:"🏛️", cat:"Debt" },
-  MF:          { label:"Mutual Fund",   color:"#a084ca", icon:"📊", cat:"Market" },
-  IN_STOCK:    { label:"Indian Stocks", color:"#e07c5a", icon:"📈", cat:"Market" },
-  IN_ETF:      { label:"Indian ETF",   color:"#f0a050", icon:"🔷", cat:"Market" },
-  US_STOCK:    { label:"US Stocks",     color:"#5a9ce0", icon:"🇺🇸", cat:"Market" },
-  US_ETF:      { label:"US ETF",        color:"#4a8cd8", icon:"🔵", cat:"Market" },
-  US_BOND:     { label:"US Bonds",      color:"#7095b0", icon:"📜", cat:"Debt" },
-  CRYPTO:      { label:"Crypto",        color:"#f7931a", icon:"₿",  cat:"Market" },
   REAL_ESTATE: { label:"Real Estate",  color:"#7cb87c", icon:"🏠", cat:"Physical" },
 };
 const USD_TYPES = new Set(["US_STOCK","US_ETF","US_BOND","CRYPTO"]);
@@ -59,16 +59,8 @@ function getXIRR(h){const cur=getVal(h),inv=getInv(h);if(!h.start_date||cur<=0)r
 
 // ── Multi-currency support ───────────────────────────────────────
 const CURRENCIES = {
-  INR:  { symbol:"₹",  locale:"en-IN",  name:"Indian Rupee" },
   USD:  { symbol:"$",  locale:"en-US",  name:"US Dollar" },
-  EUR:  { symbol:"€",  locale:"de-DE",  name:"Euro" },
-  GBP:  { symbol:"£",  locale:"en-GB",  name:"British Pound" },
-  SGD:  { symbol:"S$", locale:"en-SG",  name:"Singapore Dollar" },
-  AED:  { symbol:"د.إ",locale:"ar-AE",  name:"UAE Dirham" },
-  AUD:  { symbol:"A$", locale:"en-AU",  name:"Australian Dollar" },
-  JPY:  { symbol:"¥",  locale:"ja-JP",  name:"Japanese Yen" },
-  CAD:  { symbol:"C$", locale:"en-CA",  name:"Canadian Dollar" },
-  CHF:  { symbol:"Fr", locale:"de-CH",  name:"Swiss Franc" },
+  INR:  { symbol:"₹",  locale:"en-IN",  name:"Indian Rupee" },
 };
 // fmt and fmtCr are now driven by a shared currency context set per-user
 // Default to INR; overridden after profile loads
@@ -788,7 +780,7 @@ export default function App() {
   const [importState, setImportState] = useState({
     mode: null, step: "upload", format: "", holdings: [], transactions: [],
     warnings: [], progress: 0, result: null, dragOver: false,
-    skipDuplicates: true, assignMember: "",
+    assignMember: "",
   });
   const [pdfState,       setPdfState]       = useState({loading:false,summary:""});
   const [artifactHolding,setArtifactHolding]= useState(null);
@@ -799,6 +791,7 @@ export default function App() {
   const [globalMfNav,     setGlobalMfNav]     = useState(null);   // {nav, date, is_estimated}
   const [globalNavLoading,setGlobalNavLoading]= useState(false);
   const [globalNavError,  setGlobalNavError]  = useState("");
+  const [demoMode,        setDemoMode]        = useState(false);
 
   // ── Budget state ─────────────────────────────────────────────────
   const [budgetStatements,  setBudgetStatements]  = useState([]);
@@ -890,37 +883,10 @@ export default function App() {
           setGoals(portfolio.goals||[]);
           setAlerts(portfolio.alerts||[]);
         } else {
-          // First time — seed with demo data
-          setMembers(SEED.members);
-          setGoals(SEED.goals);
-          setAlerts(SEED.alerts);
-          // Save portfolio metadata
-          api("/api/portfolio",{method:"POST",body:JSON.stringify({members:SEED.members,goals:SEED.goals,alerts:SEED.alerts})}).catch(()=>{});
-          // Seed demo holdings + transactions in background
-          (async()=>{
-            try{
-              const createdIds = {};
-              for(const h of SEED.holdings){
-                const id = h.id+"_"+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
-                const payload={id,member_id:h.member_id,type:h.type,name:h.name,ticker:h.ticker||"",scheme_code:h.scheme_code||"",
-                  purchase_value:h.purchase_value||0,current_value:h.current_value||0,principal:h.principal||null,
-                  interest_rate:h.interest_rate||null,start_date:h.start_date||null,maturity_date:h.maturity_date||null,
-                  usd_inr_rate:h.usd_inr_rate||83.2,current_price:null,notes:"__demo__"};
-                await api("/api/holdings",{method:"POST",body:JSON.stringify(payload)}).catch(()=>{});
-                createdIds[h.id]=id;
-                // Add transactions
-                const txns=SEED.transactions[h.id]||[];
-                for(const t of txns){
-                  await api("/api/transactions",{method:"POST",body:JSON.stringify({
-                    holding_id:id,txn_type:t.type||"BUY",units:t.units,price:t.price,txn_date:t.date,notes:"Demo data __demo__"
-                  })}).catch(()=>{});
-                }
-              }
-              // Reload holdings after seeding
-              const freshHlds=await api("/api/holdings");
-              setHoldings(freshHlds||[]);
-            }catch(e){console.warn("Demo seed error:",e.message);}
-          })();
+          // First time — show empty state (no demo seeding to DB)
+          setMembers([]);
+          setGoals([]);
+          setAlerts([]);
         }
         setHoldings(hlds||[]);
         // Compute last price refresh time from holdings
@@ -971,6 +937,7 @@ export default function App() {
 
   // ── CRUD ──
   async function saveHolding(){
+    if(demoMode) exitDemoMode();
     const h={
       ...form,
       id: editHolding?.id||uid(),
@@ -998,6 +965,7 @@ export default function App() {
   }
 
   async function addTransaction(){
+    if(demoMode){ exitDemoMode(); return; }
     if(!txnForm.holding_id){ alert("Select a holding"); return; }
     const selH = holdings.find(h=>h.id===txnForm.holding_id);
     const isMFGlobal = selH?.type==="MF";
@@ -1279,7 +1247,8 @@ ${alertLines||"  None"}`;
   }
 
   async function executeImport() {
-    const { mode, holdings: impHoldings, transactions: impTxns, skipDuplicates, assignMember } = importState;
+    if(demoMode) exitDemoMode();
+    const { mode, holdings: impHoldings, transactions: impTxns, assignMember } = importState;
     setImportState(s => ({ ...s, step: "importing", progress: 0 }));
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1292,10 +1261,9 @@ ${alertLines||"  None"}`;
         });
         result = await res.json();
       } else {
-        const toImport = skipDuplicates ? impHoldings.filter(h => !h._duplicate) : impHoldings;
         const res = await fetch("/api/holdings/import", {
           method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({ holdings: toImport, member_id: assignMember || members[0]?.id || "", skip_duplicates: skipDuplicates }),
+          body: JSON.stringify({ holdings: impHoldings, member_id: assignMember || members[0]?.id || "" }),
         });
         result = await res.json();
       }
@@ -1309,7 +1277,7 @@ ${alertLines||"  None"}`;
 
   function resetImport() {
     setImportState({ mode: null, step: "upload", format: "", holdings: [], transactions: [],
-      warnings: [], progress: 0, result: null, dragOver: false, skipDuplicates: true, assignMember: "" });
+      warnings: [], progress: 0, result: null, dragOver: false, assignMember: "" });
   }
 
   function openImportModal() {
@@ -1337,6 +1305,46 @@ ${alertLines||"  None"}`;
       });
       setPdfState({loading:false, summary:data.content?.find(c=>c.type==="text")?.text||""});
     }catch(e){ setPdfState({loading:false, summary:"AI summary unavailable: "+e.message}); }
+  }
+
+  // ── Demo mode (client-side only, no DB persistence) ──
+  function loadDemoData() {
+    // Build enriched holdings with computed fields for display
+    const demoHoldings = SEED.holdings.map(h => {
+      const txns = (SEED.transactions[h.id] || []).map(t => ({
+        id: "dt_" + Math.random().toString(36).slice(2, 8),
+        holding_id: h.id,
+        txn_type: t.type || "BUY",
+        units: t.units, price: t.price,
+        txn_date: t.date, notes: "Demo",
+      }));
+      const buys = txns.filter(t => t.txn_type === "BUY");
+      const sells = txns.filter(t => t.txn_type === "SELL");
+      const buyU = buys.reduce((s, t) => s + Number(t.units), 0);
+      const sellU = sells.reduce((s, t) => s + Number(t.units), 0);
+      const netU = buyU - sellU;
+      const avgC = buyU > 0 ? buys.reduce((s, t) => s + Number(t.units) * Number(t.price), 0) / buyU : 0;
+      return {
+        ...h, transactions: txns, artifacts: [],
+        net_units: netU, avg_cost: avgC, units: netU,
+        purchase_price: avgC, purchase_nav: avgC,
+        purchase_value: h.purchase_value || avgC * netU,
+        start_date: h.start_date || (txns.length ? txns.sort((a, b) => new Date(a.txn_date) - new Date(b.txn_date))[0]?.txn_date : null),
+      };
+    });
+    setHoldings(demoHoldings);
+    setMembers(SEED.members);
+    setGoals(SEED.goals);
+    setAlerts(SEED.alerts);
+    setDemoMode(true);
+  }
+
+  function exitDemoMode() {
+    setDemoMode(false);
+    setHoldings([]);
+    setMembers([]);
+    setGoals([]);
+    setAlerts([]);
   }
 
   // ── Derived data ──
@@ -1383,8 +1391,7 @@ ${alertLines||"  None"}`;
           <button className="btn-o" onClick={()=>openImportModal()}>⇑ Import</button>
           <input ref={importFileRef} type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){handleImportFile(e.target.files[0]);e.target.value="";}}}/>
           <button className="btn-g" onClick={generatePDF}>⤓ PDF</button>
-          <button className="btn-o" onClick={()=>{setForm(BF);setEditHolding(null);setModal("holding");}}>+ Holding</button>
-          <button className="btn-p" onClick={()=>{setTxnForm(BT);setGlobalTxnModal(true);}}>+ Transaction</button>
+          <button className="btn-p" onClick={()=>setModal("add")}>+ Add</button>
           {/* User */}
           <div style={{display:"flex",alignItems:"center",gap:".4rem",paddingLeft:".4rem",borderLeft:"1px solid rgba(255,255,255,.07)"}}>
             {user.user_metadata?.avatar_url
@@ -1444,28 +1451,36 @@ ${alertLines||"  None"}`;
 
         {/* ── OVERVIEW ── */}
         {tab==="overview"&&(<>
-          {/* Option 3: Demo data banner */}
-          {holdings.some(h=>(h.notes||"").includes("__demo__"))&&(
+          {/* Demo data banner */}
+          {demoMode&&(
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:".6rem",
               padding:".7rem 1rem",marginBottom:"1rem",
               background:"rgba(160,132,202,.08)",border:"1px solid rgba(160,132,202,.25)",borderRadius:8}}>
               <div style={{display:"flex",alignItems:"center",gap:".6rem"}}>
                 <span style={{fontSize:"1.1rem"}}>👋</span>
                 <div>
-                  <div style={{fontSize:".8rem",color:"rgba(160,132,202,.9)",fontWeight:500}}>You're viewing demo data</div>
-                  <div style={{fontSize:".7rem",color:"rgba(232,224,208,.4)",marginTop:".1rem"}}>Add your first real holding to get started — demo data clears automatically.</div>
+                  <div style={{fontSize:".8rem",color:"rgba(160,132,202,.9)",fontWeight:500}}>You're viewing sample data (view only)</div>
+                  <div style={{fontSize:".7rem",color:"rgba(232,224,208,.4)",marginTop:".1rem"}}>This is not saved anywhere. Add your own data to get started — sample data disappears automatically.</div>
                 </div>
               </div>
               <button className="btn-sm" style={{borderColor:"rgba(160,132,202,.4)",color:"rgba(160,132,202,.8)",whiteSpace:"nowrap"}}
-                onClick={async()=>{
-                  const demoIds=holdings.filter(h=>(h.notes||"").includes("__demo__")).map(h=>h.id);
-                  for(const id of demoIds) await api(`/api/holdings/${id}`,{method:"DELETE"}).catch(()=>{});
-                  // Also clear portfolio so goals/members reset cleanly
-                  await api("/api/portfolio",{method:"POST",body:JSON.stringify({members:[],goals:[],alerts:[]})}).catch(()=>{});
-                  setHoldings([]); setMembers([]); setGoals([]); setAlerts([]);
-                }}>
-                🗑 Clear Demo Data
+                onClick={exitDemoMode}>
+                ✕ Exit Demo
               </button>
+            </div>
+          )}
+          {/* Empty state with demo button */}
+          {!demoMode&&holdings.length===0&&(
+            <div style={{textAlign:"center",padding:"2.5rem 1rem",marginBottom:"1rem",background:"rgba(255,255,255,.02)",border:"1px dashed rgba(255,255,255,.1)",borderRadius:12}}>
+              <div style={{fontSize:"2rem",marginBottom:".7rem"}}>📂</div>
+              <div style={{fontSize:".9rem",color:"rgba(232,224,208,.7)",fontWeight:500,marginBottom:".3rem"}}>Your portfolio is empty</div>
+              <div style={{fontSize:".75rem",color:"rgba(232,224,208,.35)",marginBottom:"1.2rem",maxWidth:360,margin:"0 auto 1.2rem"}}>
+                Import a broker export or add holdings manually. Or try the demo to see how things look.
+              </div>
+              <div style={{display:"flex",gap:".7rem",justifyContent:"center",flexWrap:"wrap"}}>
+                <button className="btns" onClick={()=>setModal("add")}>+ Add to portfolio</button>
+                <button className="btn-o" onClick={loadDemoData}>Try sample data</button>
+              </div>
             </div>
           )}
           <div className="mg">
@@ -1605,7 +1620,7 @@ ${alertLines||"  None"}`;
             </div>);
           })()}
 
-          {/* ── XIRR vs BENCHMARK — MF & ETF only ── */}
+          {/* ── XIRR vs BENCHMARK — all market holdings ── */}
           {(()=>{
             // Benchmark CAGR from fetched prices
             const benchCagr = benchmarkData.length>=2?(()=>{
@@ -1615,21 +1630,21 @@ ${alertLines||"  None"}`;
               return yrs>0?(Math.pow(last/first,1/yrs)-1)*100:null;
             })():null;
 
-            // MF/ETF holdings filtered by member
-            const mfEtfH = holdings.filter(h=>["MF","IN_ETF"].includes(h.type)
+            // All market holdings (US + Indian MF/ETF/Stocks) filtered by member
+            const mktH = holdings.filter(h=>["MF","IN_ETF","IN_STOCK","US_STOCK","US_ETF","CRYPTO"].includes(h.type)
               &&(benchmarkMember==="all"||h.member_id===benchmarkMember)
               &&getVal(h)>0&&getXIRR(h)!==null);
 
             // Aggregate XIRR for the filtered set
             const aggXirr=(()=>{
               const cfs=[],dates=[];
-              for(const h of mfEtfH){
+              for(const h of mktH){
                 for(const t of (h.transactions||[])){
                   cfs.push(t.txn_type==="BUY"?-(+t.units)*(+t.price):(+t.units)*(+t.price));
                   dates.push(new Date(t.txn_date));
                 }
               }
-              const totalCur=mfEtfH.reduce((s,h)=>s+getVal(h),0);
+              const totalCur=mktH.reduce((s,h)=>s+getVal(h),0);
               if(!totalCur) return null;
               cfs.push(totalCur); dates.push(new Date());
               return xirr(cfs,dates);
@@ -1637,12 +1652,16 @@ ${alertLines||"  None"}`;
 
             // Benchmark mapping per holding category
             const BENCH_MAP={
+              "US_STOCK":"S&P 500","US_ETF":"S&P 500","CRYPTO":"Bitcoin",
               "MF-Large Cap":"Nifty 100","MF-Mid Cap":"Nifty Midcap 150",
               "MF-Small Cap":"Nifty Smallcap 250","MF-Flexi Cap":"Nifty 500",
               "MF-Index":"Nifty 50","IN_ETF-Gold":"Gold","IN_ETF-Index":"Nifty 50",
-              "Default":"Nifty 50",
+              "IN_STOCK":"Nifty 50","Default":"S&P 500",
             };
             const getBenchLabel=(h)=>{
+              if(["US_STOCK","US_ETF"].includes(h.type)) return "S&P 500";
+              if(h.type==="CRYPTO") return "Bitcoin";
+              if(h.type==="IN_STOCK") return "Nifty 50";
               const n=h.name.toLowerCase();
               if(n.includes("gold")) return "Gold";
               if(n.includes("midcap")||n.includes("mid cap")) return "Nifty Midcap 150";
@@ -1650,17 +1669,17 @@ ${alertLines||"  None"}`;
               if(n.includes("flexi")||n.includes("multi")) return "Nifty 500";
               if(n.includes("nifty 50")||n.includes("index")) return "Nifty 50";
               if(n.includes("sensex")) return "Sensex";
-              if(n.includes("nasdaq")||n.includes("us")) return "Nasdaq 100";
+              if(n.includes("nasdaq")||n.includes("us")||n.includes("s&p")) return "S&P 500";
               return "Nifty 50";
             };
 
-            const sortedH=[...mfEtfH].sort((a,b)=>getVal(b)-getVal(a));
+            const sortedH=[...mktH].sort((a,b)=>getVal(b)-getVal(a));
             const maxXr=Math.max(...sortedH.map(h=>Math.abs(getXIRR(h)||0)),1);
 
             return(
             <div className="card">
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem",flexWrap:"wrap",gap:".5rem"}}>
-                <div className="ctitle" style={{margin:0}}>XIRR vs Benchmark · MF & ETF</div>
+                <div className="ctitle" style={{margin:0}}>XIRR vs Benchmark</div>
                 <div style={{display:"flex",gap:".5rem",alignItems:"center",flexWrap:"wrap"}}>
                   <select className="fi fs" style={{width:140,marginBottom:0,fontSize:".72rem",padding:".28rem .6rem"}}
                     value={benchmarkMember} onChange={e=>setBenchmarkMember(e.target.value)}>
@@ -1686,20 +1705,20 @@ ${alertLines||"  None"}`;
               {/* Aggregate XIRR vs Nifty */}
               <div style={{display:"flex",gap:"1rem",marginBottom:"1rem",flexWrap:"wrap"}}>
                 {[
-                  {label:"Your MF+ETF XIRR",val:aggXirr,color:"#c9a84c"},
-                  {label:`Nifty 50 CAGR (${benchmarkPeriod})`,val:benchCagr,color:"#5a9ce0"},
+                  {label:"Your Portfolio XIRR",val:aggXirr,color:"#c9a84c"},
+                  {label:`Nifty 50 / S&P 500 CAGR (${benchmarkPeriod})`,val:benchCagr,color:"#5a9ce0"},
                 ].map(item=>(
                   <div key={item.label} style={{flex:1,minWidth:140,padding:".7rem .9rem",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:7}}>
                     <div style={{fontSize:".63rem",color:"rgba(232,224,208,.35)",letterSpacing:".06em",textTransform:"uppercase",marginBottom:".35rem"}}>{item.label}</div>
                     <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.3rem",color:item.val==null?"rgba(232,224,208,.25)":item.val>=0?item.color:"#e07c5a"}}>
                       {item.val==null?"—":`${item.val>=0?"+":""}${item.val.toFixed(1)}%`}
                     </div>
-                    {item.val!=null&&aggXirr!=null&&item.label.includes("Nifty")&&(
+                    {item.val!=null&&aggXirr!=null&&item.label.includes("CAGR")&&(
                       <div style={{fontSize:".68rem",marginTop:".25rem",color:aggXirr>item.val?"#4caf9a":"#e07c5a",fontWeight:500}}>
                         {aggXirr>item.val?`↑ Outperforming by ${(aggXirr-item.val).toFixed(1)}%`:`↓ Underperforming by ${(item.val-aggXirr).toFixed(1)}%`}
                       </div>
                     )}
-                    {benchmarkData.length===0&&item.label.includes("Nifty")&&(
+                    {benchmarkData.length===0&&item.label.includes("CAGR")&&(
                       <div style={{fontSize:".65rem",color:"rgba(232,224,208,.25)",marginTop:".2rem"}}>Select a period to load benchmark</div>
                     )}
                   </div>
@@ -1707,7 +1726,7 @@ ${alertLines||"  None"}`;
               </div>
 
               {/* Per-holding XIRR with benchmark label */}
-              {sortedH.length===0?<div className="empty">No MF or ETF holdings{benchmarkMember!=="all"?" for this member":""}</div>:(
+              {sortedH.length===0?<div className="empty">No market holdings{benchmarkMember!=="all"?" for this member":""}</div>:(
                 <div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:".4rem .75rem",fontSize:".68rem",
                     color:"rgba(232,224,208,.28)",letterSpacing:".07em",textTransform:"uppercase",marginBottom:".4rem",paddingBottom:".4rem",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
@@ -1747,7 +1766,7 @@ ${alertLines||"  None"}`;
             <div className={`fchip${filterType==="ALL"?" act":""}`} onClick={()=>setFilterType("ALL")}>All</div>
             {Object.entries(AT).map(([k,v])=>(<div key={k} className={`fchip${filterType===k?" act":""}`} onClick={()=>setFilterType(k)}>{v.icon} {v.label}</div>))}
           </div>
-          {visH.length===0?<div className="empty">No holdings — add one or import CSV</div>:(
+          {visH.length===0?<div className="empty">{demoMode?"No holdings match the current filter":"No holdings yet"} — <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setModal("add")}>add to portfolio</span>{!demoMode&&<>{" or "}<span style={{color:"#a084ca",cursor:"pointer",textDecoration:"underline"}} onClick={loadDemoData}>try sample data</span></>}</div>:(
             <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",margin:"0 -0.9rem",padding:"0 0.9rem"}}>
               <table className="ht" style={{minWidth:680}}>
                 <thead><tr>
@@ -3045,7 +3064,7 @@ ${alertLines||"  None"}`;
       <Overlay onClose={()=>{setModal(null);setEditHolding(null);setForm(BF);setMfSearch("");setMfResults([]);setMfNav(null);setStockInfo(null);setStockSearch("");setStockResults([]);setUsSearch("");setUsResults([]);setEtfSearch("");setEtfResults([]);setEtfInfo(null);}}>
         <div className="modtitle">{editHolding?"Edit":"Add"} Holding</div>
         <div style={{fontSize:".75rem",color:"rgba(232,224,208,.38)",marginBottom:"1rem",lineHeight:1.6}}>
-          {editHolding?"Update instrument details below.":"Register the instrument. Transactions (buy/sell) are added separately via the + Transaction button."}
+          {editHolding?"Update instrument details below.":"Register the instrument. Transactions (buy/sell) are added separately via + Add > Log transaction."}
         </div>
         <div className="frow">
           <FG label="Member"><select className="fi fs" value={form.member_id} onChange={e=>setForm(f=>({...f,member_id:e.target.value}))}><option value="">Select</option>{members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></FG>
@@ -3343,7 +3362,7 @@ ${alertLines||"  None"}`;
         <FG label="Start Date"><input type="date" className="fi" value={form.start_date||""} onChange={e=>setForm(f=>({...f,start_date:e.target.value}))}/></FG>
         {["IN_STOCK","IN_ETF","US_STOCK","US_ETF","US_BOND","CRYPTO","MF"].includes(form.type)&&!editHolding&&(
           <div style={{fontSize:".72rem",color:"#4caf9a",padding:".55rem .8rem",background:"rgba(76,175,154,.07)",border:"1px solid rgba(76,175,154,.2)",borderRadius:6,marginTop:".25rem"}}>
-            ✓ After saving, "+ Transaction" will open automatically to record your first buy.
+            ✓ After saving, the transaction panel will open automatically to record your first buy.
           </div>
         )}
         <MA><button className="btnc" onClick={()=>{setModal(null);setEditHolding(null);setForm(BF);setMfSearch("");setMfResults([]);setMfNav(null);setStockInfo(null);setStockSearch("");setStockResults([]);setUsSearch("");setUsResults([]);setEtfSearch("");setEtfResults([]);setEtfInfo(null);}}>Cancel</button><button className="btns" onClick={saveHolding} disabled={!form.name||!form.member_id}>{editHolding?"Save Changes":"Add Holding"}</button></MA>
@@ -3640,37 +3659,67 @@ ${alertLines||"  None"}`;
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".75rem"}}>
             <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c"}}>Asset Types</div>
             <button className="btn-sm" onClick={()=>{
-              const newAt={id:"",label:"",icon:"📦",color:"#c9a84c",price_source:"MANUAL",currency:userCurrency||"INR",is_default:false,_editing:true};
+              const newAt={id:"",label:"",icon:"📦",color:"#c9a84c",price_source:"MANUAL",currency:userCurrency||"USD",is_default:false,_editing:true};
               setAssetTypes(p=>[...p,newAt]);
-            }}>+ Add Type</button>
+            }}>+ Add Custom Type</button>
           </div>
-          <div style={{maxHeight:260,overflowY:"auto"}}>
-            {assetTypes.map((at,i)=>(
-              <div key={at.id||i} style={{display:"flex",gap:".6rem",alignItems:"center",marginBottom:".5rem",padding:".55rem .75rem",background:"rgba(255,255,255,.03)",borderRadius:6,border:`1px solid ${at.is_default?"rgba(201,168,76,.15)":"rgba(255,255,255,.06)"}`}}>
-                <input value={at.icon} onChange={e=>setAssetTypes(p=>p.map((x,j)=>j===i?{...x,icon:e.target.value}:x))}
+          {/* Built-in types grouped by category */}
+          {["US Market","Indian Market","Debt","Physical"].map(cat=>{
+            const types = Object.entries(AT).filter(([,v])=>v.cat===cat);
+            if(!types.length) return null;
+            return(
+              <div key={cat} style={{marginBottom:".75rem"}}>
+                <div style={{fontSize:".6rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(232,224,208,.3)",marginBottom:".4rem",paddingLeft:".1rem"}}>{cat}</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:".4rem"}}>
+                  {types.map(([k,v])=>(
+                    <div key={k} style={{display:"flex",alignItems:"center",gap:".35rem",padding:".35rem .65rem",borderRadius:6,
+                      background:v.color+"12",border:`1px solid ${v.color}30`}}>
+                      <span style={{fontSize:".8rem"}}>{v.icon}</span>
+                      <span style={{fontSize:".72rem",color:v.color,fontWeight:500}}>{v.label}</span>
+                      <span style={{fontSize:".58rem",color:"rgba(232,224,208,.25)",marginLeft:".2rem"}}>
+                        {USD_TYPES.has(k)?"USD":"INR"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {/* Custom types */}
+          {assetTypes.filter(at=>!at.is_default).length>0&&(
+            <div style={{marginTop:".6rem"}}>
+              <div style={{fontSize:".6rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(232,224,208,.3)",marginBottom:".4rem"}}>Custom</div>
+            </div>
+          )}
+          <div style={{maxHeight:200,overflowY:"auto"}}>
+            {assetTypes.filter(at=>!at.is_default).map((at,i)=>{
+              const idx = assetTypes.indexOf(at);
+              return(
+              <div key={at.id||i} style={{display:"flex",gap:".6rem",alignItems:"center",marginBottom:".5rem",padding:".55rem .75rem",background:"rgba(255,255,255,.03)",borderRadius:6,border:"1px solid rgba(255,255,255,.06)"}}>
+                <input value={at.icon} onChange={e=>setAssetTypes(p=>p.map((x,j)=>j===idx?{...x,icon:e.target.value}:x))}
                   style={{width:36,background:"transparent",border:"none",fontSize:"1.1rem",textAlign:"center",outline:"none"}}/>
-                <input value={at.label} onChange={e=>setAssetTypes(p=>p.map((x,j)=>j===i?{...x,label:e.target.value}:x))}
+                <input value={at.label} onChange={e=>setAssetTypes(p=>p.map((x,j)=>j===idx?{...x,label:e.target.value}:x))}
                   style={{flex:1,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"#e8e0d0",padding:".32rem .6rem",borderRadius:4,fontSize:".78rem",fontFamily:"'DM Sans',sans-serif"}}
                   placeholder="Asset type name"/>
-                <input type="color" value={at.color} onChange={e=>setAssetTypes(p=>p.map((x,j)=>j===i?{...x,color:e.target.value}:x))}
+                <input type="color" value={at.color} onChange={e=>setAssetTypes(p=>p.map((x,j)=>j===idx?{...x,color:e.target.value}:x))}
                   style={{width:28,height:28,padding:2,borderRadius:4,border:"1px solid rgba(255,255,255,.1)",background:"transparent",cursor:"pointer"}}/>
-                <select value={at.price_source} onChange={e=>setAssetTypes(p=>p.map((x,j)=>j===i?{...x,price_source:e.target.value}:x))}
+                <select value={at.price_source} onChange={e=>setAssetTypes(p=>p.map((x,j)=>j===idx?{...x,price_source:e.target.value}:x))}
                   style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(232,224,208,.7)",padding:".3rem .5rem",borderRadius:4,fontSize:".7rem",fontFamily:"'DM Sans',sans-serif"}}>
                   {["MANUAL","YAHOO","MFAPI"].map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
                 <button className="btn-sm" style={{padding:".28rem .6rem",fontSize:".68rem"}} onClick={async()=>{
                   if(!at.label.trim()) return;
                   if(at.id){ await api(`/api/asset-types/${at.id}`,{method:"PUT",body:JSON.stringify({label:at.label,icon:at.icon,color:at.color,price_source:at.price_source})}); }
-                  else { const r=await api("/api/asset-types",{method:"POST",body:JSON.stringify({label:at.label,icon:at.icon,color:at.color,price_source:at.price_source,currency:at.currency||userCurrency,is_default:false})}); setAssetTypes(p=>p.map((x,j)=>j===i?{...x,id:r.id,_editing:false}:x)); }
+                  else { const r=await api("/api/asset-types",{method:"POST",body:JSON.stringify({label:at.label,icon:at.icon,color:at.color,price_source:at.price_source,currency:at.currency||userCurrency,is_default:false})}); setAssetTypes(p=>p.map((x,j)=>j===idx?{...x,id:r.id,_editing:false}:x)); }
                 }}>Save</button>
-                {!at.is_default&&<button className="delbtn" onClick={async()=>{
+                <button className="delbtn" onClick={async()=>{
                   if(at.id){ await api(`/api/asset-types/${at.id}`,{method:"DELETE"}); }
-                  setAssetTypes(p=>p.filter((_,j)=>j!==i));
-                }}>✕</button>}
-              </div>
-            ))}
+                  setAssetTypes(p=>p.filter((_,j)=>j!==idx));
+                }}>✕</button>
+              </div>);
+            })}
           </div>
-          <div style={{fontSize:".65rem",color:"rgba(232,224,208,.25)",marginTop:".5rem"}}>Default types cannot be deleted. Add custom types for crypto, bonds, alternatives etc.</div>
+          <div style={{fontSize:".65rem",color:"rgba(232,224,208,.25)",marginTop:".5rem"}}>Built-in types are always available. Add custom types for alternatives, commodities, etc.</div>
         </div>
 
         <MA><button className="btns" onClick={()=>setShowSettings(false)}>Done</button></MA>
@@ -3679,6 +3728,34 @@ ${alertLines||"  None"}`;
 
     <GoalPlanModal open={modal==="goalplan"} onClose={()=>setModal(null)} goals={goals} members={members} holdings={holdings} allCur={allCur} allInv={allInv}/>
     {modal==="alert"&&(<Overlay onClose={()=>setModal(null)} narrow><div className="modtitle">New Alert Rule</div><FG label="Alert Type"><select className="fi fs" value={alertForm.type} onChange={e=>setAlertForm(p=>({...p,type:e.target.value}))}><option value="ALLOCATION_DRIFT">Over-weight</option><option value="CONCENTRATION">Under-weight</option><option value="RETURN_TARGET">Return below target</option></select></FG>{alertForm.type!=="RETURN_TARGET"&&<FG label="Asset Class"><select className="fi fs" value={alertForm.assetType} onChange={e=>setAlertForm(p=>({...p,assetType:e.target.value}))}>{Object.entries(AT).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}</select></FG>}<FG label={alertForm.type==="RETURN_TARGET"?"Target Return %":"Threshold %"}><input type="number" className="fi" value={alertForm.threshold} onChange={e=>setAlertForm(p=>({...p,threshold:e.target.value}))}/></FG><FG label="Description"><input className="fi" value={alertForm.label} onChange={e=>setAlertForm(p=>({...p,label:e.target.value}))}/></FG><MA><button className="btnc" onClick={()=>setModal(null)}>Cancel</button><button className="btns" onClick={addAlert} disabled={!alertForm.threshold||!alertForm.label}>Add Alert</button></MA></Overlay>)}
+    {/* ── Unified + Add Chooser ── */}
+    {modal==="add"&&(
+      <Overlay onClose={()=>setModal(null)}>
+        <div className="modtitle">Add to portfolio</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:".65rem",marginBottom:"1rem"}}>
+          {[
+            {key:"import",icon:"📂",title:"Import file",desc:"Drop a CSV or Excel from any broker",tag:"most used",tagColor:"#4caf9a"},
+            {key:"holding",icon:"✏️",title:"Add holding",desc:"Manually add a single instrument",tag:null},
+            {key:"txn",icon:"📋",title:"Log transaction",desc:"Record a buy/sell on existing holding",tag:null},
+          ].map(opt=>(
+            <div key={opt.key} onClick={()=>{
+              setModal(null);
+              if(opt.key==="import") openImportModal();
+              else if(opt.key==="holding"){setForm(BF);setEditHolding(null);setModal("holding");}
+              else {setTxnForm(BT);setGlobalTxnModal(true);}
+            }} style={{padding:"1rem",borderRadius:10,border:`1px solid ${opt.key==="import"?"rgba(201,168,76,.35)":"rgba(255,255,255,.08)"}`,
+              background:opt.key==="import"?"rgba(201,168,76,.06)":"rgba(255,255,255,.03)",cursor:"pointer",textAlign:"center",transition:"all .15s"}}
+              onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(201,168,76,.5)"}
+              onMouseLeave={e=>e.currentTarget.style.borderColor=opt.key==="import"?"rgba(201,168,76,.35)":"rgba(255,255,255,.08)"}>
+              <div style={{fontSize:"1.3rem",marginBottom:".5rem"}}>{opt.icon}</div>
+              <div style={{fontSize:".82rem",color:"#e8e0d0",fontWeight:500,marginBottom:".3rem"}}>{opt.title}</div>
+              <div style={{fontSize:".68rem",color:"rgba(232,224,208,.4)",lineHeight:1.5}}>{opt.desc}</div>
+              {opt.tag&&<div style={{fontSize:".6rem",display:"inline-block",marginTop:".5rem",padding:".15rem .45rem",borderRadius:3,background:"rgba(76,175,154,.12)",color:opt.tagColor}}>{opt.tag}</div>}
+            </div>
+          ))}
+        </div>
+      </Overlay>
+    )}
     {modal==="import"&&(<ImportModal importState={importState} setImportState={setImportState} members={members} AT={AT} handleImportFile={handleImportFile} executeImport={executeImport} resetImport={resetImport} importFileRef={importFileRef} onClose={()=>{setModal(null);resetImport();}} fmt={fmt}/>)}
     {modal==="pdf"&&(<Overlay onClose={()=>setModal(null)}><div className="modtitle">Portfolio Report</div>{pdfState.loading?(<div style={{textAlign:"center",padding:"2.5rem 0"}}><div style={{width:34,height:34,border:"2px solid rgba(201,168,76,.2)",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 1rem"}}/><div style={{fontSize:".8rem",color:"rgba(232,224,208,.38)"}}>Generating AI commentary…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>):(<><div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".7rem"}}>AI Advisor Commentary</div><div style={{background:"rgba(201,168,76,.05)",border:"1px solid rgba(201,168,76,.14)",borderRadius:8,padding:"1rem 1.2rem",fontSize:".8rem",lineHeight:1.72,color:"rgba(232,224,208,.7)",maxHeight:260,overflowY:"auto",whiteSpace:"pre-wrap"}}>{pdfState.summary}</div></>)}<MA><button className="btnc" onClick={()=>setModal(null)}>Close</button></MA></Overlay>)}
     </>
@@ -3838,10 +3915,10 @@ function DonutChart({data,total}){
   );
 }
 function ImportModal({ importState, setImportState, members, AT, handleImportFile, executeImport, resetImport, importFileRef, onClose, fmt }) {
-  const { mode, step, format, holdings, transactions, warnings, result, dragOver, skipDuplicates, assignMember } = importState;
+  const { mode, step, format, holdings, transactions, warnings, result, dragOver, assignMember } = importState;
   const items = mode === "transactions" ? transactions : holdings;
   const dupCount = holdings.filter(h => h._duplicate).length;
-  const importCount = mode === "transactions" ? transactions.length : (skipDuplicates ? holdings.filter(h => !h._duplicate).length : holdings.length);
+  const importCount = mode === "transactions" ? transactions.length : holdings.length;
 
   const US_FORMATS = [
     { name: "Schwab", color: "#00a3e0" }, { name: "Fidelity", color: "#4a8c2a" },
@@ -3942,26 +4019,18 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
           <span style={{fontSize:".75rem",color:"rgba(232,224,208,.6)"}}>
             {items.length} {mode==="transactions"?"transaction":"holding"}{items.length!==1?"s":""} found
           </span>
-          {dupCount>0&&<span style={{fontSize:".72rem",color:"#e07c5a"}}>({dupCount} duplicate{dupCount>1?"s":""})</span>}
+          {dupCount>0&&<span style={{fontSize:".72rem",color:"#5a9ce0"}}>({dupCount} existing — will update)</span>}
         </div>
-        {mode==="holdings"&&(
+        {mode==="holdings"&&members.length>1&&(
           <div style={{display:"flex",gap:"1rem",alignItems:"center",marginBottom:".8rem",flexWrap:"wrap"}}>
-            {dupCount>0&&(
-              <label style={{display:"flex",alignItems:"center",gap:".4rem",fontSize:".73rem",color:"rgba(232,224,208,.6)",cursor:"pointer"}}>
-                <input type="checkbox" checked={skipDuplicates} onChange={e=>setImportState(s=>({...s,skipDuplicates:e.target.checked}))} style={{accentColor:"#c9a84c"}}/>
-                Skip duplicates
-              </label>
-            )}
-            {members.length>1&&(
-              <label style={{display:"flex",alignItems:"center",gap:".4rem",fontSize:".73rem",color:"rgba(232,224,208,.6)"}}>
-                Assign to:
-                <select className="fi" style={{padding:".25rem .5rem",fontSize:".72rem",width:"auto"}}
-                  value={assignMember} onChange={e=>setImportState(s=>({...s,assignMember:e.target.value}))}>
-                  <option value="">First member</option>
-                  {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
-              </label>
-            )}
+            <label style={{display:"flex",alignItems:"center",gap:".4rem",fontSize:".73rem",color:"rgba(232,224,208,.6)"}}>
+              Assign to:
+              <select className="fi" style={{padding:".25rem .5rem",fontSize:".72rem",width:"auto"}}
+                value={assignMember} onChange={e=>setImportState(s=>({...s,assignMember:e.target.value}))}>
+                <option value="">First member</option>
+                {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </label>
           </div>
         )}
         {warnings.length>0&&(
@@ -3983,9 +4052,10 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
             <table className="ht" style={{fontSize:".72rem"}}><thead><tr><th style={{width:30}}></th><th>Name</th><th>Type</th><th>Ticker/Code</th><th className="r">Units</th><th className="r">Avg Cost</th><th className="r">Invested</th></tr></thead>
             <tbody>{holdings.map((h,i)=>{
               const inv=h.purchase_value||(h.units*(h.purchase_price||h.purchase_nav||0));
-              const dimmed=h._duplicate&&skipDuplicates;
-              return(<tr key={i} style={{opacity:dimmed?.35:1}}>
-                <td>{h._duplicate&&<span title="Already in portfolio" style={{fontSize:".75rem"}}>⚠️</span>}</td>
+              return(<tr key={i}>
+                <td>{h._duplicate
+                  ?<span title="Existing — will update" style={{fontSize:".65rem",padding:".12rem .35rem",borderRadius:3,background:"rgba(90,156,224,.12)",color:"#5a9ce0"}}>↻</span>
+                  :<span title="New holding" style={{fontSize:".65rem",padding:".12rem .35rem",borderRadius:3,background:"rgba(76,175,154,.12)",color:"#4caf9a"}}>+</span>}</td>
                 <td style={{fontWeight:500}}>{h.name}</td>
                 <td><span className="tbadge2" style={{background:(AT[h.type]?.color||"#888")+"22",color:AT[h.type]?.color||"#888"}}>{AT[h.type]?.icon||"📦"} {AT[h.type]?.label||h.type}</span></td>
                 <td className="mono dim">{h.ticker||h.scheme_code||"—"}</td>
@@ -4019,8 +4089,11 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
       {step==="done"&&result&&(
         <div style={{padding:".5rem 0"}}>
           <div style={{background:"rgba(76,175,154,.08)",border:"1px solid rgba(76,175,154,.2)",borderRadius:10,padding:"1rem 1.2rem",marginBottom:".8rem"}}>
-            <div style={{fontSize:"1.1rem",fontWeight:600,color:"#4caf9a",marginBottom:".3rem"}}>✓ {result.imported_count||0} imported</div>
-            {result.skipped_count>0&&<div style={{fontSize:".75rem",color:"rgba(232,224,208,.5)"}}>{result.skipped_count} skipped (duplicates)</div>}
+            <div style={{fontSize:"1.1rem",fontWeight:600,color:"#4caf9a",marginBottom:".3rem"}}>
+              ✓ {(result.inserted_count||0)+(result.updated_count||0)+(result.imported_count||0)} processed
+            </div>
+            {result.inserted_count>0&&<div style={{fontSize:".75rem",color:"rgba(232,224,208,.6)"}}>+ {result.inserted_count} new holding{result.inserted_count>1?"s":""} added</div>}
+            {result.updated_count>0&&<div style={{fontSize:".75rem",color:"#5a9ce0"}}>↻ {result.updated_count} existing holding{result.updated_count>1?"s":""} updated</div>}
             {result.unmatched_count>0&&(<div style={{fontSize:".75rem",color:"#e07c5a",marginTop:".3rem"}}>
               ⚠ {result.unmatched_count} transaction{result.unmatched_count>1?"s":""} not matched to holdings:
               <div style={{fontSize:".7rem",color:"rgba(232,224,208,.4)",marginTop:".2rem"}}>{result.unmatched?.join(", ")}</div>
