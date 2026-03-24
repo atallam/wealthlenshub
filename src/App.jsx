@@ -67,7 +67,55 @@ function getInv(h){
   }
 }
 function xirr(cfs,dates){if(cfs.length<2)return null;const d0=dates[0],yrs=dates.map(d=>(d-d0)/(864e5*365.25));const npv=r=>cfs.reduce((s,c,i)=>s+c/Math.pow(1+r,yrs[i]),0);const dnpv=r=>cfs.reduce((s,c,i)=>s-yrs[i]*c/Math.pow(1+r,yrs[i]+1),0);let r=0.1;for(let i=0;i<100;i++){const f=npv(r),df=dnpv(r);if(Math.abs(df)<1e-12)break;const nr=r-f/df;if(Math.abs(nr-r)<1e-7){r=nr;break;}r=nr;if(r<-0.999)r=-0.999;}return isFinite(r)?r*100:null;}
-function getXIRR(h){const cur=getVal(h),inv=getInv(h);if(!h.start_date||cur<=0)return null;const s=new Date(h.start_date),n=new Date();if(n<=s)return null;return xirr([-inv,cur],[s,n]);}
+
+// Returns { value: number|null, method: "xirr"|"cagr"|"simple"|null }
+function getXIRR(h){
+  const cur = getVal(h);
+  const inv = getInv(h);
+  if(cur <= 0 || inv <= 0) return { value: null, method: null };
+  const txns = h.transactions || [];
+  const fx = fxFor(h);
+
+  // ── Path A: XIRR from actual transaction history (best) ──
+  if(txns.length > 0) {
+    const cfs = [], dates = [];
+    for(const t of txns) {
+      if(!t.txn_date) continue;
+      const units = +t.units || 0;
+      const price = +t.price || 0;
+      if(!units || !price) continue;
+      const amt = units * price * fx;
+      cfs.push(t.txn_type === "BUY" ? -amt : amt);
+      dates.push(new Date(t.txn_date));
+    }
+    if(cfs.length > 0) {
+      cfs.push(cur);
+      dates.push(new Date());
+      const earliest = Math.min(...dates.map(d => d.getTime()));
+      const daySpan = (Date.now() - earliest) / 864e5;
+      if(daySpan >= 30) {
+        const val = xirr(cfs, dates);
+        if(val !== null) return { value: val, method: "xirr" };
+      }
+    }
+  }
+
+  // ── Path B: CAGR from start_date (if known) ──
+  if(h.start_date) {
+    const s = new Date(h.start_date), n = new Date();
+    const yrs = (n - s) / (864e5 * 365.25);
+    if(yrs >= 0.08) { // ~1 month minimum
+      const cagr = (Math.pow(cur / inv, 1 / yrs) - 1) * 100;
+      if(isFinite(cagr)) return { value: cagr, method: "cagr" };
+    }
+  }
+
+  // ── Path C: Simple return only (no time component) ──
+  const simpleReturn = ((cur - inv) / inv) * 100;
+  if(isFinite(simpleReturn)) return { value: simpleReturn, method: "simple" };
+
+  return { value: null, method: null };
+}
 
 // ── Multi-currency support ───────────────────────────────────────
 const CURRENCIES = {
@@ -1148,7 +1196,7 @@ export default function App() {
       const txnSummary = txns.length>0
         ? `  transactions(${txns.length}): buys=${txns.filter(t=>t.txn_type==="BUY").length}, sells=${txns.filter(t=>t.txn_type==="SELL").length}, net_units=${h.net_units?.toFixed(4)||"?"}, avg_cost=₹${h.avg_cost?.toFixed(2)||"?"}`
         : "";
-      return `  [${AT[h.type]?.label}] ${h.name} (${mn}): current=${fmtCr(cur)}, invested=${fmtCr(inv)}, gain=${g>=0?"+":""}${fmtCr(g)}, return=${inv>0?(g/inv*100).toFixed(1):0}%${xr!=null?`, xirr=${xr.toFixed(1)}%`:""}${h.ticker?`, ticker=${h.ticker}`:""}${h.scheme_code?`, scheme=${h.scheme_code}`:""}${txnSummary}`;
+      return `  [${AT[h.type]?.label}] ${h.name} (${mn}): current=${fmtCr(cur)}, invested=${fmtCr(inv)}, gain=${g>=0?"+":""}${fmtCr(g)}, return=${inv>0?(g/inv*100).toFixed(1):0}%${xr.value!=null?`, ${xr.method}=${xr.value.toFixed(1)}%`:""}${h.ticker?`, ticker=${h.ticker}`:""}${h.scheme_code?`, scheme=${h.scheme_code}`:""}${txnSummary}`;
     }).join("\n");
 
     const allocationLines = Object.entries(AT).map(([t,a])=>{
@@ -1646,7 +1694,7 @@ ${alertLines||"  None"}`;
                   <th className="r">Units</th><th className="r">Avg Price</th>
                   <th className="r">Cur. Price</th>
                   <th className="r">Invested</th><th className="r">Current Value</th>
-                  <th className="r">Gain</th><th className="r">Return</th><th className="r">XIRR</th>
+                  <th className="r">Gain</th><th className="r">Return</th><th className="r" title="XIRR (from transactions) → CAGR (from start date) → Simple return">Ann. Return</th>
                   <th className="r">Price source</th><th/>
                 </tr></thead>
                 <tbody>
@@ -1703,7 +1751,24 @@ ${alertLines||"  None"}`;
                         <td className="r mono" style={{fontWeight:500}}>{fmt(cur)}</td>
                         <td className={`r mono${g>=0?" gain":" loss"}`}>{g>=0?"+":""}{fmt(g)}</td>
                         <td className={`r mono${p>=0?" gain":" loss"}`}>{fmtPct(p)}</td>
-                        <td className="r mono" style={{color:xr!=null&&xr>12?"#4caf9a":xr!=null?"#e07c5a":"rgba(232,224,208,.28)"}}>{xr!=null?xr.toFixed(1)+"%":"—"}</td>
+                        <td className="r mono">
+                          {xr.value!=null?(
+                            <div title={
+                              xr.method==="xirr"?"XIRR — annualized return from transaction cash flows"
+                              :xr.method==="cagr"?"CAGR — annualized return from start date"
+                              :"Simple return — gain ÷ invested (add buy dates for XIRR)"
+                            }>
+                              <div style={{color:xr.value>=0?"#4caf9a":"#e07c5a",fontWeight:xr.method==="xirr"?600:400}}>
+                                {xr.value>=0?"+":""}{xr.value.toFixed(1)}%
+                              </div>
+                              <div style={{fontSize:".55rem",color:xr.method==="xirr"?"rgba(76,175,154,.6)":xr.method==="cagr"?"rgba(90,156,224,.5)":"rgba(232,224,208,.28)",marginTop:1}}>
+                                {xr.method==="xirr"?"XIRR":xr.method==="cagr"?"CAGR":"simple"}
+                              </div>
+                            </div>
+                          ):(
+                            <span style={{color:"rgba(232,224,208,.22)"}} title="No data — add buy dates or cost basis for returns">—</span>
+                          )}
+                        </td>
                         <td className="r">
                           {isLive
                             ?<span style={{fontSize:".62rem",background:"rgba(76,175,154,.12)",color:"#4caf9a",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(76,175,154,.25)"}}>● Live · {ago(h.price_fetched_at)}</span>
