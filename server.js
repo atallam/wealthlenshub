@@ -869,7 +869,7 @@ app.get("*", (_, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅  Wealth Lens Hub running on port ${PORT} (public multi-tenant)`);
+  console.log(`✅  WealthLens Pro running on port ${PORT} (public multi-tenant)`);
   console.log(`📊  Price sources: Twelve Data → Yahoo Finance | MF: MFAPI → AMFI | FX: exchangerate-api → Yahoo → ${FX_FALLBACK}`);
   console.log(`🔐  Google Auth via Supabase`);
   console.log(`💾  Postgres DB + file storage via Supabase`);
@@ -883,6 +883,7 @@ import { createRequire } from "module";
 const _require = createRequire(import.meta.url);
 const Papa = _require("papaparse");
 const XLSX = _require("xlsx");
+const pdfParse = _require("pdf-parse");
 import crypto from "crypto";
 
 // ── Encryption helpers (AES-256-GCM) ─────────────────────────────
@@ -1093,7 +1094,8 @@ function detectAndParseHoldings(text, fileName = "") {
       return parseSchwabHoldings(rows, headerIdx);
     }
     // Fidelity (Account Name/Number, Symbol, Description, Quantity, Last Price, Current Value, ...)
-    if (h.some(c => /account/i.test(c)) && h.some(c => c === "symbol") && h.some(c => /last\s*price/i.test(c))) {
+    // Also matches without Account column (some Fidelity exports omit it)
+    if (h.some(c => c === "symbol") && h.some(c => /last\s*price|closing\s*price/i.test(c)) && h.some(c => /current\s*value|total\s*gain/i.test(c))) {
       return parseFidelityHoldings(rows, headerIdx);
     }
     // Robinhood (Instrument, Quantity, Average Cost, Equity, ...)
@@ -1361,28 +1363,37 @@ function parseSchwabHoldings(rows, headerIdx) {
 function parseFidelityHoldings(rows, headerIdx) {
   const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
   const col = {
+    account: h.findIndex(c => /account/i.test(c)),
     symbol: h.findIndex(c => c === "symbol"),
-    name:   h.findIndex(c => c === "description"),
-    qty:    h.findIndex(c => /quantity/i.test(c)),
-    price:  h.findIndex(c => /last\s*price/i.test(c)),
+    name:   h.findIndex(c => /description|security/i.test(c)),
+    qty:    h.findIndex(c => /quantity|shares/i.test(c)),
+    price:  h.findIndex(c => /last\s*price|closing\s*price|price/i.test(c)),
     cv:     h.findIndex(c => /current\s*value/i.test(c)),
-    cb:     h.findIndex(c => /cost\s*basis/i.test(c)),
+    cb:     h.findIndex(c => /cost\s*basis(?!\s*per)/i.test(c)),
+    cbps:   h.findIndex(c => /cost\s*basis\s*per\s*share/i.test(c)),
+    type:   h.findIndex(c => c === "type"),
   };
-  const holdings = [], warnings = [];
+  const holdings = [], warnings = [], accounts = new Set();
   for (const r of rows.slice(headerIdx + 1)) {
     const symbol = (r[col.symbol] || "").trim();
-    if (!symbol || /pending|cash|core|total/i.test(symbol)) continue;
-    const name = (r[col.name] || symbol).trim();
+    if (!symbol || /pending|cash|core|total|overall/i.test(symbol)) continue;
+    const name = col.name >= 0 ? (r[col.name] || symbol).trim() : symbol;
     const units = pNum(r[col.qty]);
     const price = pNum(r[col.price]);
     if (units === 0) { warnings.push(`Skipped "${symbol}": zero quantity`); continue; }
-    const cv = pNum(r[col.cv]), cb = pNum(r[col.cb]);
-    const type = classifyUSAsset(symbol, name);
+    const cv = pNum(r[col.cv]);
+    const cb = pNum(r[col.cb]);
+    const cbps = col.cbps >= 0 ? pNum(r[col.cbps]) : (cb && units ? cb / units : 0);
+    const acct = col.account >= 0 ? (r[col.account] || "").trim() : "";
+    if (acct) accounts.add(acct);
+    const assetType = col.type >= 0 ? (r[col.type] || "").trim() : "";
+    const type = classifyUSAsset(symbol, name, assetType);
     holdings.push({ name, type, ticker: symbol, units,
-      purchase_price: cb && units ? cb / units : price, current_price: price,
-      purchase_value: cb || units * price, current_value: cv || units * price });
+      purchase_price: cbps || price, current_price: price,
+      purchase_value: cb || units * (cbps || price), current_value: cv || units * price,
+      _account_name: acct });
   }
-  return { format: "Fidelity", holdings, warnings };
+  return { format: "Fidelity", holdings, warnings, accounts: [...accounts] };
 }
 
 function parseRobinhoodHoldings(rows, headerIdx) {
@@ -1524,19 +1535,31 @@ function parseGenericHoldings(rows, headerIdx) {
   const priceI = ci(["avg", "cost", "buy price", "purchase"]);
   const ltpI   = ci(["ltp", "market price", "current price", "cmp", "close"]);
   const valI   = ci(["current value", "market value", "value"]);
-  const holdings = [], warnings = [];
+  const acctI  = ci(["account"]);
+  const holdings = [], warnings = [], accounts = new Set();
   if (nameI < 0) { warnings.push("Could not identify a Name/Instrument column."); return { format: "Unknown", holdings, warnings }; }
+
+  // Detect if this is Indian data: look for .NS/.BO suffixes, NSE/BSE, INR, Indian bank names
+  const allText = rows.slice(headerIdx + 1).flat().join(" ").toLowerCase();
+  const isIndian = /\.ns\b|\.bo\b|\bnse\b|\bbse\b|\binr\b|\bnifty\b|\bsensex\b|\bamfi\b/i.test(allText)
+    || h.some(c => /narration|scrip|scheme.?code|nse|bse/i.test(c));
+  const defaultType = isIndian ? "IN_STOCK" : "US_STOCK";
+
   for (const r of rows.slice(headerIdx + 1)) {
     const name = (r[nameI] || "").trim();
     if (!name) continue;
     const units = qtyI >= 0 ? pNum(r[qtyI]) : 0;
     const avg = priceI >= 0 ? pNum(r[priceI]) : 0;
     const ltp = ltpI >= 0 ? pNum(r[ltpI]) : avg;
-    holdings.push({ name, type: "IN_STOCK", ticker: name.split(/\s+/)[0].toUpperCase(),
+    const acct = acctI >= 0 ? (r[acctI] || "").trim() : "";
+    if (acct) accounts.add(acct);
+    const type = isIndian ? "IN_STOCK" : classifyUSAsset(name.split(/\s+/)[0], name);
+    holdings.push({ name, type, ticker: name.split(/\s+/)[0].toUpperCase(),
       units, purchase_price: avg, current_price: ltp,
-      purchase_value: units * avg, current_value: valI >= 0 ? pNum(r[valI]) : units * ltp });
+      purchase_value: units * avg, current_value: valI >= 0 ? pNum(r[valI]) : units * ltp,
+      _account_name: acct });
   }
-  return { format: "Generic CSV (best-effort)", holdings, warnings };
+  return { format: `Generic CSV (${isIndian ? "Indian" : "US"})`, holdings, warnings, accounts: [...accounts] };
 }
 
 // ── Transaction CSV Parsers ───────────────────────────────────────
@@ -1611,8 +1634,15 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
       const wb = XLSX.read(req.file.buffer, { type: "buffer" });
       const ws = wb.Sheets[wb.SheetNames[0]];
       text = XLSX.utils.sheet_to_csv(ws);
+    } else if (ext === "pdf") {
+      const pdfData = await pdfParse(req.file.buffer);
+      // Convert PDF text to CSV-like format: split into lines, normalize whitespace
+      const lines = (pdfData.text || "").split("\n").map(l => l.trim()).filter(Boolean);
+      // Try to detect tabular data — if lines have consistent delimiters (tabs, multiple spaces)
+      const tsvLines = lines.map(l => l.replace(/\s{2,}/g, "\t"));
+      text = tsvLines.join("\n");
     } else {
-      return res.status(400).json({ error: "Unsupported format. Use CSV, XLS, or XLSX." });
+      return res.status(400).json({ error: "Unsupported format. Use CSV, XLSX, XLS, or PDF." });
     }
   } catch (e) {
     return res.status(400).json({ error: "Parse error: " + e.message });
@@ -1644,7 +1674,7 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
   const dupCount = holdingsResult.holdings.filter(h => h._duplicate).length;
   if (dupCount > 0) holdingsResult.warnings.push(`${dupCount} holding(s) already exist (marked as duplicates)`);
 
-  res.json({ ...holdingsResult, detected_type: "holdings" });
+  res.json({ ...holdingsResult, detected_type: "holdings", accounts: holdingsResult.accounts || [] });
 });
 
 /**
@@ -1709,7 +1739,8 @@ function scoreTransactions(result, text) {
 
 // ── IMPORT: Bulk import holdings (upsert — update existing, insert new) ──
 app.post("/api/holdings/import", auth, async (req, res) => {
-  const { holdings, member_id } = req.body;
+  const { holdings, member_id, account_map } = req.body;
+  // account_map: { "Brokerage XXXX1234": "member_id_abc", ... }
   if (!holdings?.length) return res.status(400).json({ error: "No holdings to import" });
 
   // Fetch existing holdings for this user
@@ -1732,8 +1763,11 @@ app.post("/api/holdings/import", auth, async (req, res) => {
     const existingId = existingMap[key];
 
     const isMF = (h.type || "IN_STOCK") === "MF";
+    // Resolve member: account_map > explicit member_id > default
+    const resolvedMember = (account_map && h._account_name && account_map[h._account_name])
+      || member_id || h.member_id || null;
     const payload = sanitizeDates({
-      member_id: member_id || h.member_id || null,
+      member_id: resolvedMember,
       type: h.type || "IN_STOCK", name: h.name,
       ticker: h.ticker || "", scheme_code: h.scheme_code || "",
       units: h.units || 0, purchase_price: h.purchase_price || 0,

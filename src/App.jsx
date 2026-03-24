@@ -182,7 +182,7 @@ function LoginScreen({ error: initError }) {
   }
   return(
     <div className="login-wrap"><div className="login-card">
-      <div className="logo" style={{fontSize:"1.9rem",marginBottom:".2rem"}}>Wealth<span>Lens</span>{" "}<span style={{color:"rgba(201,168,76,.6)",fontSize:".8rem",fontFamily:"'DM Sans',sans-serif",letterSpacing:".15em",fontWeight:300}}>HUB</span></div>
+      <div className="logo" style={{fontSize:"1.9rem",marginBottom:".2rem"}}>Wealth<span>Lens</span>{" "}<span style={{color:"rgba(201,168,76,.6)",fontSize:".8rem",fontFamily:"'DM Sans',sans-serif",letterSpacing:".15em",fontWeight:300}}>PRO</span></div>
       <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1rem",color:"rgba(232,224,208,.45)",marginBottom:"1.7rem"}}>Your Personal Portfolio Intelligence</div>
       {err&&<div style={{color:"#e07c5a",fontSize:".75rem",marginBottom:".8rem",padding:".5rem .75rem",background:"rgba(224,124,90,.08)",borderRadius:6}}>{err}</div>}
       {msg&&<div style={{color:"#4caf9a",fontSize:".75rem",marginBottom:".8rem",padding:".5rem .75rem",background:"rgba(76,175,154,.08)",borderRadius:6}}>{msg}</div>}
@@ -780,7 +780,7 @@ export default function App() {
   const [importState, setImportState] = useState({
     mode: null, step: "upload", format: "", holdings: [], transactions: [],
     warnings: [], progress: 0, result: null, dragOver: false,
-    assignMember: "",
+    assignMember: "", accounts: [], accountMap: {},
   });
   const [pdfState,       setPdfState]       = useState({loading:false,summary:""});
   const [artifactHolding,setArtifactHolding]= useState(null);
@@ -1197,7 +1197,7 @@ ${alertLines||"  None"}`;
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 1000,
-          system: `You are a private wealth advisor assistant for Wealth Lens Hub, a personal portfolio intelligence platform. You have access to the family's complete, real portfolio data below. Answer questions about their portfolio directly and specifically — use actual numbers, names, and holdings from the data. Be concise and conversational. Use ₹ for values, Indian number formatting (Cr, L). Do not give generic financial advice — always refer to their specific holdings and numbers.\n\n${portfolioCtx}`,
+          system: `You are a private wealth advisor assistant for WealthLens Pro, a personal portfolio intelligence platform. You have access to the family's complete, real portfolio data below. Answer questions about their portfolio directly and specifically — use actual numbers, names, and holdings from the data. Be concise and conversational. Use ₹ for values, Indian number formatting (Cr, L). Do not give generic financial advice — always refer to their specific holdings and numbers.\n\n${portfolioCtx}`,
           messages: history,
         })
       });
@@ -1214,8 +1214,8 @@ ${alertLines||"  None"}`;
   async function handleImportFile(file) {
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
-    if (!["csv", "xlsx", "xls", "txt"].includes(ext)) {
-      setImportState(s => ({ ...s, warnings: ["Unsupported file type. Use CSV, XLSX, or XLS."] }));
+    if (!["csv", "xlsx", "xls", "txt", "pdf"].includes(ext)) {
+      setImportState(s => ({ ...s, warnings: ["Unsupported file type. Use CSV, XLSX, XLS, or PDF."] }));
       return;
     }
     setImportState(s => ({ ...s, step: "preview", warnings: [], format: "Detecting…", mode: null }));
@@ -1235,7 +1235,8 @@ ${alertLines||"  None"}`;
           transactions: data.transactions || [], warnings: data.warnings || [] }));
       } else {
         setImportState(s => ({ ...s, step: "preview", mode: "holdings", format: data.format || "Unknown",
-          holdings: data.holdings || [], warnings: data.warnings || [] }));
+          holdings: data.holdings || [], warnings: data.warnings || [],
+          accounts: data.accounts || [] }));
       }
     } catch (e) {
       setImportState(s => ({ ...s, step: "upload", warnings: [`Error: ${e.message}`] }));
@@ -1244,7 +1245,7 @@ ${alertLines||"  None"}`;
 
   async function executeImport() {
     if(demoMode) exitDemoMode();
-    const { mode, holdings: impHoldings, transactions: impTxns, assignMember } = importState;
+    const { mode, holdings: impHoldings, transactions: impTxns, assignMember, accountMap } = importState;
     setImportState(s => ({ ...s, step: "importing", progress: 0 }));
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1259,7 +1260,8 @@ ${alertLines||"  None"}`;
       } else {
         const res = await fetch("/api/holdings/import", {
           method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({ holdings: impHoldings, member_id: assignMember || members[0]?.id || "" }),
+          body: JSON.stringify({ holdings: impHoldings, member_id: assignMember || members[0]?.id || "",
+            account_map: Object.keys(accountMap).length > 0 ? accountMap : undefined }),
         });
         result = await res.json();
       }
@@ -1273,7 +1275,8 @@ ${alertLines||"  None"}`;
 
   function resetImport() {
     setImportState({ mode: null, step: "upload", format: "", holdings: [], transactions: [],
-      warnings: [], progress: 0, result: null, dragOver: false, assignMember: "" });
+      warnings: [], progress: 0, result: null, dragOver: false, assignMember: "",
+      accounts: [], accountMap: {} });
   }
 
   function openImportModal() {
@@ -1371,7 +1374,7 @@ ${alertLines||"  None"}`;
 
       {/* HEADER */}
       <header className="hdr">
-        <div className="logo">Wealth<span>Lens</span> <span style={{fontSize:".6rem",letterSpacing:".1em",color:"rgba(201,168,76,.5)",verticalAlign:"middle"}}>HUB</span></div>
+        <div className="logo">Wealth<span>Lens</span> <span style={{fontSize:".6rem",letterSpacing:".1em",color:"rgba(201,168,76,.5)",verticalAlign:"middle"}}>PRO</span></div>
         <div className="hdr-r">
           {trigAlerts.length>0&&<div className="alert-pill" onClick={()=>setTab("alerts")}>⚠ {trigAlerts.length} alert{trigAlerts.length>1?"s":""}</div>}
           {/* Sync dot */}
@@ -1386,7 +1389,7 @@ ${alertLines||"  None"}`;
           {lastPriceRefresh&&<span style={{fontSize:".62rem",color:"rgba(232,224,208,.28)",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{ago(lastPriceRefresh)}</span>}
           <button className="btn-g" onClick={generatePDF}>⤓ PDF</button>
           <button className="btn-p" onClick={()=>setModal("add")}>+ Add</button>
-          <input ref={importFileRef} type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){handleImportFile(e.target.files[0]);e.target.value="";}}}/>
+          <input ref={importFileRef} type="file" accept=".csv,.xlsx,.xls,.pdf" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){handleImportFile(e.target.files[0]);e.target.value="";}}}/>
 
           {/* User */}
           <div style={{display:"flex",alignItems:"center",gap:".4rem",paddingLeft:".4rem",borderLeft:"1px solid rgba(255,255,255,.07)"}}>
@@ -3772,7 +3775,7 @@ function DonutChart({data,total}){
   );
 }
 function ImportModal({ importState, setImportState, members, AT, handleImportFile, executeImport, resetImport, importFileRef, onClose, fmt }) {
-  const { mode, step, format, holdings, transactions, warnings, result, dragOver, assignMember } = importState;
+  const { mode, step, format, holdings, transactions, warnings, result, dragOver, assignMember, accounts, accountMap } = importState;
   const items = mode === "transactions" ? transactions : holdings;
   const dupCount = holdings.filter(h => h._duplicate).length;
   const importCount = mode === "transactions" ? transactions.length : holdings.length;
@@ -3790,7 +3793,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
     { name: "Kuvera / MF", color: "#2e7d32" },
   ];
   const OTHER_FORMATS = [
-    { name: "Excel", color: "#217346" }, { name: "Generic CSV", color: "#888" },
+    { name: "PDF", color: "#e05555" }, { name: "Excel", color: "#217346" }, { name: "Generic CSV", color: "#888" },
   ];
 
   return (
@@ -3814,7 +3817,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
             Drag & drop your broker export here
           </div>
           <div style={{fontSize:".72rem",color:"rgba(232,224,208,.35)",marginTop:".4rem"}}>
-            Holdings or tradebook — auto-detected · CSV, XLSX, XLS
+            Holdings or tradebook — auto-detected · CSV, XLSX, PDF
           </div>
           <button className="btns" style={{marginTop:"1rem",fontSize:".75rem"}}>Browse Files</button>
         </div>
@@ -3878,16 +3881,35 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
           </span>
           {dupCount>0&&<span style={{fontSize:".72rem",color:"#5a9ce0"}}>({dupCount} existing — will update)</span>}
         </div>
-        {mode==="holdings"&&members.length>1&&(
-          <div style={{display:"flex",gap:"1rem",alignItems:"center",marginBottom:".8rem",flexWrap:"wrap"}}>
-            <label style={{display:"flex",alignItems:"center",gap:".4rem",fontSize:".73rem",color:"rgba(232,224,208,.6)"}}>
-              Assign to:
-              <select className="fi" style={{padding:".25rem .5rem",fontSize:".72rem",width:"auto"}}
-                value={assignMember} onChange={e=>setImportState(s=>({...s,assignMember:e.target.value}))}>
-                <option value="">First member</option>
-                {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            </label>
+        {mode==="holdings"&&members.length>0&&(
+          <div style={{marginBottom:".8rem"}}>
+            {accounts.length>0&&members.length>1?(
+              <div>
+                <div style={{fontSize:".65rem",letterSpacing:".06em",textTransform:"uppercase",color:"rgba(232,224,208,.35)",marginBottom:".4rem"}}>Map accounts to family members</div>
+                {accounts.map(acct=>(
+                  <div key={acct} style={{display:"flex",gap:".6rem",alignItems:"center",marginBottom:".35rem"}}>
+                    <span style={{fontSize:".72rem",color:"rgba(232,224,208,.6)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{acct}</span>
+                    <span style={{fontSize:".65rem",color:"rgba(232,224,208,.3)"}}>→</span>
+                    <select className="fi" style={{padding:".22rem .5rem",fontSize:".7rem",width:"auto",minWidth:120}}
+                      value={accountMap[acct]||""} onChange={e=>setImportState(s=>({...s,accountMap:{...s.accountMap,[acct]:e.target.value}}))}>
+                      <option value="">Auto (first member)</option>
+                      {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            ):members.length>1?(
+              <div style={{display:"flex",gap:"1rem",alignItems:"center",flexWrap:"wrap"}}>
+                <label style={{display:"flex",alignItems:"center",gap:".4rem",fontSize:".73rem",color:"rgba(232,224,208,.6)"}}>
+                  Assign to:
+                  <select className="fi" style={{padding:".25rem .5rem",fontSize:".72rem",width:"auto"}}
+                    value={assignMember} onChange={e=>setImportState(s=>({...s,assignMember:e.target.value}))}>
+                    <option value="">First member</option>
+                    {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </label>
+              </div>
+            ):null}
           </div>
         )}
         {warnings.length>0&&(
