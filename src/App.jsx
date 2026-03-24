@@ -841,6 +841,7 @@ export default function App() {
     mode: null, step: "upload", format: "", holdings: [], transactions: [],
     warnings: [], progress: 0, result: null, dragOver: false,
     assignMember: "", accounts: [], accountMap: {},
+    pendingFile: null, needsPassword: false, casPan: "", casDob: "", casRemember: false,
   });
   const [pdfState,       setPdfState]       = useState({loading:false,summary:""});
   const [artifactHolding,setArtifactHolding]= useState(null);
@@ -1271,23 +1272,36 @@ ${alertLines||"  None"}`;
   }
 
   // ── Smart Import (auto-detect holdings vs transactions) ──
-  async function handleImportFile(file) {
+  async function handleImportFile(file, password) {
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
     if (!["csv", "xlsx", "xls", "txt", "pdf"].includes(ext)) {
       setImportState(s => ({ ...s, warnings: ["Unsupported file type. Use CSV, XLSX, XLS, or PDF."] }));
       return;
     }
-    setImportState(s => ({ ...s, step: "preview", warnings: [], format: "Detecting…", mode: null }));
+    setImportState(s => ({ ...s, step: "preview", warnings: [], format: "Detecting…", mode: null, needsPassword: false }));
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || "";
       const fd = new FormData();
       fd.append("file", file);
+      if (password) fd.append("password", password);
       const res = await fetch("/api/import/detect", {
         method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: fd,
       });
       const data = await res.json();
+      // Handle password-protected PDF
+      if (data.needs_password || data.error === "password_required") {
+        // Try loading saved credentials
+        let savedPan = "", savedDob = "";
+        try {
+          const creds = await api("/api/profile/cas-credentials");
+          if (creds.has_credentials) { savedPan = creds._pan || ""; savedDob = creds.dob || ""; }
+        } catch {}
+        setImportState(s => ({ ...s, step: "cas_password", needsPassword: true, pendingFile: file,
+          casPan: savedPan, casDob: savedDob, format: "", warnings: [] }));
+        return;
+      }
       if (data.error) throw new Error(data.error);
       const detectedType = data.detected_type || "holdings";
       if (detectedType === "transactions") {
@@ -1301,6 +1315,27 @@ ${alertLines||"  None"}`;
     } catch (e) {
       setImportState(s => ({ ...s, step: "upload", warnings: [`Error: ${e.message}`] }));
     }
+  }
+
+  async function submitCASPassword() {
+    const { pendingFile, casPan, casDob, casRemember } = importState;
+    if (!pendingFile || !casPan || !casDob) return;
+    // Build password: PAN (uppercase) + DOB (DDMMYYYY)
+    const pan = casPan.toUpperCase().trim();
+    const dobParts = casDob.includes("-") ? casDob.split("-") : casDob.includes("/") ? casDob.split("/") : null;
+    let dobFormatted = casDob.replace(/[^0-9]/g, "");
+    if (dobParts && dobParts.length === 3) {
+      // Handle YYYY-MM-DD or DD/MM/YYYY
+      if (dobParts[0].length === 4) dobFormatted = dobParts[2] + dobParts[1] + dobParts[0]; // YYYY-MM-DD → DDMMYYYY
+      else dobFormatted = dobParts[0].padStart(2,"0") + dobParts[1].padStart(2,"0") + dobParts[2]; // DD/MM/YYYY → DDMMYYYY
+    }
+    const password = pan + dobFormatted;
+    // Save credentials if remember is checked
+    if (casRemember) {
+      api("/api/profile", { method: "PUT", body: JSON.stringify({ pan, dob: casDob }) }).catch(() => {});
+    }
+    // Retry with password
+    handleImportFile(pendingFile, password);
   }
 
   async function executeImport() {
@@ -1336,7 +1371,8 @@ ${alertLines||"  None"}`;
   function resetImport() {
     setImportState({ mode: null, step: "upload", format: "", holdings: [], transactions: [],
       warnings: [], progress: 0, result: null, dragOver: false, assignMember: "",
-      accounts: [], accountMap: {} });
+      accounts: [], accountMap: {},
+      pendingFile: null, needsPassword: false, casPan: "", casDob: "", casRemember: false });
   }
 
   function openImportModal() {
@@ -3684,7 +3720,7 @@ ${alertLines||"  None"}`;
         </div>
       </Overlay>
     )}
-    {modal==="import"&&(<ImportModal importState={importState} setImportState={setImportState} members={members} AT={AT} handleImportFile={handleImportFile} executeImport={executeImport} resetImport={resetImport} importFileRef={importFileRef} onClose={()=>{setModal(null);resetImport();}} fmt={fmt}/>)}
+    {modal==="import"&&(<ImportModal importState={importState} setImportState={setImportState} members={members} AT={AT} handleImportFile={handleImportFile} executeImport={executeImport} resetImport={resetImport} importFileRef={importFileRef} onClose={()=>{setModal(null);resetImport();}} fmt={fmt} submitCASPassword={submitCASPassword}/>)}
     {modal==="pdf"&&(<Overlay onClose={()=>setModal(null)}><div className="modtitle">Portfolio Report</div>{pdfState.loading?(<div style={{textAlign:"center",padding:"2.5rem 0"}}><div style={{width:34,height:34,border:"2px solid rgba(201,168,76,.2)",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 1rem"}}/><div style={{fontSize:".8rem",color:"rgba(232,224,208,.38)"}}>Generating AI commentary…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>):(<><div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".7rem"}}>AI Advisor Commentary</div><div style={{background:"rgba(201,168,76,.05)",border:"1px solid rgba(201,168,76,.14)",borderRadius:8,padding:"1rem 1.2rem",fontSize:".8rem",lineHeight:1.72,color:"rgba(232,224,208,.7)",maxHeight:260,overflowY:"auto",whiteSpace:"pre-wrap"}}>{pdfState.summary}</div></>)}<MA><button className="btnc" onClick={()=>setModal(null)}>Close</button></MA></Overlay>)}
     </>
   );
@@ -3842,8 +3878,8 @@ function DonutChart({data,total}){
     </div>
   );
 }
-function ImportModal({ importState, setImportState, members, AT, handleImportFile, executeImport, resetImport, importFileRef, onClose, fmt }) {
-  const { mode, step, format, holdings, transactions, warnings, result, dragOver, assignMember, accounts, accountMap } = importState;
+function ImportModal({ importState, setImportState, members, AT, handleImportFile, executeImport, resetImport, importFileRef, onClose, fmt, submitCASPassword }) {
+  const { mode, step, format, holdings, transactions, warnings, result, dragOver, assignMember, accounts, accountMap, needsPassword, casPan, casDob, casRemember } = importState;
   const items = mode === "transactions" ? transactions : holdings;
   const dupCount = holdings.filter(h => h._duplicate).length;
   const importCount = mode === "transactions" ? transactions.length : holdings.length;
@@ -3861,14 +3897,14 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
     { name: "Kuvera / MF", color: "#2e7d32" },
   ];
   const OTHER_FORMATS = [
-    { name: "PDF", color: "#e05555" }, { name: "Excel", color: "#217346" }, { name: "Generic CSV", color: "#888" },
+    { name: "NSDL/CDSL CAS", color: "#e07c5a" }, { name: "PDF", color: "#e05555" }, { name: "Excel", color: "#217346" }, { name: "Generic CSV", color: "#888" },
   ];
 
   return (
     <Overlay onClose={onClose} wide>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1.2rem"}}>
         <div className="modtitle" style={{margin:0}}>
-          {step==="done"?"✓ Import Complete":step==="importing"?"Importing…":step==="preview"?(mode==="transactions"?"Import Transactions":"Import Portfolio"):"Import Portfolio or Transactions"}
+          {step==="done"?"✓ Import Complete":step==="importing"?"Importing…":step==="cas_password"?"🔒 Unlock CAS PDF":step==="preview"?(mode==="transactions"?"Import Transactions":"Import Portfolio"):"Import Portfolio or Transactions"}
         </div>
       </div>
 
@@ -3931,6 +3967,42 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
           </div>
         )}
       </>)}
+
+      {/* ── CAS Password Step ── */}
+      {step==="cas_password"&&(
+        <div style={{maxWidth:400,margin:"0 auto"}}>
+          <div style={{textAlign:"center",marginBottom:"1.2rem"}}>
+            <div style={{fontSize:"2rem",marginBottom:".5rem"}}>🔐</div>
+            <div style={{fontSize:".85rem",color:"rgba(232,224,208,.7)",marginBottom:".3rem"}}>This is a password-protected NSDL/CDSL CAS PDF</div>
+            <div style={{fontSize:".72rem",color:"rgba(232,224,208,.4)"}}>Password format: PAN (uppercase) + DOB (DDMMYYYY)</div>
+          </div>
+          <div style={{marginBottom:".8rem"}}>
+            <label style={{fontSize:".68rem",color:"rgba(232,224,208,.5)",letterSpacing:".05em",textTransform:"uppercase",display:"block",marginBottom:".3rem"}}>PAN Number</label>
+            <input className="fi" value={casPan} onChange={e=>setImportState(s=>({...s,casPan:e.target.value.toUpperCase()}))}
+              placeholder="ABCDE1234F" maxLength={10} style={{fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:".1em"}}/>
+          </div>
+          <div style={{marginBottom:".8rem"}}>
+            <label style={{fontSize:".68rem",color:"rgba(232,224,208,.5)",letterSpacing:".05em",textTransform:"uppercase",display:"block",marginBottom:".3rem"}}>Date of Birth</label>
+            <input className="fi" type="date" value={casDob} onChange={e=>setImportState(s=>({...s,casDob:e.target.value}))}/>
+          </div>
+          <label style={{display:"flex",alignItems:"center",gap:".5rem",fontSize:".73rem",color:"rgba(232,224,208,.5)",marginBottom:"1.2rem",cursor:"pointer"}}>
+            <input type="checkbox" checked={casRemember} onChange={e=>setImportState(s=>({...s,casRemember:e.target.checked}))}
+              style={{accentColor:"#c9a84c"}}/>
+            Remember for future imports (encrypted)
+          </label>
+          {casPan&&casDob&&(
+            <div style={{fontSize:".68rem",color:"rgba(232,224,208,.3)",marginBottom:".8rem",fontFamily:"'DM Mono',monospace",background:"rgba(255,255,255,.03)",padding:".5rem .75rem",borderRadius:6}}>
+              Password preview: {casPan.toUpperCase()}{(()=>{const p=casDob.split("-");return p.length===3?p[2]+p[1]+p[0]:casDob.replace(/[^0-9]/g,"");})()}
+            </div>
+          )}
+          <div style={{display:"flex",gap:".7rem"}}>
+            <button className="btnc" onClick={()=>setImportState(s=>({...s,step:"upload",needsPassword:false,pendingFile:null}))}>Cancel</button>
+            <button className="btns" disabled={!casPan||casPan.length!==10||!casDob} onClick={submitCASPassword}>
+              Unlock & Import
+            </button>
+          </div>
+        </div>
+      )}
 
       {step==="preview"&&(<>
         <div style={{display:"flex",alignItems:"center",gap:".7rem",marginBottom:".8rem",flexWrap:"wrap"}}>

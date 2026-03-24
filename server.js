@@ -221,12 +221,28 @@ app.get("/api/profile", auth, async (req, res) => {
 });
 
 app.put("/api/profile", auth, async (req, res) => {
-  const { display_name, currency } = req.body;
-  const { error } = await supabase.from("profiles").upsert({
-    id: req.user.id, display_name, currency, updated_at: new Date().toISOString()
-  });
+  const { display_name, currency, pan, dob } = req.body;
+  const update = { id: req.user.id, updated_at: new Date().toISOString() };
+  if (display_name !== undefined) update.display_name = display_name;
+  if (currency !== undefined) update.currency = currency;
+  // Encrypt PAN and DOB before storing
+  if (pan !== undefined) update.encrypted_pan = pan ? encrypt(pan.toUpperCase().trim()) : null;
+  if (dob !== undefined) update.encrypted_dob = dob ? encrypt(dob.trim()) : null;
+  const { error } = await supabase.from("profiles").upsert(update);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
+});
+
+// GET decrypted CAS credentials (PAN/DOB) — never return raw, only masked PAN + full DOB for reuse
+app.get("/api/profile/cas-credentials", auth, async (req, res) => {
+  const { data, error } = await supabase.from("profiles").select("encrypted_pan, encrypted_dob").eq("id", req.user.id).single();
+  if (error) return res.json({ pan: null, dob: null, has_credentials: false });
+  const pan = data?.encrypted_pan ? decrypt(data.encrypted_pan) : null;
+  const dob = data?.encrypted_dob ? decrypt(data.encrypted_dob) : null;
+  if (!pan || pan === "[encrypted]") return res.json({ pan: null, dob: null, has_credentials: false });
+  // Return masked PAN (show first 4 + last 1) and full DOB for PDF unlock
+  const maskedPan = pan.length >= 10 ? pan.slice(0, 4) + "****" + pan.slice(-1) : "****";
+  res.json({ pan_masked: maskedPan, dob, has_credentials: true, _pan: pan });
 });
 
 // ── ASSET TYPES ───────────────────────────────────────────────────
@@ -1621,6 +1637,124 @@ function parseTransactionCSV(text) {
   return { format: "Generic Transactions", transactions, warnings };
 }
 
+// ── NSDL / CDSL CAS PDF Parser ────────────────────────────────────
+function parseNSDLCASStatement(rawText) {
+  const holdings = [], warnings = [];
+  const isCAS = /consolidated\s*account\s*statement|nsdl\s*cas|cdsl\s*cas/i.test(rawText);
+  if (!isCAS) return { holdings: [], warnings: ["Not a CAS statement"], format: null };
+
+  // ── Parse Mutual Fund holdings ──
+  // Pattern: "Closing Unit Balance: 245.678" followed by "NAV on DD-Mon-YYYY: INR 48.52" and "Valuation on ...: INR 11923"
+  // Scheme names appear before these as: "[Scheme Name] - [Plan] - [Option]"
+  // Folio: "Folio No: 12345678"
+
+  // Find all MF sections by looking for "Closing Unit Balance" patterns
+  const mfPattern = /(?:Folio\s*No[.:]*\s*(\S+))?[\s\S]*?([A-Z][A-Za-z\s&().-]+(?:Fund|Plan|Scheme|Growth|Dividend|IDCW|Direct|Regular)[\w\s().-]*?)\s*(?:Advisor|Registrar|Opening|Closing)[\s\S]*?Closing\s*Unit\s*Balance[:\s]*([\d,.]+)\s*(?:NAV\s*(?:on|as\s*on)\s*[\d\w-]+[:\s]*(?:INR|Rs\.?)\s*([\d,.]+))?\s*(?:Valuation\s*(?:on|as\s*on)\s*[\d\w-]+[:\s]*(?:INR|Rs\.?)\s*([\d,.]+))?/gi;
+
+  let mfMatch;
+  const seenSchemes = new Set();
+  while ((mfMatch = mfPattern.exec(rawText)) !== null) {
+    const folio = (mfMatch[1] || "").trim();
+    let schemeName = (mfMatch[2] || "").replace(/\s+/g, " ").trim();
+    const units = pNum(mfMatch[3]);
+    const nav = pNum(mfMatch[4]);
+    const valuation = pNum(mfMatch[5]);
+
+    if (!schemeName || units <= 0) continue;
+    // Deduplicate (same scheme can appear in summary + detail)
+    const key = schemeName.toLowerCase().slice(0, 30) + "|" + units;
+    if (seenSchemes.has(key)) continue;
+    seenSchemes.add(key);
+
+    // Try to extract scheme code from ISIN or nearby text
+    const schemeCode = "";
+
+    holdings.push({
+      name: schemeName, type: "MF", ticker: "", scheme_code: schemeCode,
+      units, purchase_nav: nav, current_nav: nav,
+      purchase_price: nav, current_price: nav,
+      purchase_value: valuation || units * nav,
+      current_value: valuation || units * nav,
+      _folio: folio,
+    });
+  }
+
+  // ── Simpler MF fallback: "units NAV value" near scheme names ──
+  if (holdings.filter(h => h.type === "MF").length === 0) {
+    // Look for patterns like: SchemeName ... 234.567 ... 45.2300 ... 10,605.00
+    const simplePattern = /([A-Z][A-Za-z\s&().-]{10,80}(?:Fund|Plan|Growth|Dividend|IDCW|Direct|Regular)[^\n]*)\n[\s\S]*?(?:Closing|Balance)[:\s]*([\d,.]+)[\s\S]{0,200}?(?:NAV)[:\s]*(?:INR|Rs\.?)\s*([\d,.]+)[\s\S]{0,100}?(?:Valuation)[:\s]*(?:INR|Rs\.?)\s*([\d,.]+)/gi;
+    let sm;
+    while ((sm = simplePattern.exec(rawText)) !== null) {
+      const name = sm[1].replace(/\s+/g, " ").trim();
+      const units = pNum(sm[2]), nav = pNum(sm[3]), val = pNum(sm[4]);
+      if (units <= 0) continue;
+      const key = name.toLowerCase().slice(0, 30) + "|" + units;
+      if (seenSchemes.has(key)) continue;
+      seenSchemes.add(key);
+      holdings.push({
+        name, type: "MF", ticker: "", scheme_code: "",
+        units, purchase_nav: nav, current_nav: nav,
+        purchase_price: nav, current_price: nav,
+        purchase_value: val || units * nav, current_value: val || units * nav,
+      });
+    }
+  }
+
+  // ── Parse Demat holdings (stocks, ETFs, SGBs) ──
+  // Pattern: ISIN: INExxxxxxx | Security Name | Free Balance: 50
+  const dematPattern = /(?:ISIN[:\s]*)?([A-Z]{2}[A-Z0-9]{9}\d)\s+([A-Za-z\s&().,'-]+?)\s+(?:Free\s*Balance|Quantity|Balance)[:\s]*([\d,.]+)/gi;
+  let dm;
+  while ((dm = dematPattern.exec(rawText)) !== null) {
+    const isin = dm[1].trim();
+    const name = dm[2].replace(/\s+/g, " ").trim();
+    const qty = pNum(dm[3]);
+    if (qty <= 0 || /total|sub-total/i.test(name)) continue;
+
+    // Classify: SGB → IN_ETF, ETF names → IN_ETF, else IN_STOCK
+    let type = "IN_STOCK";
+    if (/sovereign\s*gold\s*bond|sgb/i.test(name)) type = "IN_ETF";
+    else if (/etf|bees|nifty.*etf|gold.*etf/i.test(name)) type = "IN_ETF";
+    else if (/bond|debenture|ncd/i.test(name)) type = "FD";
+
+    holdings.push({
+      name, type, ticker: isin, scheme_code: "", units: qty,
+      purchase_price: 0, current_price: 0,
+      purchase_value: 0, current_value: 0,
+    });
+  }
+
+  // ── Simpler demat fallback: table rows with ISIN + quantity ──
+  if (holdings.filter(h => h.type !== "MF").length === 0) {
+    const tablePattern = /([A-Z]{2}[A-Z0-9]{9}\d)\s+(.+?)\s+([\d,.]+)\s+(?:[\d,.]+\s+)?([\d,.]+)/g;
+    let tr;
+    while ((tr = tablePattern.exec(rawText)) !== null) {
+      const isin = tr[1], name = tr[2].replace(/\s+/g, " ").trim();
+      const qty = pNum(tr[3]) || pNum(tr[4]);
+      if (qty <= 0 || /total|header|isin/i.test(name)) continue;
+      const existing = holdings.find(h => h.ticker === isin);
+      if (existing) continue;
+      let type = "IN_STOCK";
+      if (/sovereign\s*gold|sgb/i.test(name)) type = "IN_ETF";
+      else if (/etf|bees/i.test(name)) type = "IN_ETF";
+      holdings.push({
+        name, type, ticker: isin, scheme_code: "", units: qty,
+        purchase_price: 0, current_price: 0, purchase_value: 0, current_value: 0,
+      });
+    }
+  }
+
+  const mfCount = holdings.filter(h => h.type === "MF").length;
+  const dematCount = holdings.filter(h => h.type !== "MF").length;
+  if (mfCount) warnings.push(`Found ${mfCount} mutual fund(s)`);
+  if (dematCount) warnings.push(`Found ${dematCount} demat holding(s)`);
+
+  return {
+    format: "NSDL/CDSL CAS (PDF)",
+    holdings, warnings,
+    accounts: [],
+  };
+}
+
 // ── Fidelity PDF Statement Parser ─────────────────────────────────
 function parseFidelityPDFStatement(rawText) {
   const holdings = [], warnings = [];
@@ -1702,8 +1836,27 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
       text = XLSX.utils.sheet_to_csv(ws);
     } else if (ext === "pdf") {
       try {
-        const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(req.file.buffer) });
-        const pdf = await loadingTask.promise;
+        // Accept optional password from form data (for encrypted CAS PDFs)
+        const pdfPassword = req.body?.password || "";
+
+        let pdf;
+        try {
+          const opts = { data: new Uint8Array(req.file.buffer) };
+          if (pdfPassword) opts.password = pdfPassword;
+          const loadingTask = pdfjsLib.getDocument(opts);
+          pdf = await loadingTask.promise;
+        } catch (pdfOpenErr) {
+          // Check if it's a password error
+          if (/password/i.test(pdfOpenErr.message) || pdfOpenErr.code === 1) {
+            return res.status(400).json({
+              error: "password_required",
+              message: "This PDF is password-protected. Enter your PAN + DOB to unlock.",
+              needs_password: true,
+            });
+          }
+          throw pdfOpenErr;
+        }
+
         const pages = [];
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
@@ -1712,11 +1865,10 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
         }
         const rawPdfText = pages.join("\n");
 
-        // Try Fidelity PDF statement parser first
-        if (/fidelity/i.test(rawPdfText) && /account\s*#/i.test(rawPdfText)) {
-          const result = parseFidelityPDFStatement(rawPdfText);
+        // ── Route 1: NSDL/CDSL CAS statement ──
+        if (/consolidated\s*account\s*statement|nsdl|cdsl/i.test(rawPdfText) && /mutual\s*fund|demat|folio/i.test(rawPdfText)) {
+          const result = parseNSDLCASStatement(rawPdfText);
           if (result.holdings.length > 0) {
-            // Skip CSV pipeline — go directly to holdings response
             const { data: existing } = await supabase.from("holdings")
               .select("name, ticker, scheme_code, type").eq("user_id", req.user.id);
             const existingSet = new Set(
@@ -1731,7 +1883,25 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
           }
         }
 
-        // Fallback: normalize to TSV for CSV pipeline
+        // ── Route 2: Fidelity statement ──
+        if (/fidelity/i.test(rawPdfText) && /account\s*#/i.test(rawPdfText)) {
+          const result = parseFidelityPDFStatement(rawPdfText);
+          if (result.holdings.length > 0) {
+            const { data: existing } = await supabase.from("holdings")
+              .select("name, ticker, scheme_code, type").eq("user_id", req.user.id);
+            const existingSet = new Set(
+              (existing || []).map(h => `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`)
+            );
+            result.holdings = result.holdings.map(h => ({
+              ...h, _duplicate: existingSet.has(`${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`),
+            }));
+            const dupCount = result.holdings.filter(h => h._duplicate).length;
+            if (dupCount > 0) result.warnings.push(`${dupCount} holding(s) already exist (marked as duplicates)`);
+            return res.json({ ...result, detected_type: "holdings", accounts: result.accounts || [] });
+          }
+        }
+
+        // ── Route 3: Fallback — normalize to TSV for CSV pipeline ──
         text = pages.map(l => l.replace(/\s{2,}/g, "\t")).join("\n");
       } catch (pdfErr) {
         return res.status(400).json({ error: "Could not extract data from PDF: " + pdfErr.message });
