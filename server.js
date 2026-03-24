@@ -883,7 +883,7 @@ import { createRequire } from "module";
 const _require = createRequire(import.meta.url);
 const Papa = _require("papaparse");
 const XLSX = _require("xlsx");
-const pdfParse = _require("pdf-parse");
+const pdfjsLib = _require("pdfjs-dist/legacy/build/pdf.mjs");
 import crypto from "crypto";
 
 // ── Encryption helpers (AES-256-GCM) ─────────────────────────────
@@ -1635,12 +1635,21 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
       const ws = wb.Sheets[wb.SheetNames[0]];
       text = XLSX.utils.sheet_to_csv(ws);
     } else if (ext === "pdf") {
-      const pdfData = await pdfParse(req.file.buffer);
-      // Convert PDF text to CSV-like format: split into lines, normalize whitespace
-      const lines = (pdfData.text || "").split("\n").map(l => l.trim()).filter(Boolean);
-      // Try to detect tabular data — if lines have consistent delimiters (tabs, multiple spaces)
-      const tsvLines = lines.map(l => l.replace(/\s{2,}/g, "\t"));
-      text = tsvLines.join("\n");
+      try {
+        const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(req.file.buffer) });
+        const pdf = await loadingTask.promise;
+        const lines = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items.map(item => item.str).join(" ");
+          lines.push(pageText);
+        }
+        // Normalize multi-space to tabs for CSV-like parsing
+        text = lines.map(l => l.replace(/\s{2,}/g, "\t")).join("\n");
+      } catch (pdfErr) {
+        return res.status(400).json({ error: "Could not extract data from PDF: " + pdfErr.message });
+      }
     } else {
       return res.status(400).json({ error: "Unsupported format. Use CSV, XLSX, XLS, or PDF." });
     }
