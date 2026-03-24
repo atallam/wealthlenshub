@@ -122,7 +122,8 @@ app.get("/api/holdings", auth, async (req, res) => {
 });
 
 app.post("/api/holdings", auth, async (req, res) => {
-  const { first_transaction, ...holdingData } = req.body;
+  const { first_transaction, purchase_nav, current_nav, ...holdingData } = req.body;
+  const isMF = holdingData.type === "MF";
 
   // Option 1: Auto-clear all demo data when user adds their first real holding
   if (!holdingData.notes?.includes("__demo__")) {
@@ -132,7 +133,8 @@ app.post("/api/holdings", auth, async (req, res) => {
       .like("notes", "%__demo__%");
   }
 
-  const { error } = await supabase.from("holdings").insert(sanitizeDates({ ...holdingData, user_id: req.user.id }));
+  const insertData = { ...holdingData, user_id: req.user.id, ...(isMF ? { purchase_nav: purchase_nav || 0, current_nav: current_nav || 0 } : {}) };
+  const { error } = await supabase.from("holdings").insert(sanitizeDates(insertData));
   if (error) return res.status(500).json({ error: error.message });
 
   // If a first transaction was provided, insert it too
@@ -152,8 +154,10 @@ app.post("/api/holdings", auth, async (req, res) => {
 
 app.put("/api/holdings/:id", auth, async (req, res) => {
   // Strip computed / joined fields that are not real DB columns
-  const { artifacts, transactions, net_units, avg_cost, purchase_nav, purchase_price, ...holdingData } = req.body;
-  const { error } = await supabase.from("holdings").update(sanitizeDates(holdingData)).eq("id", req.params.id);
+  const { artifacts, transactions, net_units, avg_cost, purchase_nav, current_nav, purchase_price, ...holdingData } = req.body;
+  const isMF = holdingData.type === "MF";
+  const updateData = { ...holdingData, ...(isMF ? { purchase_nav: purchase_nav || 0, current_nav: current_nav || 0 } : {}) };
+  const { error } = await supabase.from("holdings").update(sanitizeDates(updateData)).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
@@ -1727,13 +1731,15 @@ app.post("/api/holdings/import", auth, async (req, res) => {
     const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
     const existingId = existingMap[key];
 
+    const isMF = (h.type || "IN_STOCK") === "MF";
     const payload = sanitizeDates({
       member_id: member_id || h.member_id || null,
       type: h.type || "IN_STOCK", name: h.name,
       ticker: h.ticker || "", scheme_code: h.scheme_code || "",
       units: h.units || 0, purchase_price: h.purchase_price || 0,
-      current_price: h.current_price || 0, purchase_nav: h.purchase_nav || 0,
-      current_nav: h.current_nav || 0, purchase_value: h.purchase_value || 0,
+      current_price: h.current_price || 0,
+      ...(isMF ? { purchase_nav: h.purchase_nav || 0, current_nav: h.current_nav || 0 } : {}),
+      purchase_value: h.purchase_value || 0,
       current_value: h.current_value || 0, principal: h.principal || 0,
       interest_rate: h.interest_rate || 0, start_date: h.start_date || null,
       maturity_date: h.maturity_date || null, usd_inr_rate: h.usd_inr_rate || 83.2,
