@@ -1621,6 +1621,72 @@ function parseTransactionCSV(text) {
   return { format: "Generic Transactions", transactions, warnings };
 }
 
+// ── Fidelity PDF Statement Parser ─────────────────────────────────
+function parseFidelityPDFStatement(rawText) {
+  const holdings = [], warnings = [];
+  // Extract account name
+  const acctMatch = rawText.match(/FIDELITY\s+ACCOUNT\s+(.+?)\s*-\s*(INDIVIDUAL|JOINT|TRUST)/i)
+    || rawText.match(/Account\s*#\s*\S+\s+(.+?)\s*-\s*(INDIVIDUAL|JOINT|TRUST)/i);
+  const accountName = acctMatch ? acctMatch[1].trim() : "";
+
+  // Find all ticker symbols in parentheses: (ADBE), (TSLA), etc.
+  const tickerRe = /\(([A-Z]{1,6})\)/g;
+  let tm;
+  while ((tm = tickerRe.exec(rawText)) !== null) {
+    const ticker = tm[1];
+    const tickerEnd = tm.index + tm[0].length;
+
+    // Skip non-holding tickers (money market, totals, etc.)
+    if (/SPAXX|FDRXX|FCASH/i.test(ticker)) continue;
+
+    // Look backwards from (TICKER) to find the name — text between "M" prefix and "(TICKER)"
+    const before = rawText.substring(Math.max(0, tm.index - 200), tm.index);
+    // M must be preceded by whitespace/newline (standalone margin indicator, not part of a word)
+    const nameMatch = before.match(/(?:^|\s)M\s+(?:t\s+)?(.{5,80}?)\s*$/);
+    if (!nameMatch) continue;
+    const name = nameMatch[1].replace(/\s+/g, " ").trim();
+
+    // Look forward from (TICKER) to extract the 6 numbers: beg_mv, qty, price, end_mv, cost, gain
+    const after = rawText.substring(tickerEnd, tickerEnd + 300);
+    const numRe = /-?[$]?[\d,]+\.?\d*/g;
+    const nums = [];
+    let nm;
+    while ((nm = numRe.exec(after)) !== null && nums.length < 6) {
+      const val = parseFloat(nm[0].replace(/[$,]/g, ""));
+      if (!isNaN(val)) nums.push(val);
+    }
+
+    if (nums.length < 4) continue; // Need at least beg_mv, qty, price, end_mv
+
+    const begMV = nums[0];
+    const qty = nums[1];
+    const price = nums[2];
+    const endMV = nums[3];
+    const costBasis = nums.length >= 5 ? nums[4] : 0;
+
+    if (qty === 0) continue;
+    // Skip subtotal/total rows
+    if (/total|subtotal/i.test(name)) continue;
+
+    const type = classifyUSAsset(ticker, name);
+    const avgCost = costBasis && qty ? costBasis / qty : price;
+
+    holdings.push({
+      name, type, ticker, units: qty,
+      purchase_price: avgCost, current_price: price,
+      purchase_value: costBasis || qty * avgCost,
+      current_value: endMV || qty * price,
+      _account_name: accountName,
+    });
+  }
+
+  return {
+    format: "Fidelity (PDF Statement)",
+    holdings, warnings,
+    accounts: accountName ? [accountName] : [],
+  };
+}
+
 // ── IMPORT: Auto-detect format + type + preview (no DB write) ─────
 app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file" });
@@ -1638,15 +1704,35 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
       try {
         const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(req.file.buffer) });
         const pdf = await loadingTask.promise;
-        const lines = [];
+        const pages = [];
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const content = await page.getTextContent();
-          const pageText = content.items.map(item => item.str).join(" ");
-          lines.push(pageText);
+          pages.push(content.items.map(item => item.str).join(" "));
         }
-        // Normalize multi-space to tabs for CSV-like parsing
-        text = lines.map(l => l.replace(/\s{2,}/g, "\t")).join("\n");
+        const rawPdfText = pages.join("\n");
+
+        // Try Fidelity PDF statement parser first
+        if (/fidelity/i.test(rawPdfText) && /account\s*#/i.test(rawPdfText)) {
+          const result = parseFidelityPDFStatement(rawPdfText);
+          if (result.holdings.length > 0) {
+            // Skip CSV pipeline — go directly to holdings response
+            const { data: existing } = await supabase.from("holdings")
+              .select("name, ticker, scheme_code, type").eq("user_id", req.user.id);
+            const existingSet = new Set(
+              (existing || []).map(h => `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`)
+            );
+            result.holdings = result.holdings.map(h => ({
+              ...h, _duplicate: existingSet.has(`${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`),
+            }));
+            const dupCount = result.holdings.filter(h => h._duplicate).length;
+            if (dupCount > 0) result.warnings.push(`${dupCount} holding(s) already exist (marked as duplicates)`);
+            return res.json({ ...result, detected_type: "holdings", accounts: result.accounts || [] });
+          }
+        }
+
+        // Fallback: normalize to TSV for CSV pipeline
+        text = pages.map(l => l.replace(/\s{2,}/g, "\t")).join("\n");
       } catch (pdfErr) {
         return res.status(400).json({ error: "Could not extract data from PDF: " + pdfErr.message });
       }
