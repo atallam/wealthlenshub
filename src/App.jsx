@@ -835,6 +835,9 @@ export default function App() {
   const [form,           setForm]           = useState(BF);
   const [editHolding,    setEditHolding]    = useState(null);
   const [newMember,      setNewMember]      = useState({name:"",relation:""});
+  const [editingMemberId, setEditingMemberId] = useState(null);
+  const [mergeCandidate,  setMergeCandidate]  = useState(null);
+  const [memberAction,    setMemberAction]    = useState(null); // {type:"delete"|"merge", memberId, reassignTo:""}
   const [goalForm,       setGoalForm]       = useState(BG);
   const [alertForm,      setAlertForm]      = useState(BA);
   const [importState, setImportState] = useState({
@@ -1086,7 +1089,106 @@ export default function App() {
   function editH(h){ setEditHolding(h); setForm({...BF,...h,
     interest_rate:h.interest_rate||"", usd_inr_rate:h.usd_inr_rate||83.2}); setModal("holding"); }
 
-  function addMember(){if(!newMember.name)return;setMembers(p=>[...p,{id:uid(),...newMember}]);setNewMember({name:"",relation:""});setModal(null);}
+  // ── Fuzzy name match helper ──
+  function fuzzyMemberMatch(name) {
+    if (!name || name.length < 2) return null;
+    const lower = name.toLowerCase().trim();
+    for (const m of members) {
+      const ml = m.name.toLowerCase().trim();
+      if (ml === lower) return m; // exact match
+      // Check if one name contains the other (partial match)
+      if (ml.includes(lower) || lower.includes(ml)) return m;
+      // Check first+last name overlap: "AVINASH TALLAM" vs "Avinash"
+      const words = lower.split(/\s+/);
+      const mWords = ml.split(/\s+/);
+      const overlap = words.filter(w => w.length > 2 && mWords.some(mw => mw.includes(w) || w.includes(mw)));
+      if (overlap.length > 0 && (overlap.length >= words.length * 0.5 || overlap.length >= mWords.length * 0.5)) return m;
+    }
+    return null;
+  }
+
+  function openMemberModal(memberId) {
+    if (memberId) {
+      const m = members.find(x => x.id === memberId);
+      if (m) { setNewMember({ name: m.name, relation: m.relation || "" }); setEditingMemberId(m.id); }
+    } else {
+      setNewMember({ name: "", relation: "" }); setEditingMemberId(null);
+    }
+    setMergeCandidate(null);
+    setModal("member");
+  }
+
+  function handleMemberNameChange(name) {
+    setNewMember(p => ({ ...p, name }));
+    // Check for fuzzy match (only when adding, not editing)
+    if (!editingMemberId && name.length >= 2) {
+      const match = fuzzyMemberMatch(name);
+      setMergeCandidate(match || null);
+    } else {
+      setMergeCandidate(null);
+    }
+  }
+
+  function saveMember() {
+    if (!newMember.name.trim()) return;
+    if (editingMemberId) {
+      // Update existing member
+      setMembers(p => p.map(m => m.id === editingMemberId ? { ...m, name: newMember.name.trim(), relation: newMember.relation } : m));
+    } else {
+      // Add new member
+      setMembers(p => [...p, { id: uid(), name: newMember.name.trim(), relation: newMember.relation }]);
+    }
+    setNewMember({ name: "", relation: "" }); setEditingMemberId(null); setMergeCandidate(null); setModal(null);
+  }
+
+  async function mergeMember(targetId) {
+    // Merge: reassign all holdings from mergeCandidate's match to existing member, don't create new
+    // The user typed a name that matches an existing member — they're confirming it's the same person
+    // Nothing to do except close the modal (the import flow will use the existing member)
+    setNewMember({ name: "", relation: "" }); setMergeCandidate(null); setModal(null);
+  }
+
+  async function deleteMember(memberId, reassignToId) {
+    if (!memberId) return;
+    const m = members.find(x => x.id === memberId);
+    if (!m) return;
+    const memberHoldings = holdings.filter(h => h.member_id === memberId);
+    if (memberHoldings.length > 0 && reassignToId) {
+      // Reassign all holdings to the target member via API
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
+      for (const h of memberHoldings) {
+        await fetch("/api/holdings/" + h.id, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ ...h, member_id: reassignToId }),
+        }).catch(() => {});
+      }
+      // Refresh holdings
+      const hlds = await api("/api/holdings");
+      setHoldings(hlds || []);
+    }
+    // Remove member
+    setMembers(p => p.filter(x => x.id !== memberId));
+  }
+
+  async function mergeMembers(sourceId, targetId) {
+    // Move all holdings from source → target, then delete source
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || "";
+    const sourceHoldings = holdings.filter(h => h.member_id === sourceId);
+    for (const h of sourceHoldings) {
+      await fetch("/api/holdings/" + h.id, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ ...h, member_id: targetId }),
+      }).catch(() => {});
+    }
+    setMembers(p => p.filter(x => x.id !== sourceId));
+    const hlds = await api("/api/holdings");
+    setHoldings(hlds || []);
+  }
   function addGoal(){setGoals(p=>{const nextPri=p.length>0?Math.max(...p.map(x=>x.priority||1))+1:1;return[...p,{id:uid(),...goalForm,targetAmount:+goalForm.targetAmount,priority:goalForm.priority||nextPri,linkedMembers:goalForm.linkedMembers||["all"],monthlyContribution:+goalForm.monthlyContribution||0}];});setGoalForm(BG);setModal(null);}
   function addAlert(){setAlerts(p=>[...p,{id:uid(),...alertForm,threshold:+alertForm.threshold}]);setAlertForm(BA);setModal(null);}
 
@@ -1315,9 +1417,21 @@ ${alertLines||"  None"}`;
         setImportState(s => ({ ...s, step: "preview", mode: "transactions", format: data.format || "Unknown",
           transactions: data.transactions || [], warnings: data.warnings || [] }));
       } else {
+        // Auto-map accounts to members via fuzzy matching
+        const accts = data.accounts || [];
+        const autoMap = {};
+        for (const acct of accts) {
+          const match = fuzzyMemberMatch(acct);
+          if (match) autoMap[acct] = match.id;
+        }
+        const autoWarnings = [...(data.warnings || [])];
+        const mappedAccts = Object.entries(autoMap);
+        if (mappedAccts.length > 0) {
+          autoWarnings.push(`Auto-matched: ${mappedAccts.map(([a,id]) => `"${a}" → ${members.find(m=>m.id===id)?.name}`).join(", ")}`);
+        }
         setImportState(s => ({ ...s, step: "preview", mode: "holdings", format: data.format || "Unknown",
-          holdings: data.holdings || [], warnings: data.warnings || [],
-          accounts: data.accounts || [] }));
+          holdings: data.holdings || [], warnings: autoWarnings,
+          accounts: accts, accountMap: autoMap }));
       }
     } catch (e) {
       setImportState(s => ({ ...s, step: "upload", warnings: [`Error: ${e.message}`] }));
@@ -1948,8 +2062,83 @@ ${alertLines||"  None"}`;
 
         {/* ── MEMBERS ── */}
         {tab==="members"&&(<>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Family Members</div><button className="btn-sm" onClick={()=>{setNewMember({name:"",relation:""});setModal("member");}}>+ Add Member</button></div>
-          {mSum.map(m=>{const hs=holdings.filter(h=>h.member_id===m.id);const byT=Object.keys(AT).map(t=>({t,v:hs.filter(h=>h.type===t).reduce((s,h)=>s+getVal(h),0)})).filter(x=>x.v>0);return(<div key={m.id} className="card" style={{marginBottom:"1rem"}}><div style={{display:"flex",alignItems:"center",gap:".82rem",marginBottom:".95rem"}}><div className="av" style={{width:42,height:42,fontSize:"1rem"}}>{m.name[0]}</div><div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",color:"#ffffff"}}>{m.name}</div><div style={{fontSize:".68rem",color:"rgba(255,255,255,.33)",textTransform:"uppercase",letterSpacing:".08em"}}>{m.relation}</div></div><div style={{marginLeft:"auto",textAlign:"right"}}><div style={{fontFamily:"'DM Mono',monospace",fontSize:"1rem",color:"#c9a84c"}}>{fmt(m.cur)}</div><div className={m.gain>=0?"gain":"loss"} style={{fontSize:".73rem"}}>{fmtPct(m.pct)}</div></div></div><div style={{display:"flex",gap:".45rem",flexWrap:"wrap"}}>{byT.map(({t,v})=>{const a=AT[t];return(<div key={t} style={{background:a.color+"18",border:`1px solid ${a.color}44`,borderRadius:5,padding:".38rem .7rem",fontSize:".73rem",color:a.color}}>{a.icon} {a.label}: {fmt(v)}</div>);})}</div></div>);})}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Family Members</div><button className="btn-sm" onClick={()=>openMemberModal(null)}>+ Add Member</button></div>
+          {mSum.length===0&&(<div className="empty">No members yet. Add a family member to start tracking individual portfolios.</div>)}
+          {mSum.map(m=>{const hs=holdings.filter(h=>h.member_id===m.id);const byT=Object.keys(AT).map(t=>({t,v:hs.filter(h=>h.type===t).reduce((s,h)=>s+getVal(h),0)})).filter(x=>x.v>0);const holdingCount=hs.length;return(<div key={m.id} className="card" style={{marginBottom:"1rem"}}>
+            <div style={{display:"flex",alignItems:"center",gap:".82rem",marginBottom:".95rem"}}>
+              <div className="av" style={{width:42,height:42,fontSize:"1rem"}}>{m.name[0]}</div>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",color:"#ffffff"}}>{m.name}</div>
+                <div style={{fontSize:".68rem",color:"rgba(255,255,255,.4)",textTransform:"uppercase",letterSpacing:".08em"}}>{m.relation}{holdingCount>0?` · ${holdingCount} holding${holdingCount>1?"s":""}`:""}</div>
+              </div>
+              <div style={{display:"flex",gap:".35rem",alignItems:"center"}}>
+                <button className="delbtn" title="Edit member" onClick={()=>openMemberModal(m.id)}
+                  style={{color:"rgba(255,255,255,.5)",fontSize:".78rem"}}>✏️</button>
+                <button className="delbtn" title="Delete member" onClick={()=>setMemberAction({type:"delete",memberId:m.id,reassignTo:""})}
+                  style={{color:"rgba(224,124,90,.5)",fontSize:".78rem"}}>🗑️</button>
+                {members.length>1&&holdingCount>0&&(
+                  <button className="delbtn" title="Merge into another member" onClick={()=>setMemberAction({type:"merge",memberId:m.id,reassignTo:""})}
+                    style={{color:"rgba(160,132,202,.6)",fontSize:".78rem"}}>🔗</button>
+                )}
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1rem",color:"#c9a84c"}}>{fmt(m.cur)}</div>
+                <div className={m.gain>=0?"gain":"loss"} style={{fontSize:".73rem"}}>{fmtPct(m.pct)}</div>
+              </div>
+            </div>
+            {byT.length>0&&(<div style={{display:"flex",gap:".45rem",flexWrap:"wrap"}}>{byT.map(({t,v})=>{const a=AT[t];return(<div key={t} style={{background:a.color+"18",border:`1px solid ${a.color}44`,borderRadius:5,padding:".38rem .7rem",fontSize:".73rem",color:a.color}}>{a.icon} {a.label}: {fmt(v)}</div>);})}</div>)}
+          </div>);})}
+
+          {/* ── Delete / Merge Confirmation Modal ── */}
+          {memberAction&&(()=>{
+            const m = members.find(x=>x.id===memberAction.memberId);
+            if (!m) return null;
+            const holdingCount = holdings.filter(h=>h.member_id===m.id).length;
+            const otherMembers = members.filter(x=>x.id!==m.id);
+            const isDelete = memberAction.type==="delete";
+            const title = isDelete ? `Delete "${m.name}"` : `Merge "${m.name}"`;
+            const desc = isDelete
+              ? holdingCount>0
+                ? `This member has ${holdingCount} holding${holdingCount>1?"s":""}. Choose a member to reassign them to, or leave empty to unassign.`
+                : "No holdings are assigned to this member."
+              : `Move all ${holdingCount} holding${holdingCount>1?"s":""} from "${m.name}" to another member, then remove "${m.name}".`;
+
+            return(
+              <Overlay onClose={()=>setMemberAction(null)} narrow>
+                <div className="modtitle">{isDelete?"🗑️":"🔗"} {title}</div>
+                <div style={{fontSize:".8rem",color:"rgba(255,255,255,.7)",marginBottom:"1rem",lineHeight:1.6}}>{desc}</div>
+                {(holdingCount>0||!isDelete)&&otherMembers.length>0&&(
+                  <FG label={isDelete?"Reassign holdings to":"Merge into"}>
+                    <select className="fi fs" value={memberAction.reassignTo} onChange={e=>setMemberAction(p=>({...p,reassignTo:e.target.value}))}>
+                      {isDelete&&<option value="">— Leave unassigned —</option>}
+                      {!isDelete&&<option value="">Select a member…</option>}
+                      {otherMembers.map(o=><option key={o.id} value={o.id}>{o.name}{o.relation?` (${o.relation})`:""} — {holdings.filter(h=>h.member_id===o.id).length} holdings</option>)}
+                    </select>
+                  </FG>
+                )}
+                {holdingCount>0&&memberAction.reassignTo&&(
+                  <div style={{background:"rgba(76,175,154,.08)",border:"1px solid rgba(76,175,154,.25)",borderRadius:8,padding:".6rem .8rem",marginBottom:".8rem",fontSize:".73rem",color:"#4caf9a"}}>
+                    ✓ {holdingCount} holding{holdingCount>1?"s":""} will be moved to <strong>{otherMembers.find(o=>o.id===memberAction.reassignTo)?.name}</strong>
+                  </div>
+                )}
+                <MA>
+                  <button className="btnc" onClick={()=>setMemberAction(null)}>Cancel</button>
+                  <button className="btns" disabled={!isDelete&&!memberAction.reassignTo}
+                    style={isDelete?{background:"rgba(224,124,90,.14)",borderColor:"rgba(224,124,90,.5)",color:"#e07c5a"}:{}}
+                    onClick={async()=>{
+                      if(isDelete){
+                        await deleteMember(m.id, memberAction.reassignTo||null);
+                      } else {
+                        await mergeMembers(m.id, memberAction.reassignTo);
+                      }
+                      setMemberAction(null);
+                    }}>
+                    {isDelete?"Delete Member":"Merge Members"}
+                  </button>
+                </MA>
+              </Overlay>
+            );
+          })()}
         </>)}
 
 
@@ -3534,7 +3723,46 @@ ${alertLines||"  None"}`;
 
     {/* Inline transaction history panel (opened from 📋 button on holding row) */}
     {txnHolding&&<TransactionPanel holding={txnHolding} txnForm={txnForm} setTxnForm={setTxnForm} onAddTxn={addTransaction} onReload={reloadHoldings} onDeleteTxn={deleteTransaction} onClose={()=>setTxnHolding(null)} onFetchFx={fetchUsdInr} fxRate={usdInrRate} fxLoading={usdInrLoading}/>}
-    {modal==="member"&&(<Overlay onClose={()=>setModal(null)} narrow><div className="modtitle">Add Family Member</div><FG label="Full Name"><input className="fi" value={newMember.name} onChange={e=>setNewMember(p=>({...p,name:e.target.value}))}/></FG><FG label="Relation"><select className="fi fs" value={newMember.relation} onChange={e=>setNewMember(p=>({...p,relation:e.target.value}))}><option value="">Select</option>{["Self","Spouse","Son","Daughter","Father","Mother","Sibling"].map(r=><option key={r} value={r}>{r}</option>)}</select></FG><MA><button className="btnc" onClick={()=>setModal(null)}>Cancel</button><button className="btns" onClick={addMember}>Add</button></MA></Overlay>)}
+    {modal==="member"&&(<Overlay onClose={()=>{setModal(null);setEditingMemberId(null);setMergeCandidate(null);}} narrow>
+      <div className="modtitle">{editingMemberId?"Edit Member":"Add Family Member"}</div>
+      <FG label="Full Name">
+        <input className="fi" value={newMember.name} placeholder="e.g. Avinash Tallam"
+          onChange={e=>handleMemberNameChange(e.target.value)}/>
+      </FG>
+      {/* ── Merge suggestion ── */}
+      {mergeCandidate&&!editingMemberId&&(
+        <div style={{background:"rgba(160,132,202,.1)",border:"1px solid rgba(160,132,202,.3)",borderRadius:8,padding:".75rem .9rem",marginBottom:".8rem"}}>
+          <div style={{fontSize:".78rem",color:"rgba(255,255,255,.85)",marginBottom:".5rem"}}>
+            🔗 Is this the same person as <strong style={{color:"#a084ca"}}>{mergeCandidate.name}</strong>
+            {mergeCandidate.relation?` (${mergeCandidate.relation})`:""} ?
+          </div>
+          <div style={{fontSize:".68rem",color:"rgba(255,255,255,.5)",marginBottom:".6rem"}}>
+            {holdings.filter(h=>h.member_id===mergeCandidate.id).length} holdings already assigned to this member
+          </div>
+          <div style={{display:"flex",gap:".5rem"}}>
+            <button className="btns" style={{fontSize:".72rem",padding:".35rem .8rem"}}
+              onClick={()=>{
+                // Use existing member — close modal
+                setNewMember({name:"",relation:""}); setMergeCandidate(null); setModal(null);
+              }}>Yes, use "{mergeCandidate.name}"</button>
+            <button className="btnc" style={{fontSize:".72rem",padding:".35rem .8rem"}}
+              onClick={()=>setMergeCandidate(null)}>No, add as separate</button>
+          </div>
+        </div>
+      )}
+      <FG label="Relation">
+        <select className="fi fs" value={newMember.relation} onChange={e=>setNewMember(p=>({...p,relation:e.target.value}))}>
+          <option value="">Select</option>
+          {["Self","Spouse","Son","Daughter","Father","Mother","Sibling"].map(r=><option key={r} value={r}>{r}</option>)}
+        </select>
+      </FG>
+      <MA>
+        <button className="btnc" onClick={()=>{setModal(null);setEditingMemberId(null);setMergeCandidate(null);}}>Cancel</button>
+        <button className="btns" onClick={saveMember} disabled={!newMember.name.trim()}>
+          {editingMemberId?"Save Changes":"Add Member"}
+        </button>
+      </MA>
+    </Overlay>)}
     {modal==="goal"&&(
       <Overlay onClose={()=>setModal(null)}>
         <div className="modtitle">Add Financial Goal</div>
@@ -4022,17 +4250,22 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
             {accounts.length>0&&members.length>1?(
               <div>
                 <div style={{fontSize:".65rem",letterSpacing:".06em",textTransform:"uppercase",color:"rgba(255,255,255,.45)",marginBottom:".4rem"}}>Map accounts to family members</div>
-                {accounts.map(acct=>(
+                {accounts.map(acct=>{
+                  const autoMatched = accountMap[acct] && members.find(m=>m.id===accountMap[acct]);
+                  return(
                   <div key={acct} style={{display:"flex",gap:".6rem",alignItems:"center",marginBottom:".35rem"}}>
                     <span style={{fontSize:".72rem",color:"rgba(255,255,255,.7)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{acct}</span>
                     <span style={{fontSize:".65rem",color:"rgba(255,255,255,.4)"}}>→</span>
-                    <select className="fi" style={{padding:".22rem .5rem",fontSize:".7rem",width:"auto",minWidth:120}}
+                    <select className="fi" style={{padding:".22rem .5rem",fontSize:".7rem",width:"auto",minWidth:120,
+                      borderColor: autoMatched ? "rgba(76,175,154,.4)" : undefined}}
                       value={accountMap[acct]||""} onChange={e=>setImportState(s=>({...s,accountMap:{...s.accountMap,[acct]:e.target.value}}))}>
                       <option value="">Auto (first member)</option>
                       {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
+                    {autoMatched&&<span style={{fontSize:".6rem",color:"#4caf9a"}}>✓ matched</span>}
                   </div>
-                ))}
+                );})}
+
               </div>
             ):members.length>1?(
               <div style={{display:"flex",gap:"1rem",alignItems:"center",flexWrap:"wrap"}}>
