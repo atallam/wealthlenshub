@@ -243,7 +243,7 @@ function LoginScreen({ error: initError }) {
   return(
     <div className="login-wrap"><div className="login-card">
       <div className="logo" style={{fontSize:"1.9rem",marginBottom:".2rem"}}>Wealth<span>Lens</span>{" "}<span style={{color:"rgba(201,168,76,.6)",fontSize:".8rem",fontFamily:"'DM Sans',sans-serif",letterSpacing:".15em",fontWeight:300}}>PRO</span></div>
-      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1rem",color:"rgba(232,224,208,.45)",marginBottom:"1.7rem"}}>Your Personal Portfolio Intelligence</div>
+      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1rem",color:"rgba(255,255,255,.55)",marginBottom:"1.7rem"}}>Your Personal Portfolio Intelligence</div>
       {err&&<div style={{color:"#e07c5a",fontSize:".75rem",marginBottom:".8rem",padding:".5rem .75rem",background:"rgba(224,124,90,.08)",borderRadius:6}}>{err}</div>}
       {msg&&<div style={{color:"#4caf9a",fontSize:".75rem",marginBottom:".8rem",padding:".5rem .75rem",background:"rgba(76,175,154,.08)",borderRadius:6}}>{msg}</div>}
       <div style={{display:"flex",gap:".6rem",marginBottom:"1rem"}}>
@@ -252,13 +252,13 @@ function LoginScreen({ error: initError }) {
           {loading?"Please wait…":"Google"}
         </button>
         <button className="google-btn" onClick={handleGitHub} disabled={loading} style={{flex:1}}>
-          {!loading&&<svg width="18" height="18" viewBox="0 0 24 24" style={{marginRight:".5rem",flexShrink:0}} fill="#e8e0d0"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.929.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>}
+          {!loading&&<svg width="18" height="18" viewBox="0 0 24 24" style={{marginRight:".5rem",flexShrink:0}} fill="#ffffff"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.929.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>}
           {loading?"Please wait…":"GitHub"}
         </button>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:".7rem",margin:"0 0 1rem"}}><div style={{flex:1,height:1,background:"rgba(255,255,255,.07)"}}/><div style={{fontSize:".62rem",color:"rgba(232,224,208,.2)",letterSpacing:".08em"}}>OR</div><div style={{flex:1,height:1,background:"rgba(255,255,255,.07)"}}/></div>
+      <div style={{display:"flex",alignItems:"center",gap:".7rem",margin:"0 0 1rem"}}><div style={{flex:1,height:1,background:"rgba(255,255,255,.07)"}}/><div style={{fontSize:".62rem",color:"rgba(255,255,255,.3)",letterSpacing:".08em"}}>OR</div><div style={{flex:1,height:1,background:"rgba(255,255,255,.07)"}}/></div>
       {mode!=="forgot"&&<div style={{display:"flex",gap:".3rem",marginBottom:"1rem",borderRadius:6,background:"rgba(255,255,255,.04)",padding:"3px"}}>
-        {["signin","signup"].map(m=><div key={m} onClick={()=>{setMode(m);setErr("");setMsg("");}} style={{flex:1,textAlign:"center",padding:".38rem",borderRadius:4,cursor:"pointer",fontSize:".72rem",background:mode===m?"rgba(201,168,76,.14)":"transparent",color:mode===m?"#c9a84c":"rgba(232,224,208,.35)",transition:"all .15s"}}>{m==="signin"?"Sign In":"Create Account"}</div>)}
+        {["signin","signup"].map(m=><div key={m} onClick={()=>{setMode(m);setErr("");setMsg("");}} style={{flex:1,textAlign:"center",padding:".38rem",borderRadius:4,cursor:"pointer",fontSize:".72rem",background:mode===m?"rgba(201,168,76,.14)":"transparent",color:mode===m?"#c9a84c":"rgba(255,255,255,.45)",transition:"all .15s"}}>{m==="signin"?"Sign In":"Create Account"}</div>)}
       </div>}
       <form onSubmit={handleSubmit}>
         {mode==="signup"&&<input className="fi" type="text" placeholder="Your full name" value={name} onChange={e=>setName(e.target.value)} style={{marginBottom:".55rem"}} required/>}
@@ -266,11 +266,11 @@ function LoginScreen({ error: initError }) {
         {mode!=="forgot"&&<input className="fi" type="password" placeholder={mode==="signup"?"Password (min 6 chars)":"Password"} value={password} onChange={e=>setPassword(e.target.value)} style={{marginBottom:".85rem"}} required minLength={6}/>}
         <button type="submit" className="btns" disabled={loading} style={{width:"100%",padding:".62rem",marginBottom:".6rem"}}>{loading?"Please wait…":mode==="signin"?"Sign In":mode==="signup"?"Create Account":"Send Reset Email"}</button>
       </form>
-      <div style={{textAlign:"center",fontSize:".7rem",color:"rgba(232,224,208,.25)"}}>
+      <div style={{textAlign:"center",fontSize:".7rem",color:"rgba(255,255,255,.35)"}}>
         {mode==="signin"&&<span onClick={()=>{setMode("forgot");setErr("");setMsg("");}} style={{cursor:"pointer",textDecoration:"underline"}}>Forgot password?</span>}
         {mode==="forgot"&&<span onClick={()=>setMode("signin")} style={{cursor:"pointer"}}>← Back to sign in</span>}
       </div>
-      <div style={{fontSize:".62rem",color:"rgba(232,224,208,.17)",marginTop:"1.1rem",lineHeight:1.6}}>Data encrypted · Private · No ads · No sharing</div>
+      <div style={{fontSize:".62rem",color:"rgba(255,255,255,.25)",marginTop:"1.1rem",lineHeight:1.6}}>Data encrypted · Private · No ads · No sharing</div>
     </div></div>
   );
 }
@@ -372,7 +372,7 @@ function TransactionPanel({ holding, onAddTxn, onReload, onDeleteTxn, txnForm, s
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1.2rem"}}>
           <div>
             <div className="modtitle" style={{marginBottom:".15rem"}}>📋 Transactions</div>
-            <div style={{fontSize:".73rem",color:"rgba(232,224,208,.38)"}}>{holding.name} {isUS&&<span style={{fontSize:".65rem",color:"#5a9ce0",marginLeft:4}}>{holding.type==="CRYPTO"?"₿":"🇺🇸"} USD input</span>}</div>
+            <div style={{fontSize:".73rem",color:"rgba(255,255,255,.5)"}}>{holding.name} {isUS&&<span style={{fontSize:".65rem",color:"#5a9ce0",marginLeft:4}}>{holding.type==="CRYPTO"?"₿":"🇺🇸"} USD input</span>}</div>
           </div>
           <div style={{display:"flex",gap:".4rem",alignItems:"center"}}>
             {isMF&&holding.scheme_code&&(
@@ -428,14 +428,14 @@ function TransactionPanel({ holding, onAddTxn, onReload, onDeleteTxn, txnForm, s
                     {label:"Avg NAV",    val:`₹${avgNav.toFixed(4)}`},
                   ].map(s=>(
                     <div key={s.label} style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:7,padding:".55rem .7rem",textAlign:"center"}}>
-                      <div style={{fontSize:".58rem",letterSpacing:".07em",textTransform:"uppercase",color:"rgba(232,224,208,.3)",marginBottom:".2rem"}}>{s.label}</div>
+                      <div style={{fontSize:".58rem",letterSpacing:".07em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".2rem"}}>{s.label}</div>
                       <div style={{fontFamily:"'DM Mono',monospace",fontSize:".82rem",color:s.label==="Future SIPs"?"#5a9ce0":"#c9a84c"}}>{s.val}</div>
-                      {s.note&&<div style={{fontSize:".58rem",color:"rgba(232,224,208,.28)",marginTop:".1rem"}}>{s.note}</div>}
+                      {s.note&&<div style={{fontSize:".58rem",color:"rgba(255,255,255,.38)",marginTop:".1rem"}}>{s.note}</div>}
                     </div>
                   ))}
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".5rem"}}>
-                  <div style={{fontSize:".72rem",color:"rgba(232,224,208,.45)"}}>
+                  <div style={{fontSize:".72rem",color:"rgba(255,255,255,.55)"}}>
                     Total invested: <span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>₹{totalInvested.toLocaleString("en-IN")}</span>
                     <span style={{marginLeft:".75rem"}}>Total units: <span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>{totalUnits.toFixed(4)}</span></span>
                   </div>
@@ -498,7 +498,7 @@ function TransactionPanel({ holding, onAddTxn, onReload, onDeleteTxn, txnForm, s
               {label:"Transactions", val:txns.length},
             ].map(s=>(
               <div key={s.label} style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:8,padding:".7rem .9rem",textAlign:"center"}}>
-                <div style={{fontSize:".62rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(232,224,208,.35)",marginBottom:".3rem"}}>{s.label}</div>
+                <div style={{fontSize:".62rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.45)",marginBottom:".3rem"}}>{s.label}</div>
                 <div style={{fontFamily:"'DM Mono',monospace",fontSize:".95rem",color:"#c9a84c"}}>{s.val}</div>
               </div>
             ))}
@@ -527,7 +527,7 @@ function TransactionPanel({ holding, onAddTxn, onReload, onDeleteTxn, txnForm, s
                         ? <><td className="r mono dim">${t.price_usd!=null?Number(t.price_usd).toFixed(2):(Number(t.price)/fx).toFixed(2)}</td><td className="r mono dim">₹{Number(t.price).toLocaleString("en-IN",{maximumFractionDigits:0})}</td></>
                         : <td className="r mono dim">₹{Number(t.price).toLocaleString("en-IN",{maximumFractionDigits:2})}</td>
                       }
-                      <td className="r mono" style={{color:"#e8e0d0"}}>₹{(Number(t.units)*Number(t.price)).toLocaleString("en-IN",{maximumFractionDigits:0})}</td>
+                      <td className="r mono" style={{color:"#ffffff"}}>₹{(Number(t.units)*Number(t.price)).toLocaleString("en-IN",{maximumFractionDigits:0})}</td>
                       <td className="dim" style={{maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.notes||"—"}</td>
                       <td><button className="delbtn" onClick={()=>onDeleteTxn(t.id, holding.id)}>✕</button></td>
                     </tr>
@@ -599,7 +599,7 @@ function MFTransactionForm({ holding, isMF, isUS, fx, txnForm, setTxnForm, onAdd
 
   return (
     <div style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.07)",borderRadius:9,padding:"1rem"}}>
-      <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(232,224,208,.35)",marginBottom:".8rem"}}>Add Transaction</div>
+      <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.45)",marginBottom:".8rem"}}>Add Transaction</div>
       <div className="frow">
         <FG label="Type">
           <select className="fi fs" value={txnForm.txn_type} onChange={e=>setTxnForm(p=>({...p,txn_type:e.target.value}))}>
@@ -640,22 +640,22 @@ function MFTransactionForm({ holding, isMF, isUS, fx, txnForm, setTxnForm, onAdd
             <div style={{flex:1}}>
               {navFetched?(<div style={{display:"flex",gap:"1.2rem",flexWrap:"wrap"}}>
                 <div>
-                  <div style={{fontSize:".6rem",letterSpacing:".07em",textTransform:"uppercase",color:"rgba(232,224,208,.3)",marginBottom:".18rem"}}>NAV {navFetched.estimated?"(Est.)":navFetched.future?"(Today)":"(Exact)"}</div>
+                  <div style={{fontSize:".6rem",letterSpacing:".07em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".18rem"}}>NAV {navFetched.estimated?"(Est.)":navFetched.future?"(Today)":"(Exact)"}</div>
                   <div style={{fontFamily:"'DM Mono',monospace",fontSize:".9rem",color:"#c9a84c"}}>₹{Number(navFetched.nav).toFixed(4)}</div>
                 </div>
                 {mfAmount&&txnForm.units&&(<>
                   <div>
-                    <div style={{fontSize:".6rem",letterSpacing:".07em",textTransform:"uppercase",color:"rgba(232,224,208,.3)",marginBottom:".18rem"}}>Units Allotted</div>
-                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".9rem",color:"#e8e0d0"}}>{Number(txnForm.units).toFixed(4)}</div>
+                    <div style={{fontSize:".6rem",letterSpacing:".07em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".18rem"}}>Units Allotted</div>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".9rem",color:"#ffffff"}}>{Number(txnForm.units).toFixed(4)}</div>
                   </div>
                   <div>
-                    <div style={{fontSize:".6rem",letterSpacing:".07em",textTransform:"uppercase",color:"rgba(232,224,208,.3)",marginBottom:".18rem"}}>Total</div>
-                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".9rem",color:"#e8e0d0"}}>₹{(+mfAmount).toLocaleString("en-IN")}</div>
+                    <div style={{fontSize:".6rem",letterSpacing:".07em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".18rem"}}>Total</div>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".9rem",color:"#ffffff"}}>₹{(+mfAmount).toLocaleString("en-IN")}</div>
                   </div>
                 </>)}
                 {navFetched.estimated&&<div style={{fontSize:".65rem",color:"rgba(201,168,76,.55)",width:"100%",marginTop:".2rem"}}>Nearest available NAV used</div>}
               </div>):(
-                <div style={{fontSize:".75rem",color:"rgba(232,224,208,.32)"}}>
+                <div style={{fontSize:".75rem",color:"rgba(255,255,255,.42)"}}>
                   {txnForm.txn_date?"Click Fetch NAV to get the NAV for this date":"Select a date, then fetch NAV"}
                 </div>
               )}
@@ -674,9 +674,9 @@ function MFTransactionForm({ holding, isMF, isUS, fx, txnForm, setTxnForm, onAdd
       {isUS&&(
         <div style={{display:"flex",alignItems:"center",gap:".75rem",marginBottom:".7rem",padding:".5rem .8rem",background:"rgba(90,156,224,.06)",border:"1px solid rgba(90,156,224,.18)",borderRadius:6}}>
           <div style={{flex:1,fontSize:".75rem"}}>
-            <span style={{color:"rgba(232,224,208,.4)"}}>1 USD = </span>
+            <span style={{color:"rgba(255,255,255,.5)"}}>1 USD = </span>
             <span style={{fontFamily:"'DM Mono',monospace",color:"#5a9ce0"}}>₹{fx.toFixed(2)}</span>
-            {txnForm.price_usd&&<span style={{marginLeft:".75rem",color:"rgba(232,224,208,.4)"}}>→ ₹<span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>{(+txnForm.price_usd*fx).toLocaleString("en-IN",{maximumFractionDigits:0})}</span> per unit</span>}
+            {txnForm.price_usd&&<span style={{marginLeft:".75rem",color:"rgba(255,255,255,.5)"}}>→ ₹<span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>{(+txnForm.price_usd*fx).toLocaleString("en-IN",{maximumFractionDigits:0})}</span> per unit</span>}
           </div>
           <button onClick={onFetchFx} disabled={fxLoading} style={{background:"rgba(90,156,224,.15)",border:"1px solid rgba(90,156,224,.3)",color:"#5a9ce0",borderRadius:4,padding:"2px 8px",cursor:"pointer",fontSize:".65rem",fontFamily:"'DM Sans',sans-serif"}}>
             {fxLoading?"…":"⟳ Rate"}
@@ -743,7 +743,7 @@ function ArtifactPanel({ holding, token, onClose }) {
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1.2rem"}}>
           <div>
             <div className="modtitle" style={{marginBottom:".15rem"}}>📎 Documents</div>
-            <div style={{fontSize:".73rem",color:"rgba(232,224,208,.38)"}}>{holding.name}</div>
+            <div style={{fontSize:".73rem",color:"rgba(255,255,255,.5)"}}>{holding.name}</div>
           </div>
           <button className="delbtn" style={{fontSize:"1rem"}} onClick={onClose}>✕</button>
         </div>
@@ -757,8 +757,8 @@ function ArtifactPanel({ holding, token, onClose }) {
           style={{border:`2px dashed ${dragOver?"rgba(201,168,76,.6)":"rgba(255,255,255,.12)"}`,borderRadius:10,padding:"1.4rem",textAlign:"center",cursor:"pointer",transition:"all .2s",background:dragOver?"rgba(201,168,76,.05)":"transparent",marginBottom:"1rem"}}
         >
           <div style={{fontSize:"1.6rem",marginBottom:".4rem"}}>☁</div>
-          <div style={{fontSize:".8rem",color:"rgba(232,224,208,.5)"}}>Drag & drop or click to upload</div>
-          <div style={{fontSize:".68rem",color:"rgba(232,224,208,.28)",marginTop:".25rem"}}>PDF, images, Excel, Word — up to 15 MB</div>
+          <div style={{fontSize:".8rem",color:"rgba(255,255,255,.6)"}}>Drag & drop or click to upload</div>
+          <div style={{fontSize:".68rem",color:"rgba(255,255,255,.38)",marginTop:".25rem"}}>PDF, images, Excel, Word — up to 15 MB</div>
           <input ref={fileRef} type="file" style={{display:"none"}} onChange={e=>upload(e.target.files[0])}/>
         </div>
         <div className="frow" style={{marginBottom:"1rem"}}>
@@ -774,8 +774,8 @@ function ArtifactPanel({ holding, token, onClose }) {
                 <div key={a.id} style={{display:"flex",alignItems:"center",gap:".7rem",padding:".75rem .9rem",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:8}}>
                   <div style={{fontSize:"1.2rem",flexShrink:0}}>{fileIcon(a.file_type)}</div>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:".82rem",color:"#e8e0d0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.file_name}</div>
-                    <div style={{fontSize:".67rem",color:"rgba(232,224,208,.35)",marginTop:2}}>{a.description?`${a.description} · `:""}{fmtSize(a.file_size||0)} · {ago(a.uploaded_at)}</div>
+                    <div style={{fontSize:".82rem",color:"#ffffff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.file_name}</div>
+                    <div style={{fontSize:".67rem",color:"rgba(255,255,255,.45)",marginTop:2}}>{a.description?`${a.description} · `:""}{fmtSize(a.file_size||0)} · {ago(a.uploaded_at)}</div>
                   </div>
                   <button className="btn-o" style={{padding:".26rem .6rem",fontSize:".65rem"}} onClick={()=>download(a)}>↓ View</button>
                   <button className="delbtn" onClick={()=>remove(a.id)}>✕</button>
@@ -1458,7 +1458,7 @@ ${alertLines||"  None"}`;
     return false;
   });
 
-  const syncColor=syncSt==="saved"?"#4caf9a":syncSt==="saving"?"#c9a84c":syncSt==="error"?"#e07c5a":"rgba(232,224,208,.3)";
+  const syncColor=syncSt==="saved"?"#4caf9a":syncSt==="saving"?"#c9a84c":syncSt==="error"?"#e07c5a":"rgba(255,255,255,.4)";
 
   // ── Early returns ──
   if(authLoading) return <><style>{GF}</style><style>{CSS}</style><div style={{minHeight:"100vh",background:"#070d1a",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:34,height:34,border:"2px solid rgba(201,168,76,.2)",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div></>;
@@ -1482,7 +1482,7 @@ ${alertLines||"  None"}`;
           <button className="btn-o" onClick={refreshPrices} disabled={priceRefreshing} title="Fetch live prices from Yahoo Finance & MFAPI">
             {priceRefreshing?"⟳ Fetching…":"⟳ Live Prices"}
           </button>
-          {lastPriceRefresh&&<span style={{fontSize:".62rem",color:"rgba(232,224,208,.28)",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{ago(lastPriceRefresh)}</span>}
+          {lastPriceRefresh&&<span style={{fontSize:".62rem",color:"rgba(255,255,255,.38)",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{ago(lastPriceRefresh)}</span>}
           <button className="btn-g" onClick={generatePDF}>⤓ PDF</button>
           <button className="btn-p" onClick={()=>setModal("add")}>+ Add</button>
           <input ref={importFileRef} type="file" accept=".csv,.xlsx,.xls,.pdf" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){handleImportFile(e.target.files[0]);e.target.value="";}}}/>
@@ -1555,7 +1555,7 @@ ${alertLines||"  None"}`;
                 <span style={{fontSize:"1.1rem"}}>👋</span>
                 <div>
                   <div style={{fontSize:".8rem",color:"rgba(160,132,202,.9)",fontWeight:500}}>You're viewing sample data (view only)</div>
-                  <div style={{fontSize:".7rem",color:"rgba(232,224,208,.4)",marginTop:".1rem"}}>This is not saved anywhere. Add your own data to get started — sample data disappears automatically.</div>
+                  <div style={{fontSize:".7rem",color:"rgba(255,255,255,.5)",marginTop:".1rem"}}>This is not saved anywhere. Add your own data to get started — sample data disappears automatically.</div>
                 </div>
               </div>
               <button className="btn-sm" style={{borderColor:"rgba(160,132,202,.4)",color:"rgba(160,132,202,.8)",whiteSpace:"nowrap"}}
@@ -1568,8 +1568,8 @@ ${alertLines||"  None"}`;
           {!demoMode&&holdings.length===0&&(
             <div style={{textAlign:"center",padding:"2.5rem 1rem",marginBottom:"1rem",background:"rgba(255,255,255,.02)",border:"1px dashed rgba(255,255,255,.1)",borderRadius:12}}>
               <div style={{fontSize:"2rem",marginBottom:".7rem"}}>📂</div>
-              <div style={{fontSize:".9rem",color:"rgba(232,224,208,.7)",fontWeight:500,marginBottom:".3rem"}}>Your portfolio is empty</div>
-              <div style={{fontSize:".75rem",color:"rgba(232,224,208,.35)",marginBottom:"1.2rem",maxWidth:360,margin:"0 auto 1.2rem"}}>
+              <div style={{fontSize:".9rem",color:"rgba(255,255,255,.85)",fontWeight:500,marginBottom:".3rem"}}>Your portfolio is empty</div>
+              <div style={{fontSize:".75rem",color:"rgba(255,255,255,.45)",marginBottom:"1.2rem",maxWidth:360,margin:"0 auto 1.2rem"}}>
                 Import a broker export or add holdings manually. Or try the demo to see how things look.
               </div>
               <div style={{display:"flex",gap:".7rem",justifyContent:"center",flexWrap:"wrap"}}>
@@ -1592,17 +1592,17 @@ ${alertLines||"  None"}`;
               {mSum.map(m=>{const share=totCur>0?(m.cur/totCur)*100:0;return(<div key={m.id} className="msrow">
   <div className="av">{m.name[0]}</div>
   <div style={{flex:1}}>
-    <div style={{fontSize:".88rem",color:"#e8e0d0"}}>{m.name}</div>
-    <div style={{fontSize:".68rem",color:"rgba(232,224,208,.33)",textTransform:"uppercase",letterSpacing:".05em"}}>{m.relation}</div>
+    <div style={{fontSize:".88rem",color:"#ffffff"}}>{m.name}</div>
+    <div style={{fontSize:".68rem",color:"rgba(255,255,255,.33)",textTransform:"uppercase",letterSpacing:".05em"}}>{m.relation}</div>
     <div style={{marginTop:".35rem",height:3,background:"rgba(255,255,255,.07)",borderRadius:2,overflow:"hidden"}}>
       <div style={{height:"100%",width:`${share}%`,background:"rgba(201,168,76,.55)",borderRadius:2,transition:"width .8s ease"}}/>
     </div>
   </div>
   <div style={{marginLeft:".75rem",textAlign:"right",minWidth:90}}>
-    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".85rem",color:"#e8e0d0"}}>{fmt(m.cur)}</div>
+    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".85rem",color:"#ffffff"}}>{fmt(m.cur)}</div>
     <div style={{display:"flex",gap:".4rem",justifyContent:"flex-end",marginTop:".18rem"}}>
       <span style={{fontFamily:"'DM Mono',monospace",fontSize:".68rem",color:"#c9a84c",fontWeight:600}}>{share.toFixed(1)}%</span>
-      <span style={{fontFamily:"'DM Mono',monospace",fontSize:".68rem",color:"rgba(232,224,208,.32)"}}>|</span>
+      <span style={{fontFamily:"'DM Mono',monospace",fontSize:".68rem",color:"rgba(255,255,255,.42)"}}>|</span>
       <span className={m.gain>=0?"gain":"loss"} style={{fontSize:".68rem"}}>{fmtPct(m.pct)}</span>
     </div>
   </div>
@@ -1671,7 +1671,7 @@ ${alertLines||"  None"}`;
                   const y=pad.t+iH*(1-p);
                   return <g key={p}>
                     <line x1={pad.l} y1={y} x2={W-pad.r} y2={y} stroke="rgba(255,255,255,.06)" strokeWidth="1"/>
-                    <text x={pad.l-6} y={y+4} textAnchor="end" fill="rgba(232,224,208,.3)" fontSize="9" fontFamily="'DM Mono',monospace">
+                    <text x={pad.l-6} y={y+4} textAnchor="end" fill="rgba(255,255,255,.4)" fontSize="9" fontFamily="'DM Mono',monospace">
                       {fmtCr(maxV*p)}
                     </text>
                   </g>;
@@ -1702,15 +1702,15 @@ ${alertLines||"  None"}`;
                 })}
                 {/* X labels */}
                 {last24.map((m,i)=>labels.includes(m)?(
-                  <text key={m} x={xPos(i)} y={H-4} textAnchor="middle" fill="rgba(232,224,208,.32)" fontSize="8.5">
+                  <text key={m} x={xPos(i)} y={H-4} textAnchor="middle" fill="rgba(255,255,255,.42)" fontSize="8.5">
                     {new Date(m+"-01").toLocaleDateString("en-IN",{month:"short",year:"2-digit"})}
                   </text>
                 ):null)}
               </svg>
               <div style={{display:"flex",gap:"1.5rem",marginTop:".6rem",fontSize:".72rem"}}>
-                <div><span style={{color:"rgba(232,224,208,.35)"}}>Invested: </span><span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>{fmtCr(nwInv)}</span></div>
-                <div><span style={{color:"rgba(232,224,208,.35)"}}>Current: </span><span style={{fontFamily:"'DM Mono',monospace",color:"#e8e0d0"}}>{fmtCr(nwCur)}</span></div>
-                <div><span style={{color:"rgba(232,224,208,.35)"}}>Gain: </span><span style={{fontFamily:"'DM Mono',monospace",color:nwCur>=nwInv?"#4caf9a":"#e07c5a"}}>{fmtCr(nwCur-nwInv)} ({fmtPct(nwInv>0?(nwCur-nwInv)/nwInv*100:0)})</span></div>
+                <div><span style={{color:"rgba(255,255,255,.45)"}}>Invested: </span><span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>{fmtCr(nwInv)}</span></div>
+                <div><span style={{color:"rgba(255,255,255,.45)"}}>Current: </span><span style={{fontFamily:"'DM Mono',monospace",color:"#ffffff"}}>{fmtCr(nwCur)}</span></div>
+                <div><span style={{color:"rgba(255,255,255,.45)"}}>Gain: </span><span style={{fontFamily:"'DM Mono',monospace",color:nwCur>=nwInv?"#4caf9a":"#e07c5a"}}>{fmtCr(nwCur-nwInv)} ({fmtPct(nwInv>0?(nwCur-nwInv)/nwInv*100:0)})</span></div>
               </div>
             </div>);
           })()}
@@ -1747,18 +1747,18 @@ ${alertLines||"  None"}`;
 
                     // Avg price display (native currency of the holding)
                     const avgDisplay = avgCost
-                      ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(232,224,208,.7)"}}>
+                      ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(255,255,255,.85)"}}>
                           {nativeSym}{h.type==="MF"?Number(avgCost).toFixed(4):Number(avgCost).toLocaleString(isUS?"en-US":"en-IN",{maximumFractionDigits:2})}
                         </span>
-                      : <span style={{color:"rgba(232,224,208,.25)"}}>—</span>;
+                      : <span style={{color:"rgba(255,255,255,.35)"}}>—</span>;
 
                     // Current price per unit display (native currency of the holding)
                     const rawPrice = h.type==="MF" ? (h.current_nav||h.purchase_nav||null) : (h.current_price||h.purchase_price||null);
                     const curPriceDisplay = rawPrice
-                      ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"#e8e0d0"}}>
+                      ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"#ffffff"}}>
                           {nativeSym}{h.type==="MF"?Number(rawPrice).toFixed(4):Number(rawPrice).toLocaleString(isUS?"en-US":"en-IN",{maximumFractionDigits:2})}
                         </span>
-                      : <span style={{color:"rgba(232,224,208,.25)"}}>—</span>;
+                      : <span style={{color:"rgba(255,255,255,.35)"}}>—</span>;
 
                     return(
                       <tr key={h.id}>
@@ -1771,15 +1771,15 @@ ${alertLines||"  None"}`;
                             ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".73rem",color:"#c9a84c",background:"rgba(201,168,76,.08)",padding:"2px 7px",borderRadius:3,border:"1px solid rgba(201,168,76,.2)"}}>
                                 {h.ticker||`SC:${h.scheme_code}`}
                               </span>
-                            : <span style={{fontSize:".7rem",color:"rgba(232,224,208,.2)"}}>—</span>
+                            : <span style={{fontSize:".7rem",color:"rgba(255,255,255,.3)"}}>—</span>
                           }
                         </td>
                         <td><span className="tbadge2" style={{background:a.color+"22",color:a.color}}>{a.icon} {a.label}</span></td>
                         <td className="dim">{mn}</td>
                         <td className="r">
                           {units!=null
-                            ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(232,224,208,.7)"}}>{Number(units).toLocaleString("en-IN",{maximumFractionDigits:4})}</span>
-                            : <span style={{color:"rgba(232,224,208,.25)"}}>—</span>}
+                            ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(255,255,255,.85)"}}>{Number(units).toLocaleString("en-IN",{maximumFractionDigits:4})}</span>
+                            : <span style={{color:"rgba(255,255,255,.35)"}}>—</span>}
                         </td>
                         <td className="r">{avgDisplay}</td>
                         <td className="r">{curPriceDisplay}</td>
@@ -1797,30 +1797,30 @@ ${alertLines||"  None"}`;
                               <div style={{color:xr.value>=0?"#4caf9a":"#e07c5a",fontWeight:xr.method==="xirr"?600:400}}>
                                 {xr.value>=0?"+":""}{xr.value.toFixed(1)}%
                               </div>
-                              <div style={{fontSize:".55rem",color:xr.method==="xirr"?"rgba(76,175,154,.6)":xr.method==="cagr"?"rgba(90,156,224,.5)":"rgba(232,224,208,.28)",marginTop:1}}>
+                              <div style={{fontSize:".55rem",color:xr.method==="xirr"?"rgba(76,175,154,.6)":xr.method==="cagr"?"rgba(90,156,224,.5)":"rgba(255,255,255,.38)",marginTop:1}}>
                                 {xr.method==="xirr"?"XIRR":xr.method==="cagr"?"CAGR":"simple"}
                               </div>
                             </div>
                           ):(
-                            <span style={{color:"rgba(232,224,208,.22)"}} title="No data — add buy dates or cost basis for returns">—</span>
+                            <span style={{color:"rgba(255,255,255,.32)"}} title="No data — add buy dates or cost basis for returns">—</span>
                           )}
                         </td>
                         <td className="r">
                           {isLive
                             ?<span style={{fontSize:".62rem",background:"rgba(76,175,154,.12)",color:"#4caf9a",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(76,175,154,.25)"}}>● Live · {ago(h.price_fetched_at)}</span>
                             :(h.type==="FD"||h.type==="PPF"||h.type==="EPF")
-                              ?<span style={{fontSize:".62rem",color:"rgba(232,224,208,.3)"}}>Auto-calc</span>
+                              ?<span style={{fontSize:".62rem",color:"rgba(255,255,255,.4)"}}>Auto-calc</span>
                               :USD_TYPES.has(h.type)
                                 ?<span title="Add ticker and click Live Prices" style={{fontSize:".62rem",color:"rgba(224,124,90,.7)",cursor:"help"}}>⚠ Add ticker for live</span>
-                                :<span style={{fontSize:".62rem",color:"rgba(232,224,208,.28)"}}>Manual</span>
+                                :<span style={{fontSize:".62rem",color:"rgba(255,255,255,.38)"}}>Manual</span>
                           }
                         </td>
                         <td>
                           <div style={{display:"flex",gap:3}}>
-                            <button className="delbtn" title="View transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transactions||[]).length>0?"#a084ca":"rgba(232,224,208,.28)"}}>
+                            <button className="delbtn" title="View transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transactions||[]).length>0?"#a084ca":"rgba(255,255,255,.38)"}}>
                               📋{(h.transactions||[]).length>0?` ${(h.transactions||[]).length}`:""}
                             </button>
-                            <button className="delbtn" title="Attach documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"rgba(232,224,208,.28)"}}>
+                            <button className="delbtn" title="Attach documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"rgba(255,255,255,.38)"}}>
                               📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}
                             </button>
                             <button className="delbtn" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>editH(h)}>✎</button>
@@ -1840,8 +1840,8 @@ ${alertLines||"  None"}`;
                   return(
                   <tfoot>
                     <tr style={{borderTop:"2px solid rgba(201,168,76,.2)"}}>
-                      <td colSpan={6} style={{padding:".75rem .65rem",fontSize:".7rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(232,224,208,.32)",fontWeight:600}}>Total · {visH.length} holding{visH.length!==1?"s":""}</td>
-                      <td className="r mono" style={{padding:".75rem .65rem",fontWeight:600,color:"rgba(232,224,208,.55)",fontSize:".83rem"}}>{fmt(totI)}</td>
+                      <td colSpan={6} style={{padding:".75rem .65rem",fontSize:".7rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.42)",fontWeight:600}}>Total · {visH.length} holding{visH.length!==1?"s":""}</td>
+                      <td className="r mono" style={{padding:".75rem .65rem",fontWeight:600,color:"rgba(255,255,255,.65)",fontSize:".83rem"}}>{fmt(totI)}</td>
                       <td className="r mono" style={{padding:".75rem .65rem",fontWeight:700,color:"#c9a84c",fontSize:".88rem"}}>{fmt(totC)}</td>
                       <td className={`r mono${totG>=0?" gain":" loss"}`} style={{padding:".75rem .65rem",fontWeight:600,fontSize:".83rem"}}>{totG>=0?"+":""}{fmt(totG)}</td>
                       <td className={`r mono${totP>=0?" gain":" loss"}`} style={{padding:".75rem .65rem",fontWeight:600,fontSize:".83rem"}}>{fmtPct(totP)}</td>
@@ -1852,8 +1852,8 @@ ${alertLines||"  None"}`;
               </table>
             </div>
           )}
-          <div style={{marginTop:"1rem",padding:".75rem 1rem",background:"rgba(255,255,255,.02)",borderRadius:8,fontSize:".72rem",color:"rgba(232,224,208,.35)",lineHeight:1.6}}>
-            <strong style={{color:"rgba(232,224,208,.55)"}}>Live prices:</strong> Add NSE ticker (e.g. <code style={{color:"#c9a84c"}}>RELIANCE</code>) or AMFI scheme code (e.g. <code style={{color:"#c9a84c"}}>119551</code>) when adding a holding, then click <strong style={{color:"rgba(232,224,208,.55)"}}>⟳ Live Prices</strong> to auto-fetch. 📎 button attaches contract notes, statements, or receipts to any holding.
+          <div style={{marginTop:"1rem",padding:".75rem 1rem",background:"rgba(255,255,255,.02)",borderRadius:8,fontSize:".72rem",color:"rgba(255,255,255,.45)",lineHeight:1.6}}>
+            <strong style={{color:"rgba(255,255,255,.65)"}}>Live prices:</strong> Add NSE ticker (e.g. <code style={{color:"#c9a84c"}}>RELIANCE</code>) or AMFI scheme code (e.g. <code style={{color:"#c9a84c"}}>119551</code>) when adding a holding, then click <strong style={{color:"rgba(255,255,255,.65)"}}>⟳ Live Prices</strong> to auto-fetch. 📎 button attaches contract notes, statements, or receipts to any holding.
           </div>
         </div>)}
 
@@ -1869,7 +1869,7 @@ ${alertLines||"  None"}`;
           return(<>
           {/* Header */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem",flexWrap:"wrap",gap:".7rem"}}>
-            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#e8e0d0"}}>Financial Goals</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Financial Goals</div>
             <div style={{display:"flex",gap:".5rem"}}>
               {goals.length>0&&<button className="btn-o" onClick={()=>setModal("goalplan")}>✦ Fulfillment Plan</button>}
               <button className="btn-sm" onClick={()=>{setGoalForm({...BG,priority:goals.length+1});setModal("goal");}}>+ New Goal</button>
@@ -1902,16 +1902,16 @@ ${alertLines||"  None"}`;
                 {/* Category */}
                 <div style={{display:"flex",alignItems:"center",gap:".55rem",marginBottom:".9rem",marginTop:".25rem"}}>
                   <div style={{width:8,height:8,borderRadius:"50%",background:g.color}}/>
-                  <span style={{fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(232,224,208,.33)"}}>{g.category}</span>
+                  <span style={{fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.33)"}}>{g.category}</span>
                 </div>
 
                 {/* Goal name */}
-                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",color:"#e8e0d0",marginBottom:".2rem"}}>{g.name}</div>
-                {g.notes&&<div style={{fontSize:".72rem",color:"rgba(232,224,208,.3)",marginBottom:".6rem"}}>{g.notes}</div>}
+                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",color:"#ffffff",marginBottom:".2rem"}}>{g.name}</div>
+                {g.notes&&<div style={{fontSize:".72rem",color:"rgba(255,255,255,.4)",marginBottom:".6rem"}}>{g.notes}</div>}
 
                 {/* Linked members pill */}
                 <div style={{marginBottom:".85rem"}}>
-                  <span style={{fontSize:".65rem",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,padding:"2px 9px",color:"rgba(232,224,208,.45)"}}>
+                  <span style={{fontSize:".65rem",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,padding:"2px 9px",color:"rgba(255,255,255,.55)"}}>
                     👤 {memberNames}
                   </span>
                 </div>
@@ -1919,18 +1919,18 @@ ${alertLines||"  None"}`;
                 {/* Progress */}
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:".45rem"}}>
                   <span style={{fontFamily:"'DM Mono',monospace",fontSize:"1.05rem",color:g.color}}>{fmtCr(cur)}</span>
-                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:".82rem",color:"rgba(232,224,208,.38)"}}>of {fmtCr(g.targetAmount)}</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:".82rem",color:"rgba(255,255,255,.5)"}}>of {fmtCr(g.targetAmount)}</span>
                 </div>
                 <div className="gbbg"><div className="gbfill" style={{width:`${prog}%`,background:g.color}}/></div>
                 <div style={{display:"flex",justifyContent:"space-between",marginTop:".55rem",fontSize:".7rem"}}>
-                  <span style={{color:"rgba(232,224,208,.38)"}}>Remaining <span style={{color:"#e8e0d0",fontFamily:"'DM Mono',monospace"}}>{fmtCr(rem)}</span></span>
-                  <span style={{color:"rgba(232,224,208,.38)"}}>{yLeft}y · {prog.toFixed(0)}%</span>
+                  <span style={{color:"rgba(255,255,255,.5)"}}>Remaining <span style={{color:"#ffffff",fontFamily:"'DM Mono',monospace"}}>{fmtCr(rem)}</span></span>
+                  <span style={{color:"rgba(255,255,255,.5)"}}>{yLeft}y · {prog.toFixed(0)}%</span>
                 </div>
 
                 {/* Monthly contribution if set */}
                 {monthly>0&&(
-                  <div style={{marginTop:".65rem",padding:".4rem .7rem",background:"rgba(255,255,255,.03)",borderRadius:5,fontSize:".68rem",color:"rgba(232,224,208,.4)"}}>
-                    Monthly SIP: <span style={{fontFamily:"'DM Mono',monospace",color:"rgba(232,224,208,.7)"}}>₹{monthly.toLocaleString("en-IN")}</span>
+                  <div style={{marginTop:".65rem",padding:".4rem .7rem",background:"rgba(255,255,255,.03)",borderRadius:5,fontSize:".68rem",color:"rgba(255,255,255,.5)"}}>
+                    Monthly SIP: <span style={{fontFamily:"'DM Mono',monospace",color:"rgba(255,255,255,.85)"}}>₹{monthly.toLocaleString("en-IN")}</span>
                   </div>
                 )}
               </div>);
@@ -1941,15 +1941,15 @@ ${alertLines||"  None"}`;
 
         {/* ── ALERTS ── */}
         {tab==="alerts"&&(<>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#e8e0d0"}}>Rebalancing Alerts</div><button className="btn-sm" onClick={()=>{setAlertForm(BA);setModal("alert");}}>+ New Alert</button></div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Rebalancing Alerts</div><button className="btn-sm" onClick={()=>{setAlertForm(BA);setModal("alert");}}>+ New Alert</button></div>
           {trigAlerts.length>0&&(<div className="card" style={{marginBottom:"1.2rem",borderColor:"rgba(224,124,90,.3)"}}><div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#e07c5a",marginBottom:".7rem"}}>⚠ Triggered Now</div>{trigAlerts.map(a=>(<div key={a.id} style={{display:"flex",alignItems:"center",gap:".7rem",padding:".7rem",background:"rgba(224,124,90,.07)",borderRadius:"6px",marginBottom:".45rem",border:"1px solid rgba(224,124,90,.2)"}}><span>⚠️</span><div style={{flex:1,fontSize:".82rem",color:"#e07c5a"}}>{a.label}</div></div>))}</div>)}
-          <div className="card">{alerts.map(a=>{const trig=!!trigAlerts.find(t=>t.id===a.id);return(<div key={a.id} style={{display:"flex",alignItems:"center",gap:".7rem",padding:".7rem",borderRadius:"6px",marginBottom:".45rem",background:trig?"rgba(224,124,90,.04)":"rgba(255,255,255,.02)",border:`1px solid ${trig?"rgba(224,124,90,.2)":"rgba(255,255,255,.06)"}`}}><div style={{width:7,height:7,borderRadius:"50%",background:trig?"#e07c5a":a.active?"#4caf9a":"rgba(255,255,255,.18)",flexShrink:0}}/><div style={{flex:1}}><div style={{fontSize:".82rem",color:trig?"#e07c5a":"rgba(232,224,208,.78)"}}>{a.label}</div><div style={{fontSize:".68rem",color:"rgba(232,224,208,.28)",marginTop:2}}>{a.type==="CONCENTRATION"?"Below ":"Above "}{a.threshold}%</div></div><button onClick={()=>setAlerts(p=>p.map(x=>x.id===a.id?{...x,active:!x.active}:x))} style={{background:"none",border:"1px solid rgba(255,255,255,.1)",borderRadius:4,padding:"2px 9px",fontSize:".68rem",cursor:"pointer",color:a.active?"#4caf9a":"rgba(232,224,208,.28)"}}>{a.active?"ON":"OFF"}</button><button className="delbtn" onClick={()=>setAlerts(p=>p.filter(x=>x.id!==a.id))}>✕</button></div>);})}</div>
+          <div className="card">{alerts.map(a=>{const trig=!!trigAlerts.find(t=>t.id===a.id);return(<div key={a.id} style={{display:"flex",alignItems:"center",gap:".7rem",padding:".7rem",borderRadius:"6px",marginBottom:".45rem",background:trig?"rgba(224,124,90,.04)":"rgba(255,255,255,.02)",border:`1px solid ${trig?"rgba(224,124,90,.2)":"rgba(255,255,255,.06)"}`}}><div style={{width:7,height:7,borderRadius:"50%",background:trig?"#e07c5a":a.active?"#4caf9a":"rgba(255,255,255,.18)",flexShrink:0}}/><div style={{flex:1}}><div style={{fontSize:".82rem",color:trig?"#e07c5a":"rgba(255,255,255,.85)"}}>{a.label}</div><div style={{fontSize:".68rem",color:"rgba(255,255,255,.38)",marginTop:2}}>{a.type==="CONCENTRATION"?"Below ":"Above "}{a.threshold}%</div></div><button onClick={()=>setAlerts(p=>p.map(x=>x.id===a.id?{...x,active:!x.active}:x))} style={{background:"none",border:"1px solid rgba(255,255,255,.1)",borderRadius:4,padding:"2px 9px",fontSize:".68rem",cursor:"pointer",color:a.active?"#4caf9a":"rgba(255,255,255,.38)"}}>{a.active?"ON":"OFF"}</button><button className="delbtn" onClick={()=>setAlerts(p=>p.filter(x=>x.id!==a.id))}>✕</button></div>);})}</div>
         </>)}
 
         {/* ── MEMBERS ── */}
         {tab==="members"&&(<>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#e8e0d0"}}>Family Members</div><button className="btn-sm" onClick={()=>{setNewMember({name:"",relation:""});setModal("member");}}>+ Add Member</button></div>
-          {mSum.map(m=>{const hs=holdings.filter(h=>h.member_id===m.id);const byT=Object.keys(AT).map(t=>({t,v:hs.filter(h=>h.type===t).reduce((s,h)=>s+getVal(h),0)})).filter(x=>x.v>0);return(<div key={m.id} className="card" style={{marginBottom:"1rem"}}><div style={{display:"flex",alignItems:"center",gap:".82rem",marginBottom:".95rem"}}><div className="av" style={{width:42,height:42,fontSize:"1rem"}}>{m.name[0]}</div><div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",color:"#e8e0d0"}}>{m.name}</div><div style={{fontSize:".68rem",color:"rgba(232,224,208,.33)",textTransform:"uppercase",letterSpacing:".08em"}}>{m.relation}</div></div><div style={{marginLeft:"auto",textAlign:"right"}}><div style={{fontFamily:"'DM Mono',monospace",fontSize:"1rem",color:"#c9a84c"}}>{fmt(m.cur)}</div><div className={m.gain>=0?"gain":"loss"} style={{fontSize:".73rem"}}>{fmtPct(m.pct)}</div></div></div><div style={{display:"flex",gap:".45rem",flexWrap:"wrap"}}>{byT.map(({t,v})=>{const a=AT[t];return(<div key={t} style={{background:a.color+"18",border:`1px solid ${a.color}44`,borderRadius:5,padding:".38rem .7rem",fontSize:".73rem",color:a.color}}>{a.icon} {a.label}: {fmt(v)}</div>);})}</div></div>);})}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Family Members</div><button className="btn-sm" onClick={()=>{setNewMember({name:"",relation:""});setModal("member");}}>+ Add Member</button></div>
+          {mSum.map(m=>{const hs=holdings.filter(h=>h.member_id===m.id);const byT=Object.keys(AT).map(t=>({t,v:hs.filter(h=>h.type===t).reduce((s,h)=>s+getVal(h),0)})).filter(x=>x.v>0);return(<div key={m.id} className="card" style={{marginBottom:"1rem"}}><div style={{display:"flex",alignItems:"center",gap:".82rem",marginBottom:".95rem"}}><div className="av" style={{width:42,height:42,fontSize:"1rem"}}>{m.name[0]}</div><div><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",color:"#ffffff"}}>{m.name}</div><div style={{fontSize:".68rem",color:"rgba(255,255,255,.33)",textTransform:"uppercase",letterSpacing:".08em"}}>{m.relation}</div></div><div style={{marginLeft:"auto",textAlign:"right"}}><div style={{fontFamily:"'DM Mono',monospace",fontSize:"1rem",color:"#c9a84c"}}>{fmt(m.cur)}</div><div className={m.gain>=0?"gain":"loss"} style={{fontSize:".73rem"}}>{fmtPct(m.pct)}</div></div></div><div style={{display:"flex",gap:".45rem",flexWrap:"wrap"}}>{byT.map(({t,v})=>{const a=AT[t];return(<div key={t} style={{background:a.color+"18",border:`1px solid ${a.color}44`,borderRadius:5,padding:".38rem .7rem",fontSize:".73rem",color:a.color}}>{a.icon} {a.label}: {fmt(v)}</div>);})}</div></div>);})}
         </>)}
 
 
@@ -2007,7 +2007,7 @@ ${alertLines||"  None"}`;
                     style={{padding:".3rem .75rem",borderRadius:5,cursor:"pointer",fontSize:".73rem",fontWeight:500,
                       background:budgetView===v?"rgba(201,168,76,.18)":"rgba(255,255,255,.04)",
                       border:`1px solid ${budgetView===v?"rgba(201,168,76,.5)":"rgba(255,255,255,.1)"}`,
-                      color:budgetView===v?"#c9a84c":"rgba(232,224,208,.5)",transition:"all .15s",textTransform:"capitalize"}}>
+                      color:budgetView===v?"#c9a84c":"rgba(255,255,255,.6)",transition:"all .15s",textTransform:"capitalize"}}>
                     {v==="overview"?"📊 Overview":v==="transactions"?"📋 Transactions":v==="categories"?"🏷️ Categories":"📤 Import"}
                   </div>
                 ))}
@@ -2018,13 +2018,13 @@ ${alertLines||"  None"}`;
                   value={budgetSelMonth}
                   onChange={e=>{setBudgetSelMonth(e.target.value);}}
                   placeholder="All time"/>
-                {budgetSelMonth&&<button onClick={()=>setBudgetSelMonth("")} style={{background:"none",border:"none",color:"rgba(232,224,208,.4)",cursor:"pointer",fontSize:".9rem"}}>✕</button>}
+                {budgetSelMonth&&<button onClick={()=>setBudgetSelMonth("")} style={{background:"none",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:".9rem"}}>✕</button>}
               </div>
             </div>
 
             {/* ═══ OVERVIEW ═══ */}
             {budgetView==="overview"&&(()=>{
-              if(!analytics) return(<div style={{textAlign:"center",padding:"3rem",color:"rgba(232,224,208,.3)"}}>
+              if(!analytics) return(<div style={{textAlign:"center",padding:"3rem",color:"rgba(255,255,255,.4)"}}>
                 <div style={{fontSize:"2rem",marginBottom:".5rem"}}>📊</div>
                 <div>Import a bank statement to see your spending overview</div>
                 <button className="btns" style={{marginTop:"1rem"}} onClick={()=>setBudgetView("import")}>+ Import Statement</button>
@@ -2039,7 +2039,7 @@ ${alertLines||"  None"}`;
                     {label:"Categories",val:catData.length,color:"#c9a84c",isCnt:true},
                   ].map(k=>(
                     <div key={k.label} className="card" style={{padding:".85rem 1rem"}}>
-                      <div style={{fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(232,224,208,.35)",marginBottom:".4rem"}}>{k.label}</div>
+                      <div style={{fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.45)",marginBottom:".4rem"}}>{k.label}</div>
                       <div style={{fontFamily:"'DM Mono',monospace",fontSize:k.isCnt?"1.4rem":"1.1rem",color:k.color}}>
                         {k.isCnt?k.val:fmtAmt(Math.abs(k.val))}
                       </div>
@@ -2069,15 +2069,15 @@ ${alertLines||"  None"}`;
                               return<path key={i} d={path} fill={d.color} opacity=".9"/>;
                             });
                           })()}
-                          <text x="90" y="86" textAnchor="middle" fill="#e8e0d0" fontSize="10" fontFamily="'DM Mono',monospace">{fmtAmt(totalSpend)}</text>
-                          <text x="90" y="100" textAnchor="middle" fill="rgba(232,224,208,.4)" fontSize="8">spent</text>
+                          <text x="90" y="86" textAnchor="middle" fill="#ffffff" fontSize="10" fontFamily="'DM Mono',monospace">{fmtAmt(totalSpend)}</text>
+                          <text x="90" y="100" textAnchor="middle" fill="rgba(255,255,255,.5)" fontSize="8">spent</text>
                         </svg>
                         <div style={{flex:1,minWidth:120}}>
                           {catData.slice(0,8).map(d=>(
                             <div key={d.name} style={{display:"flex",alignItems:"center",gap:".4rem",marginBottom:".35rem",fontSize:".72rem"}}>
                               <div style={{width:8,height:8,borderRadius:"50%",background:d.color,flexShrink:0}}/>
-                              <div style={{flex:1,color:"rgba(232,224,208,.65)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.icon} {d.name}</div>
-                              <div style={{fontFamily:"'DM Mono',monospace",color:"rgba(232,224,208,.55)",fontSize:".68rem"}}>{((d.value/totalSpend)*100).toFixed(1)}%</div>
+                              <div style={{flex:1,color:"rgba(255,255,255,.65)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.icon} {d.name}</div>
+                              <div style={{fontFamily:"'DM Mono',monospace",color:"rgba(255,255,255,.65)",fontSize:".68rem"}}>{((d.value/totalSpend)*100).toFixed(1)}%</div>
                             </div>
                           ))}
                         </div>
@@ -2095,11 +2095,11 @@ ${alertLines||"  None"}`;
                           const label=new Date(mo+"-01").toLocaleDateString("en-IN",{month:"short"});
                           return(
                           <div key={mo} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:".3rem"}}>
-                            <div style={{fontSize:".6rem",color:"rgba(232,224,208,.4)",fontFamily:"'DM Mono',monospace"}}>{fmtAmt(val)}</div>
+                            <div style={{fontSize:".6rem",color:"rgba(255,255,255,.5)",fontFamily:"'DM Mono',monospace"}}>{fmtAmt(val)}</div>
                             <div style={{width:"100%",background:"rgba(201,168,76,.12)",borderRadius:"3px 3px 0 0",height:100,display:"flex",alignItems:"flex-end"}}>
                               <div style={{width:"100%",background:"rgba(201,168,76,.7)",borderRadius:"3px 3px 0 0",height:`${pct}%`,transition:"height .6s ease"}}/>
                             </div>
-                            <div style={{fontSize:".62rem",color:"rgba(232,224,208,.45)"}}>{label}</div>
+                            <div style={{fontSize:".62rem",color:"rgba(255,255,255,.55)"}}>{label}</div>
                           </div>);
                         })}
                       </div>
@@ -2120,7 +2120,7 @@ ${alertLines||"  None"}`;
                         return(
                         <div key={d.name} style={{padding:".75rem .9rem",background:"rgba(255,255,255,.03)",border:`1px solid rgba(255,255,255,.07)`,borderRadius:7}}>
                           <div style={{display:"flex",justifyContent:"space-between",marginBottom:".45rem"}}>
-                            <span style={{fontSize:".8rem",color:"#e8e0d0"}}>{d.icon} {d.name}</span>
+                            <span style={{fontSize:".8rem",color:"#ffffff"}}>{d.icon} {d.name}</span>
                             <span style={{fontFamily:"'DM Mono',monospace",fontSize:".78rem",color:over?"#e07c5a":"#c9a84c"}}>{fmtAmt(d.value)}</span>
                           </div>
                           {limit>0&&(
@@ -2128,7 +2128,7 @@ ${alertLines||"  None"}`;
                               <div style={{height:4,background:"rgba(255,255,255,.07)",borderRadius:2,marginBottom:".3rem"}}>
                                 <div style={{height:"100%",width:`${pct}%`,background:over?"#e07c5a":d.color,borderRadius:2,transition:"width .6s"}}/>
                               </div>
-                              <div style={{fontSize:".65rem",color:"rgba(232,224,208,.35)"}}>
+                              <div style={{fontSize:".65rem",color:"rgba(255,255,255,.45)"}}>
                                 {over?<span style={{color:"#e07c5a"}}>Over by {fmtAmt(d.value-limit)}</span>:
                                   <span>{fmtAmt(limit-d.value)} remaining of {fmtAmt(limit)}</span>}
                               </div>
@@ -2145,7 +2145,7 @@ ${alertLines||"  None"}`;
                 <div className="card" style={{borderTop:"2px solid rgba(201,168,76,.3)"}}>
                   <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".85rem"}}>
                     <div className="ctitle" style={{margin:0}}>💡 Spend-to-Wealth Bridge</div>
-                    <div style={{fontSize:".68rem",color:"rgba(232,224,208,.3)"}}>What if you invested more?</div>
+                    <div style={{fontSize:".68rem",color:"rgba(255,255,255,.4)"}}>What if you invested more?</div>
                   </div>
                   {(()=>{
                     const topCats = catData.filter(d=>!["Investments","Transfers","Other"].includes(d.name)).slice(0,4);
@@ -2171,14 +2171,14 @@ ${alertLines||"  None"}`;
                                 const fv=monthly*((Math.pow(1+r,n)-1)/r)*(1+r);
                                 return <td key={y} className="r mono" style={{color:"#4caf9a"}}>{fmtCr(fv)}</td>;
                               })}
-                              <td className="r" style={{fontSize:".68rem",color:"rgba(232,224,208,.4)"}}>
+                              <td className="r" style={{fontSize:".68rem",color:"rgba(255,255,255,.5)"}}>
                                 {totInv>0?`Your portfolio: ${fmtPct((allCur-allInv)/allInv*100)}`:"—"}
                               </td>
                             </tr>);
                           })}
                         </tbody>
                       </table>
-                      <div style={{fontSize:".65rem",color:"rgba(232,224,208,.25)",marginTop:".5rem"}}>Assumes 12% CAGR. Monthly spend estimated from {budgetSelMonth||"all imported"} data.</div>
+                      <div style={{fontSize:".65rem",color:"rgba(255,255,255,.35)",marginTop:".5rem"}}>Assumes 12% CAGR. Monthly spend estimated from {budgetSelMonth||"all imported"} data.</div>
                     </div>);
                   })()}
                 </div>
@@ -2228,7 +2228,7 @@ ${alertLines||"  None"}`;
                       setSelectedTxnIds(new Set());setBulkCatTarget("");
                       await loadTxns();
                     }}>Apply</button>
-                    <button onClick={()=>setSelectedTxnIds(new Set())} style={{background:"none",border:"none",color:"rgba(232,224,208,.4)",cursor:"pointer"}}>✕ Clear</button>
+                    <button onClick={()=>setSelectedTxnIds(new Set())} style={{background:"none",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer"}}>✕ Clear</button>
                   </div>
                 )}
 
@@ -2251,7 +2251,7 @@ ${alertLines||"  None"}`;
                             <td><input type="checkbox" checked={selectedTxnIds.has(t.id)}
                               onChange={e=>{const s=new Set(selectedTxnIds);e.target.checked?s.add(t.id):s.delete(t.id);setSelectedTxnIds(s);}}/></td>
                             <td className="mono dim" style={{fontSize:".75rem"}}>{t.txn_date}</td>
-                            <td style={{maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:".78rem",color:"rgba(232,224,208,.8)"}}>{t.description}</td>
+                            <td style={{maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:".78rem",color:"rgba(255,255,255,.8)"}}>{t.description}</td>
                             <td className="r mono" style={{color:t.txn_type==="DEBIT"?"#e07c5a":"#4caf9a",fontSize:".82rem"}}>
                               {t.txn_type==="DEBIT"?"-":"+"}{fmtAmt(t.amount)}
                             </td>
@@ -2269,7 +2269,7 @@ ${alertLines||"  None"}`;
                         })}
                       </tbody>
                     </table>
-                    {budgetTxns.length>200&&<div style={{padding:".65rem",textAlign:"center",fontSize:".72rem",color:"rgba(232,224,208,.3)"}}>Showing 200 of {budgetTxns.length} transactions — apply filters to narrow</div>}
+                    {budgetTxns.length>200&&<div style={{padding:".65rem",textAlign:"center",fontSize:".72rem",color:"rgba(255,255,255,.4)"}}>Showing 200 of {budgetTxns.length} transactions — apply filters to narrow</div>}
                   </div>
                 )}
               </>);
@@ -2286,11 +2286,11 @@ ${alertLines||"  None"}`;
                   <div key={cat.id} className="card" style={{borderLeft:`3px solid ${cat.color}`,padding:".85rem 1rem"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                       <div>
-                        <div style={{fontSize:".9rem",color:"#e8e0d0",marginBottom:".2rem"}}>{cat.icon} {cat.name}</div>
-                        <div style={{fontSize:".68rem",color:"rgba(232,224,208,.35)"}}>
+                        <div style={{fontSize:".9rem",color:"#ffffff",marginBottom:".2rem"}}>{cat.icon} {cat.name}</div>
+                        <div style={{fontSize:".68rem",color:"rgba(255,255,255,.45)"}}>
                           {cat.monthly_limit>0?`Budget: ₹${cat.monthly_limit.toLocaleString("en-IN")} /mo`:"No budget set"}
                         </div>
-                        {cat.keywords&&<div style={{fontSize:".65rem",color:"rgba(232,224,208,.28)",marginTop:".2rem",lineHeight:1.5}}>Keywords: {cat.keywords.slice(0,60)}{cat.keywords.length>60?"…":""}</div>}
+                        {cat.keywords&&<div style={{fontSize:".65rem",color:"rgba(255,255,255,.38)",marginTop:".2rem",lineHeight:1.5}}>Keywords: {cat.keywords.slice(0,60)}{cat.keywords.length>60?"…":""}</div>}
                       </div>
                       <div style={{display:"flex",gap:".3rem"}}>
                         <button className="delbtn" onClick={()=>setBudgetEditCat(cat)} title="Edit">✎</button>
@@ -2349,7 +2349,7 @@ ${alertLines||"  None"}`;
               {/* Upload card */}
               <div className="card" style={{marginBottom:"1.2rem"}}>
                 <div className="ctitle">Import Bank Statement</div>
-                <div style={{fontSize:".77rem",color:"rgba(232,224,208,.45)",marginBottom:"1rem",lineHeight:1.7}}>
+                <div style={{fontSize:".77rem",color:"rgba(255,255,255,.55)",marginBottom:"1rem",lineHeight:1.7}}>
                   Upload CSV or Excel statements from HDFC, ICICI, Axis, SBI, Kotak and other banks.
                   Transactions are <span style={{color:"#4caf9a"}}>AES-256 encrypted</span> before storage. Statements older than 1 year are automatically purged.
                 </div>
@@ -2372,7 +2372,7 @@ ${alertLines||"  None"}`;
                 <FG label="Statement File (CSV or XLSX)">
                   <input type="file" accept=".csv,.xlsx,.xls" className="fi"
                     onChange={e=>setBudgetUploadFile(e.target.files[0])}
-                    style={{paddingTop:".4rem",color:"rgba(232,224,208,.7)"}}/>
+                    style={{paddingTop:".4rem",color:"rgba(255,255,255,.85)"}}/>
                 </FG>
                 <FG label="Notes (optional)">
                   <input className="fi" placeholder="e.g. Jan–Mar 2026 statement"
@@ -2424,7 +2424,7 @@ ${alertLines||"  None"}`;
                     <tbody>
                       {budgetStatements.map(s=>(
                         <tr key={s.id}>
-                          <td style={{fontWeight:500,color:"#e8e0d0"}}>{s.source}</td>
+                          <td style={{fontWeight:500,color:"#ffffff"}}>{s.source}</td>
                           <td><span style={{fontSize:".68rem",padding:"2px 7px",borderRadius:3,background:`${TYPE_COLORS[s.statement_type]||"#6b6356"}22`,color:TYPE_COLORS[s.statement_type]||"#6b6356",border:`1px solid ${TYPE_COLORS[s.statement_type]||"#6b6356"}44`}}>{TYPE_ICONS[s.statement_type]} {s.statement_type}</span></td>
                           <td className="dim" style={{fontSize:".75rem"}}>{s.period_start||"?"} → {s.period_end||"?"}</td>
                           <td className="r mono" style={{color:"#c9a84c"}}>{s.txn_count}</td>
@@ -2466,8 +2466,8 @@ ${alertLines||"  None"}`;
                           {tip.badge}
                         </span>
                       </div>
-                      <div style={{fontSize:".78rem",color:"#e8e0d0",fontWeight:500,marginBottom:".25rem"}}>{tip.title}</div>
-                      <div style={{fontSize:".7rem",color:"rgba(232,224,208,.4)",lineHeight:1.5}}>{tip.desc}</div>
+                      <div style={{fontSize:".78rem",color:"#ffffff",fontWeight:500,marginBottom:".25rem"}}>{tip.title}</div>
+                      <div style={{fontSize:".7rem",color:"rgba(255,255,255,.5)",lineHeight:1.5}}>{tip.desc}</div>
                     </div>
                   ))}
                 </div>
@@ -2486,8 +2486,8 @@ ${alertLines||"  None"}`;
                   <div key={tip.title} style={{display:"flex",gap:".75rem",marginBottom:".8rem",paddingBottom:".8rem",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
                     <div style={{fontSize:"1.3rem",flexShrink:0}}>{tip.icon}</div>
                     <div>
-                      <div style={{fontSize:".8rem",color:"#e8e0d0",fontWeight:500,marginBottom:".2rem"}}>{tip.title}</div>
-                      <div style={{fontSize:".73rem",color:"rgba(232,224,208,.45)",lineHeight:1.6}}>{tip.desc}</div>
+                      <div style={{fontSize:".8rem",color:"#ffffff",fontWeight:500,marginBottom:".2rem"}}>{tip.title}</div>
+                      <div style={{fontSize:".73rem",color:"rgba(255,255,255,.55)",lineHeight:1.6}}>{tip.desc}</div>
                     </div>
                   </div>
                 ))}
@@ -2604,14 +2604,14 @@ ${alertLines||"  None"}`;
               {/* Calendar grid */}
               <div className="card" style={{padding:"1rem"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
-                  <button onClick={prevMo} style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(232,224,208,.6)",borderRadius:5,padding:".25rem .6rem",cursor:"pointer",fontSize:".85rem"}}>‹</button>
-                  <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#e8e0d0"}}>{monthName}</div>
-                  <button onClick={nextMo} style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(232,224,208,.6)",borderRadius:5,padding:".25rem .6rem",cursor:"pointer",fontSize:".85rem"}}>›</button>
+                  <button onClick={prevMo} style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.7)",borderRadius:5,padding:".25rem .6rem",cursor:"pointer",fontSize:".85rem"}}>‹</button>
+                  <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>{monthName}</div>
+                  <button onClick={nextMo} style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.7)",borderRadius:5,padding:".25rem .6rem",cursor:"pointer",fontSize:".85rem"}}>›</button>
                 </div>
 
                 {/* Day headers */}
                 <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
-                  {DAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:".63rem",color:"rgba(232,224,208,.28)",letterSpacing:".05em",padding:".3rem 0"}}>{d}</div>)}
+                  {DAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:".63rem",color:"rgba(255,255,255,.38)",letterSpacing:".05em",padding:".3rem 0"}}>{d}</div>)}
                 </div>
 
                 {/* Calendar cells */}
@@ -2628,7 +2628,7 @@ ${alertLines||"  None"}`;
                       background:today?"rgba(201,168,76,.12)":"rgba(255,255,255,.02)",
                       border:`1px solid ${today?"rgba(201,168,76,.3)":"rgba(255,255,255,.05)"}`,
                     }}>
-                      <div style={{fontSize:".72rem",color:today?"#c9a84c":"rgba(232,224,208,.4)",fontWeight:today?600:400,marginBottom:".2rem"}}>{day}</div>
+                      <div style={{fontSize:".72rem",color:today?"#c9a84c":"rgba(255,255,255,.5)",fontWeight:today?600:400,marginBottom:".2rem"}}>{day}</div>
                       {dayEvents.slice(0,2).map((e,idx)=>(
                         <div key={idx} style={{fontSize:".55rem",lineHeight:1.3,padding:"1px 3px",borderRadius:2,marginBottom:1,
                           background:`${e.color}22`,color:e.color,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
@@ -2636,7 +2636,7 @@ ${alertLines||"  None"}`;
                           {e.icon} {e.label.slice(0,14)}{e.label.length>14?"…":""}
                         </div>
                       ))}
-                      {dayEvents.length>2&&<div style={{fontSize:".52rem",color:"rgba(232,224,208,.3)"}}>+{dayEvents.length-2} more</div>}
+                      {dayEvents.length>2&&<div style={{fontSize:".52rem",color:"rgba(255,255,255,.4)"}}>+{dayEvents.length-2} more</div>}
                     </div>);
                   })}
                 </div>
@@ -2654,12 +2654,12 @@ ${alertLines||"  None"}`;
                       <div key={i} style={{display:"flex",gap:".6rem",padding:".6rem 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
                         <div style={{fontSize:"1.1rem",flexShrink:0}}>{e.icon}</div>
                         <div style={{flex:1}}>
-                          <div style={{fontSize:".75rem",color:"#e8e0d0",lineHeight:1.4,marginBottom:".15rem"}}>{e.label}</div>
-                          <div style={{fontSize:".65rem",color:"rgba(232,224,208,.35)"}}>{e.type}</div>
+                          <div style={{fontSize:".75rem",color:"#ffffff",lineHeight:1.4,marginBottom:".15rem"}}>{e.label}</div>
+                          <div style={{fontSize:".65rem",color:"rgba(255,255,255,.45)"}}>{e.type}</div>
                         </div>
                         <div style={{textAlign:"right",flexShrink:0}}>
                           <div style={{fontFamily:"'DM Mono',monospace",fontSize:".7rem",color:e.color}}>{daysLeft===0?"Today":daysLeft===1?"Tomorrow":`${daysLeft}d`}</div>
-                          <div style={{fontSize:".62rem",color:"rgba(232,224,208,.28)"}}>{dt.toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</div>
+                          <div style={{fontSize:".62rem",color:"rgba(255,255,255,.38)"}}>{dt.toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</div>
                         </div>
                       </div>);
                     })
@@ -2679,7 +2679,7 @@ ${alertLines||"  None"}`;
                   ].map(l=>(
                     <div key={l.label} style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".35rem"}}>
                       <div style={{fontSize:".85rem"}}>{l.icon}</div>
-                      <div style={{fontSize:".73rem",color:"rgba(232,224,208,.55)"}}>{l.label}</div>
+                      <div style={{fontSize:".73rem",color:"rgba(255,255,255,.65)"}}>{l.label}</div>
                       <div style={{width:8,height:8,borderRadius:"50%",background:l.color,marginLeft:"auto"}}/>
                     </div>
                   ))}
@@ -2737,7 +2737,7 @@ ${alertLines||"  None"}`;
                         style={{padding:".28rem .6rem",borderRadius:4,cursor:"pointer",fontSize:".72rem",
                           background:rebalMember===id?"rgba(201,168,76,.16)":"rgba(255,255,255,.04)",
                           border:`1px solid ${rebalMember===id?"rgba(201,168,76,.4)":"rgba(255,255,255,.1)"}`,
-                          color:rebalMember===id?"#c9a84c":"rgba(232,224,208,.45)"}}>
+                          color:rebalMember===id?"#c9a84c":"rgba(255,255,255,.55)"}}>
                         {id==="all"?"All":members.find(m=>m.id===id)?.name}
                       </div>
                     ))}
@@ -2750,16 +2750,16 @@ ${alertLines||"  None"}`;
                     return(
                     <div key={type} style={{marginBottom:".7rem"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".25rem"}}>
-                        <span style={{fontSize:".77rem",color:"rgba(232,224,208,.7)"}}>{a.icon} {a.label}</span>
+                        <span style={{fontSize:".77rem",color:"rgba(255,255,255,.85)"}}>{a.icon} {a.label}</span>
                         <div style={{display:"flex",alignItems:"center",gap:".4rem"}}>
-                          <span style={{fontSize:".65rem",color:"rgba(232,224,208,.3)"}}>cur {curPct.toFixed(1)}%</span>
+                          <span style={{fontSize:".65rem",color:"rgba(255,255,255,.4)"}}>cur {curPct.toFixed(1)}%</span>
                           <div style={{position:"relative",display:"flex",alignItems:"center"}}>
                             <input type="number" min="0" max="100" step="1"
                               value={targetAlloc[type]||0}
                               onChange={e=>setTargetAlloc(p=>({...p,[type]:+e.target.value}))}
                               style={{width:56,textAlign:"right",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",
                                 borderRadius:4,padding:".22rem .5rem",color:"#c9a84c",fontFamily:"'DM Mono',monospace",fontSize:".82rem"}}/>
-                            <span style={{marginLeft:".2rem",fontSize:".75rem",color:"rgba(232,224,208,.4)"}}>%</span>
+                            <span style={{marginLeft:".2rem",fontSize:".75rem",color:"rgba(255,255,255,.5)"}}>%</span>
                           </div>
                         </div>
                       </div>
@@ -2803,8 +2803,8 @@ ${alertLines||"  None"}`;
                         background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",transition:"background .15s"}}
                       onMouseEnter={e=>e.currentTarget.style.background="rgba(201,168,76,.07)"}
                       onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.03)"}>
-                      <span style={{fontSize:".78rem",color:"rgba(232,224,208,.7)"}}>{p.name}</span>
-                      <span style={{fontSize:".65rem",color:"rgba(232,224,208,.35)"}}>
+                      <span style={{fontSize:".78rem",color:"rgba(255,255,255,.85)"}}>{p.name}</span>
+                      <span style={{fontSize:".65rem",color:"rgba(255,255,255,.45)"}}>
                         {Object.entries(p.alloc).filter(([,v])=>v>0).map(([k,v])=>`${AT[k]?.label} ${v}%`).join(" · ")}
                       </span>
                     </div>
@@ -2817,12 +2817,12 @@ ${alertLines||"  None"}`;
                 {/* Summary KPIs */}
                 <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:".75rem",marginBottom:"1rem"}}>
                   {[
-                    {label:"Portfolio Value",val:fmtCr(rTotal),color:"#e8e0d0"},
+                    {label:"Portfolio Value",val:fmtCr(rTotal),color:"#ffffff"},
                     {label:"Total to Buy",val:fmtCr(totalBuy),color:"#4caf9a"},
                     {label:"Total to Sell/Reduce",val:fmtCr(totalSell),color:"#e07c5a"},
                   ].map(k=>(
                     <div key={k.label} className="card" style={{padding:".75rem 1rem"}}>
-                      <div style={{fontSize:".62rem",color:"rgba(232,224,208,.35)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:".35rem"}}>{k.label}</div>
+                      <div style={{fontSize:".62rem",color:"rgba(255,255,255,.45)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:".35rem"}}>{k.label}</div>
                       <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1rem",color:k.color}}>{k.val}</div>
                     </div>
                   ))}
@@ -2847,12 +2847,12 @@ ${alertLines||"  None"}`;
                           return(
                           <tr key={t.type}>
                             <td><span style={{color:a.color}}>{a.icon}</span> {a.label}</td>
-                            <td className="r mono" style={{color:"rgba(232,224,208,.6)"}}>{fmtCr(t.cur)}</td>
-                            <td className="r mono" style={{color:"rgba(232,224,208,.5)"}}>{t.curPct.toFixed(1)}%</td>
+                            <td className="r mono" style={{color:"rgba(255,255,255,.7)"}}>{fmtCr(t.cur)}</td>
+                            <td className="r mono" style={{color:"rgba(255,255,255,.6)"}}>{t.curPct.toFixed(1)}%</td>
                             <td className="r mono" style={{color:"#c9a84c"}}>{t.tgtPct.toFixed(1)}%</td>
-                            <td className="r mono" style={{color:"rgba(232,224,208,.6)"}}>{fmtCr(t.tgtAmt)}</td>
+                            <td className="r mono" style={{color:"rgba(255,255,255,.7)"}}>{fmtCr(t.tgtAmt)}</td>
                             <td className="r">
-                              {isFlat?<span style={{color:"rgba(232,224,208,.3)",fontSize:".68rem"}}>✓ On target</span>:(
+                              {isFlat?<span style={{color:"rgba(255,255,255,.4)",fontSize:".68rem"}}>✓ On target</span>:(
                                 <span style={{
                                   background:isUnder?"rgba(76,175,154,.12)":"rgba(224,124,90,.12)",
                                   color:isUnder?"#4caf9a":"#e07c5a",
@@ -2868,7 +2868,7 @@ ${alertLines||"  None"}`;
                         })}
                       </tbody>
                     </table>
-                    <div style={{marginTop:".75rem",padding:".55rem .85rem",background:"rgba(255,255,255,.03)",borderRadius:6,fontSize:".7rem",color:"rgba(232,224,208,.35)",lineHeight:1.6}}>
+                    <div style={{marginTop:".75rem",padding:".55rem .85rem",background:"rgba(255,255,255,.03)",borderRadius:6,fontSize:".7rem",color:"rgba(255,255,255,.45)",lineHeight:1.6}}>
                       ℹ️ "Reduce" means sell or stop investing new money in that class. Selling may have tax implications — consult your CA before executing.
                       {cash>0&&<span style={{color:"rgba(201,168,76,.6)"}}>  Cash of {fmtCr(cash)} included in Buy calculations.</span>}
                     </div>
@@ -2887,8 +2887,8 @@ ${alertLines||"  None"}`;
                       return(
                       <div key={t.type}>
                         <div style={{display:"flex",justifyContent:"space-between",fontSize:".7rem",marginBottom:".2rem"}}>
-                          <span style={{color:"rgba(232,224,208,.65)"}}>{a.icon} {a.label}</span>
-                          <span style={{fontFamily:"'DM Mono',monospace",color:over?"#e07c5a":under?"#4caf9a":"rgba(232,224,208,.4)"}}>
+                          <span style={{color:"rgba(255,255,255,.65)"}}>{a.icon} {a.label}</span>
+                          <span style={{fontFamily:"'DM Mono',monospace",color:over?"#e07c5a":under?"#4caf9a":"rgba(255,255,255,.5)"}}>
                             {t.curPct.toFixed(1)}% / {t.tgtPct.toFixed(1)}%
                           </span>
                         </div>
@@ -2901,13 +2901,13 @@ ${alertLines||"  None"}`;
                             background:over?`${a.color}cc`:under?`${a.color}66`:`${a.color}99`,
                             borderRadius:4,transition:"width .5s",position:"relative",zIndex:1}}/>
                         </div>
-                        <div style={{fontSize:".6rem",color:"rgba(232,224,208,.25)",marginTop:".15rem"}}>
+                        <div style={{fontSize:".6rem",color:"rgba(255,255,255,.35)",marginTop:".15rem"}}>
                           {over?`Over by ${(t.curPct-t.tgtPct).toFixed(1)}%`:under?`Under by ${(t.tgtPct-t.curPct).toFixed(1)}%`:"On target"}
                         </div>
                       </div>);
                     })}
                   </div>
-                  <div style={{marginTop:".75rem",display:"flex",gap:"1rem",fontSize:".65rem",color:"rgba(232,224,208,.3)"}}>
+                  <div style={{marginTop:".75rem",display:"flex",gap:"1rem",fontSize:".65rem",color:"rgba(255,255,255,.4)"}}>
                     <div style={{display:"flex",alignItems:"center",gap:".3rem"}}><div style={{width:12,height:2,background:"rgba(201,168,76,.6)"}}/> Target</div>
                     <div style={{display:"flex",alignItems:"center",gap:".3rem"}}><div style={{width:12,height:8,background:"rgba(76,175,154,.5)",borderRadius:2}}/> Under</div>
                     <div style={{display:"flex",alignItems:"center",gap:".3rem"}}><div style={{width:12,height:8,background:"rgba(224,124,90,.5)",borderRadius:2}}/> Over</div>
@@ -2924,8 +2924,8 @@ ${alertLines||"  None"}`;
             {/* Header */}
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
               <div>
-                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#e8e0d0"}}>✦ Advisor</div>
-                <div style={{fontSize:".72rem",color:"rgba(232,224,208,.35)",marginTop:".2rem"}}>Ask anything about your holdings, returns, goals, or allocation</div>
+                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>✦ Advisor</div>
+                <div style={{fontSize:".72rem",color:"rgba(255,255,255,.45)",marginTop:".2rem"}}>Ask anything about your holdings, returns, goals, or allocation</div>
               </div>
               {aiMessages.length>0&&<button className="btn-sm" onClick={()=>setAiMessages([])}>Clear chat</button>}
             </div>
@@ -2933,7 +2933,7 @@ ${alertLines||"  None"}`;
             {/* Suggested questions — shown when chat is empty */}
             {aiMessages.length===0&&(
               <div style={{marginBottom:"1.2rem"}}>
-                <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(232,224,208,.28)",marginBottom:".65rem"}}>Suggested questions</div>
+                <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.38)",marginBottom:".65rem"}}>Suggested questions</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:".5rem"}}>
                   {[
                     "What is my total portfolio value today?",
@@ -2946,9 +2946,9 @@ ${alertLines||"  None"}`;
                     "Which is my largest single holding?",
                   ].map(q=>(
                     <button key={q} onClick={()=>{setAiInput(q);}}
-                      style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(232,224,208,.55)",padding:".38rem .8rem",borderRadius:20,cursor:"pointer",fontSize:".74rem",fontFamily:"'DM Sans',sans-serif",transition:"all .2s",textAlign:"left"}}
+                      style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.65)",padding:".38rem .8rem",borderRadius:20,cursor:"pointer",fontSize:".74rem",fontFamily:"'DM Sans',sans-serif",transition:"all .2s",textAlign:"left"}}
                       onMouseEnter={e=>{e.target.style.background="rgba(201,168,76,.1)";e.target.style.color="#c9a84c";e.target.style.borderColor="rgba(201,168,76,.3)";}}
-                      onMouseLeave={e=>{e.target.style.background="rgba(255,255,255,.04)";e.target.style.color="rgba(232,224,208,.55)";e.target.style.borderColor="rgba(255,255,255,.1)";}}>
+                      onMouseLeave={e=>{e.target.style.background="rgba(255,255,255,.04)";e.target.style.color="rgba(255,255,255,.65)";e.target.style.borderColor="rgba(255,255,255,.1)";}}>
                       {q}
                     </button>
                   ))}
@@ -2961,7 +2961,7 @@ ${alertLines||"  None"}`;
               {aiMessages.map((m,i)=>(
                 <div key={i} style={{display:"flex",flexDirection:"column",alignItems:m.role==="user"?"flex-end":"flex-start"}}>
                   {/* Role label */}
-                  <div style={{fontSize:".62rem",color:"rgba(232,224,208,.28)",marginBottom:".3rem",letterSpacing:".06em",textTransform:"uppercase"}}>
+                  <div style={{fontSize:".62rem",color:"rgba(255,255,255,.38)",marginBottom:".3rem",letterSpacing:".06em",textTransform:"uppercase"}}>
                     {m.role==="user"?"You":"✦ Advisor"}
                   </div>
                   {/* Bubble */}
@@ -2973,7 +2973,7 @@ ${alertLines||"  None"}`;
                     border: m.role==="user"?"1px solid rgba(201,168,76,.3)":"1px solid rgba(255,255,255,.08)",
                     fontSize:".82rem",
                     lineHeight:1.65,
-                    color: m.role==="user"?"#e8e0d0":"rgba(232,224,208,.85)",
+                    color: m.role==="user"?"#ffffff":"rgba(255,255,255,.85)",
                     whiteSpace:"pre-wrap",
                     fontFamily:"'DM Sans',sans-serif",
                   }}>
@@ -2984,7 +2984,7 @@ ${alertLines||"  None"}`;
               {/* Typing indicator */}
               {aiLoading&&(
                 <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start"}}>
-                  <div style={{fontSize:".62rem",color:"rgba(232,224,208,.28)",marginBottom:".3rem",letterSpacing:".06em",textTransform:"uppercase"}}>✦ Advisor</div>
+                  <div style={{fontSize:".62rem",color:"rgba(255,255,255,.38)",marginBottom:".3rem",letterSpacing:".06em",textTransform:"uppercase"}}>✦ Advisor</div>
                   <div style={{padding:".75rem 1rem",borderRadius:"12px 12px 12px 2px",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",display:"flex",gap:".35rem",alignItems:"center"}}>
                     {[0,1,2].map(i=>(
                       <div key={i} style={{width:6,height:6,borderRadius:"50%",background:"rgba(201,168,76,.5)",animation:`bounce 1.2s ${i*0.2}s infinite`}}/>
@@ -3011,7 +3011,7 @@ ${alertLines||"  None"}`;
                 {aiLoading?"…":"Send ↵"}
               </button>
             </div>
-            <div style={{fontSize:".65rem",color:"rgba(232,224,208,.22)",marginTop:".4rem",textAlign:"center"}}>
+            <div style={{fontSize:".65rem",color:"rgba(255,255,255,.32)",marginTop:".4rem",textAlign:"center"}}>
               Press Enter to send · Shift+Enter for new line · Conversation context is maintained across messages
             </div>
             <style>{`@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}`}</style>
@@ -3027,7 +3027,7 @@ ${alertLines||"  None"}`;
     {modal==="holding"&&(
       <Overlay onClose={()=>{setModal(null);setEditHolding(null);setForm(BF);setMfSearch("");setMfResults([]);setMfNav(null);setStockInfo(null);setStockSearch("");setStockResults([]);setUsSearch("");setUsResults([]);setEtfSearch("");setEtfResults([]);setEtfInfo(null);}}>
         <div className="modtitle">{editHolding?"Edit":"Add"} Holding</div>
-        <div style={{fontSize:".75rem",color:"rgba(232,224,208,.38)",marginBottom:"1rem",lineHeight:1.6}}>
+        <div style={{fontSize:".75rem",color:"rgba(255,255,255,.5)",marginBottom:"1rem",lineHeight:1.6}}>
           {editHolding?"Update instrument details below.":"Register the instrument. Transactions (buy/sell) are added separately via + Add > Log transaction."}
         </div>
         <div className="frow">
@@ -3059,7 +3059,7 @@ ${alertLines||"  None"}`;
                 }}
                 autoComplete="off"
               />
-              {stockSearching&&<div style={{position:"absolute",right:".7rem",top:"50%",transform:"translateY(-50%)",fontSize:".7rem",color:"rgba(232,224,208,.4)"}}>Searching…</div>}
+              {stockSearching&&<div style={{position:"absolute",right:".7rem",top:"50%",transform:"translateY(-50%)",fontSize:".7rem",color:"rgba(255,255,255,.5)"}}>Searching…</div>}
             </div>
             {stockResults.length>0&&(
               <div style={{background:"#0c1526",border:"1px solid rgba(224,124,90,.2)",borderRadius:"0 0 8px 8px",maxHeight:220,overflowY:"auto",marginTop:"-1px"}}>
@@ -3078,14 +3078,14 @@ ${alertLines||"  None"}`;
                     style={{padding:".6rem .85rem",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,.05)",fontSize:".8rem",lineHeight:1.4}}
                     onMouseEnter={x=>x.currentTarget.style.background="rgba(224,124,90,.08)"}
                     onMouseLeave={x=>x.currentTarget.style.background="transparent"}>
-                    <div style={{color:"#e8e0d0",marginBottom:".12rem"}}>{s.name}</div>
-                    <div style={{fontSize:".67rem",color:"rgba(232,224,208,.35)",fontFamily:"'DM Mono',monospace"}}>{s.ticker} · {s.exchange}</div>
+                    <div style={{color:"#ffffff",marginBottom:".12rem"}}>{s.name}</div>
+                    <div style={{fontSize:".67rem",color:"rgba(255,255,255,.45)",fontFamily:"'DM Mono',monospace"}}>{s.ticker} · {s.exchange}</div>
                   </div>
                 ))}
               </div>
             )}
             {!stockSearching&&stockSearch.length>=2&&stockResults.length===0&&!stockInfo&&(
-              <div style={{marginTop:".45rem",fontSize:".72rem",color:"rgba(232,224,208,.32)"}}>
+              <div style={{marginTop:".45rem",fontSize:".72rem",color:"rgba(255,255,255,.42)"}}>
                 No results — try ticker directly:&nbsp;
                 <input className="fi" style={{display:"inline",width:130,padding:".28rem .5rem",fontSize:".72rem"}}
                   placeholder="e.g. RELIANCE"
@@ -3100,7 +3100,7 @@ ${alertLines||"  None"}`;
               <div style={{marginTop:".5rem",padding:".6rem .85rem",background:"rgba(224,124,90,.07)",border:"1px solid rgba(224,124,90,.22)",borderRadius:7,fontSize:".75rem",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
                   <div style={{color:"#e07c5a",fontWeight:500}}>{stockInfo.name}</div>
-                  <div style={{color:"rgba(232,224,208,.38)",fontSize:".67rem"}}>{stockInfo.exchange} · {form.ticker} · NSE/BSE</div>
+                  <div style={{color:"rgba(255,255,255,.5)",fontSize:".67rem"}}>{stockInfo.exchange} · {form.ticker} · NSE/BSE</div>
                 </div>
                 {stockInfo.price&&<div style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c",fontSize:".9rem"}}>₹{stockInfo.price.toLocaleString("en-IN",{maximumFractionDigits:2})}</div>}
               </div>
@@ -3122,7 +3122,7 @@ ${alertLines||"  None"}`;
                 }}
                 autoComplete="off"
               />
-              {etfSearching&&<div style={{position:"absolute",right:".7rem",top:"50%",transform:"translateY(-50%)",fontSize:".7rem",color:"rgba(232,224,208,.4)"}}>Searching…</div>}
+              {etfSearching&&<div style={{position:"absolute",right:".7rem",top:"50%",transform:"translateY(-50%)",fontSize:".7rem",color:"rgba(255,255,255,.5)"}}>Searching…</div>}
             </div>
             {/* Dropdown results */}
             {etfResults.length>0&&(
@@ -3133,15 +3133,15 @@ ${alertLines||"  None"}`;
                     style={{padding:".6rem .85rem",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,.05)",fontSize:".8rem",lineHeight:1.4}}
                     onMouseEnter={x=>x.currentTarget.style.background="rgba(240,160,80,.08)"}
                     onMouseLeave={x=>x.currentTarget.style.background="transparent"}>
-                    <div style={{color:"#e8e0d0",marginBottom:".15rem"}}>{e.name}</div>
-                    <div style={{fontSize:".67rem",color:"rgba(232,224,208,.35)",fontFamily:"'DM Mono',monospace"}}>{e.ticker} · {e.exchange}</div>
+                    <div style={{color:"#ffffff",marginBottom:".15rem"}}>{e.name}</div>
+                    <div style={{fontSize:".67rem",color:"rgba(255,255,255,.45)",fontFamily:"'DM Mono',monospace"}}>{e.ticker} · {e.exchange}</div>
                   </div>
                 ))}
               </div>
             )}
             {/* No results message */}
             {!etfSearching&&etfSearch.length>=2&&etfResults.length===0&&(
-              <div style={{marginTop:".5rem",fontSize:".72rem",color:"rgba(232,224,208,.35)"}}>
+              <div style={{marginTop:".5rem",fontSize:".72rem",color:"rgba(255,255,255,.45)"}}>
                 No ETFs found — try a shorter search term or enter ticker directly below
               </div>
             )}
@@ -3150,14 +3150,14 @@ ${alertLines||"  None"}`;
               <div style={{marginTop:".6rem",padding:".7rem .9rem",background:"rgba(240,160,80,.07)",border:"1px solid rgba(240,160,80,.25)",borderRadius:7,fontSize:".75rem",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
                   <div style={{color:"#f0a050",fontWeight:500}}>{etfInfo.name||form.name}</div>
-                  <div style={{color:"rgba(232,224,208,.38)",fontSize:".67rem"}}>{etfInfo.exchange} · {form.ticker}.NS · ETF</div>
+                  <div style={{color:"rgba(255,255,255,.5)",fontSize:".67rem"}}>{etfInfo.exchange} · {form.ticker}.NS · ETF</div>
                 </div>
-                {etfInfo.price&&<div style={{textAlign:"right"}}><div style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c",fontSize:".9rem"}}>₹{etfInfo.price.toLocaleString("en-IN",{maximumFractionDigits:2})}</div><div style={{fontSize:".65rem",color:"rgba(232,224,208,.35)"}}>Current price</div></div>}
+                {etfInfo.price&&<div style={{textAlign:"right"}}><div style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c",fontSize:".9rem"}}>₹{etfInfo.price.toLocaleString("en-IN",{maximumFractionDigits:2})}</div><div style={{fontSize:".65rem",color:"rgba(255,255,255,.45)"}}>Current price</div></div>}
               </div>
             )}
             {/* Manual ticker fallback */}
             {!form.ticker&&(
-              <div style={{marginTop:".5rem",display:"flex",alignItems:"center",gap:".5rem",fontSize:".7rem",color:"rgba(232,224,208,.3)"}}>
+              <div style={{marginTop:".5rem",display:"flex",alignItems:"center",gap:".5rem",fontSize:".7rem",color:"rgba(255,255,255,.4)"}}>
                 Or enter ticker directly:
                 <input className="fi" style={{width:140,padding:".3rem .6rem",fontSize:".72rem",display:"inline"}}
                   placeholder="e.g. NIFTYBEES"
@@ -3190,7 +3190,7 @@ ${alertLines||"  None"}`;
                 }}
                 autoComplete="off"
               />
-              {usSearching&&<div style={{position:"absolute",right:".7rem",top:"50%",transform:"translateY(-50%)",fontSize:".7rem",color:"rgba(232,224,208,.4)"}}>Searching…</div>}
+              {usSearching&&<div style={{position:"absolute",right:".7rem",top:"50%",transform:"translateY(-50%)",fontSize:".7rem",color:"rgba(255,255,255,.5)"}}>Searching…</div>}
             </div>
             {usResults.length>0&&(
               <div style={{background:"#0c1526",border:"1px solid rgba(90,156,224,.2)",borderRadius:"0 0 8px 8px",maxHeight:220,overflowY:"auto",marginTop:"-1px"}}>
@@ -3209,14 +3209,14 @@ ${alertLines||"  None"}`;
                     style={{padding:".6rem .85rem",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,.05)",fontSize:".8rem",lineHeight:1.4}}
                     onMouseEnter={x=>x.currentTarget.style.background="rgba(90,156,224,.08)"}
                     onMouseLeave={x=>x.currentTarget.style.background="transparent"}>
-                    <div style={{color:"#e8e0d0",marginBottom:".12rem"}}>{s.name}</div>
-                    <div style={{fontSize:".67rem",color:"rgba(232,224,208,.35)",fontFamily:"'DM Mono',monospace"}}>{s.ticker} · {s.exchange}</div>
+                    <div style={{color:"#ffffff",marginBottom:".12rem"}}>{s.name}</div>
+                    <div style={{fontSize:".67rem",color:"rgba(255,255,255,.45)",fontFamily:"'DM Mono',monospace"}}>{s.ticker} · {s.exchange}</div>
                   </div>
                 ))}
               </div>
             )}
             {!usSearching&&usSearch.length>=2&&usResults.length===0&&!stockInfo&&(
-              <div style={{marginTop:".45rem",fontSize:".72rem",color:"rgba(232,224,208,.32)"}}>
+              <div style={{marginTop:".45rem",fontSize:".72rem",color:"rgba(255,255,255,.42)"}}>
                 No results — enter ticker directly:&nbsp;
                 <input className="fi" style={{display:"inline",width:120,padding:".28rem .5rem",fontSize:".72rem"}}
                   placeholder="e.g. AAPL"
@@ -3232,12 +3232,12 @@ ${alertLines||"  None"}`;
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".4rem"}}>
                   <div>
                     <div style={{color:"#5a9ce0",fontWeight:500}}>{stockInfo.name}</div>
-                    <div style={{color:"rgba(232,224,208,.38)",fontSize:".67rem"}}>{stockInfo.exchange} · {form.ticker} · {stockInfo.currency}</div>
+                    <div style={{color:"rgba(255,255,255,.5)",fontSize:".67rem"}}>{stockInfo.exchange} · {form.ticker} · {stockInfo.currency}</div>
                   </div>
                   {stockInfo.price&&(
                     <div style={{textAlign:"right"}}>
                       <div style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c",fontSize:".9rem"}}>${stockInfo.price.toLocaleString("en-US",{maximumFractionDigits:2})}</div>
-                      <div style={{fontFamily:"'DM Mono',monospace",color:"rgba(232,224,208,.45)",fontSize:".72rem"}}>₹{(stockInfo.price*(+form.usd_inr_rate||83.2)).toLocaleString("en-IN",{maximumFractionDigits:0})}</div>
+                      <div style={{fontFamily:"'DM Mono',monospace",color:"rgba(255,255,255,.55)",fontSize:".72rem"}}>₹{(stockInfo.price*(+form.usd_inr_rate||83.2)).toLocaleString("en-IN",{maximumFractionDigits:0})}</div>
                     </div>
                   )}
                 </div>
@@ -3254,7 +3254,7 @@ ${alertLines||"  None"}`;
                     {usdInrLoading?"…":"⟳ Live"}
                   </button>
                 </div>
-                <div style={{fontSize:".65rem",color:"rgba(232,224,208,.3)",marginTop:".2rem"}}>1 USD = ₹{(+form.usd_inr_rate||83.2).toFixed(2)}</div>
+                <div style={{fontSize:".65rem",color:"rgba(255,255,255,.4)",marginTop:".2rem"}}>1 USD = ₹{(+form.usd_inr_rate||83.2).toFixed(2)}</div>
               </div>
             </div>
           </div>
@@ -3274,7 +3274,7 @@ ${alertLines||"  None"}`;
                 }}
                 autoComplete="off"
               />
-              {mfSearching&&<div style={{position:"absolute",right:".7rem",top:"50%",transform:"translateY(-50%)",fontSize:".7rem",color:"rgba(232,224,208,.4)"}}>Searching…</div>}
+              {mfSearching&&<div style={{position:"absolute",right:".7rem",top:"50%",transform:"translateY(-50%)",fontSize:".7rem",color:"rgba(255,255,255,.5)"}}>Searching…</div>}
             </div>
             {/* Search results dropdown */}
             {mfResults.length>0&&(
@@ -3282,11 +3282,11 @@ ${alertLines||"  None"}`;
                 {mfResults.map(f=>(
                   <div key={f.scheme_code}
                     onClick={()=>selectMfFund(f)}
-                    style={{padding:".6rem .85rem",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,.05)",fontSize:".8rem",color:"rgba(232,224,208,.75)",lineHeight:1.4}}
+                    style={{padding:".6rem .85rem",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,.05)",fontSize:".8rem",color:"rgba(255,255,255,.85)",lineHeight:1.4}}
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(201,168,76,.08)"}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <div style={{color:"#e8e0d0",marginBottom:".15rem"}}>{f.name}</div>
-                    <div style={{fontSize:".67rem",color:"rgba(232,224,208,.35)",fontFamily:"'DM Mono',monospace"}}>Code: {f.scheme_code}</div>
+                    <div style={{color:"#ffffff",marginBottom:".15rem"}}>{f.name}</div>
+                    <div style={{fontSize:".67rem",color:"rgba(255,255,255,.45)",fontFamily:"'DM Mono',monospace"}}>Code: {f.scheme_code}</div>
                   </div>
                 ))}
               </div>
@@ -3297,13 +3297,13 @@ ${alertLines||"  None"}`;
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:".35rem"}}>
                   <div>
                     <div style={{color:"#a084ca",fontWeight:500,marginBottom:".2rem"}}>{form.name}</div>
-                    <div style={{color:"rgba(232,224,208,.4)",fontSize:".68rem"}}>{mfNav.fund_house}</div>
-                    {mfNav.scheme_category&&<div style={{color:"rgba(232,224,208,.35)",fontSize:".65rem"}}>{mfNav.scheme_category}</div>}
+                    <div style={{color:"rgba(255,255,255,.5)",fontSize:".68rem"}}>{mfNav.fund_house}</div>
+                    {mfNav.scheme_category&&<div style={{color:"rgba(255,255,255,.45)",fontSize:".65rem"}}>{mfNav.scheme_category}</div>}
                   </div>
                   <div style={{textAlign:"right",flexShrink:0,marginLeft:"1rem"}}>
                     <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1rem",color:"#c9a84c"}}>₹{mfNav.nav?.toFixed(4)}</div>
-                    <div style={{fontSize:".65rem",color:"rgba(232,224,208,.35)"}}>Current NAV · {mfNav.date}</div>
-                    <div style={{fontSize:".65rem",fontFamily:"'DM Mono',monospace",color:"rgba(232,224,208,.3)",marginTop:".15rem"}}>Code: {form.scheme_code}</div>
+                    <div style={{fontSize:".65rem",color:"rgba(255,255,255,.45)"}}>Current NAV · {mfNav.date}</div>
+                    <div style={{fontSize:".65rem",fontFamily:"'DM Mono',monospace",color:"rgba(255,255,255,.4)",marginTop:".15rem"}}>Code: {form.scheme_code}</div>
                   </div>
                 </div>
                 <div style={{fontSize:".68rem",color:"#4caf9a"}}>✓ Live NAV will be fetched automatically on refresh</div>
@@ -3311,7 +3311,7 @@ ${alertLines||"  None"}`;
             )}
             {/* Manual scheme code fallback */}
             {!form.scheme_code&&!mfSearching&&mfSearch.length===0&&(
-              <div style={{marginTop:".5rem",fontSize:".7rem",color:"rgba(232,224,208,.28)"}}>
+              <div style={{marginTop:".5rem",fontSize:".7rem",color:"rgba(255,255,255,.38)"}}>
                 Or enter scheme code directly:&nbsp;
                 <input className="fi" style={{display:"inline",width:"auto",padding:".3rem .6rem",fontSize:".72rem"}}
                   placeholder="e.g. 119551"
@@ -3353,14 +3353,14 @@ ${alertLines||"  None"}`;
         {/* Filter row */}
         <div style={{display:"flex",gap:".6rem",marginBottom:"1rem",padding:".75rem",background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8}}>
           <div style={{flex:1}}>
-            <div style={{fontSize:".63rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(232,224,208,.35)",marginBottom:".35rem"}}>Member</div>
+            <div style={{fontSize:".63rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.45)",marginBottom:".35rem"}}>Member</div>
             <select className="fi fs" style={{marginBottom:0}} value={txnFilterMember} onChange={e=>{setTxnFilterMember(e.target.value);setTxnForm(p=>({...p,holding_id:"",price:"",price_usd:"",units:""}));setGlobalMfAmount("");setGlobalMfNav(null);setGlobalNavError("");}}>
               <option value="all">All Members</option>
               {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
           <div style={{flex:1}}>
-            <div style={{fontSize:".63rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(232,224,208,.35)",marginBottom:".35rem"}}>Asset Type</div>
+            <div style={{fontSize:".63rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.45)",marginBottom:".35rem"}}>Asset Type</div>
             <select className="fi fs" style={{marginBottom:0}} value={txnFilterType} onChange={e=>{setTxnFilterType(e.target.value);setTxnForm(p=>({...p,holding_id:"",price:"",price_usd:"",units:""}));setGlobalMfAmount("");setGlobalMfNav(null);setGlobalNavError("");}}>
               <option value="ALL">All Types</option>
               {["IN_STOCK","IN_ETF","MF","US_STOCK","US_ETF","US_BOND","CRYPTO"].map(t=><option key={t} value={t}>{AT[t].icon} {AT[t].label}</option>)}
@@ -3427,10 +3427,10 @@ ${alertLines||"  None"}`;
             </FG>
             <div style={{display:"flex",alignItems:"center",gap:".6rem",marginTop:".5rem",padding:".6rem .85rem",
               background:"rgba(160,132,202,.06)",border:"1px solid rgba(160,132,202,.18)",borderRadius:7}}>
-              <div style={{flex:1,fontSize:".75rem",color:"rgba(232,224,208,.45)"}}>
+              <div style={{flex:1,fontSize:".75rem",color:"rgba(255,255,255,.55)"}}>
                 {globalMfNav
                   ? <><span style={{color:"#a084ca",fontWeight:500}}>NAV: ₹{globalMfNav.nav?.toFixed(4)}</span>
-                      <span style={{marginLeft:".5rem",color:"rgba(232,224,208,.35)",fontSize:".68rem"}}>
+                      <span style={{marginLeft:".5rem",color:"rgba(255,255,255,.45)",fontSize:".68rem"}}>
                         {globalMfNav.is_estimated?"Est. ":"Exact "}{globalMfNav.date}
                       </span>
                     </>
@@ -3465,12 +3465,12 @@ ${alertLines||"  None"}`;
             {globalMfNav&&globalMfAmount&&(
               <div style={{marginTop:".5rem",display:"flex",gap:"1.5rem",padding:".55rem .85rem",
                 background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:6,fontSize:".72rem"}}>
-                <div><div style={{color:"rgba(232,224,208,.35)",marginBottom:".15rem"}}>Amount</div>
+                <div><div style={{color:"rgba(255,255,255,.45)",marginBottom:".15rem"}}>Amount</div>
                   <div style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>₹{Number(globalMfAmount).toLocaleString("en-IN")}</div></div>
-                <div><div style={{color:"rgba(232,224,208,.35)",marginBottom:".15rem"}}>Units Allotted</div>
-                  <div style={{fontFamily:"'DM Mono',monospace",color:"#e8e0d0"}}>{(+globalMfAmount/globalMfNav.nav).toFixed(4)}</div></div>
-                <div><div style={{color:"rgba(232,224,208,.35)",marginBottom:".15rem"}}>NAV</div>
-                  <div style={{fontFamily:"'DM Mono',monospace",color:"#e8e0d0"}}>₹{globalMfNav.nav?.toFixed(4)}</div></div>
+                <div><div style={{color:"rgba(255,255,255,.45)",marginBottom:".15rem"}}>Units Allotted</div>
+                  <div style={{fontFamily:"'DM Mono',monospace",color:"#ffffff"}}>{(+globalMfAmount/globalMfNav.nav).toFixed(4)}</div></div>
+                <div><div style={{color:"rgba(255,255,255,.45)",marginBottom:".15rem"}}>NAV</div>
+                  <div style={{fontFamily:"'DM Mono',monospace",color:"#ffffff"}}>₹{globalMfNav.nav?.toFixed(4)}</div></div>
               </div>
             )}
           </div>
@@ -3479,12 +3479,12 @@ ${alertLines||"  None"}`;
         {isUS&&(
           <div style={{display:"flex",alignItems:"center",gap:".75rem",marginBottom:".85rem",padding:".6rem .85rem",background:"rgba(90,156,224,.06)",border:"1px solid rgba(90,156,224,.2)",borderRadius:7}}>
             <div style={{flex:1}}>
-              <div style={{fontSize:".68rem",color:"rgba(232,224,208,.38)",marginBottom:".25rem"}}>Exchange Rate</div>
+              <div style={{fontSize:".68rem",color:"rgba(255,255,255,.5)",marginBottom:".25rem"}}>Exchange Rate</div>
               <div style={{fontFamily:"'DM Mono',monospace",fontSize:".85rem",color:"#5a9ce0"}}>1 USD = ₹{fxRate.toFixed(2)}</div>
             </div>
             {txnForm.price_usd&&(
               <div style={{flex:1}}>
-                <div style={{fontSize:".68rem",color:"rgba(232,224,208,.38)",marginBottom:".25rem"}}>Price in INR</div>
+                <div style={{fontSize:".68rem",color:"rgba(255,255,255,.5)",marginBottom:".25rem"}}>Price in INR</div>
                 <div style={{fontFamily:"'DM Mono',monospace",fontSize:".85rem",color:"#c9a84c"}}>₹{(+txnForm.price_usd*fxRate).toLocaleString("en-IN",{maximumFractionDigits:2})}</div>
               </div>
             )}
@@ -3505,18 +3505,18 @@ ${alertLines||"  None"}`;
           <div style={{padding:".65rem .9rem",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:7,marginBottom:".5rem",display:"flex",gap:"1.5rem",flexWrap:"wrap"}}>
             {isUS&&totalUsd>0&&(
               <div>
-                <div style={{fontSize:".62rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(232,224,208,.3)",marginBottom:".2rem"}}>Total (USD)</div>
+                <div style={{fontSize:".62rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".2rem"}}>Total (USD)</div>
                 <div style={{fontFamily:"'DM Mono',monospace",fontSize:".9rem",color:"#5a9ce0"}}>${totalUsd.toLocaleString("en-US",{maximumFractionDigits:2})}</div>
               </div>
             )}
             <div>
-              <div style={{fontSize:".62rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(232,224,208,.3)",marginBottom:".2rem"}}>Total (INR)</div>
+              <div style={{fontSize:".62rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".2rem"}}>Total (INR)</div>
               <div style={{fontFamily:"'DM Mono',monospace",fontSize:".9rem",color:"#c9a84c"}}>₹{totalInr.toLocaleString("en-IN",{maximumFractionDigits:0})}</div>
             </div>
             {isUS&&(
               <div>
-                <div style={{fontSize:".62rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(232,224,208,.3)",marginBottom:".2rem"}}>Rate used</div>
-                <div style={{fontFamily:"'DM Mono',monospace",fontSize:".85rem",color:"rgba(232,224,208,.45)"}}>₹{fxRate.toFixed(2)}</div>
+                <div style={{fontSize:".62rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".2rem"}}>Rate used</div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:".85rem",color:"rgba(255,255,255,.55)"}}>₹{fxRate.toFixed(2)}</div>
               </div>
             )}
           </div>
@@ -3573,12 +3573,12 @@ ${alertLines||"  None"}`;
               style={{padding:".3rem .75rem",borderRadius:20,cursor:"pointer",fontSize:".74rem",fontWeight:500,
                 background:sel?"rgba(201,168,76,.16)":"rgba(255,255,255,.04)",
                 border:`1px solid ${sel?"rgba(201,168,76,.45)":"rgba(255,255,255,.1)"}`,
-                color:sel?"#c9a84c":"rgba(232,224,208,.5)",transition:"all .15s"}}>
+                color:sel?"#c9a84c":"rgba(255,255,255,.6)",transition:"all .15s"}}>
                 {m.id==="all"?"👨‍👩‍👧‍👦":m.name[0]} {m.name}
               </div>);
             })}
           </div>
-          <div style={{fontSize:".65rem",color:"rgba(232,224,208,.28)",marginTop:".4rem"}}>Progress will be calculated using selected members' portfolio value</div>
+          <div style={{fontSize:".65rem",color:"rgba(255,255,255,.38)",marginTop:".4rem"}}>Progress will be calculated using selected members' portfolio value</div>
         </div>
 
         <FG label="Monthly Contribution ₹ (optional)" style={{marginBottom:"1.5rem"}}><FmtInput placeholder="e.g. 10000" value={goalForm.monthlyContribution} onChange={e=>setGoalForm(p=>({...p,monthlyContribution:e.target.value}))}/></FG>
@@ -3607,13 +3607,13 @@ ${alertLines||"  None"}`;
               }} style={{padding:".55rem .75rem",borderRadius:7,cursor:"pointer",
                 background:userCurrency===code?"rgba(201,168,76,.15)":"rgba(255,255,255,.04)",
                 border:`1px solid ${userCurrency===code?"rgba(201,168,76,.45)":"rgba(255,255,255,.08)"}`,
-                color:userCurrency===code?"#c9a84c":"rgba(232,224,208,.55)",transition:"all .15s"}}>
+                color:userCurrency===code?"#c9a84c":"rgba(255,255,255,.65)",transition:"all .15s"}}>
                 <div style={{fontSize:".85rem",fontWeight:600}}>{c.symbol} {code}</div>
                 <div style={{fontSize:".65rem",marginTop:".15rem",opacity:.7}}>{c.name}</div>
               </div>
             ))}
           </div>
-          <div style={{fontSize:".67rem",color:"rgba(232,224,208,.28)",marginTop:".6rem"}}>
+          <div style={{fontSize:".67rem",color:"rgba(255,255,255,.38)",marginTop:".6rem"}}>
             All values will display in your selected currency. FX conversions use live rates.
           </div>
         </div>
@@ -3633,14 +3633,14 @@ ${alertLines||"  None"}`;
             if(!types.length) return null;
             return(
               <div key={cat} style={{marginBottom:".75rem"}}>
-                <div style={{fontSize:".6rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(232,224,208,.3)",marginBottom:".4rem",paddingLeft:".1rem"}}>{cat}</div>
+                <div style={{fontSize:".6rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".4rem",paddingLeft:".1rem"}}>{cat}</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:".4rem"}}>
                   {types.map(([k,v])=>(
                     <div key={k} style={{display:"flex",alignItems:"center",gap:".35rem",padding:".35rem .65rem",borderRadius:6,
                       background:v.color+"12",border:`1px solid ${v.color}30`}}>
                       <span style={{fontSize:".8rem"}}>{v.icon}</span>
                       <span style={{fontSize:".72rem",color:v.color,fontWeight:500}}>{v.label}</span>
-                      <span style={{fontSize:".58rem",color:"rgba(232,224,208,.25)",marginLeft:".2rem"}}>
+                      <span style={{fontSize:".58rem",color:"rgba(255,255,255,.35)",marginLeft:".2rem"}}>
                         {USD_TYPES.has(k)?"USD":"INR"}
                       </span>
                     </div>
@@ -3652,7 +3652,7 @@ ${alertLines||"  None"}`;
           {/* Custom types */}
           {assetTypes.filter(at=>!at.is_default).length>0&&(
             <div style={{marginTop:".6rem"}}>
-              <div style={{fontSize:".6rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(232,224,208,.3)",marginBottom:".4rem"}}>Custom</div>
+              <div style={{fontSize:".6rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".4rem"}}>Custom</div>
             </div>
           )}
           <div style={{maxHeight:200,overflowY:"auto"}}>
@@ -3663,12 +3663,12 @@ ${alertLines||"  None"}`;
                 <input value={at.icon} onChange={e=>setAssetTypes(p=>p.map((x,j)=>j===idx?{...x,icon:e.target.value}:x))}
                   style={{width:36,background:"transparent",border:"none",fontSize:"1.1rem",textAlign:"center",outline:"none"}}/>
                 <input value={at.label} onChange={e=>setAssetTypes(p=>p.map((x,j)=>j===idx?{...x,label:e.target.value}:x))}
-                  style={{flex:1,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"#e8e0d0",padding:".32rem .6rem",borderRadius:4,fontSize:".78rem",fontFamily:"'DM Sans',sans-serif"}}
+                  style={{flex:1,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"#ffffff",padding:".32rem .6rem",borderRadius:4,fontSize:".78rem",fontFamily:"'DM Sans',sans-serif"}}
                   placeholder="Asset type name"/>
                 <input type="color" value={at.color} onChange={e=>setAssetTypes(p=>p.map((x,j)=>j===idx?{...x,color:e.target.value}:x))}
                   style={{width:28,height:28,padding:2,borderRadius:4,border:"1px solid rgba(255,255,255,.1)",background:"transparent",cursor:"pointer"}}/>
                 <select value={at.price_source} onChange={e=>setAssetTypes(p=>p.map((x,j)=>j===idx?{...x,price_source:e.target.value}:x))}
-                  style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(232,224,208,.7)",padding:".3rem .5rem",borderRadius:4,fontSize:".7rem",fontFamily:"'DM Sans',sans-serif"}}>
+                  style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.85)",padding:".3rem .5rem",borderRadius:4,fontSize:".7rem",fontFamily:"'DM Sans',sans-serif"}}>
                   {["MANUAL","YAHOO","MFAPI"].map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
                 <button className="btn-sm" style={{padding:".28rem .6rem",fontSize:".68rem"}} onClick={async()=>{
@@ -3683,7 +3683,7 @@ ${alertLines||"  None"}`;
               </div>);
             })}
           </div>
-          <div style={{fontSize:".65rem",color:"rgba(232,224,208,.25)",marginTop:".5rem"}}>Built-in types are always available. Add custom types for alternatives, commodities, etc.</div>
+          <div style={{fontSize:".65rem",color:"rgba(255,255,255,.35)",marginTop:".5rem"}}>Built-in types are always available. Add custom types for alternatives, commodities, etc.</div>
         </div>
 
         <MA><button className="btns" onClick={()=>setShowSettings(false)}>Done</button></MA>
@@ -3712,8 +3712,8 @@ ${alertLines||"  None"}`;
               onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(201,168,76,.5)"}
               onMouseLeave={e=>e.currentTarget.style.borderColor=opt.key==="import"?"rgba(201,168,76,.35)":"rgba(255,255,255,.08)"}>
               <div style={{fontSize:"1.3rem",marginBottom:".5rem"}}>{opt.icon}</div>
-              <div style={{fontSize:".82rem",color:"#e8e0d0",fontWeight:500,marginBottom:".3rem"}}>{opt.title}</div>
-              <div style={{fontSize:".68rem",color:"rgba(232,224,208,.4)",lineHeight:1.5}}>{opt.desc}</div>
+              <div style={{fontSize:".82rem",color:"#ffffff",fontWeight:500,marginBottom:".3rem"}}>{opt.title}</div>
+              <div style={{fontSize:".68rem",color:"rgba(255,255,255,.5)",lineHeight:1.5}}>{opt.desc}</div>
               {opt.tag&&<div style={{fontSize:".6rem",display:"inline-block",marginTop:".5rem",padding:".15rem .45rem",borderRadius:3,background:"rgba(76,175,154,.12)",color:opt.tagColor}}>{opt.tag}</div>}
             </div>
           ))}
@@ -3721,7 +3721,7 @@ ${alertLines||"  None"}`;
       </Overlay>
     )}
     {modal==="import"&&(<ImportModal importState={importState} setImportState={setImportState} members={members} AT={AT} handleImportFile={handleImportFile} executeImport={executeImport} resetImport={resetImport} importFileRef={importFileRef} onClose={()=>{setModal(null);resetImport();}} fmt={fmt} submitCASPassword={submitCASPassword}/>)}
-    {modal==="pdf"&&(<Overlay onClose={()=>setModal(null)}><div className="modtitle">Portfolio Report</div>{pdfState.loading?(<div style={{textAlign:"center",padding:"2.5rem 0"}}><div style={{width:34,height:34,border:"2px solid rgba(201,168,76,.2)",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 1rem"}}/><div style={{fontSize:".8rem",color:"rgba(232,224,208,.38)"}}>Generating AI commentary…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>):(<><div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".7rem"}}>AI Advisor Commentary</div><div style={{background:"rgba(201,168,76,.05)",border:"1px solid rgba(201,168,76,.14)",borderRadius:8,padding:"1rem 1.2rem",fontSize:".8rem",lineHeight:1.72,color:"rgba(232,224,208,.7)",maxHeight:260,overflowY:"auto",whiteSpace:"pre-wrap"}}>{pdfState.summary}</div></>)}<MA><button className="btnc" onClick={()=>setModal(null)}>Close</button></MA></Overlay>)}
+    {modal==="pdf"&&(<Overlay onClose={()=>setModal(null)}><div className="modtitle">Portfolio Report</div>{pdfState.loading?(<div style={{textAlign:"center",padding:"2.5rem 0"}}><div style={{width:34,height:34,border:"2px solid rgba(201,168,76,.2)",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 1rem"}}/><div style={{fontSize:".8rem",color:"rgba(255,255,255,.5)"}}>Generating AI commentary…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>):(<><div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".7rem"}}>AI Advisor Commentary</div><div style={{background:"rgba(201,168,76,.05)",border:"1px solid rgba(201,168,76,.14)",borderRadius:8,padding:"1rem 1.2rem",fontSize:".8rem",lineHeight:1.72,color:"rgba(255,255,255,.85)",maxHeight:260,overflowY:"auto",whiteSpace:"pre-wrap"}}>{pdfState.summary}</div></>)}<MA><button className="btnc" onClick={()=>setModal(null)}>Close</button></MA></Overlay>)}
     </>
   );
 }
@@ -3804,7 +3804,7 @@ Keep the response practical, specific to the numbers, and formatted clearly with
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1.2rem"}}>
           <div>
             <div className="modtitle" style={{marginBottom:".15rem"}}>✦ Goal Fulfillment Plan</div>
-            <div style={{fontSize:".72rem",color:"rgba(232,224,208,.38)"}}>AI-powered analysis of your {goals.length} goal{goals.length!==1?"s":""}</div>
+            <div style={{fontSize:".72rem",color:"rgba(255,255,255,.5)"}}>AI-powered analysis of your {goals.length} goal{goals.length!==1?"s":""}</div>
           </div>
           <div style={{display:"flex",gap:".4rem"}}>
             <button onClick={generate} disabled={loading}
@@ -3833,12 +3833,12 @@ Keep the response practical, specific to the numbers, and formatted clearly with
           {loading&&!plan&&(
             <div style={{textAlign:"center"}}>
               <div style={{width:28,height:28,border:"2px solid rgba(160,132,202,.2)",borderTopColor:"#a084ca",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto .75rem"}}/>
-              <div style={{fontSize:".78rem",color:"rgba(232,224,208,.35)"}}>Analysing your goals…</div>
+              <div style={{fontSize:".78rem",color:"rgba(255,255,255,.45)"}}>Analysing your goals…</div>
             </div>
           )}
           {error&&<div style={{color:"#e07c5a",fontSize:".8rem"}}>⚠ {error}</div>}
           {plan&&(
-            <div style={{fontSize:".8rem",lineHeight:1.75,color:"rgba(232,224,208,.78)",whiteSpace:"pre-wrap",width:"100%"}}>
+            <div style={{fontSize:".8rem",lineHeight:1.75,color:"rgba(255,255,255,.85)",whiteSpace:"pre-wrap",width:"100%"}}>
               {plan}
             </div>
           )}
@@ -3862,16 +3862,16 @@ function DonutChart({data,total}){
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"2.5rem",flexWrap:"wrap",padding:".5rem 0"}}>
       <svg width={S} height={S} viewBox={`0 0 ${S} ${S}`}>
         {slices.map(s=><path key={s.t} d={arc(s.startA,s.endA,r,ir)} fill={AT[s.t].color} opacity={0.85}/>)}
-        <text x={cx} y={cy-6} textAnchor="middle" fill="#e8e0d0" fontSize="11" fontFamily="DM Mono">{total>=1e7?(total/1e7).toFixed(1)+"Cr":total>=1e5?(total/1e5).toFixed(1)+"L":"₹"+Math.round(total)}</text>
-        <text x={cx} y={cy+10} textAnchor="middle" fill="rgba(232,224,208,.33)" fontSize="8.5" fontFamily="DM Sans">TOTAL</text>
+        <text x={cx} y={cy-6} textAnchor="middle" fill="#ffffff" fontSize="11" fontFamily="DM Mono">{total>=1e7?(total/1e7).toFixed(1)+"Cr":total>=1e5?(total/1e5).toFixed(1)+"L":"₹"+Math.round(total)}</text>
+        <text x={cx} y={cy+10} textAnchor="middle" fill="rgba(255,255,255,.42)" fontSize="8.5" fontFamily="DM Sans">TOTAL</text>
       </svg>
       <div style={{display:"flex",flexDirection:"column",gap:".6rem"}}>
         {slices.map(s=>(
           <div key={s.t} style={{display:"flex",alignItems:"center",gap:".55rem"}}>
             <div style={{width:8,height:8,borderRadius:"50%",background:AT[s.t].color,flexShrink:0}}/>
-            <span style={{color:"rgba(232,224,208,.55)",fontSize:".76rem",minWidth:94}}>{AT[s.t].label}</span>
-            <span style={{fontFamily:"'DM Mono',monospace",fontSize:".73rem",color:"#e8e0d0",minWidth:72,textAlign:"right"}}>{fmtV(s.v)}</span>
-            <span style={{fontFamily:"'DM Mono',monospace",fontSize:".7rem",color:"rgba(232,224,208,.4)",minWidth:40,textAlign:"right"}}>{s.pct.toFixed(1)}%</span>
+            <span style={{color:"rgba(255,255,255,.65)",fontSize:".76rem",minWidth:94}}>{AT[s.t].label}</span>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:".73rem",color:"#ffffff",minWidth:72,textAlign:"right"}}>{fmtV(s.v)}</span>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:".7rem",color:"rgba(255,255,255,.5)",minWidth:40,textAlign:"right"}}>{s.pct.toFixed(1)}%</span>
           </div>
         ))}
       </div>
@@ -3909,7 +3909,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
       </div>
 
       {step==="upload"&&(<>
-        <div style={{border:`2px dashed ${dragOver?"#c9a84c":"rgba(232,224,208,.15)"}`,borderRadius:12,
+        <div style={{border:`2px dashed ${dragOver?"#c9a84c":"rgba(255,255,255,.22)"}`,borderRadius:12,
           padding:"2.5rem 1.5rem",textAlign:"center",cursor:"pointer",
           background:dragOver?"rgba(201,168,76,.06)":"rgba(255,255,255,.02)",transition:"all .25s",marginBottom:"1.2rem"}}
           onClick={()=>importFileRef.current?.click()}
@@ -3917,10 +3917,10 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
           onDragLeave={()=>setImportState(s=>({...s,dragOver:false}))}
           onDrop={e=>{e.preventDefault();setImportState(s=>({...s,dragOver:false}));const f=e.dataTransfer.files[0];if(f)handleImportFile(f);}}>
           <div style={{fontSize:"2.2rem",marginBottom:".6rem"}}>📂</div>
-          <div style={{fontSize:".85rem",color:"rgba(232,224,208,.7)",fontWeight:500}}>
+          <div style={{fontSize:".85rem",color:"rgba(255,255,255,.85)",fontWeight:500}}>
             Drag & drop your broker export here
           </div>
-          <div style={{fontSize:".72rem",color:"rgba(232,224,208,.35)",marginTop:".4rem"}}>
+          <div style={{fontSize:".72rem",color:"rgba(255,255,255,.45)",marginTop:".4rem"}}>
             Holdings or tradebook — auto-detected · CSV, XLSX, PDF
           </div>
           <button className="btns" style={{marginTop:"1rem",fontSize:".75rem"}}>Browse Files</button>
@@ -3928,7 +3928,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
         <div style={{fontSize:".65rem",letterSpacing:".08em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".6rem",fontWeight:600}}>Auto-detected formats</div>
         <div style={{marginBottom:".8rem"}}>
           <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".45rem"}}>
-            <span style={{fontSize:".6rem",color:"rgba(232,224,208,.35)",letterSpacing:".06em",textTransform:"uppercase",minWidth:"1.8rem"}}>US</span>
+            <span style={{fontSize:".6rem",color:"rgba(255,255,255,.45)",letterSpacing:".06em",textTransform:"uppercase",minWidth:"1.8rem"}}>US</span>
             <div style={{display:"flex",flexWrap:"wrap",gap:".35rem"}}>
               {US_FORMATS.map(f=>(
                 <span key={f.name} style={{fontSize:".67rem",padding:".22rem .55rem",borderRadius:4,
@@ -3939,7 +3939,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
             </div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".45rem"}}>
-            <span style={{fontSize:".6rem",color:"rgba(232,224,208,.35)",letterSpacing:".06em",textTransform:"uppercase",minWidth:"1.8rem"}}>IN</span>
+            <span style={{fontSize:".6rem",color:"rgba(255,255,255,.45)",letterSpacing:".06em",textTransform:"uppercase",minWidth:"1.8rem"}}>IN</span>
             <div style={{display:"flex",flexWrap:"wrap",gap:".35rem"}}>
               {IN_FORMATS.map(f=>(
                 <span key={f.name} style={{fontSize:".67rem",padding:".22rem .55rem",borderRadius:4,
@@ -3950,7 +3950,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
             </div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:".5rem"}}>
-            <span style={{fontSize:".6rem",color:"rgba(232,224,208,.35)",minWidth:"1.8rem"}}></span>
+            <span style={{fontSize:".6rem",color:"rgba(255,255,255,.45)",minWidth:"1.8rem"}}></span>
             <div style={{display:"flex",flexWrap:"wrap",gap:".35rem"}}>
               {OTHER_FORMATS.map(f=>(
                 <span key={f.name} style={{fontSize:".67rem",padding:".22rem .55rem",borderRadius:4,
@@ -3973,15 +3973,15 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
         <div style={{maxWidth:400,margin:"0 auto"}}>
           <div style={{textAlign:"center",marginBottom:"1.2rem"}}>
             <div style={{fontSize:"2rem",marginBottom:".5rem"}}>🔐</div>
-            <div style={{fontSize:".85rem",color:"rgba(232,224,208,.7)",marginBottom:".3rem"}}>This PDF is password-protected</div>
-            <div style={{fontSize:".72rem",color:"rgba(232,224,208,.4)"}}>NSDL/CDSL CAS password is your PAN number</div>
+            <div style={{fontSize:".85rem",color:"rgba(255,255,255,.85)",marginBottom:".3rem"}}>This PDF is password-protected</div>
+            <div style={{fontSize:".72rem",color:"rgba(255,255,255,.5)"}}>NSDL/CDSL CAS password is your PAN number</div>
           </div>
           <div style={{marginBottom:".8rem"}}>
-            <label style={{fontSize:".68rem",color:"rgba(232,224,208,.5)",letterSpacing:".05em",textTransform:"uppercase",display:"block",marginBottom:".3rem"}}>PAN Number</label>
+            <label style={{fontSize:".68rem",color:"rgba(255,255,255,.6)",letterSpacing:".05em",textTransform:"uppercase",display:"block",marginBottom:".3rem"}}>PAN Number</label>
             <input className="fi" value={casPan} onChange={e=>setImportState(s=>({...s,casPan:e.target.value.toUpperCase()}))}
               placeholder="ABCDE1234F" maxLength={10} style={{fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:".1em"}}/>
           </div>
-          <label style={{display:"flex",alignItems:"center",gap:".5rem",fontSize:".73rem",color:"rgba(232,224,208,.5)",marginBottom:"1.2rem",cursor:"pointer"}}>
+          <label style={{display:"flex",alignItems:"center",gap:".5rem",fontSize:".73rem",color:"rgba(255,255,255,.6)",marginBottom:"1.2rem",cursor:"pointer"}}>
             <input type="checkbox" checked={casRemember} onChange={e=>setImportState(s=>({...s,casRemember:e.target.checked}))}
               style={{accentColor:"#c9a84c"}}/>
             Remember for future imports (encrypted)
@@ -4012,7 +4012,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
             border:`1px solid ${mode==="transactions"?"rgba(160,132,202,.25)":"rgba(76,175,154,.25)"}`}}>
             {mode==="transactions"?"📋 Transactions":"📊 Holdings"}
           </span>
-          <span style={{fontSize:".75rem",color:"rgba(232,224,208,.6)"}}>
+          <span style={{fontSize:".75rem",color:"rgba(255,255,255,.7)"}}>
             {items.length} {mode==="transactions"?"transaction":"holding"}{items.length!==1?"s":""} found
           </span>
           {dupCount>0&&<span style={{fontSize:".72rem",color:"#5a9ce0"}}>({dupCount} existing — will update)</span>}
@@ -4021,11 +4021,11 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
           <div style={{marginBottom:".8rem"}}>
             {accounts.length>0&&members.length>1?(
               <div>
-                <div style={{fontSize:".65rem",letterSpacing:".06em",textTransform:"uppercase",color:"rgba(232,224,208,.35)",marginBottom:".4rem"}}>Map accounts to family members</div>
+                <div style={{fontSize:".65rem",letterSpacing:".06em",textTransform:"uppercase",color:"rgba(255,255,255,.45)",marginBottom:".4rem"}}>Map accounts to family members</div>
                 {accounts.map(acct=>(
                   <div key={acct} style={{display:"flex",gap:".6rem",alignItems:"center",marginBottom:".35rem"}}>
-                    <span style={{fontSize:".72rem",color:"rgba(232,224,208,.6)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{acct}</span>
-                    <span style={{fontSize:".65rem",color:"rgba(232,224,208,.3)"}}>→</span>
+                    <span style={{fontSize:".72rem",color:"rgba(255,255,255,.7)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{acct}</span>
+                    <span style={{fontSize:".65rem",color:"rgba(255,255,255,.4)"}}>→</span>
                     <select className="fi" style={{padding:".22rem .5rem",fontSize:".7rem",width:"auto",minWidth:120}}
                       value={accountMap[acct]||""} onChange={e=>setImportState(s=>({...s,accountMap:{...s.accountMap,[acct]:e.target.value}}))}>
                       <option value="">Auto (first member)</option>
@@ -4036,7 +4036,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
               </div>
             ):members.length>1?(
               <div style={{display:"flex",gap:"1rem",alignItems:"center",flexWrap:"wrap"}}>
-                <label style={{display:"flex",alignItems:"center",gap:".4rem",fontSize:".73rem",color:"rgba(232,224,208,.6)"}}>
+                <label style={{display:"flex",alignItems:"center",gap:".4rem",fontSize:".73rem",color:"rgba(255,255,255,.7)"}}>
                   Assign to:
                   <select className="fi" style={{padding:".25rem .5rem",fontSize:".72rem",width:"auto"}}
                     value={assignMember} onChange={e=>setImportState(s=>({...s,assignMember:e.target.value}))}>
@@ -4081,7 +4081,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
             })}</tbody></table>
           )}
         </div>
-        {items.length>200&&<div style={{fontSize:".68rem",color:"rgba(232,224,208,.3)",textAlign:"center",marginTop:".4rem"}}>Showing first 200 of {items.length} rows</div>}
+        {items.length>200&&<div style={{fontSize:".68rem",color:"rgba(255,255,255,.4)",textAlign:"center",marginTop:".4rem"}}>Showing first 200 of {items.length} rows</div>}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:"1rem",gap:".6rem"}}>
           <button className="btnc" onClick={()=>setImportState(s=>({...s,step:"upload",holdings:[],transactions:[],warnings:[]}))}>← Back</button>
           <div style={{display:"flex",gap:".5rem"}}>
@@ -4096,8 +4096,8 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
       {step==="importing"&&(
         <div style={{textAlign:"center",padding:"2.5rem 1rem"}}>
           <div style={{width:40,height:40,margin:"0 auto 1rem",border:"3px solid rgba(201,168,76,.2)",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
-          <div style={{fontSize:".85rem",color:"rgba(232,224,208,.7)"}}>Importing {items.length} {mode==="transactions"?"transactions":"holdings"}…</div>
-          <div style={{fontSize:".7rem",color:"rgba(232,224,208,.3)",marginTop:".4rem"}}>Creating entries and first transactions</div>
+          <div style={{fontSize:".85rem",color:"rgba(255,255,255,.85)"}}>Importing {items.length} {mode==="transactions"?"transactions":"holdings"}…</div>
+          <div style={{fontSize:".7rem",color:"rgba(255,255,255,.4)",marginTop:".4rem"}}>Creating entries and first transactions</div>
         </div>
       )}
 
@@ -4107,11 +4107,11 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
             <div style={{fontSize:"1.1rem",fontWeight:600,color:"#4caf9a",marginBottom:".3rem"}}>
               ✓ {(result.inserted_count||0)+(result.updated_count||0)+(result.imported_count||0)} processed
             </div>
-            {result.inserted_count>0&&<div style={{fontSize:".75rem",color:"rgba(232,224,208,.6)"}}>+ {result.inserted_count} new holding{result.inserted_count>1?"s":""} added</div>}
+            {result.inserted_count>0&&<div style={{fontSize:".75rem",color:"rgba(255,255,255,.7)"}}>+ {result.inserted_count} new holding{result.inserted_count>1?"s":""} added</div>}
             {result.updated_count>0&&<div style={{fontSize:".75rem",color:"#5a9ce0"}}>↻ {result.updated_count} existing holding{result.updated_count>1?"s":""} updated</div>}
             {result.unmatched_count>0&&(<div style={{fontSize:".75rem",color:"#e07c5a",marginTop:".3rem"}}>
               ⚠ {result.unmatched_count} transaction{result.unmatched_count>1?"s":""} not matched to holdings:
-              <div style={{fontSize:".7rem",color:"rgba(232,224,208,.4)",marginTop:".2rem"}}>{result.unmatched?.join(", ")}</div>
+              <div style={{fontSize:".7rem",color:"rgba(255,255,255,.5)",marginTop:".2rem"}}>{result.unmatched?.join(", ")}</div>
             </div>)}
             {result.error_count>0&&<div style={{fontSize:".75rem",color:"#e07c5a",marginTop:".3rem"}}>{result.error_count} error{result.error_count>1?"s":""}</div>}
           </div>
@@ -4136,11 +4136,11 @@ function MA({children}){return<div className="ma">{children}</div>;}
 const CSS=`
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#070d1a}
-.app{min-height:100vh;background:#070d1a;background-image:radial-gradient(ellipse at 20% 10%,rgba(201,168,76,.06) 0%,transparent 50%),radial-gradient(ellipse at 80% 80%,rgba(90,156,224,.05) 0%,transparent 50%);font-family:'DM Sans',sans-serif;color:#e8e0d0}
+.app{min-height:100vh;background:#070d1a;background-image:radial-gradient(ellipse at 20% 10%,rgba(201,168,76,.06) 0%,transparent 50%),radial-gradient(ellipse at 80% 80%,rgba(90,156,224,.05) 0%,transparent 50%);font-family:'DM Sans',sans-serif;color:#ffffff}
 
 /* ── Header ── */
 .hdr{border-bottom:1px solid rgba(201,168,76,.14);padding:0 1.2rem;display:flex;align-items:center;justify-content:space-between;height:56px;background:rgba(7,13,26,.97);backdrop-filter:blur(12px);position:sticky;top:0;z-index:100;gap:.5rem}
-.logo{font-family:'Cormorant Garamond',serif;font-size:1.35rem;font-weight:500;letter-spacing:.04em;color:#e8e0d0;flex-shrink:0}.logo span{color:#c9a84c}
+.logo{font-family:'Cormorant Garamond',serif;font-size:1.35rem;font-weight:500;letter-spacing:.04em;color:#ffffff;flex-shrink:0}.logo span{color:#c9a84c}
 .hdr-r{display:flex;align-items:center;gap:.4rem;flex-wrap:nowrap}
 .btn-o{background:none;border:1px solid rgba(201,168,76,.3);color:#c9a84c;padding:.3rem .7rem;border-radius:4px;cursor:pointer;font-size:.68rem;letter-spacing:.06em;transition:all .2s;white-space:nowrap;font-family:'DM Sans',sans-serif}.btn-o:hover{background:rgba(201,168,76,.1)}.btn-o:disabled{opacity:.45;cursor:not-allowed}
 .btn-g{background:rgba(201,168,76,.11);border:1px solid rgba(201,168,76,.42);color:#c9a84c;padding:.32rem .78rem;border-radius:4px;cursor:pointer;font-size:.68rem;white-space:nowrap;transition:all .2s;font-family:'DM Sans',sans-serif}.btn-g:hover{background:rgba(201,168,76,.2)}
@@ -4152,57 +4152,57 @@ body{background:#070d1a}
 
 /* ── Member bar ── */
 .mbar{display:flex;align-items:center;gap:.5rem;margin-bottom:1.2rem;flex-wrap:wrap}
-.mlbl{font-size:.67rem;letter-spacing:.1em;color:rgba(232,224,208,.32);text-transform:uppercase;margin-right:.18rem}
-.mchip{padding:.32rem .75rem;border-radius:20px;cursor:pointer;font-size:.73rem;font-weight:500;border:1px solid transparent;transition:all .2s;background:rgba(255,255,255,.04);color:rgba(232,224,208,.52)}.mchip.act{background:rgba(201,168,76,.14);border-color:rgba(201,168,76,.48);color:#c9a84c}.mchip:hover:not(.act){background:rgba(255,255,255,.07);color:#e8e0d0}
+.mlbl{font-size:.67rem;letter-spacing:.1em;color:rgba(255,255,255,.5);text-transform:uppercase;margin-right:.18rem}
+.mchip{padding:.32rem .75rem;border-radius:20px;cursor:pointer;font-size:.73rem;font-weight:500;border:1px solid transparent;transition:all .2s;background:rgba(255,255,255,.04);color:rgba(255,255,255,.65)}.mchip.act{background:rgba(201,168,76,.14);border-color:rgba(201,168,76,.48);color:#c9a84c}.mchip:hover:not(.act){background:rgba(255,255,255,.07);color:#ffffff}
 
 /* ── Tabs — scrollable on mobile ── */
 .tabs{display:flex;margin-bottom:1.4rem;border-bottom:1px solid rgba(255,255,255,.07);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
-.tab{padding:.55rem 1rem;cursor:pointer;font-size:.78rem;color:rgba(232,224,208,.38);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .2s;white-space:nowrap;text-transform:capitalize;flex-shrink:0}.tab.act{color:#c9a84c;border-bottom-color:#c9a84c}.tab:hover:not(.act){color:rgba(232,224,208,.68)}
+.tab{padding:.55rem 1rem;cursor:pointer;font-size:.78rem;color:rgba(255,255,255,.5);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .2s;white-space:nowrap;text-transform:capitalize;flex-shrink:0}.tab.act{color:#c9a84c;border-bottom-color:#c9a84c}.tab:hover:not(.act){color:rgba(255,255,255,.8)}
 .tbadge{display:inline-block;background:#e07c5a;color:#fff;border-radius:10px;padding:1px 6px;font-size:.58rem;margin-left:4px;vertical-align:middle}
 
 /* ── KPI Grid ── */
 .mg{display:grid;grid-template-columns:repeat(4,1fr);gap:.85rem;margin-bottom:1.4rem}
 .mc{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:11px;padding:1.1rem;position:relative;overflow:hidden}.mc::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(201,168,76,.32),transparent)}
-.mclbl{font-size:.63rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(232,224,208,.36);margin-bottom:.4rem}.mcval{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:500;line-height:1}.mcsub{font-size:.68rem;margin-top:.35rem}
+.mclbl{font-size:.63rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:.4rem}.mcval{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:500;line-height:1;color:#ffffff}.mcsub{font-size:.68rem;margin-top:.35rem}
 .gain{color:#4caf9a}.loss{color:#e07c5a}
 .sg{display:grid;grid-template-columns:1fr 1.4fr;gap:1.2rem;margin-bottom:1.2rem}
 
 /* ── Cards ── */
 .card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:11px;padding:1.2rem}
-.ctitle{font-family:'Cormorant Garamond',serif;font-size:1.05rem;color:#e8e0d0;margin-bottom:1rem}
-.arow{display:flex;align-items:center;gap:.65rem;margin-bottom:.9rem}.aicon{font-size:.95rem;width:24px;text-align:center}.ainfo{flex:1}.aname{font-size:.78rem;color:rgba(232,224,208,.78)}.abg{height:3px;background:rgba(255,255,255,.07);border-radius:2px;margin-top:4px}.afill{height:100%;border-radius:2px;transition:width .8s ease}.argt{text-align:right;min-width:80px}.aval{font-size:.78rem;font-family:'DM Mono',monospace;color:#e8e0d0}.apct{font-size:.66rem}
+.ctitle{font-family:'Cormorant Garamond',serif;font-size:1.05rem;color:#ffffff;margin-bottom:1rem}
+.arow{display:flex;align-items:center;gap:.65rem;margin-bottom:.9rem}.aicon{font-size:.95rem;width:24px;text-align:center}.ainfo{flex:1}.aname{font-size:.78rem;color:rgba(255,255,255,.85)}.abg{height:3px;background:rgba(255,255,255,.07);border-radius:2px;margin-top:4px}.afill{height:100%;border-radius:2px;transition:width .8s ease}.argt{text-align:right;min-width:80px}.aval{font-size:.78rem;font-family:'DM Mono',monospace;color:#ffffff}.apct{font-size:.66rem}
 .msrow{display:flex;align-items:center;gap:.7rem;padding:.75rem 0;border-bottom:1px solid rgba(255,255,255,.05)}.msrow:last-child{border-bottom:none}
 .av{width:33px;height:33px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:600;flex-shrink:0;background:rgba(201,168,76,.14);color:#c9a84c;border:1px solid rgba(201,168,76,.28)}
 .tbar{display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap}
-.fchip{padding:.28rem .7rem;border-radius:20px;cursor:pointer;font-size:.7rem;border:1px solid transparent;transition:all .2s;background:rgba(255,255,255,.04);color:rgba(232,224,208,.43)}.fchip.act{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.14);color:#e8e0d0}
+.fchip{padding:.28rem .7rem;border-radius:20px;cursor:pointer;font-size:.7rem;border:1px solid transparent;transition:all .2s;background:rgba(255,255,255,.04);color:rgba(255,255,255,.55)}.fchip.act{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.14);color:#ffffff}
 
 /* ── Table — horizontal scroll on mobile ── */
-.ht{width:100%;border-collapse:collapse}.ht th{font-size:.61rem;letter-spacing:.09em;text-transform:uppercase;color:rgba(232,224,208,.26);text-align:left;padding:0 .6rem .6rem;border-bottom:1px solid rgba(255,255,255,.06)}.ht th.r{text-align:right}.ht td{padding:.72rem .6rem;font-size:.78rem;border-bottom:1px solid rgba(255,255,255,.04)}.ht tr:hover td{background:rgba(255,255,255,.02)}
-.hn{color:#e8e0d0;font-weight:500}.hm{font-size:.66rem;color:rgba(232,224,208,.3);margin-top:2px}
+.ht{width:100%;border-collapse:collapse}.ht th{font-size:.61rem;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.5);text-align:left;padding:0 .6rem .6rem;border-bottom:1px solid rgba(255,255,255,.06)}.ht th.r{text-align:right}.ht td{padding:.72rem .6rem;font-size:.78rem;border-bottom:1px solid rgba(255,255,255,.04);color:rgba(255,255,255,.85)}.ht tr:hover td{background:rgba(255,255,255,.02)}
+.hn{color:#ffffff;font-weight:500}.hm{font-size:.66rem;color:rgba(255,255,255,.45);margin-top:2px}
 .tbadge2{padding:.16rem .48rem;border-radius:3px;font-size:.61rem;letter-spacing:.04em;font-weight:500;white-space:nowrap}
-.mono{font-family:'DM Mono',monospace}.dim{color:rgba(232,224,208,.42)}.r{text-align:right}
+.mono{font-family:'DM Mono',monospace}.dim{color:rgba(255,255,255,.55)}.r{text-align:right}
 .delbtn{background:none;border:none;cursor:pointer;color:rgba(224,124,90,.32);font-size:.76rem;padding:.2rem .42rem;transition:all .2s;border-radius:4px}.delbtn:hover{color:#e07c5a;background:rgba(224,124,90,.09)}
 .btn-sm{background:none;border:1px dashed rgba(201,168,76,.28);color:rgba(201,168,76,.6);padding:.34rem .78rem;border-radius:6px;cursor:pointer;font-size:.71rem;transition:all .2s;font-family:'DM Sans',sans-serif}.btn-sm:hover{border-color:rgba(201,168,76,.55);color:#c9a84c}
 .gbbg{height:4px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden}.gbfill{height:100%;border-radius:3px;transition:width .8s ease}
-.empty{text-align:center;padding:2.5rem;color:rgba(232,224,208,.2);font-family:'Cormorant Garamond',serif;font-size:1rem}
+.empty{text-align:center;padding:2.5rem;color:rgba(255,255,255,.4);font-family:'Cormorant Garamond',serif;font-size:1rem}
 
 /* ── Modal — full-screen on mobile ── */
 .ovl{position:fixed;inset:0;background:rgba(0,0,0,.78);backdrop-filter:blur(5px);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem}
 .mod{background:#0c1526;border:1px solid rgba(201,168,76,.2);border-radius:15px;padding:1.85rem;width:100%;max-width:640px;max-height:92vh;overflow-y:auto}
-.modtitle{font-family:'Cormorant Garamond',serif;font-size:1.3rem;color:#e8e0d0;margin-bottom:1.2rem}
+.modtitle{font-family:'Cormorant Garamond',serif;font-size:1.3rem;color:#ffffff;margin-bottom:1.2rem}
 .frow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem;margin-bottom:.05rem}
 .fg{display:flex;flex-direction:column;gap:.32rem;margin-bottom:.8rem}
-.flbl{font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;color:rgba(232,224,208,.36)}
-.fi{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#e8e0d0;padding:.52rem .75rem;border-radius:6px;font-size:.85rem;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .2s;width:100%;-webkit-appearance:none}.fi:focus{border-color:rgba(201,168,76,.48)}
-.fs{appearance:none;-webkit-appearance:none;cursor:pointer}.fs option{background:#0c1526}
+.flbl{font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+.fi{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#ffffff;padding:.52rem .75rem;border-radius:6px;font-size:.85rem;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .2s;width:100%;-webkit-appearance:none}.fi:focus{border-color:rgba(201,168,76,.48)}.fi::placeholder{color:rgba(255,255,255,.3)}
+.fs{appearance:none;-webkit-appearance:none;cursor:pointer;color:#ffffff}.fs option{background:#0c1526;color:#ffffff}
 .ma{display:flex;gap:.6rem;justify-content:flex-end;margin-top:1.2rem}
-.btnc{background:none;border:1px solid rgba(255,255,255,.1);color:rgba(232,224,208,.42);padding:.52rem 1rem;border-radius:6px;cursor:pointer;font-size:.78rem;transition:all .2s;font-family:'DM Sans',sans-serif}.btnc:hover{border-color:rgba(255,255,255,.2);color:#e8e0d0}
+.btnc{background:none;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);padding:.52rem 1rem;border-radius:6px;cursor:pointer;font-size:.78rem;transition:all .2s;font-family:'DM Sans',sans-serif}.btnc:hover{border-color:rgba(255,255,255,.25);color:#ffffff}
 .btns{background:rgba(201,168,76,.14);border:1px solid rgba(201,168,76,.48);color:#c9a84c;padding:.52rem 1.2rem;border-radius:6px;cursor:pointer;font-size:.78rem;font-weight:500;transition:all .2s;font-family:'DM Sans',sans-serif}.btns:hover{background:rgba(201,168,76,.24)}.btns:disabled{opacity:.38;cursor:not-allowed}
 
 /* ── Login ── */
 .login-wrap{min-height:100vh;background:#070d1a;background-image:radial-gradient(ellipse at 30% 20%,rgba(201,168,76,.07) 0%,transparent 55%);display:flex;align-items:center;justify-content:center;padding:1rem}
 .login-card{background:rgba(255,255,255,.03);border:1px solid rgba(201,168,76,.18);border-radius:16px;padding:2.5rem 1.5rem;width:100%;max-width:380px;text-align:center}
-.google-btn{display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);color:#e8e0d0;padding:.75rem 1.5rem;border-radius:8px;cursor:pointer;font-size:.88rem;font-family:'DM Sans',sans-serif;font-weight:500;transition:all .2s;width:100%}.google-btn:hover{background:rgba(255,255,255,.12)}.google-btn:disabled{opacity:.45;cursor:not-allowed}
+.google-btn{display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);color:#ffffff;padding:.75rem 1.5rem;border-radius:8px;cursor:pointer;font-size:.88rem;font-family:'DM Sans',sans-serif;font-weight:500;transition:all .2s;width:100%}.google-btn:hover{background:rgba(255,255,255,.12)}.google-btn:disabled{opacity:.45;cursor:not-allowed}
 
 /* ── Scrollbar ── */
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(201,168,76,.17);border-radius:3px}
