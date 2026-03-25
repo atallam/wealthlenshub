@@ -1640,113 +1640,130 @@ function parseTransactionCSV(text) {
 // ── NSDL / CDSL CAS PDF Parser ────────────────────────────────────
 function parseNSDLCASStatement(rawText) {
   const holdings = [], warnings = [];
-  const isCAS = /consolidated\s*account\s*statement|nsdl\s*cas|cdsl\s*cas/i.test(rawText);
+  const isCAS = /consolidated\s*account\s*statement|nsdl\s*cas|cdsl\s*cas|nsdl\s*e-cas/i.test(rawText);
   if (!isCAS) return { holdings: [], warnings: ["Not a CAS statement"], format: null };
 
-  // ── Parse Mutual Fund holdings ──
-  // Pattern: "Closing Unit Balance: 245.678" followed by "NAV on DD-Mon-YYYY: INR 48.52" and "Valuation on ...: INR 11923"
-  // Scheme names appear before these as: "[Scheme Name] - [Plan] - [Option]"
-  // Folio: "Folio No: 12345678"
+  const seen = new Set();
 
-  // Find all MF sections by looking for "Closing Unit Balance" patterns
-  const mfPattern = /(?:Folio\s*No[.:]*\s*(\S+))?[\s\S]*?([A-Z][A-Za-z\s&().-]+(?:Fund|Plan|Scheme|Growth|Dividend|IDCW|Direct|Regular)[\w\s().-]*?)\s*(?:Advisor|Registrar|Opening|Closing)[\s\S]*?Closing\s*Unit\s*Balance[:\s]*([\d,.]+)\s*(?:NAV\s*(?:on|as\s*on)\s*[\d\w-]+[:\s]*(?:INR|Rs\.?)\s*([\d,.]+))?\s*(?:Valuation\s*(?:on|as\s*on)\s*[\d\w-]+[:\s]*(?:INR|Rs\.?)\s*([\d,.]+))?/gi;
+  // ── Strategy 1: Find MF via "Closing Unit Balance" anchors ──
+  const closingRe = /Closing\s*Unit\s*Balance\s*[:\s]*([\d,.]+)/gi;
+  let cm;
+  while ((cm = closingRe.exec(rawText)) !== null) {
+    const units = pNum(cm[1]);
+    if (units <= 0) continue;
 
-  let mfMatch;
-  const seenSchemes = new Set();
-  while ((mfMatch = mfPattern.exec(rawText)) !== null) {
-    const folio = (mfMatch[1] || "").trim();
-    let schemeName = (mfMatch[2] || "").replace(/\s+/g, " ").trim();
-    const units = pNum(mfMatch[3]);
-    const nav = pNum(mfMatch[4]);
-    const valuation = pNum(mfMatch[5]);
+    const before = rawText.substring(Math.max(0, cm.index - 600), cm.index);
 
-    if (!schemeName || units <= 0) continue;
-    // Deduplicate (same scheme can appear in summary + detail)
-    const key = schemeName.toLowerCase().slice(0, 30) + "|" + units;
-    if (seenSchemes.has(key)) continue;
-    seenSchemes.add(key);
+    // Extract ISIN (mutual funds start with INF)
+    const isinMatch = before.match(/\b(INF[A-Z0-9]{9})\b/);
+    const isin = isinMatch ? isinMatch[1] : "";
 
-    // Try to extract scheme code from ISIN or nearby text
-    const schemeCode = "";
+    // Extract Folio
+    const folioMatch = before.match(/Folio\s*(?:No)?\.?\s*[:\s]*([A-Z0-9\/ -]+)/i);
+    const folio = folioMatch ? folioMatch[1].trim() : "";
+
+    // Extract scheme name — look for text with fund keywords
+    let schemeName = "";
+    const namePatterns = [
+      /\b(?:INF[A-Z0-9]{9})\s+(.{10,120}?)(?=\s*(?:Advisor|Registrar|Opening|Date|Folio|INF[A-Z0-9]))/i,
+      /([A-Z][A-Za-z\s&().'-]{5,100}(?:Fund|Savings|Nifty|Sensex|ETF|Flexi|Equity|Debt|Liquid|Hybrid|Balanced|Growth|IDCW|Direct|Regular|Plan|Income|Advantage|Opportunities|BlueChip|Bluechip|Small\s*Cap|Mid\s*Cap|Large\s*Cap|Multi\s*Cap|Index)[A-Za-z\s()'-]{0,60})/i,
+    ];
+    for (const np of namePatterns) {
+      const nm = before.match(np);
+      if (nm) { schemeName = nm[1].replace(/\s+/g, " ").trim(); break; }
+    }
+    if (!schemeName && isin) schemeName = "MF Scheme (" + isin + ")";
+    if (!schemeName) continue;
+
+    // Look forward for NAV and Valuation
+    const after = rawText.substring(cm.index + cm[0].length, cm.index + cm[0].length + 300);
+    const navMatch = after.match(/NAV\s*(?:on|as\s*on)?\s*[\d\w-]*\s*[:\s]*(?:INR|Rs\.?|`)\s*([\d,.]+)/i);
+    const valMatch = after.match(/Valuation\s*(?:on|as\s*on)?\s*[\d\w-]*\s*[:\s]*(?:INR|Rs\.?|`)\s*([\d,.]+)/i);
+    const nav = navMatch ? pNum(navMatch[1]) : 0;
+    const valuation = valMatch ? pNum(valMatch[1]) : (units * nav);
+
+    const key = (isin || schemeName.toLowerCase().slice(0, 30)) + "|" + units.toFixed(3);
+    if (seen.has(key)) continue;
+    seen.add(key);
 
     holdings.push({
-      name: schemeName, type: "MF", ticker: "", scheme_code: schemeCode,
+      name: schemeName, type: "MF", ticker: isin, scheme_code: "",
       units, purchase_nav: nav, current_nav: nav,
       purchase_price: nav, current_price: nav,
-      purchase_value: valuation || units * nav,
-      current_value: valuation || units * nav,
+      purchase_value: valuation, current_value: valuation,
       _folio: folio,
     });
   }
 
-  // ── Simpler MF fallback: "units NAV value" near scheme names ──
+  // ── Strategy 2: Find MF via ISIN (INF...) + Valuation summary table ──
   if (holdings.filter(h => h.type === "MF").length === 0) {
-    // Look for patterns like: SchemeName ... 234.567 ... 45.2300 ... 10,605.00
-    const simplePattern = /([A-Z][A-Za-z\s&().-]{10,80}(?:Fund|Plan|Growth|Dividend|IDCW|Direct|Regular)[^\n]*)\n[\s\S]*?(?:Closing|Balance)[:\s]*([\d,.]+)[\s\S]{0,200}?(?:NAV)[:\s]*(?:INR|Rs\.?)\s*([\d,.]+)[\s\S]{0,100}?(?:Valuation)[:\s]*(?:INR|Rs\.?)\s*([\d,.]+)/gi;
-    let sm;
-    while ((sm = simplePattern.exec(rawText)) !== null) {
-      const name = sm[1].replace(/\s+/g, " ").trim();
-      const units = pNum(sm[2]), nav = pNum(sm[3]), val = pNum(sm[4]);
-      if (units <= 0) continue;
-      const key = name.toLowerCase().slice(0, 30) + "|" + units;
-      if (seenSchemes.has(key)) continue;
-      seenSchemes.add(key);
+    const summaryRe = /\b(INF[A-Z0-9]{9})\b\s+(.{5,100}?)\s+([\d,.]+)\s+([\d,.]+)\s+(?:[\d,.]+\s+)?([\d,.]+)/g;
+    let sr;
+    while ((sr = summaryRe.exec(rawText)) !== null) {
+      const isin = sr[1], name = sr[2].replace(/\s+/g, " ").trim();
+      const n1 = pNum(sr[3]), n2 = pNum(sr[4]), n3 = pNum(sr[5]);
+      const sorted = [n1, n2, n3].sort((a, b) => a - b);
+      const nav = sorted[0], units = sorted[1], val = sorted[2];
+      if (units <= 0 || val <= 0) continue;
+      const key = isin + "|" + units.toFixed(3);
+      if (seen.has(key)) continue;
+      seen.add(key);
       holdings.push({
-        name, type: "MF", ticker: "", scheme_code: "",
+        name, type: "MF", ticker: isin, scheme_code: "",
         units, purchase_nav: nav, current_nav: nav,
         purchase_price: nav, current_price: nav,
-        purchase_value: val || units * nav, current_value: val || units * nav,
+        purchase_value: val, current_value: val,
       });
     }
   }
 
-  // ── Parse Demat holdings (stocks, ETFs, SGBs) ──
-  // Pattern: ISIN: INExxxxxxx | Security Name | Free Balance: 50
-  const dematPattern = /(?:ISIN[:\s]*)?([A-Z]{2}[A-Z0-9]{9}\d)\s+([A-Za-z\s&().,'-]+?)\s+(?:Free\s*Balance|Quantity|Balance)[:\s]*([\d,.]+)/gi;
-  let dm;
-  while ((dm = dematPattern.exec(rawText)) !== null) {
-    const isin = dm[1].trim();
-    const name = dm[2].replace(/\s+/g, " ").trim();
-    const qty = pNum(dm[3]);
-    if (qty <= 0 || /total|sub-total/i.test(name)) continue;
+  // ── Strategy 3: Demat holdings — ISIN (INE...) + quantity ──
+  const ineRe = /\b(INE[A-Z0-9]{9})\b/g;
+  let ineMatch;
+  while ((ineMatch = ineRe.exec(rawText)) !== null) {
+    const isin = ineMatch[1];
+    if (seen.has(isin)) continue;
 
-    // Classify: SGB → IN_ETF, ETF names → IN_ETF, else IN_STOCK
+    const after = rawText.substring(ineMatch.index, ineMatch.index + 300);
+    const rowMatch = after.match(/^[A-Z0-9]+\s+(.{3,80}?)\s+([\d,.]+)\s/);
+    let name = "", qty = 0;
+    if (rowMatch) {
+      name = rowMatch[1].replace(/\s+/g, " ").trim();
+      qty = pNum(rowMatch[2]);
+    }
+
+    if (!name || qty <= 0) {
+      const before = rawText.substring(Math.max(0, ineMatch.index - 200), ineMatch.index);
+      const backName = before.match(/([A-Z][A-Za-z\s&().'-]{3,60})\s*$/);
+      if (backName) name = backName[1].trim();
+      const qtyMatch = after.match(/(?:Free|Total|Net|Closing)?\s*(?:Balance|Quantity|Qty)[:\s]*([\d,.]+)/i)
+        || after.match(/\b([\d,]+)\s*$/m);
+      if (qtyMatch) qty = pNum(qtyMatch[1]);
+    }
+
+    if (!name || qty <= 0 || /total|sub.?total|header|page/i.test(name)) continue;
+    seen.add(isin);
+
     let type = "IN_STOCK";
-    if (/sovereign\s*gold\s*bond|sgb/i.test(name)) type = "IN_ETF";
-    else if (/etf|bees|nifty.*etf|gold.*etf/i.test(name)) type = "IN_ETF";
+    if (/sovereign\s*gold|sgb/i.test(name)) type = "IN_ETF";
+    else if (/etf|bees|nifty.*etf|gold.*etf|liquid.*etf/i.test(name)) type = "IN_ETF";
     else if (/bond|debenture|ncd/i.test(name)) type = "FD";
+
+    const valMatch = after.match(/(?:Value|Valuation)[:\s]*(?:INR|Rs\.?|`)?\s*([\d,.]+)/i);
+    const val = valMatch ? pNum(valMatch[1]) : 0;
 
     holdings.push({
       name, type, ticker: isin, scheme_code: "", units: qty,
-      purchase_price: 0, current_price: 0,
-      purchase_value: 0, current_value: 0,
+      purchase_price: 0, current_price: val && qty ? val / qty : 0,
+      purchase_value: val, current_value: val,
     });
-  }
-
-  // ── Simpler demat fallback: table rows with ISIN + quantity ──
-  if (holdings.filter(h => h.type !== "MF").length === 0) {
-    const tablePattern = /([A-Z]{2}[A-Z0-9]{9}\d)\s+(.+?)\s+([\d,.]+)\s+(?:[\d,.]+\s+)?([\d,.]+)/g;
-    let tr;
-    while ((tr = tablePattern.exec(rawText)) !== null) {
-      const isin = tr[1], name = tr[2].replace(/\s+/g, " ").trim();
-      const qty = pNum(tr[3]) || pNum(tr[4]);
-      if (qty <= 0 || /total|header|isin/i.test(name)) continue;
-      const existing = holdings.find(h => h.ticker === isin);
-      if (existing) continue;
-      let type = "IN_STOCK";
-      if (/sovereign\s*gold|sgb/i.test(name)) type = "IN_ETF";
-      else if (/etf|bees/i.test(name)) type = "IN_ETF";
-      holdings.push({
-        name, type, ticker: isin, scheme_code: "", units: qty,
-        purchase_price: 0, current_price: 0, purchase_value: 0, current_value: 0,
-      });
-    }
   }
 
   const mfCount = holdings.filter(h => h.type === "MF").length;
   const dematCount = holdings.filter(h => h.type !== "MF").length;
-  if (mfCount) warnings.push(`Found ${mfCount} mutual fund(s)`);
-  if (dematCount) warnings.push(`Found ${dematCount} demat holding(s)`);
+  if (mfCount) warnings.push("Found " + mfCount + " mutual fund(s)");
+  if (dematCount) warnings.push("Found " + dematCount + " demat holding(s)");
+  if (!mfCount && !dematCount) warnings.push("No holdings detected - CAS format may differ from expected layout");
 
   return {
     format: "NSDL/CDSL CAS (PDF)",
@@ -1880,12 +1897,16 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
           throw pdfOpenErr;
         }
 
-        const pages = [];
+        // Extract text from all pages in parallel for speed
+        const pagePromises = [];
         for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          pages.push(content.items.map(item => item.str).join(" "));
+          pagePromises.push(
+            pdf.getPage(i).then(page => page.getTextContent()).then(content =>
+              content.items.map(item => item.str).join(" ")
+            )
+          );
         }
+        const pages = await Promise.all(pagePromises);
         const rawPdfText = pages.join("\n");
 
         // ── Route 1: NSDL/CDSL CAS statement ──
