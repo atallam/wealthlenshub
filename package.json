@@ -1,6 +1,6 @@
 {
   "name": "wealthlens-pro",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -20,8 +20,8 @@
     "pdf-parse": "^2.4.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "snaptrade-typescript-sdk": "^9.0.0",
     "vite": "^5.3.1",
-    "xlsx": "^0.18.5",
-    "pdfjs-dist": "^5.4.296"
+    "xlsx": "^0.18.5"
   }
 }

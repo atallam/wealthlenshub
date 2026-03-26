@@ -3,6 +3,7 @@ import multer  from "multer";
 import { createClient } from "@supabase/supabase-js";
 import path from "path";
 import { fileURLToPath } from "url";
+import { Snaptrade } from "snaptrade-typescript-sdk";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app  = express();
@@ -872,6 +873,284 @@ app.delete("/api/artifacts/:id", auth, async (req, res) => {
   await supabase.from("artifacts").delete().eq("id", req.params.id);
   res.json({ ok: true });
 });
+
+// ══════════════════════════════════════════════════════════════════
+//  PATCH INSTRUCTIONS FOR server.js
+// ══════════════════════════════════════════════════════════════════
+//
+//  TWO changes needed in your existing server.js:
+//
+//  CHANGE 1: Add this import at the TOP of server.js (with your other imports):
+//
+//     import { Snaptrade } from "snaptrade-typescript-sdk";
+//
+//  CHANGE 2: Paste EVERYTHING below this comment block into server.js
+//            DIRECTLY BEFORE the line:
+//
+//     // ── Serve React app for all other routes ─────────────────────────
+//     app.get("*", (_, res) => {
+//
+//  That's it. Two changes.
+// ══════════════════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════════════════
+//  SNAPTRADE INTEGRATION — US Portfolio Import
+// ══════════════════════════════════════════════════════════════════
+
+let _snapClient = null;
+function getSnapClient() {
+  if (!_snapClient) {
+    const cid = process.env.SNAPTRADE_CLIENT_ID;
+    const ckey = process.env.SNAPTRADE_CONSUMER_KEY;
+    if (!cid || !ckey) throw new Error("Missing SNAPTRADE_CLIENT_ID or SNAPTRADE_CONSUMER_KEY");
+    _snapClient = new Snaptrade({ clientId: cid, consumerKey: ckey });
+  }
+  return _snapClient;
+}
+
+async function getSnapConn(userId) {
+  const { data, error } = await supabase
+    .from("snaptrade_connections").select("*").eq("owner_id", userId).single();
+  if (error || !data) throw new Error("No SnapTrade connection found — register first.");
+  return { ...data, user_secret: decrypt(data.user_secret_enc) };
+}
+
+function snapHoldingType(symbolObj) {
+  const code = (symbolObj?.type?.code || symbolObj?.type || "").toString().toLowerCase();
+  const exch = (symbolObj?.exchange?.code || "").toUpperCase();
+  if (["equity", "stock"].includes(code)) return ["NSE", "BSE"].includes(exch) ? "IN_STOCK" : "US_STOCK";
+  if (code === "etf") return ["NSE", "BSE"].includes(exch) ? "IN_ETF" : "US_ETF";
+  if (["crypto", "cryptocurrency"].includes(code)) return "CRYPTO";
+  if (["bond", "fixed_income"].includes(code)) return "BOND";
+  return "OTHER";
+}
+
+// ── SnapTrade: Health check ───────────────────────────────────────
+app.get("/api/snaptrade/status", async (_req, res) => {
+  try {
+    const resp = await getSnapClient().apiStatus.check();
+    res.json({ status: "ok", snaptrade: resp.data });
+  } catch (e) {
+    res.status(502).json({ error: "SnapTrade API unreachable", detail: e.message });
+  }
+});
+
+// ── SnapTrade: Register user ──────────────────────────────────────
+app.post("/api/snaptrade/register", auth, async (req, res) => {
+  try {
+    const { data: existing } = await supabase
+      .from("snaptrade_connections").select("snaptrade_user_id").eq("owner_id", req.user.id).single();
+    if (existing) return res.json({ snaptrade_user_id: existing.snaptrade_user_id, already_registered: true });
+
+    const snapUserId = `wlh-${req.user.id}`;
+    const resp = await getSnapClient().authentication.registerSnapTradeUser({ userId: snapUserId });
+    const userSecret = resp.data.userSecret;
+
+    await supabase.from("snaptrade_connections").insert({
+      owner_id: req.user.id,
+      snaptrade_user_id: snapUserId,
+      user_secret_enc: encrypt(userSecret),
+      status: "active",
+    });
+    res.json({ snaptrade_user_id: snapUserId, registered: true });
+  } catch (e) {
+    console.error("SnapTrade register:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── SnapTrade: Connection portal redirect ─────────────────────────
+app.post("/api/snaptrade/connect", auth, async (req, res) => {
+  try {
+    const { broker } = req.body;
+    const conn = await getSnapConn(req.user.id);
+    const baseUrl = process.env.RENDER_EXTERNAL_URL || "http://localhost:5173";
+
+    const params = {
+      userId: conn.snaptrade_user_id,
+      userSecret: conn.user_secret,
+      customRedirect: `${baseUrl}/import/snaptrade/callback`,
+    };
+    if (broker) params.broker = broker;
+
+    const resp = await getSnapClient().authentication.loginSnapTradeUser(params);
+    res.json({ redirect_uri: resp.data.redirectURI });
+  } catch (e) {
+    console.error("SnapTrade connect:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── SnapTrade: List connected accounts ────────────────────────────
+app.get("/api/snaptrade/accounts", auth, async (req, res) => {
+  try {
+    const conn = await getSnapConn(req.user.id);
+    const resp = await getSnapClient().accountInformation.listUserAccounts({
+      userId: conn.snaptrade_user_id, userSecret: conn.user_secret,
+    });
+    const accounts = (resp.data || []).map(a => ({
+      account_id: a.id,
+      brokerage: a.brokerage?.name || "Unknown",
+      brokerage_slug: a.brokerage?.slug || "",
+      account_name: a.name || "",
+      account_number: a.number || "",
+    }));
+    res.json({ accounts, count: accounts.length });
+  } catch (e) {
+    console.error("SnapTrade accounts:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── SnapTrade: Preview holdings ───────────────────────────────────
+app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
+  try {
+    const conn = await getSnapConn(req.user.id);
+    const client = getSnapClient();
+    const [posResp, balResp] = await Promise.all([
+      client.accountInformation.getUserAccountPositions({
+        userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: req.params.accountId,
+      }),
+      client.accountInformation.getUserAccountBalance({
+        userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: req.params.accountId,
+      }),
+    ]);
+
+    const positions = (posResp.data || []).map(p => {
+      const units = Number(p.units || 0);
+      const price = Number(p.price || 0);
+      const avg   = Number(p.averageEntryPrice || 0);
+      return {
+        ticker: p.symbol?.symbol?.symbol || "UNKNOWN",
+        asset_name: p.symbol?.symbol?.description || p.symbol?.symbol?.symbol || "",
+        asset_type: snapHoldingType(p.symbol?.symbol),
+        units, current_price: price, avg_cost: avg,
+        market_value: units * price,
+        unrealized_pnl: avg ? (price - avg) * units : 0,
+        currency: p.symbol?.symbol?.currency?.code || "USD",
+      };
+    });
+
+    const cashPositions = (balResp.data || [])
+      .filter(b => Number(b.cash || 0) > 0)
+      .map(b => {
+        const cash = Number(b.cash);
+        const cur  = b.currency?.code || "USD";
+        return {
+          ticker: `CASH-${cur}`, asset_name: `Cash (${cur})`, asset_type: "CASH",
+          units: 1, current_price: cash, avg_cost: cash,
+          market_value: cash, unrealized_pnl: 0, currency: cur,
+        };
+      });
+
+    const all = [...positions, ...cashPositions];
+    res.json({
+      account_id: req.params.accountId,
+      assets: all,
+      asset_count: all.length,
+      total_market_value: Math.round(all.reduce((s, a) => s + a.market_value, 0) * 100) / 100,
+    });
+  } catch (e) {
+    console.error("SnapTrade holdings:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── SnapTrade: Import holdings → WealthLens Hub ───────────────────
+app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
+  try {
+    const conn  = await getSnapConn(req.user.id);
+    const client = getSnapClient();
+    const now = new Date().toISOString();
+    const acctId = req.params.accountId;
+
+    const [posResp, balResp] = await Promise.all([
+      client.accountInformation.getUserAccountPositions({
+        userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: acctId,
+      }),
+      client.accountInformation.getUserAccountBalance({
+        userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: acctId,
+      }),
+    ]);
+
+    let imported = 0;
+
+    for (const p of posResp.data || []) {
+      const ticker = p.symbol?.symbol?.symbol || "UNKNOWN";
+      const units  = Number(p.units || 0);
+      const price  = Number(p.price || 0);
+      const avg    = Number(p.averageEntryPrice || 0);
+      if (units <= 0) continue;
+
+      const id = `snap_${acctId}_${ticker}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const { error } = await supabase.from("holdings").upsert({
+        id,
+        user_id: req.user.id,
+        type: snapHoldingType(p.symbol?.symbol),
+        ticker,
+        name: p.symbol?.symbol?.description || ticker,
+        purchase_price: avg || price,
+        current_price: price,
+        currency: p.symbol?.symbol?.currency?.code || "USD",
+        source: "snaptrade",
+        source_account: acctId,
+        last_synced: now,
+        price_fetched_at: now,
+        start_date: now.slice(0, 10),
+      }, { onConflict: "id" });
+      if (!error) imported++;
+    }
+
+    for (const b of balResp.data || []) {
+      const cash = Number(b.cash || 0);
+      if (cash <= 0) continue;
+      const cur = b.currency?.code || "USD";
+      const id  = `snap_${acctId}_CASH_${cur}`;
+
+      await supabase.from("holdings").upsert({
+        id,
+        user_id: req.user.id,
+        type: "CASH",
+        ticker: `CASH-${cur}`,
+        name: `Cash (${cur})`,
+        purchase_price: cash,
+        current_price: cash,
+        currency: cur,
+        source: "snaptrade",
+        source_account: acctId,
+        last_synced: now,
+        price_fetched_at: now,
+        start_date: now.slice(0, 10),
+      }, { onConflict: "id" });
+      imported++;
+    }
+
+    await supabase.from("snaptrade_connections").update({ last_synced_at: now }).eq("owner_id", req.user.id);
+    res.json({ status: "imported", assets_imported: imported, account_id: acctId });
+  } catch (e) {
+    console.error("SnapTrade import:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── SnapTrade: Disconnect ─────────────────────────────────────────
+app.delete("/api/snaptrade/disconnect", auth, async (req, res) => {
+  try {
+    const conn = await getSnapConn(req.user.id);
+    await getSnapClient().authentication.deleteSnapTradeUser({ userId: conn.snaptrade_user_id });
+    await supabase.from("snaptrade_connections").delete().eq("owner_id", req.user.id);
+    await supabase.from("holdings").delete().eq("user_id", req.user.id).eq("source", "snaptrade");
+    res.json({ status: "disconnected" });
+  } catch (e) {
+    console.error("SnapTrade disconnect:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  END SNAPTRADE INTEGRATION
+// ══════════════════════════════════════════════════════════════════
 
 // ── Serve React app for all other routes ─────────────────────────
 app.get("*", (_, res) => {
