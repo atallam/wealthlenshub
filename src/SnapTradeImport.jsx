@@ -1,206 +1,594 @@
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "./supabase.js";
 
-const US_BROKERS = [
-  { slug: "ROBINHOOD",    name: "Robinhood",            icon: "🪶", color: "#00C805" },
-  { slug: "SCHWAB",       name: "Charles Schwab",       icon: "🏛️", color: "#00A0DF" },
-  { slug: "FIDELITY",     name: "Fidelity",             icon: "📊", color: "#4C8C2B" },
-  { slug: "ETRADE",       name: "E*TRADE",              icon: "📈", color: "#6633CC" },
-  { slug: "TDAMERITRADE", name: "TD Ameritrade",        icon: "🟢", color: "#2D8C3C" },
-  { slug: "IBKR",         name: "Interactive Brokers",   icon: "🌐", color: "#D31145" },
-  { slug: "WEBULL",       name: "Webull",               icon: "🐂", color: "#F95B5B" },
-  { slug: "PUBLIC",       name: "Public",               icon: "👥", color: "#9B59B6" },
-  { slug: "ALPACA",       name: "Alpaca",               icon: "🦙", color: "#F5D547" },
-  { slug: "COINBASE",     name: "Coinbase",             icon: "₿",  color: "#0052FF" },
-];
-
-const STEP = { BROKER: 0, CONNECT: 1, ACCOUNTS: 2, PREVIEW: 3, DONE: 4 };
-
-/* ─── Mock API — swap with real fetch calls when ready ─── */
-const mockApi = {
-  register: async () => ({ snaptrade_user_id: "wlh-demo", already_registered: false }),
-  connect: async (_u, _s, broker) => ({ redirect_uri: `https://app.snaptrade.com/connect?broker=${broker}&demo=true` }),
-  accounts: async () => ({ accounts: [
-    { account_id: "acc-001", brokerage: "Robinhood", account_name: "Individual Brokerage", account_number: "****4821" },
-    { account_id: "acc-002", brokerage: "Robinhood", account_name: "Roth IRA", account_number: "****7733" },
-  ]}),
-  holdings: async () => ({ assets: [
-    { ticker: "AAPL",  asset_name: "Apple Inc.",              asset_type: "US_STOCK", units: 50,  current_price: 198.12, market_value: 9906,    currency: "USD", unrealized_pnl: 1240.50 },
-    { ticker: "VTI",   asset_name: "Vanguard Total Stock Mkt", asset_type: "US_ETF",  units: 120, current_price: 267.40, market_value: 32088,   currency: "USD", unrealized_pnl: 4320 },
-    { ticker: "MSFT",  asset_name: "Microsoft Corp.",         asset_type: "US_STOCK", units: 30,  current_price: 445.30, market_value: 13359,   currency: "USD", unrealized_pnl: 2100 },
-    { ticker: "GOOGL", asset_name: "Alphabet Inc.",           asset_type: "US_STOCK", units: 25,  current_price: 178.50, market_value: 4462.50, currency: "USD", unrealized_pnl: -320 },
-    { ticker: "BND",   asset_name: "Vanguard Total Bond Mkt", asset_type: "US_ETF",  units: 80,  current_price: 72.10,  market_value: 5768,    currency: "USD", unrealized_pnl: 110 },
-    { ticker: "CASH-USD", asset_name: "Cash (USD)",           asset_type: "CASH",    units: 1,   current_price: 4250,   market_value: 4250,    currency: "USD", unrealized_pnl: 0 },
-  ], total_market_value: 69833.50, asset_count: 6 }),
-  importHoldings: async () => ({ status: "imported", assets_imported: 6 }),
-};
-
-/*  ─── REAL API (uncomment + pass your session token) ───
-function realApi(token) { return {
-  register:       () => fetch("/api/snaptrade/register", { method:"POST", headers:{ Authorization:`Bearer ${token}` }}).then(r=>r.json()),
-  connect:        (_,__,broker) => fetch("/api/snaptrade/connect", { method:"POST", headers:{"Content-Type":"application/json", Authorization:`Bearer ${token}`}, body:JSON.stringify({broker})}).then(r=>r.json()),
-  accounts:       () => fetch("/api/snaptrade/accounts", { headers:{ Authorization:`Bearer ${token}` }}).then(r=>r.json()),
-  holdings:       (id) => fetch(`/api/snaptrade/holdings/${id}`, { headers:{ Authorization:`Bearer ${token}` }}).then(r=>r.json()),
-  importHoldings: (id) => fetch(`/api/snaptrade/import/${id}`, { method:"POST", headers:{ Authorization:`Bearer ${token}` }}).then(r=>r.json()),
-};}
-*/
-
-const api = mockApi;  // ← switch to realApi(token) when ready
-
-const usd = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n);
-const pnlColor = n => n > 0 ? "#4ade80" : n < 0 ? "#f87171" : "#94a3b8";
-const pnlSign = n => (n > 0 ? "+" : "") + usd(n);
-
-const typeTag = {
-  US_STOCK:{bg:"#3b82f620",fg:"#60a5fa",label:"US Stock"}, IN_STOCK:{bg:"#f59e0b20",fg:"#fbbf24",label:"IN Stock"},
-  US_ETF:{bg:"#a855f720",fg:"#c084fc",label:"US ETF"}, IN_ETF:{bg:"#a855f720",fg:"#c084fc",label:"IN ETF"},
-  CRYPTO:{bg:"#f9731620",fg:"#fb923c",label:"Crypto"}, CASH:{bg:"#22c55e20",fg:"#4ade80",label:"Cash"},
-  BOND:{bg:"#06b6d420",fg:"#22d3ee",label:"Bond"}, OTHER:{bg:"#64748b20",fg:"#94a3b8",label:"Other"},
-};
-
-export default function SnapTradeImport({ onClose }) {
-  const [step, setStep] = useState(STEP.BROKER);
-  const [broker, setBroker] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [accounts, setAccounts] = useState([]);
-  const [selected, setSelected] = useState(new Set());
-  const [holdings, setHoldings] = useState(null);
-  const [result, setResult] = useState(null);
-  const [search, setSearch] = useState("");
-  const [error, setError] = useState("");
-
-  const filtered = US_BROKERS.filter(b => b.name.toLowerCase().includes(search.toLowerCase()));
-  const toggle = id => setSelected(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
-
-  const doConnect = useCallback(async () => {
-    setLoading(true); setError("");
-    try { await api.register(); await api.connect(null,null,broker.slug); await new Promise(r=>setTimeout(r,2000));
-      const { accounts: a } = await api.accounts(); setAccounts(a); setStep(STEP.ACCOUNTS);
-    } catch(e){ setError(e.message); } finally { setLoading(false); }
-  }, [broker]);
-
-  const doFetch = useCallback(async () => {
-    setLoading(true); setError("");
-    try { const d = await api.holdings([...selected][0]); setHoldings(d); setStep(STEP.PREVIEW);
-    } catch(e){ setError(e.message); } finally { setLoading(false); }
-  }, [selected]);
-
-  const doImport = useCallback(async () => {
-    setLoading(true); setError("");
-    try { await new Promise(r=>setTimeout(r,1200)); const r = await api.importHoldings([...selected][0]); setResult(r); setStep(STEP.DONE);
-    } catch(e){ setError(e.message); } finally { setLoading(false); }
-  }, [selected]);
-
-  const reset = () => { setStep(STEP.BROKER); setBroker(null); setAccounts([]); setSelected(new Set()); setHoldings(null); setResult(null); setError(""); };
-
-  const S = {
-    root:{background:"#0b1120",color:"#e2e8f0",fontFamily:"'DM Sans',system-ui,sans-serif",padding:"28px 24px",borderRadius:16,border:"1px solid #1e293b",maxWidth:920,margin:"0 auto"},
-    title:{fontSize:22,fontWeight:800,letterSpacing:"-.03em",margin:0,background:"linear-gradient(135deg,#e2e8f0,#a78bfa)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"},
-    badge:{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:".08em",padding:"3px 8px",borderRadius:6,background:"#7c3aed20",color:"#a78bfa",border:"1px solid #7c3aed40",marginLeft:10},
-    close:{background:"none",border:"1px solid #334155",color:"#94a3b8",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:13},
-    dot:(a,c)=>({width:26,height:26,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#e2e8f0",background:a?"#a78bfa":"#1e293b",boxShadow:c?"0 0 10px #a78bfa60":"none"}),
-    grid:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:10},
-    brokerCard:(c)=>({display:"flex",flexDirection:"column",alignItems:"center",gap:6,padding:"18px 10px",background:"#0f172a",border:"1.5px solid #1e293b",borderRadius:12,cursor:"pointer",transition:"all .2s"}),
-    card:{display:"flex",flexDirection:"column",alignItems:"center",padding:36,background:"#0f172a",border:"1px solid #1e293b",borderRadius:14,textAlign:"center"},
-    acct:s=>({display:"flex",alignItems:"center",gap:12,padding:"14px 16px",border:`1.5px solid ${s?"#a78bfa":"#1e293b"}`,borderRadius:12,cursor:"pointer",background:s?"#a78bfa08":"#0f172a"}),
-    th:{padding:"10px 14px",fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:".05em",color:"#64748b",background:"#1e293b30",borderBottom:"1px solid #1e293b"},
-    td:{padding:"12px 14px",fontSize:13,borderBottom:"1px solid #1e293b10"},
-    stat:{display:"flex",flexDirection:"column",padding:"10px 16px",background:"#1e293b20",border:"1px solid #1e293b",borderRadius:10},
-    btnP:{padding:"11px 22px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#7c3aed,#a78bfa)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",boxShadow:"0 2px 12px #7c3aed40"},
-    btnS:{padding:"11px 22px",borderRadius:10,border:"1px solid #334155",background:"transparent",color:"#94a3b8",fontSize:14,cursor:"pointer"},
-    row:{display:"flex",justifyContent:"flex-end",gap:10,marginTop:8},
-    err:{background:"#7f1d1d30",border:"1px solid #991b1b",color:"#fca5a5",padding:"10px 14px",borderRadius:10,fontSize:13,marginBottom:14},
-    doneIcon:{width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#22c55e,#16a34a)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:"#fff",fontWeight:800,marginBottom:16},
-  };
-  const steps=["Broker","Connect","Accounts","Preview","Done"];
-
-  return (<div style={S.root}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
-      <div style={{display:"flex",alignItems:"center"}}><h2 style={S.title}>Import US Portfolio</h2><span style={S.badge}>SnapTrade</span></div>
-      {onClose&&<button style={S.close} onClick={onClose}>✕ Close</button>}
-    </div>
-
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:24,paddingBottom:16,borderBottom:"1px solid #1e293b"}}>
-      {steps.map((l,i)=>(<div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
-        <div style={S.dot(i<=step,i===step)}>{i<step?"✓":i+1}</div>
-        <span style={{fontSize:11,fontWeight:500,color:i<=step?"#e2e8f0":"#475569",marginTop:4}}>{l}</span>
-      </div>))}
-    </div>
-
-    {error&&<div style={S.err}>{error}</div>}
-
-    {step===STEP.BROKER&&(<>
-      <div style={{display:"flex",alignItems:"center",padding:"9px 12px",background:"#0f172a",border:"1px solid #1e293b",borderRadius:10,marginBottom:14}}>
-        <span style={{marginRight:8,color:"#64748b"}}>🔍</span>
-        <input placeholder="Search brokerages..." value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1,background:"transparent",border:"none",outline:"none",color:"#e2e8f0",fontSize:14,fontFamily:"inherit"}}/>
-      </div>
-      <div style={S.grid}>{filtered.map(b=>(<div key={b.slug} style={S.brokerCard(b.color)}
-        onClick={()=>{setBroker(b);setStep(STEP.CONNECT);}}
-        onMouseEnter={e=>e.currentTarget.style.borderColor=b.color} onMouseLeave={e=>e.currentTarget.style.borderColor="#1e293b"}>
-        <span style={{fontSize:26}}>{b.icon}</span><span style={{fontSize:13,fontWeight:600}}>{b.name}</span>
-        <div style={{width:6,height:6,borderRadius:"50%",background:b.color,opacity:.7}}/>
-      </div>))}</div>
-      {!filtered.length&&<p style={{textAlign:"center",color:"#475569",padding:32}}>No matching brokerages.</p>}
-    </>)}
-
-    {step===STEP.CONNECT&&broker&&(<div style={S.card}>
-      <div style={{width:72,height:72,borderRadius:18,border:`2px solid ${broker.color}`,display:"flex",alignItems:"center",justifyContent:"center",background:"#0a0e1a",marginBottom:18}}>
-        <span style={{fontSize:36}}>{broker.icon}</span></div>
-      <h3 style={{fontSize:20,fontWeight:700,margin:"0 0 6px"}}>Connect to {broker.name}</h3>
-      <p style={{fontSize:14,color:"#94a3b8",maxWidth:400,lineHeight:1.6,marginBottom:18}}>You'll be redirected to SnapTrade's secure portal. WealthLens Hub never sees your brokerage credentials.</p>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center",marginBottom:20}}>
-        {["🔒 Bank-level encryption","🛡️ Read-only access","🔑 OAuth 2.0"].map(t=>(<span key={t} style={{fontSize:12,padding:"5px 11px",borderRadius:8,background:"#1e293b",color:"#94a3b8"}}>{t}</span>))}
-      </div>
-      <div style={S.row}><button style={S.btnS} onClick={()=>setStep(STEP.BROKER)}>← Back</button>
-        <button style={{...S.btnP,opacity:loading?.7:1}} onClick={doConnect} disabled={loading}>{loading?"Connecting...":"Connect Account →"}</button></div>
-    </div>)}
-
-    {step===STEP.ACCOUNTS&&(<>
-      <h3 style={{fontSize:17,fontWeight:700,marginBottom:12}}>Select Accounts to Import</h3>
-      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-        {accounts.map(a=>(<div key={a.account_id} style={S.acct(selected.has(a.account_id))} onClick={()=>toggle(a.account_id)}>
-          <div style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            {selected.has(a.account_id)?<span style={{color:"#a78bfa",fontWeight:800}}>✓</span>:<div style={{width:16,height:16,borderRadius:4,border:"2px solid #334155"}}/>}</div>
-          <div><div style={{fontSize:14,fontWeight:600}}>{a.account_name}</div><div style={{fontSize:12,color:"#64748b"}}>{a.brokerage} · {a.account_number}</div></div>
-        </div>))}
-      </div>
-      <div style={S.row}><button style={S.btnS} onClick={()=>setStep(STEP.CONNECT)}>← Back</button>
-        <button style={{...S.btnP,opacity:!selected.size||loading?.4:1}} onClick={doFetch} disabled={!selected.size||loading}>{loading?"Fetching...":`Fetch Holdings (${selected.size}) →`}</button></div>
-    </>)}
-
-    {step===STEP.PREVIEW&&holdings&&(<>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12,marginBottom:14}}>
-        <h3 style={{fontSize:17,fontWeight:700,margin:0}}>Holdings Preview</h3>
-        <div style={{display:"flex",gap:10}}>
-          <div style={S.stat}><span style={{fontSize:11,color:"#64748b",textTransform:"uppercase",letterSpacing:".04em"}}>Total Value</span><span style={{fontSize:18,fontWeight:800}}>{usd(holdings.total_market_value)}</span></div>
-          <div style={S.stat}><span style={{fontSize:11,color:"#64748b",textTransform:"uppercase",letterSpacing:".04em"}}>Positions</span><span style={{fontSize:18,fontWeight:800}}>{holdings.asset_count}</span></div>
-        </div>
-      </div>
-      <div style={{overflowX:"auto",marginBottom:16}}>
-        <table style={{width:"100%",borderCollapse:"collapse",border:"1px solid #1e293b",borderRadius:12,overflow:"hidden"}}>
-          <thead><tr>{["Asset","Type","Units","Price","Value","P&L"].map((h,i)=>(<th key={h} style={{...S.th,textAlign:i>1?"right":"left"}}>{h}</th>))}</tr></thead>
-          <tbody>{holdings.assets.map((a,i)=>{const t=typeTag[a.asset_type]||typeTag.OTHER;return(<tr key={i}>
-            <td style={S.td}><span style={{fontWeight:700,marginRight:6}}>{a.ticker}</span><span style={{fontSize:12,color:"#64748b"}}>{a.asset_name}</span></td>
-            <td style={S.td}><span style={{fontSize:10,fontWeight:600,padding:"2px 7px",borderRadius:4,background:t.bg,color:t.fg,textTransform:"uppercase"}}>{t.label}</span></td>
-            <td style={{...S.td,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{a.units}</td>
-            <td style={{...S.td,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{usd(a.current_price)}</td>
-            <td style={{...S.td,textAlign:"right",fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{usd(a.market_value)}</td>
-            <td style={{...S.td,textAlign:"right",color:pnlColor(a.unrealized_pnl),fontWeight:500,fontVariantNumeric:"tabular-nums"}}>{pnlSign(a.unrealized_pnl)}</td>
-          </tr>);})}</tbody>
-        </table>
-      </div>
-      <div style={S.row}><button style={S.btnS} onClick={()=>setStep(STEP.ACCOUNTS)}>← Back</button>
-        <button style={{...S.btnP,opacity:loading?.7:1}} onClick={doImport} disabled={loading}>{loading?"Importing...":`Import ${holdings.asset_count} Assets →`}</button></div>
-    </>)}
-
-    {step===STEP.DONE&&(<div style={S.card}>
-      <div style={S.doneIcon}>✓</div>
-      <h3 style={{fontSize:22,fontWeight:800,margin:"0 0 6px"}}>Portfolio Imported!</h3>
-      <p style={{fontSize:14,color:"#94a3b8",maxWidth:400,lineHeight:1.6,marginBottom:20}}>{result?.assets_imported} assets from {broker?.name} added to your portfolio. Holdings will auto-sync daily.</p>
-      <div style={{display:"flex",gap:10}}><button style={S.btnS} onClick={reset}>Import Another</button><button style={S.btnP} onClick={onClose||(() => {})}>View Portfolio →</button></div>
-    </div>)}
-
-    <div style={{marginTop:28,paddingTop:14,borderTop:"1px solid #1e293b",fontSize:12,color:"#475569",textAlign:"center"}}>
-      Powered by <span style={{color:"#a78bfa",fontWeight:600}}>SnapTrade API</span><span style={{margin:"0 8px",color:"#334155"}}>·</span>Data encrypted in transit & at rest
-    </div>
-  </div>);
+// ── API helper (same pattern as App.jsx) ─────────────────────────
+async function api(path, opts = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token || "";
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(opts.headers || {}) };
+  const res = await fetch(path, { ...opts, headers });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.statusText); }
+  return res.json();
 }
+
+// ── Step indicator ───────────────────────────────────────────────
+function StepBar({ step }) {
+  const steps = [
+    { key: "connect", label: "Connect" },
+    { key: "accounts", label: "Accounts" },
+    { key: "preview", label: "Preview" },
+    { key: "done", label: "Done" },
+  ];
+  const idx = steps.findIndex(s => s.key === step);
+  return (
+    <div style={{ display: "flex", gap: ".2rem", alignItems: "center", marginBottom: "1.4rem" }}>
+      {steps.map((s, i) => (
+        <div key={s.key} style={{ display: "flex", alignItems: "center", gap: ".2rem", flex: 1 }}>
+          <div style={{
+            width: 22, height: 22, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: ".6rem", fontWeight: 600, flexShrink: 0,
+            background: i <= idx ? "rgba(167,139,250,.18)" : "rgba(255,255,255,.05)",
+            border: `1px solid ${i <= idx ? "rgba(167,139,250,.5)" : "rgba(255,255,255,.1)"}`,
+            color: i <= idx ? "#a78bfa" : "rgba(255,255,255,.3)",
+          }}>{i + 1}</div>
+          <div style={{
+            fontSize: ".62rem", letterSpacing: ".06em", whiteSpace: "nowrap",
+            color: i <= idx ? "#a78bfa" : "rgba(255,255,255,.3)",
+          }}>{s.label}</div>
+          {i < steps.length - 1 && (
+            <div style={{ flex: 1, height: 1, background: i < idx ? "rgba(167,139,250,.3)" : "rgba(255,255,255,.06)", margin: "0 .3rem" }} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Broker logos/icons ────────────────────────────────────────────
+const BROKER_ICONS = {
+  fidelity: "🏦", schwab: "🏦", robinhood: "🪶", alpaca: "🦙",
+  interactive_brokers: "🏛️", etrade: "📈", questrade: "📊",
+  wealthsimple: "💚", td: "🟢", coinbase: "🪙", default: "🔗",
+};
+function brokerIcon(slug) {
+  return BROKER_ICONS[slug?.toLowerCase()] || BROKER_ICONS.default;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  MAIN COMPONENT
+// ══════════════════════════════════════════════════════════════════
+export default function SnapTradeImport({ onClose }) {
+  // ── State ──────────────────────────────────────────────────────
+  const [step, setStep]             = useState("connect"); // connect | accounts | preview | done
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState("");
+  const [registered, setRegistered] = useState(false);
+  const [connections, setConnections] = useState([]);
+  const [accounts, setAccounts]     = useState([]);
+  const [selectedAcct, setSelectedAcct] = useState(null);
+  const [holdings, setHoldings]     = useState([]);
+  const [importResult, setImportResult] = useState(null);
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(null); // null | "all" | authId
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  // ── On mount: check registration + connections ─────────────────
+  useEffect(() => { checkStatus(); }, []);
+
+  const checkStatus = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      // Check if API is up
+      await api("/api/snaptrade/status");
+      // Check if already registered (register is idempotent)
+      const reg = await api("/api/snaptrade/register", { method: "POST" });
+      setRegistered(true);
+      if (reg.already_registered) {
+        // Fetch existing connections & accounts
+        await loadConnectionsAndAccounts();
+      }
+    } catch (e) {
+      if (e.message.includes("Missing SNAPTRADE")) {
+        setError("SnapTrade is not configured — add SNAPTRADE_CLIENT_ID and SNAPTRADE_CONSUMER_KEY to environment.");
+      } else {
+        setError(e.message);
+      }
+    }
+    setLoading(false);
+  }, []);
+
+  async function loadConnectionsAndAccounts() {
+    try {
+      const [connResp, acctResp] = await Promise.all([
+        api("/api/snaptrade/connections").catch(() => ({ connections: [] })),
+        api("/api/snaptrade/accounts").catch(() => ({ accounts: [] })),
+      ]);
+      setConnections(connResp.connections || []);
+      setAccounts(acctResp.accounts || []);
+      if ((connResp.connections || []).length > 0) {
+        setStep("accounts");
+      }
+    } catch { /* ignore — will be empty */ }
+  }
+
+  // ── Connect a new brokerage ────────────────────────────────────
+  async function handleConnect(broker) {
+    setLoading(true); setError("");
+    try {
+      const resp = await api("/api/snaptrade/connect", {
+        method: "POST",
+        body: JSON.stringify({ broker: broker || undefined }),
+      });
+      if (resp.redirect_uri) {
+        // Open SnapTrade Connection Portal
+        const popup = window.open(resp.redirect_uri, "snaptrade_connect", "width=500,height=700");
+        // Poll for completion
+        const pollInterval = setInterval(async () => {
+          if (popup?.closed) {
+            clearInterval(pollInterval);
+            setLoading(true);
+            // Give SnapTrade a moment to process the connection
+            await new Promise(r => setTimeout(r, 2000));
+            await loadConnectionsAndAccounts();
+            setLoading(false);
+          }
+        }, 1000);
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+    setLoading(false);
+  }
+
+  // ── Preview holdings for an account ────────────────────────────
+  async function previewHoldings(accountId) {
+    setLoading(true); setError(""); setSelectedAcct(accountId);
+    try {
+      const resp = await api(`/api/snaptrade/holdings/${accountId}`);
+      setHoldings(resp.assets || []);
+      setStep("preview");
+    } catch (e) {
+      setError(e.message);
+    }
+    setLoading(false);
+  }
+
+  // ── Import holdings ────────────────────────────────────────────
+  async function doImport() {
+    if (!selectedAcct) return;
+    setLoading(true); setError("");
+    try {
+      const resp = await api(`/api/snaptrade/import/${selectedAcct}`, { method: "POST" });
+      setImportResult(resp);
+      setStep("done");
+    } catch (e) {
+      setError(e.message);
+    }
+    setLoading(false);
+  }
+
+  // ── Disconnect a single brokerage connection ───────────────────
+  async function disconnectConnection(authId) {
+    setDisconnecting(true); setError("");
+    try {
+      await api(`/api/snaptrade/connections/${authId}`, { method: "DELETE" });
+      setShowDisconnectConfirm(null);
+      // Refresh
+      await loadConnectionsAndAccounts();
+      // If no connections left, go back to connect step
+      if (connections.length <= 1) {
+        setStep("connect");
+        setAccounts([]);
+        setConnections([]);
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+    setDisconnecting(false);
+  }
+
+  // ── Disconnect ALL (nuke SnapTrade user) ───────────────────────
+  async function disconnectAll() {
+    setDisconnecting(true); setError("");
+    try {
+      await api("/api/snaptrade/disconnect", { method: "DELETE" });
+      setShowDisconnectConfirm(null);
+      setStep("connect");
+      setRegistered(false);
+      setConnections([]);
+      setAccounts([]);
+      setHoldings([]);
+      setImportResult(null);
+    } catch (e) {
+      setError(e.message);
+    }
+    setDisconnecting(false);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  RENDER
+  // ══════════════════════════════════════════════════════════════
+  const fmtVal = n => "$" + Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: ".4rem" }}>
+        <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "1.3rem", color: "#ffffff" }}>
+          🇺🇸 SnapTrade Import
+        </div>
+        {connections.length > 0 && step !== "done" && (
+          <button onClick={() => setShowDisconnectConfirm("all")} style={{
+            background: "none", border: "1px solid rgba(224,124,90,.25)", color: "rgba(224,124,90,.7)",
+            padding: ".28rem .7rem", borderRadius: 4, cursor: "pointer", fontSize: ".65rem",
+            letterSpacing: ".04em", transition: "all .2s",
+          }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(224,124,90,.08)"; e.currentTarget.style.color = "#e07c5a"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "rgba(224,124,90,.7)"; }}
+          >
+            Disconnect All
+          </button>
+        )}
+      </div>
+      <div style={{ fontSize: ".72rem", color: "rgba(255,255,255,.45)", marginBottom: "1.2rem" }}>
+        Connect US brokerage accounts via SnapTrade to auto-import positions.
+      </div>
+
+      <StepBar step={step} />
+
+      {error && (
+        <div style={{
+          background: "rgba(224,124,90,.08)", border: "1px solid rgba(224,124,90,.25)",
+          borderRadius: 6, padding: ".55rem .85rem", fontSize: ".75rem", color: "#e07c5a",
+          marginBottom: "1rem", display: "flex", alignItems: "center", gap: ".5rem",
+        }}>
+          <span>⚠</span>
+          <span style={{ flex: 1 }}>{error}</span>
+          <span onClick={() => setError("")} style={{ cursor: "pointer", opacity: .6, fontSize: ".8rem" }}>✕</span>
+        </div>
+      )}
+
+      {/* ── Loading spinner ── */}
+      {loading && (
+        <div style={{ textAlign: "center", padding: "2rem 0" }}>
+          <div style={{
+            width: 30, height: 30, border: "2px solid rgba(167,139,250,.15)",
+            borderTopColor: "#a78bfa", borderRadius: "50%",
+            animation: "snapspin 1s linear infinite", margin: "0 auto .8rem",
+          }} />
+          <div style={{ fontSize: ".75rem", color: "rgba(255,255,255,.45)" }}>
+            {step === "connect" ? "Checking connection…" : step === "preview" ? "Fetching positions…" : "Processing…"}
+          </div>
+          <style>{`@keyframes snapspin{to{transform:rotate(360deg)}}`}</style>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════
+         STEP: CONNECT
+      ════════════════════════════════════════════════════ */}
+      {!loading && step === "connect" && (
+        <div>
+          <div style={{ fontSize: ".72rem", color: "rgba(255,255,255,.6)", marginBottom: "1rem" }}>
+            Choose a brokerage to connect. You'll be redirected to their login page — your credentials are never shared with WealthLens.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: ".6rem" }}>
+            {[
+              { slug: "FIDELITY", label: "Fidelity", icon: "🏦" },
+              { slug: "SCHWAB", label: "Schwab", icon: "🏦" },
+              { slug: "ROBINHOOD", label: "Robinhood", icon: "🪶" },
+              { slug: "ALPACA", label: "Alpaca", icon: "🦙" },
+              { slug: "INTERACTIVE_BROKERS", label: "IBKR", icon: "🏛️" },
+              { slug: "", label: "All Brokers", icon: "🔗" },
+            ].map(b => (
+              <button key={b.slug || "all"} onClick={() => handleConnect(b.slug)}
+                style={{
+                  background: "rgba(167,139,250,.04)", border: "1px solid rgba(167,139,250,.18)",
+                  borderRadius: 8, padding: ".85rem .5rem", cursor: "pointer", textAlign: "center",
+                  transition: "all .2s", color: "#ffffff",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,.45)"; e.currentTarget.style.background = "rgba(167,139,250,.08)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,.18)"; e.currentTarget.style.background = "rgba(167,139,250,.04)"; }}
+              >
+                <div style={{ fontSize: "1.3rem", marginBottom: ".3rem" }}>{b.icon}</div>
+                <div style={{ fontSize: ".75rem", fontWeight: 500 }}>{b.label}</div>
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: ".62rem", color: "rgba(255,255,255,.3)", marginTop: "1rem", textAlign: "center", lineHeight: 1.6 }}>
+            Powered by SnapTrade · OAuth2 · Your credentials stay with your broker
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════
+         STEP: ACCOUNTS (with connection management)
+      ════════════════════════════════════════════════════ */}
+      {!loading && step === "accounts" && (
+        <div>
+          {/* ── Active Connections ── */}
+          {connections.length > 0 && (
+            <div style={{ marginBottom: "1.2rem" }}>
+              <div style={{
+                fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase",
+                color: "rgba(255,255,255,.5)", marginBottom: ".6rem",
+              }}>Connected Brokerages</div>
+              {connections.map(c => (
+                <div key={c.authorization_id} style={{
+                  display: "flex", alignItems: "center", gap: ".7rem",
+                  padding: ".65rem .85rem", marginBottom: ".4rem",
+                  background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)",
+                  borderRadius: 8,
+                }}>
+                  <div style={{ fontSize: "1.1rem" }}>{brokerIcon(c.brokerage_slug)}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: ".8rem", color: "#ffffff", fontWeight: 500 }}>{c.brokerage}</div>
+                    <div style={{ fontSize: ".62rem", color: "rgba(255,255,255,.4)", marginTop: 2 }}>
+                      {c.status === "active" ? (
+                        <span style={{ color: "rgba(76,175,154,.8)" }}>● Active</span>
+                      ) : (
+                        <span style={{ color: "rgba(224,124,90,.8)" }}>● Disabled — reconnect needed</span>
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={() => setShowDisconnectConfirm(c.authorization_id)} style={{
+                    background: "none", border: "1px solid rgba(224,124,90,.2)",
+                    color: "rgba(224,124,90,.55)", padding: ".22rem .55rem", borderRadius: 4,
+                    cursor: "pointer", fontSize: ".62rem", transition: "all .2s",
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.color = "#e07c5a"; e.currentTarget.style.borderColor = "rgba(224,124,90,.4)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = "rgba(224,124,90,.55)"; e.currentTarget.style.borderColor = "rgba(224,124,90,.2)"; }}
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── Accounts list ── */}
+          {accounts.length > 0 ? (
+            <>
+              <div style={{
+                fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase",
+                color: "rgba(255,255,255,.5)", marginBottom: ".6rem",
+              }}>Accounts — click to preview & import</div>
+              {accounts.map(a => (
+                <div key={a.account_id} onClick={() => previewHoldings(a.account_id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: ".7rem",
+                    padding: ".75rem .85rem", marginBottom: ".4rem",
+                    background: "rgba(167,139,250,.04)", border: "1px solid rgba(167,139,250,.15)",
+                    borderRadius: 8, cursor: "pointer", transition: "all .2s",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,.4)"; e.currentTarget.style.background = "rgba(167,139,250,.08)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,.15)"; e.currentTarget.style.background = "rgba(167,139,250,.04)"; }}
+                >
+                  <div style={{
+                    width: 32, height: 32, borderRadius: "50%", display: "flex",
+                    alignItems: "center", justifyContent: "center", fontSize: ".85rem",
+                    background: "rgba(167,139,250,.12)", border: "1px solid rgba(167,139,250,.25)",
+                    color: "#a78bfa", flexShrink: 0,
+                  }}>{brokerIcon(a.brokerage_slug)}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: ".8rem", color: "#ffffff", fontWeight: 500 }}>
+                      {a.account_name || a.brokerage}
+                    </div>
+                    <div style={{ fontSize: ".62rem", color: "rgba(255,255,255,.4)", marginTop: 2 }}>
+                      {a.brokerage} · {a.account_number ? `••${a.account_number.slice(-4)}` : "Account"}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: ".72rem", color: "#a78bfa" }}>Preview →</div>
+                </div>
+              ))}
+            </>
+          ) : connections.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "1.5rem", color: "rgba(255,255,255,.4)", fontSize: ".8rem" }}>
+              No brokerages connected yet. Go back to connect one.
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: "1.5rem", color: "rgba(255,255,255,.4)", fontSize: ".8rem" }}>
+              Connected but no accounts found. This can happen if the brokerage connection is still syncing. Try refreshing in a moment.
+            </div>
+          )}
+
+          {/* ── Add another brokerage ── */}
+          <button onClick={() => setStep("connect")} style={{
+            display: "block", width: "100%", marginTop: ".8rem",
+            background: "none", border: "1px dashed rgba(167,139,250,.25)",
+            color: "rgba(167,139,250,.6)", padding: ".55rem", borderRadius: 6,
+            cursor: "pointer", fontSize: ".72rem", transition: "all .2s",
+          }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,.5)"; e.currentTarget.style.color = "#a78bfa"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,.25)"; e.currentTarget.style.color = "rgba(167,139,250,.6)"; }}
+          >
+            + Connect another brokerage
+          </button>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════
+         STEP: PREVIEW
+      ════════════════════════════════════════════════════ */}
+      {!loading && step === "preview" && (
+        <div>
+          <div style={{
+            fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase",
+            color: "rgba(255,255,255,.5)", marginBottom: ".7rem",
+          }}>
+            {holdings.length} positions found
+            {holdings.length > 0 && ` · Total ${fmtVal(holdings.reduce((s, h) => s + h.market_value, 0))}`}
+          </div>
+
+          {holdings.length > 0 ? (
+            <div style={{ maxHeight: 320, overflowY: "auto", marginBottom: "1rem" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Ticker</th>
+                    <th style={thStyle}>Type</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Units</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Price</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Value</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>P&L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {holdings.map((h, i) => {
+                    const pnlColor = h.unrealized_pnl >= 0 ? "#4caf9a" : "#e07c5a";
+                    return (
+                      <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+                        <td style={tdStyle}>
+                          <div style={{ fontWeight: 500, color: "#fff" }}>{h.ticker}</div>
+                          <div style={{ fontSize: ".6rem", color: "rgba(255,255,255,.4)", marginTop: 1, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {h.asset_name}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>
+                          <span style={{
+                            fontSize: ".6rem", padding: ".12rem .38rem", borderRadius: 3,
+                            background: "rgba(167,139,250,.1)", color: "#a78bfa",
+                          }}>{h.asset_type}</span>
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontFamily: "'DM Mono',monospace" }}>
+                          {h.units?.toFixed(h.units % 1 === 0 ? 0 : 4)}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontFamily: "'DM Mono',monospace" }}>
+                          ${h.current_price?.toFixed(2)}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontFamily: "'DM Mono',monospace", color: "#fff" }}>
+                          {fmtVal(h.market_value)}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontFamily: "'DM Mono',monospace", color: pnlColor }}>
+                          {h.unrealized_pnl >= 0 ? "+" : ""}{fmtVal(h.unrealized_pnl)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: "2rem", color: "rgba(255,255,255,.4)", fontSize: ".8rem" }}>
+              No positions found in this account.
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: ".6rem", justifyContent: "flex-end" }}>
+            <button onClick={() => { setStep("accounts"); setHoldings([]); }} style={btnSecondary}>← Back</button>
+            {holdings.length > 0 && (
+              <button onClick={doImport} style={btnPrimary}>
+                Import {holdings.length} positions into WealthLens
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════
+         STEP: DONE
+      ════════════════════════════════════════════════════ */}
+      {!loading && step === "done" && importResult && (
+        <div style={{ textAlign: "center", padding: "1.5rem 0" }}>
+          <div style={{ fontSize: "2.2rem", marginBottom: ".6rem" }}>✅</div>
+          <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "1.15rem", color: "#ffffff", marginBottom: ".4rem" }}>
+            Import Complete
+          </div>
+          <div style={{ fontSize: ".8rem", color: "rgba(255,255,255,.55)", marginBottom: "1.2rem" }}>
+            {importResult.assets_imported} positions imported into your portfolio
+          </div>
+          <div style={{ display: "flex", gap: ".6rem", justifyContent: "center" }}>
+            <button onClick={() => { setStep("accounts"); setImportResult(null); }} style={btnSecondary}>
+              Import another account
+            </button>
+            <button onClick={onClose} style={btnPrimary}>Done</button>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════
+         DISCONNECT CONFIRMATION MODAL
+      ════════════════════════════════════════════════════ */}
+      {showDisconnectConfirm && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", backdropFilter: "blur(3px)",
+          zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem",
+        }} onClick={() => !disconnecting && setShowDisconnectConfirm(null)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: "#0c1526", border: "1px solid rgba(224,124,90,.25)",
+            borderRadius: 12, padding: "1.5rem", width: "100%", maxWidth: 380,
+          }}>
+            <div style={{ fontSize: "1.4rem", textAlign: "center", marginBottom: ".6rem" }}>⚠️</div>
+            <div style={{
+              fontFamily: "'Cormorant Garamond',serif", fontSize: "1.1rem",
+              color: "#ffffff", textAlign: "center", marginBottom: ".5rem",
+            }}>
+              {showDisconnectConfirm === "all" ? "Disconnect All Brokerages?" : "Disconnect Brokerage?"}
+            </div>
+            <div style={{
+              fontSize: ".75rem", color: "rgba(255,255,255,.55)", textAlign: "center",
+              lineHeight: 1.6, marginBottom: "1.2rem",
+            }}>
+              {showDisconnectConfirm === "all" ? (
+                <>This will <strong style={{ color: "#e07c5a" }}>delete your SnapTrade account</strong>, revoke all brokerage connections, and remove all imported holdings from WealthLens.</>
+              ) : (
+                <>This will revoke the OAuth connection to this brokerage and remove imported holdings. You can reconnect anytime.</>
+              )}
+            </div>
+
+            {disconnecting ? (
+              <div style={{ textAlign: "center", padding: ".5rem" }}>
+                <div style={{
+                  width: 24, height: 24, border: "2px solid rgba(224,124,90,.15)",
+                  borderTopColor: "#e07c5a", borderRadius: "50%",
+                  animation: "snapspin 1s linear infinite", margin: "0 auto .5rem",
+                }} />
+                <div style={{ fontSize: ".72rem", color: "rgba(255,255,255,.4)" }}>Disconnecting…</div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: ".6rem" }}>
+                <button onClick={() => setShowDisconnectConfirm(null)} style={{
+                  ...btnSecondary, flex: 1, textAlign: "center",
+                }}>Cancel</button>
+                <button onClick={() => {
+                  if (showDisconnectConfirm === "all") disconnectAll();
+                  else disconnectConnection(showDisconnectConfirm);
+                }} style={{
+                  flex: 1, textAlign: "center",
+                  background: "rgba(224,124,90,.12)", border: "1px solid rgba(224,124,90,.45)",
+                  color: "#e07c5a", padding: ".52rem 1rem", borderRadius: 6,
+                  cursor: "pointer", fontSize: ".78rem", fontWeight: 500,
+                  transition: "all .2s", fontFamily: "'DM Sans',sans-serif",
+                }}
+                  onMouseEnter={e => e.currentTarget.style.background = "rgba(224,124,90,.2)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "rgba(224,124,90,.12)"}
+                >
+                  Yes, Disconnect
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Shared styles ────────────────────────────────────────────────
+const thStyle = {
+  fontSize: ".6rem", letterSpacing: ".08em", textTransform: "uppercase",
+  color: "rgba(255,255,255,.45)", textAlign: "left",
+  padding: "0 .5rem .5rem", borderBottom: "1px solid rgba(255,255,255,.06)",
+};
+const tdStyle = {
+  padding: ".55rem .5rem", fontSize: ".75rem", color: "rgba(255,255,255,.8)",
+};
+const btnSecondary = {
+  background: "none", border: "1px solid rgba(255,255,255,.15)",
+  color: "rgba(255,255,255,.6)", padding: ".52rem 1rem", borderRadius: 6,
+  cursor: "pointer", fontSize: ".78rem", transition: "all .2s",
+  fontFamily: "'DM Sans',sans-serif",
+};
+const btnPrimary = {
+  background: "rgba(167,139,250,.14)", border: "1px solid rgba(167,139,250,.48)",
+  color: "#a78bfa", padding: ".52rem 1.2rem", borderRadius: 6,
+  cursor: "pointer", fontSize: ".78rem", fontWeight: 500,
+  transition: "all .2s", fontFamily: "'DM Sans',sans-serif",
+};
