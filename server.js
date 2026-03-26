@@ -1134,6 +1134,46 @@ function detectAndParseHoldings(text, fileName = "") {
     if (h.some(c => c === "asset") && h.some(c => /cost\s*basis/i.test(c)) && h.some(c => /spot\s*price|value/i.test(c))) {
       return parseCoinbaseHoldings(rows, headerIdx);
     }
+    // Merrill Edge / Merrill Lynch (Symbol, Quantity, Last Price, Value, ...)
+    if (h.some(c => c === "symbol") && h.some(c => /quantity/i.test(c)) && h.some(c => /last\s*price/i.test(c)) && h.some(c => /value/i.test(c)) && !h.some(c => /current\s*value|total\s*gain/i.test(c))) {
+      return parseMerrillHoldings(rows, headerIdx);
+    }
+    // Webull (Symbol, Name, Qty, Avg Cost, Mkt Value, ...)
+    if (h.some(c => c === "symbol") && h.some(c => /avg\s*cost/i.test(c)) && h.some(c => /mkt\s*value|market\s*val/i.test(c)) && h.some(c => /unrealized/i.test(c))) {
+      return parseWebullHoldings(rows, headerIdx);
+    }
+    // SoFi Invest (Name, Symbol, Type, Quantity, Average Price, Current Price, ...)
+    if (h.some(c => c === "symbol") && h.some(c => /average\s*price/i.test(c)) && h.some(c => /current\s*price/i.test(c)) && h.some(c => /total\s*return/i.test(c))) {
+      return parseSoFiHoldings(rows, headerIdx);
+    }
+    // Wealthfront (Account, Ticker, Description, Shares, Cost Basis, Market Value)
+    if (h.some(c => /ticker/i.test(c)) && h.some(c => /shares/i.test(c)) && h.some(c => /cost\s*basis/i.test(c)) && h.some(c => /market\s*value/i.test(c))) {
+      return parseWealthfrontHoldings(rows, headerIdx);
+    }
+    // Betterment (Symbol, Name, Asset Class, Shares, Price, Market Value, Cost Basis)
+    if (h.some(c => c === "symbol") && h.some(c => /asset\s*class/i.test(c)) && h.some(c => /market\s*value/i.test(c)) && h.some(c => /cost\s*basis/i.test(c)) && !h.some(c => /cost\s*price/i.test(c))) {
+      return parseBettermentHoldings(rows, headerIdx);
+    }
+    // Firstrade (Symbol, Description, Quantity, Cost Per Share, Market Value, ...)
+    if (h.some(c => c === "symbol") && h.some(c => /cost\s*per\s*share/i.test(c))) {
+      return parseFirstradeHoldings(rows, headerIdx);
+    }
+    // J.P. Morgan Self-Directed (Symbol, Description, Quantity, Price, Market Value, Cost Basis, Gain/Loss)
+    if (h.some(c => c === "symbol") && h.some(c => /description/i.test(c)) && h.some(c => /quantity/i.test(c)) && h.some(c => /gain|loss|g\/l/i.test(c)) && h.some(c => /market\s*value/i.test(c)) && !h.some(c => /asset\s*class/i.test(c))) {
+      return parseJPMorganHoldings(rows, headerIdx);
+    }
+    // Ally Invest (Symbol, Description, Qty, Cost Basis, Market Value, ...)
+    if (h.some(c => c === "symbol") && h.some(c => /description/i.test(c)) && h.some(c => /cost\s*basis/i.test(c)) && h.some(c => /market\s*value/i.test(c)) && !h.some(c => /asset\s*class/i.test(c)) && !h.some(c => /price\s*paid/i.test(c))) {
+      return parseAllyHoldings(rows, headerIdx);
+    }
+    // Public.com (Symbol, Name, Shares, Average Cost, Market Value, ...)
+    if (h.some(c => c === "symbol") && h.some(c => c === "name") && h.some(c => /average\s*cost/i.test(c)) && h.some(c => /market\s*value/i.test(c))) {
+      return parsePublicHoldings(rows, headerIdx);
+    }
+    // Tastytrade / Tastyworks (Symbol, Instrument Type, Quantity, Trade Price, Mark, Net Liq, ...)
+    if (h.some(c => c === "symbol") && h.some(c => /instrument\s*type/i.test(c)) && h.some(c => /net\s*liq/i.test(c))) {
+      return parseTastytradeHoldings(rows, headerIdx);
+    }
   }
   return parseGenericHoldings(rows, headerIdx >= 0 ? headerIdx : 0);
 }
@@ -1541,6 +1581,308 @@ function parseCoinbaseHoldings(rows, headerIdx) {
       purchase_value: cb || units * spot, current_value: value || units * spot });
   }
   return { format: "Coinbase", holdings, warnings };
+}
+
+// ── Merrill Edge / Merrill Lynch ───────────────────────────────────
+function parseMerrillHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => c === "symbol"),
+    name:   h.findIndex(c => /description|name|security/i.test(c)),
+    qty:    h.findIndex(c => /quantity|shares/i.test(c)),
+    price:  h.findIndex(c => /last\s*price|price/i.test(c)),
+    value:  h.findIndex(c => /value/i.test(c) && !/cost/i.test(c) && !/gain/i.test(c)),
+    cb:     h.findIndex(c => /cost\s*basis/i.test(c)),
+    acct:   h.findIndex(c => /account/i.test(c)),
+  };
+  const holdings = [], warnings = [], accounts = new Set();
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol || /total|cash|money\s*market|pending/i.test(symbol)) continue;
+    const name = col.name >= 0 ? (r[col.name] || symbol).trim() : symbol;
+    const units = pNum(r[col.qty]);
+    const price = pNum(r[col.price]);
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero quantity`); continue; }
+    const value = pNum(r[col.value]);
+    const cb = col.cb >= 0 ? pNum(r[col.cb]) : 0;
+    const acct = col.acct >= 0 ? (r[col.acct] || "").trim() : "";
+    if (acct) accounts.add(acct);
+    const type = classifyUSAsset(symbol, name);
+    holdings.push({ name, type, ticker: symbol, units,
+      purchase_price: cb && units ? cb / units : price, current_price: price,
+      purchase_value: cb || units * price, current_value: value || units * price,
+      _account_name: acct });
+  }
+  return { format: "Merrill Edge", holdings, warnings, accounts: [...accounts] };
+}
+
+// ── J.P. Morgan Self-Directed ─────────────────────────────────────
+function parseJPMorganHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => c === "symbol"),
+    name:   h.findIndex(c => /description|name|security/i.test(c)),
+    qty:    h.findIndex(c => /quantity|shares/i.test(c)),
+    price:  h.findIndex(c => /price/i.test(c) && !/cost/i.test(c) && !/paid/i.test(c)),
+    mv:     h.findIndex(c => /market\s*value/i.test(c)),
+    cb:     h.findIndex(c => /cost\s*basis/i.test(c)),
+    acct:   h.findIndex(c => /account/i.test(c)),
+  };
+  const holdings = [], warnings = [], accounts = new Set();
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol || /total|cash|money\s*market|pending|sweep/i.test(symbol)) continue;
+    const name = col.name >= 0 ? (r[col.name] || symbol).trim() : symbol;
+    const units = pNum(r[col.qty]);
+    const price = col.price >= 0 ? pNum(r[col.price]) : 0;
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero quantity`); continue; }
+    const mv = pNum(r[col.mv]);
+    const cb = col.cb >= 0 ? pNum(r[col.cb]) : 0;
+    const acct = col.acct >= 0 ? (r[col.acct] || "").trim() : "";
+    if (acct) accounts.add(acct);
+    const type = classifyUSAsset(symbol, name);
+    holdings.push({ name, type, ticker: symbol, units,
+      purchase_price: cb && units ? cb / units : price, current_price: price,
+      purchase_value: cb || units * price, current_value: mv || units * price,
+      _account_name: acct });
+  }
+  return { format: "J.P. Morgan", holdings, warnings, accounts: [...accounts] };
+}
+
+// ── Webull ─────────────────────────────────────────────────────────
+function parseWebullHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => c === "symbol"),
+    name:   h.findIndex(c => c === "name" || c === "description"),
+    qty:    h.findIndex(c => /qty|quantity|shares/i.test(c)),
+    avg:    h.findIndex(c => /avg\s*cost/i.test(c)),
+    mv:     h.findIndex(c => /mkt\s*value|market\s*val/i.test(c)),
+    price:  h.findIndex(c => /last\s*price|price/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol || /total|cash/i.test(symbol)) continue;
+    const name = col.name >= 0 ? (r[col.name] || symbol).trim() : symbol;
+    const units = pNum(r[col.qty]), avg = pNum(r[col.avg]);
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero quantity`); continue; }
+    const price = col.price >= 0 ? pNum(r[col.price]) : avg;
+    const mv = pNum(r[col.mv]);
+    const type = classifyUSAsset(symbol, name);
+    holdings.push({ name, type, ticker: symbol, units,
+      purchase_price: avg, current_price: price || avg,
+      purchase_value: units * avg, current_value: mv || units * (price || avg) });
+  }
+  return { format: "Webull", holdings, warnings };
+}
+
+// ── SoFi Invest ───────────────────────────────────────────────────
+function parseSoFiHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => c === "symbol"),
+    name:   h.findIndex(c => c === "name" || c === "description"),
+    qty:    h.findIndex(c => /quantity|shares/i.test(c)),
+    avg:    h.findIndex(c => /average\s*price/i.test(c)),
+    price:  h.findIndex(c => /current\s*price|last\s*price/i.test(c)),
+    mv:     h.findIndex(c => /market\s*value|value/i.test(c)),
+    cb:     h.findIndex(c => /cost\s*basis/i.test(c)),
+    type:   h.findIndex(c => c === "type"),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol || /total|cash/i.test(symbol)) continue;
+    const name = col.name >= 0 ? (r[col.name] || symbol).trim() : symbol;
+    const units = pNum(r[col.qty]), avg = pNum(r[col.avg]);
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero quantity`); continue; }
+    const price = col.price >= 0 ? pNum(r[col.price]) : avg;
+    const mv = col.mv >= 0 ? pNum(r[col.mv]) : 0;
+    const cb = col.cb >= 0 ? pNum(r[col.cb]) : 0;
+    const assetType = col.type >= 0 ? (r[col.type] || "").trim() : "";
+    const type = classifyUSAsset(symbol, name, assetType);
+    holdings.push({ name, type, ticker: symbol, units,
+      purchase_price: cb && units ? cb / units : avg, current_price: price,
+      purchase_value: cb || units * avg, current_value: mv || units * price });
+  }
+  return { format: "SoFi Invest", holdings, warnings };
+}
+
+// ── Wealthfront ───────────────────────────────────────────────────
+function parseWealthfrontHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    ticker: h.findIndex(c => /ticker|symbol/i.test(c)),
+    name:   h.findIndex(c => /description|name/i.test(c)),
+    shares: h.findIndex(c => /shares|quantity/i.test(c)),
+    cb:     h.findIndex(c => /cost\s*basis/i.test(c)),
+    mv:     h.findIndex(c => /market\s*value/i.test(c)),
+    acct:   h.findIndex(c => /account/i.test(c)),
+  };
+  const holdings = [], warnings = [], accounts = new Set();
+  for (const r of rows.slice(headerIdx + 1)) {
+    const ticker = (r[col.ticker] || "").trim();
+    if (!ticker || /total|cash/i.test(ticker)) continue;
+    const name = col.name >= 0 ? (r[col.name] || ticker).trim() : ticker;
+    const units = pNum(r[col.shares]);
+    if (units === 0) { warnings.push(`Skipped "${ticker}": zero shares`); continue; }
+    const cb = pNum(r[col.cb]), mv = pNum(r[col.mv]);
+    const price = mv && units ? mv / units : (cb && units ? cb / units : 0);
+    const acct = col.acct >= 0 ? (r[col.acct] || "").trim() : "";
+    if (acct) accounts.add(acct);
+    const type = classifyUSAsset(ticker, name);
+    holdings.push({ name, type, ticker, units,
+      purchase_price: cb && units ? cb / units : price, current_price: price,
+      purchase_value: cb || units * price, current_value: mv || units * price,
+      _account_name: acct });
+  }
+  return { format: "Wealthfront", holdings, warnings, accounts: [...accounts] };
+}
+
+// ── Betterment ────────────────────────────────────────────────────
+function parseBettermentHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => c === "symbol"),
+    name:   h.findIndex(c => c === "name" || c === "description"),
+    asset:  h.findIndex(c => /asset\s*class/i.test(c)),
+    shares: h.findIndex(c => /shares|quantity/i.test(c)),
+    price:  h.findIndex(c => /^price$/i.test(c)),
+    mv:     h.findIndex(c => /market\s*value/i.test(c)),
+    cb:     h.findIndex(c => /cost\s*basis/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol || /total|cash/i.test(symbol)) continue;
+    const name = col.name >= 0 ? (r[col.name] || symbol).trim() : symbol;
+    const units = pNum(r[col.shares]), price = col.price >= 0 ? pNum(r[col.price]) : 0;
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero shares`); continue; }
+    const mv = pNum(r[col.mv]), cb = pNum(r[col.cb]);
+    const assetClass = col.asset >= 0 ? (r[col.asset] || "").trim() : "";
+    let type = classifyUSAsset(symbol, name);
+    if (/bond|fixed/i.test(assetClass)) type = "US_BOND";
+    holdings.push({ name, type, ticker: symbol, units,
+      purchase_price: cb && units ? cb / units : price, current_price: price,
+      purchase_value: cb || units * price, current_value: mv || units * price });
+  }
+  return { format: "Betterment", holdings, warnings };
+}
+
+// ── Firstrade ─────────────────────────────────────────────────────
+function parseFirstradeHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => c === "symbol"),
+    name:   h.findIndex(c => /description/i.test(c)),
+    qty:    h.findIndex(c => /quantity/i.test(c)),
+    cps:    h.findIndex(c => /cost\s*per\s*share/i.test(c)),
+    mv:     h.findIndex(c => /market\s*value/i.test(c)),
+    price:  h.findIndex(c => /last\s*price|current\s*price|price/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol || /total|cash/i.test(symbol)) continue;
+    const name = col.name >= 0 ? (r[col.name] || symbol).trim() : symbol;
+    const units = pNum(r[col.qty]), cps = pNum(r[col.cps]);
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero quantity`); continue; }
+    const price = col.price >= 0 ? pNum(r[col.price]) : cps;
+    const mv = pNum(r[col.mv]);
+    const type = classifyUSAsset(symbol, name);
+    holdings.push({ name, type, ticker: symbol, units,
+      purchase_price: cps, current_price: price || cps,
+      purchase_value: units * cps, current_value: mv || units * (price || cps) });
+  }
+  return { format: "Firstrade", holdings, warnings };
+}
+
+// ── Ally Invest ───────────────────────────────────────────────────
+function parseAllyHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => c === "symbol"),
+    name:   h.findIndex(c => /description/i.test(c)),
+    qty:    h.findIndex(c => /qty|quantity|shares/i.test(c)),
+    cb:     h.findIndex(c => /cost\s*basis/i.test(c)),
+    mv:     h.findIndex(c => /market\s*value/i.test(c)),
+    price:  h.findIndex(c => /last\s*price|price/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol || /total|cash/i.test(symbol)) continue;
+    const name = col.name >= 0 ? (r[col.name] || symbol).trim() : symbol;
+    const units = pNum(r[col.qty]);
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero quantity`); continue; }
+    const cb = pNum(r[col.cb]), mv = pNum(r[col.mv]);
+    const price = col.price >= 0 ? pNum(r[col.price]) : (mv && units ? mv / units : 0);
+    const type = classifyUSAsset(symbol, name);
+    holdings.push({ name, type, ticker: symbol, units,
+      purchase_price: cb && units ? cb / units : price, current_price: price,
+      purchase_value: cb || units * price, current_value: mv || units * price });
+  }
+  return { format: "Ally Invest", holdings, warnings };
+}
+
+// ── Public.com ────────────────────────────────────────────────────
+function parsePublicHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => c === "symbol"),
+    name:   h.findIndex(c => c === "name"),
+    shares: h.findIndex(c => /shares|quantity/i.test(c)),
+    avg:    h.findIndex(c => /average\s*cost/i.test(c)),
+    mv:     h.findIndex(c => /market\s*value/i.test(c)),
+    price:  h.findIndex(c => /current\s*price|last\s*price/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol || /total|cash/i.test(symbol)) continue;
+    const name = col.name >= 0 ? (r[col.name] || symbol).trim() : symbol;
+    const units = pNum(r[col.shares]), avg = pNum(r[col.avg]);
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero shares`); continue; }
+    const price = col.price >= 0 ? pNum(r[col.price]) : avg;
+    const mv = pNum(r[col.mv]);
+    const type = classifyUSAsset(symbol, name);
+    holdings.push({ name, type, ticker: symbol, units,
+      purchase_price: avg, current_price: price || avg,
+      purchase_value: units * avg, current_value: mv || units * (price || avg) });
+  }
+  return { format: "Public.com", holdings, warnings };
+}
+
+// ── Tastytrade / Tastyworks ───────────────────────────────────────
+function parseTastytradeHoldings(rows, headerIdx) {
+  const h = rows[headerIdx].map(c => (c || "").toLowerCase().trim());
+  const col = {
+    symbol: h.findIndex(c => c === "symbol"),
+    itype:  h.findIndex(c => /instrument\s*type/i.test(c)),
+    qty:    h.findIndex(c => /quantity/i.test(c)),
+    tp:     h.findIndex(c => /trade\s*price|avg\s*price/i.test(c)),
+    mark:   h.findIndex(c => /mark/i.test(c)),
+    netliq: h.findIndex(c => /net\s*liq/i.test(c)),
+    cb:     h.findIndex(c => /cost\s*basis/i.test(c)),
+  };
+  const holdings = [], warnings = [];
+  for (const r of rows.slice(headerIdx + 1)) {
+    const symbol = (r[col.symbol] || "").trim();
+    if (!symbol || /total|cash/i.test(symbol)) continue;
+    const itype = col.itype >= 0 ? (r[col.itype] || "").trim() : "";
+    // Skip options and futures
+    if (/option|put|call|future/i.test(itype)) { warnings.push(`Skipped "${symbol}": ${itype} not supported`); continue; }
+    const units = pNum(r[col.qty]);
+    if (units === 0) { warnings.push(`Skipped "${symbol}": zero quantity`); continue; }
+    const tp = pNum(r[col.tp]), mark = pNum(r[col.mark]);
+    const netliq = pNum(r[col.netliq]), cb = col.cb >= 0 ? pNum(r[col.cb]) : 0;
+    const type = /crypto/i.test(itype) ? "CRYPTO" : classifyUSAsset(symbol, symbol);
+    holdings.push({ name: symbol, type, ticker: symbol, units,
+      purchase_price: cb && units ? cb / units : tp, current_price: mark || tp,
+      purchase_value: cb || units * tp, current_value: netliq || units * (mark || tp) });
+  }
+  return { format: "Tastytrade", holdings, warnings };
 }
 
 function parseGenericHoldings(rows, headerIdx) {
@@ -1971,17 +2313,25 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
     return res.json({ ...txnResult, detected_type: "transactions" });
   }
 
-  // Holdings path: add duplicate detection
+  // Holdings path: add duplicate detection with existing values for comparison
   const { data: existing } = await supabase.from("holdings")
-    .select("name, ticker, scheme_code, type").eq("user_id", req.user.id);
-  const existingSet = new Set(
-    (existing || []).map(h => `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`)
-  );
-  holdingsResult.holdings = holdingsResult.holdings.map(h => ({
-    ...h, _duplicate: existingSet.has(`${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`),
-  }));
+    .select("name, ticker, scheme_code, type, units, purchase_price, current_price, purchase_value, current_value").eq("user_id", req.user.id);
+  const existingMap = {};
+  for (const h of (existing || [])) {
+    const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
+    existingMap[key] = h;
+  }
+  holdingsResult.holdings = holdingsResult.holdings.map(h => {
+    const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
+    const ex = existingMap[key];
+    return {
+      ...h,
+      _duplicate: !!ex,
+      _existing: ex ? { units: ex.units, purchase_price: ex.purchase_price, current_price: ex.current_price, purchase_value: ex.purchase_value, current_value: ex.current_value } : null,
+    };
+  });
   const dupCount = holdingsResult.holdings.filter(h => h._duplicate).length;
-  if (dupCount > 0) holdingsResult.warnings.push(`${dupCount} holding(s) already exist (marked as duplicates)`);
+  if (dupCount > 0) holdingsResult.warnings.push(`${dupCount} holding(s) already exist in your portfolio`);
 
   res.json({ ...holdingsResult, detected_type: "holdings", accounts: holdingsResult.accounts || [] });
 });
@@ -2066,10 +2416,16 @@ app.post("/api/holdings/import", auth, async (req, res) => {
   // Clear demo holdings
   await supabase.from("holdings").delete().eq("user_id", req.user.id).like("notes", "%__demo__%");
 
-  const inserted = [], updated = [], errors = [];
+  const inserted = [], updated = [], skipped = [], errors = [];
   for (const h of holdings) {
     const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
     const existingId = existingMap[key];
+
+    // ── Respect per-holding duplicate action from frontend ──
+    if (existingId && h._dupAction === "skip") {
+      skipped.push(h.name);
+      continue;
+    }
 
     const isMF = (h.type || "IN_STOCK") === "MF";
     // Resolve member: account_map > explicit member_id > default
@@ -2113,7 +2469,7 @@ app.post("/api/holdings/import", auth, async (req, res) => {
     }
   }
   res.json({ ok: true, inserted_count: inserted.length, updated_count: updated.length,
-    error_count: errors.length, inserted, updated, errors });
+    skipped_count: skipped.length, error_count: errors.length, inserted, updated, skipped, errors });
 });
 
 // ── IMPORT: Bulk import transactions ──────────────────────────────

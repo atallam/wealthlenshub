@@ -845,6 +845,9 @@ export default function App() {
     warnings: [], progress: 0, result: null, dragOver: false,
     assignMember: "", accounts: [], accountMap: {},
     pendingFile: null, needsPassword: false, casPan: "", casDob: "", casRemember: false,
+    dupAction: {},       // { holdingIndex: "skip"|"update" } per-holding duplicate decisions
+    dupBulk: "ask",      // "ask" | "update_all" | "skip_all" | "pick"
+    dupConfirmed: false,  // true once user confirms duplicate handling
   });
   const [pdfState,       setPdfState]       = useState({loading:false,summary:""});
   const [artifactHolding,setArtifactHolding]= useState(null);
@@ -1467,9 +1470,15 @@ ${alertLines||"  None"}`;
         });
         result = await res.json();
       } else {
+        // _dupAction is already set on each holding by the dup_review step
+        // Defaults: new holdings → no action needed, duplicates → "update" unless user chose "skip"
+        const enriched = impHoldings.map(h => ({
+          ...h,
+          _dupAction: h._duplicate ? (h._dupAction || "update") : undefined,
+        }));
         const res = await fetch("/api/holdings/import", {
           method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({ holdings: impHoldings, member_id: assignMember || members[0]?.id || "",
+          body: JSON.stringify({ holdings: enriched, member_id: assignMember || members[0]?.id || "",
             account_map: Object.keys(accountMap).length > 0 ? accountMap : undefined }),
         });
         result = await res.json();
@@ -1485,7 +1494,7 @@ ${alertLines||"  None"}`;
   function resetImport() {
     setImportState({ mode: null, step: "upload", format: "", holdings: [], transactions: [],
       warnings: [], progress: 0, result: null, dragOver: false, assignMember: "",
-      accounts: [], accountMap: {},
+      accounts: [], accountMap: {}, dupAction: {}, dupBulk: "ask", dupConfirmed: false,
       pendingFile: null, needsPassword: false, casPan: "", casDob: "", casRemember: false });
   }
 
@@ -2638,7 +2647,7 @@ ${alertLines||"  None"}`;
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:".75rem",marginBottom:"1rem"}}>
                   {[
                     {icon:"📄",title:"Indian Broker CSV",desc:"Zerodha, Groww, ICICI Direct, HDFC Securities, Upstox, Angel One — auto-detected from column headers.",badge:"Auto-Detect"},
-                    {icon:"🇺🇸",title:"US Broker CSV",desc:"Schwab, Fidelity, Robinhood, Vanguard, Interactive Brokers, E*TRADE — auto-detected. Stocks, ETFs, bonds classified automatically.",badge:"Auto-Detect"},
+                    {icon:"🇺🇸",title:"US Broker CSV",desc:"Schwab, Fidelity, Robinhood, Vanguard, IBKR, E*TRADE, Merrill, J.P. Morgan, Webull, SoFi, Wealthfront, Betterment, Firstrade, Ally, Public, Tastytrade — all auto-detected.",badge:"Auto-Detect"},
                     {icon:"₿",title:"Crypto (Coinbase)",desc:"Coinbase portfolio export with assets, quantities, cost basis. Auto-classified as crypto with USD pricing.",badge:"Auto-Detect"},
                     {icon:"📋",title:"Tradebook Import",desc:"Import buy/sell transactions from broker tradebook exports. Auto-matches to your existing holdings.",badge:"New"},
                     {icon:"💰",title:"Kuvera / MF Export",desc:"Mutual fund portfolio exports with scheme name, units, NAV. Scheme codes auto-mapped.",badge:"Auto-Detect"},
@@ -4116,6 +4125,11 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
     { name: "Schwab", color: "#00a3e0" }, { name: "Fidelity", color: "#4a8c2a" },
     { name: "Robinhood", color: "#00c805" }, { name: "Vanguard", color: "#c22e2e" },
     { name: "IBKR", color: "#d81b3c" }, { name: "E*TRADE", color: "#6633cc" },
+    { name: "Merrill", color: "#0060a9" }, { name: "J.P. Morgan", color: "#1a3c6e" },
+    { name: "Webull", color: "#f5a623" }, { name: "SoFi", color: "#00bcd4" },
+    { name: "Wealthfront", color: "#522da8" }, { name: "Betterment", color: "#1d8ae0" },
+    { name: "Firstrade", color: "#003d79" }, { name: "Ally", color: "#650360" },
+    { name: "Public", color: "#000000" }, { name: "Tastytrade", color: "#b71c1c" },
     { name: "Coinbase", color: "#0052ff" },
   ];
   const IN_FORMATS = [
@@ -4132,7 +4146,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
     <Overlay onClose={onClose} wide>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1.2rem"}}>
         <div className="modtitle" style={{margin:0}}>
-          {step==="done"?"✓ Import Complete":step==="importing"?"Importing…":step==="cas_password"?"🔒 Unlock CAS PDF":step==="preview"?(mode==="transactions"?"Import Transactions":"Import Portfolio"):"Import Portfolio or Transactions"}
+          {step==="done"?"✓ Import Complete":step==="importing"?"Importing…":step==="dup_review"?"⚠ Review Duplicates":step==="cas_password"?"🔒 Unlock CAS PDF":step==="preview"?(mode==="transactions"?"Import Transactions":"Import Portfolio"):"Import Portfolio or Transactions"}
         </div>
       </div>
 
@@ -4243,7 +4257,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
           <span style={{fontSize:".75rem",color:"rgba(255,255,255,.7)"}}>
             {items.length} {mode==="transactions"?"transaction":"holding"}{items.length!==1?"s":""} found
           </span>
-          {dupCount>0&&<span style={{fontSize:".72rem",color:"#5a9ce0"}}>({dupCount} existing — will update)</span>}
+          {dupCount>0&&<span style={{fontSize:".72rem",color:"#e0a85a",background:"rgba(224,168,90,.1)",padding:".18rem .5rem",borderRadius:4,border:"1px solid rgba(224,168,90,.2)"}}>⚠ {dupCount} already in portfolio</span>}
         </div>
         {mode==="holdings"&&members.length>0&&(
           <div style={{marginBottom:".8rem"}}>
@@ -4319,8 +4333,118 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
           <button className="btnc" onClick={()=>setImportState(s=>({...s,step:"upload",holdings:[],transactions:[],warnings:[]}))}>← Back</button>
           <div style={{display:"flex",gap:".5rem"}}>
             <button className="btnc" onClick={onClose}>Cancel</button>
-            <button className="btns" onClick={executeImport} disabled={importCount===0}>
-              Import {importCount} {mode==="transactions"?"Transaction":"Holding"}{importCount!==1?"s":""}
+            <button className="btns" onClick={()=>{
+              if(mode==="holdings"&&dupCount>0){
+                setImportState(s=>({...s,step:"dup_review"}));
+              } else {
+                executeImport();
+              }
+            }} disabled={importCount===0}>
+              {mode==="holdings"&&dupCount>0
+                ?`Review ${dupCount} Duplicate${dupCount>1?"s":""} →`
+                :`Import ${importCount} ${mode==="transactions"?"Transaction":"Holding"}${importCount!==1?"s":""}`}
+            </button>
+          </div>
+        </div>
+      </>)}
+
+      {step==="dup_review"&&(<>
+        <div style={{marginBottom:"1rem"}}>
+          <div style={{fontSize:".85rem",fontWeight:600,color:"#e0a85a",marginBottom:".4rem"}}>
+            ⚠ {dupCount} holding{dupCount>1?"s":""} already exist{dupCount===1?"s":""} in your portfolio
+          </div>
+          <div style={{fontSize:".72rem",color:"rgba(255,255,255,.55)",lineHeight:1.5}}>
+            This file contains holdings that match existing entries. Choose what to do with each duplicate, or use the bulk actions below.
+          </div>
+        </div>
+
+        {/* Bulk actions */}
+        <div style={{display:"flex",gap:".5rem",marginBottom:".8rem",flexWrap:"wrap"}}>
+          <button className="btnc" style={{fontSize:".68rem",padding:".28rem .65rem"}} onClick={()=>{
+            setImportState(s=>({...s,holdings:s.holdings.map(h=>h._duplicate?{...h,_dupAction:"update"}:h)}));
+          }}>↻ Update All Duplicates</button>
+          <button className="btnc" style={{fontSize:".68rem",padding:".28rem .65rem"}} onClick={()=>{
+            setImportState(s=>({...s,holdings:s.holdings.map(h=>h._duplicate?{...h,_dupAction:"skip"}:h)}));
+          }}>⊘ Skip All Duplicates</button>
+        </div>
+
+        {/* Per-holding duplicate review */}
+        <div style={{maxHeight:380,overflowY:"auto",borderRadius:8,border:"1px solid rgba(255,255,255,.06)"}}>
+          {holdings.filter(h=>h._duplicate).map((h,i)=>{
+            const action = h._dupAction || "update";
+            const ex = h._existing || {};
+            const newInv = h.purchase_value||(h.units*(h.purchase_price||h.purchase_nav||0));
+            const exInv = ex.purchase_value||(ex.units*(ex.purchase_price||0));
+            const unitsChanged = ex.units && h.units && Math.abs(ex.units-h.units)>0.001;
+            const priceChanged = ex.purchase_price && h.purchase_price && Math.abs(ex.purchase_price-h.purchase_price)>0.01;
+            return(
+            <div key={i} style={{padding:".75rem .85rem",borderBottom:"1px solid rgba(255,255,255,.05)",
+              background:action==="skip"?"rgba(255,255,255,.015)":"rgba(90,156,224,.03)",
+              opacity:action==="skip"?.55:1,transition:"all .2s"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:".6rem",marginBottom:".45rem"}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:".78rem",fontWeight:600,color:"#fff"}}>{h.name}</div>
+                  <div style={{fontSize:".65rem",color:"rgba(255,255,255,.45)",marginTop:".15rem"}}>
+                    {h.ticker||h.scheme_code||"—"} · <span className="tbadge2" style={{background:(AT[h.type]?.color||"#888")+"22",color:AT[h.type]?.color||"#888",fontSize:".6rem",padding:".1rem .35rem"}}>{AT[h.type]?.icon||"📦"} {AT[h.type]?.label||h.type}</span>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:".3rem",flexShrink:0}}>
+                  <button onClick={()=>setImportState(s=>({...s,holdings:s.holdings.map((hh,ii)=>hh===h?{...hh,_dupAction:"update"}:hh)}))}
+                    style={{fontSize:".65rem",padding:".22rem .5rem",borderRadius:4,cursor:"pointer",border:"1px solid",transition:"all .15s",fontFamily:"'DM Sans',sans-serif",
+                      background:action==="update"?"rgba(90,156,224,.15)":"transparent",
+                      borderColor:action==="update"?"rgba(90,156,224,.45)":"rgba(255,255,255,.15)",
+                      color:action==="update"?"#5a9ce0":"rgba(255,255,255,.5)"}}>
+                    ↻ Update
+                  </button>
+                  <button onClick={()=>setImportState(s=>({...s,holdings:s.holdings.map((hh,ii)=>hh===h?{...hh,_dupAction:"skip"}:hh)}))}
+                    style={{fontSize:".65rem",padding:".22rem .5rem",borderRadius:4,cursor:"pointer",border:"1px solid",transition:"all .15s",fontFamily:"'DM Sans',sans-serif",
+                      background:action==="skip"?"rgba(224,124,90,.12)":"transparent",
+                      borderColor:action==="skip"?"rgba(224,124,90,.35)":"rgba(255,255,255,.15)",
+                      color:action==="skip"?"#e07c5a":"rgba(255,255,255,.5)"}}>
+                    ⊘ Skip
+                  </button>
+                </div>
+              </div>
+              {/* Side-by-side comparison */}
+              {action!=="skip"&&(
+                <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:".4rem",fontSize:".67rem",marginTop:".3rem"}}>
+                  <div style={{background:"rgba(255,255,255,.03)",borderRadius:6,padding:".4rem .6rem",border:"1px solid rgba(255,255,255,.06)"}}>
+                    <div style={{fontSize:".58rem",letterSpacing:".06em",textTransform:"uppercase",color:"rgba(255,255,255,.35)",marginBottom:".25rem"}}>Current (in portfolio)</div>
+                    <div style={{color:"rgba(255,255,255,.65)"}}>Units: <span className="mono">{ex.units!=null?fmt(ex.units,2):"—"}</span></div>
+                    <div style={{color:"rgba(255,255,255,.65)"}}>Avg Cost: <span className="mono">{ex.purchase_price?fmt(ex.purchase_price):"—"}</span></div>
+                    <div style={{color:"rgba(255,255,255,.65)"}}>Invested: <span className="mono">{exInv?fmt(exInv):"—"}</span></div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",color:"rgba(255,255,255,.25)",fontSize:"1.1rem"}}>→</div>
+                  <div style={{background:"rgba(90,156,224,.05)",borderRadius:6,padding:".4rem .6rem",border:"1px solid rgba(90,156,224,.12)"}}>
+                    <div style={{fontSize:".58rem",letterSpacing:".06em",textTransform:"uppercase",color:"#5a9ce0",marginBottom:".25rem"}}>New (from file)</div>
+                    <div style={{color:"#fff"}}>Units: <span className="mono" style={{color:unitsChanged?"#c9a84c":"#fff"}}>{fmt(h.units||0,2)}</span>{unitsChanged&&<span style={{fontSize:".58rem",color:"#c9a84c",marginLeft:".3rem"}}>changed</span>}</div>
+                    <div style={{color:"#fff"}}>Avg Cost: <span className="mono" style={{color:priceChanged?"#c9a84c":"#fff"}}>{fmt(h.purchase_price||h.purchase_nav||0)}</span>{priceChanged&&<span style={{fontSize:".58rem",color:"#c9a84c",marginLeft:".3rem"}}>changed</span>}</div>
+                    <div style={{color:"#fff"}}>Invested: <span className="mono">{fmt(newInv)}</span></div>
+                  </div>
+                </div>
+              )}
+            </div>
+            );
+          })}
+        </div>
+
+        {/* Summary + new holdings count */}
+        {holdings.filter(h=>!h._duplicate).length>0&&(
+          <div style={{fontSize:".72rem",color:"rgba(255,255,255,.55)",marginTop:".6rem"}}>
+            + {holdings.filter(h=>!h._duplicate).length} new holding{holdings.filter(h=>!h._duplicate).length>1?"s":""} will be added
+          </div>
+        )}
+
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:"1rem",gap:".6rem"}}>
+          <button className="btnc" onClick={()=>setImportState(s=>({...s,step:"preview"}))}>← Back to Preview</button>
+          <div style={{display:"flex",gap:".5rem",alignItems:"center"}}>
+            {holdings.filter(h=>h._duplicate&&(h._dupAction||"update")==="skip").length>0&&(
+              <span style={{fontSize:".67rem",color:"#e07c5a"}}>
+                {holdings.filter(h=>h._duplicate&&h._dupAction==="skip").length} will be skipped
+              </span>
+            )}
+            <button className="btns" onClick={executeImport}>
+              Confirm & Import {holdings.filter(h=>!h._duplicate||(h._dupAction||"update")!=="skip").length} Holding{holdings.filter(h=>!h._duplicate||(h._dupAction||"update")!=="skip").length!==1?"s":""}
             </button>
           </div>
         </div>
@@ -4342,6 +4466,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
             </div>
             {result.inserted_count>0&&<div style={{fontSize:".75rem",color:"rgba(255,255,255,.7)"}}>+ {result.inserted_count} new holding{result.inserted_count>1?"s":""} added</div>}
             {result.updated_count>0&&<div style={{fontSize:".75rem",color:"#5a9ce0"}}>↻ {result.updated_count} existing holding{result.updated_count>1?"s":""} updated</div>}
+            {result.skipped_count>0&&<div style={{fontSize:".75rem",color:"rgba(255,255,255,.45)"}}>⊘ {result.skipped_count} duplicate{result.skipped_count>1?"s":""} skipped (kept existing)</div>}
             {result.unmatched_count>0&&(<div style={{fontSize:".75rem",color:"#e07c5a",marginTop:".3rem"}}>
               ⚠ {result.unmatched_count} transaction{result.unmatched_count>1?"s":""} not matched to holdings:
               <div style={{fontSize:".7rem",color:"rgba(255,255,255,.5)",marginTop:".2rem"}}>{result.unmatched?.join(", ")}</div>
