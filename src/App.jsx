@@ -1706,7 +1706,6 @@ ${alertLines||"  None"}`;
       case "current":  return getVal(h);
       case "gain":     return getVal(h) - getInv(h);
       case "return":   { const inv = getInv(h); return inv > 0 ? ((getVal(h) - inv) / inv) * 100 : 0; }
-      case "xirr":     { const xr = getXIRR(h); return xr.value ?? -9999; }
       default:         return 0;
     }
   }
@@ -2078,7 +2077,6 @@ ${alertLines||"  None"}`;
                     {key:"current", label:"Current Value",align:"r"},
                     {key:"gain",    label:"Gain",        align:"r"},
                     {key:"return",  label:"Return",      align:"r"},
-                    {key:"xirr",    label:"Ann. Return", align:"r", title:"XIRR (from transactions) → CAGR (from start date) → Simple return"},
                   ].map(c=>(
                     <th key={c.key} className={c.align} title={c.title||undefined}
                       onClick={()=>toggleSort(c.key)}
@@ -2094,7 +2092,7 @@ ${alertLines||"  None"}`;
                 <tbody>
                   {visH.map(h=>{
                     const cur=getVal(h),inv=getInv(h),g=cur-inv,p=inv>0?(g/inv)*100:0;
-                    const xr=getXIRR(h);const a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
+                    const a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
                     const mn=allMembers.find(m=>m.id===h.member_id)?.name||"";
                     const isSharedH = h._shared;
                     const sharedOwnerLabel = isSharedH ? h._shared_owner : "";
@@ -2160,24 +2158,6 @@ ${alertLines||"  None"}`;
                         <td className="r mono" style={{fontWeight:500}}>{fmt(cur)}</td>
                         <td className={`r mono${g>=0?" gain":" loss"}`}>{g>=0?"+":""}{fmt(g)}</td>
                         <td className={`r mono${p>=0?" gain":" loss"}`}>{fmtPct(p)}</td>
-                        <td className="r mono">
-                          {xr.value!=null?(
-                            <div title={
-                              xr.method==="xirr"?"XIRR — annualized return from transaction cash flows"
-                              :xr.method==="cagr"?"CAGR — annualized return from start date"
-                              :"Simple return — gain ÷ invested (add buy dates for XIRR)"
-                            }>
-                              <div style={{color:xr.value>=0?"#4caf9a":"#e07c5a",fontWeight:xr.method==="xirr"?600:400}}>
-                                {xr.value>=0?"+":""}{xr.value.toFixed(1)}%
-                              </div>
-                              <div style={{fontSize:".55rem",color:xr.method==="xirr"?"rgba(76,175,154,.6)":xr.method==="cagr"?"rgba(90,156,224,.5)":"rgba(255,255,255,.38)",marginTop:1}}>
-                                {xr.method==="xirr"?"XIRR":xr.method==="cagr"?"CAGR":"simple"}
-                              </div>
-                            </div>
-                          ):(
-                            <span style={{color:"rgba(255,255,255,.32)"}} title="No data — add buy dates or cost basis for returns">—</span>
-                          )}
-                        </td>
                         <td className="r">
                           {isLive
                             ?<span style={{fontSize:".62rem",background:"rgba(76,175,154,.12)",color:"#4caf9a",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(76,175,154,.25)"}}>● Live · {ago(h.price_fetched_at)}</span>
@@ -2215,12 +2195,12 @@ ${alertLines||"  None"}`;
                   return(
                   <tfoot>
                     <tr style={{borderTop:"2px solid rgba(201,168,76,.2)"}}>
-                      <td colSpan={6} style={{padding:".75rem .65rem",fontSize:".7rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.42)",fontWeight:600}}>Total · {visH.length} holding{visH.length!==1?"s":""}</td>
+                      <td colSpan={9} style={{padding:".75rem .65rem",fontSize:".7rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.42)",fontWeight:600}}>Total · {visH.length} holding{visH.length!==1?"s":""}</td>
                       <td className="r mono" style={{padding:".75rem .65rem",fontWeight:600,color:"rgba(255,255,255,.65)",fontSize:".83rem"}}>{fmt(totI)}</td>
                       <td className="r mono" style={{padding:".75rem .65rem",fontWeight:700,color:"#c9a84c",fontSize:".88rem"}}>{fmt(totC)}</td>
                       <td className={`r mono${totG>=0?" gain":" loss"}`} style={{padding:".75rem .65rem",fontWeight:600,fontSize:".83rem"}}>{totG>=0?"+":""}{fmt(totG)}</td>
                       <td className={`r mono${totP>=0?" gain":" loss"}`} style={{padding:".75rem .65rem",fontWeight:600,fontSize:".83rem"}}>{fmtPct(totP)}</td>
-                      <td colSpan={3} style={{padding:".75rem .65rem"}}/>
+                      <td colSpan={2} style={{padding:".75rem .65rem"}}/>
                     </tr>
                   </tfoot>);
                 })()}
