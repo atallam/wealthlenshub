@@ -832,6 +832,8 @@ export default function App() {
   const [tab,            setTab]            = useState("overview");
   const [selMember,      setSelMember]      = useState("all");
   const [filterType,     setFilterType]     = useState("ALL");
+  const [sortCol,        setSortCol]        = useState(null);   // holdings table sort column key
+  const [sortDir,        setSortDir]        = useState("asc");  // "asc" | "desc"
   const [modal,          setModal]          = useState(null);
   const [form,           setForm]           = useState(BF);
   const [editHolding,    setEditHolding]    = useState(null);
@@ -1570,7 +1572,41 @@ ${alertLines||"  None"}`;
   // ── Derived data ──
   const allCur=holdings.reduce((s,h)=>s+getVal(h),0);
   const allInv=holdings.reduce((s,h)=>s+getInv(h),0);
-  const visH=holdings.filter(h=>selMember==="all"||h.member_id===selMember).filter(h=>filterType==="ALL"||h.type===filterType);
+
+  // Sort toggle: click same col flips direction, click new col sorts asc
+  function toggleSort(col) {
+    if (sortCol === col) { setSortDir(d => d === "asc" ? "desc" : "asc"); }
+    else { setSortCol(col); setSortDir("asc"); }
+  }
+
+  // Sort comparator — extract value per column key
+  function _sortVal(h, col) {
+    switch (col) {
+      case "name":    return (h.name || "").toLowerCase();
+      case "ticker":  return (h.ticker || h.scheme_code || "").toLowerCase();
+      case "type":    return (AT[h.type]?.label || h.type || "").toLowerCase();
+      case "member":  return (members.find(m => m.id === h.member_id)?.name || "").toLowerCase();
+      case "source":  return (h.brokerage_name || h.source || "").toLowerCase();
+      case "units":   return Number(h.net_units ?? h.units ?? 0);
+      case "avg":     return Number(h.avg_cost ?? h.purchase_price ?? h.purchase_nav ?? 0);
+      case "price":   return Number(h.type === "MF" ? (h.current_nav || 0) : (h.current_price || 0));
+      case "invested": return getInv(h);
+      case "current":  return getVal(h);
+      case "gain":     return getVal(h) - getInv(h);
+      case "return":   { const inv = getInv(h); return inv > 0 ? ((getVal(h) - inv) / inv) * 100 : 0; }
+      case "xirr":     { const xr = getXIRR(h); return xr.value ?? -9999; }
+      default:         return 0;
+    }
+  }
+
+  const filteredH = holdings.filter(h => selMember === "all" || h.member_id === selMember).filter(h => filterType === "ALL" || h.type === filterType);
+  const visH = sortCol
+    ? [...filteredH].sort((a, b) => {
+        const va = _sortVal(a, sortCol), vb = _sortVal(b, sortCol);
+        const cmp = typeof va === "string" ? va.localeCompare(vb) : va - vb;
+        return sortDir === "asc" ? cmp : -cmp;
+      })
+    : filteredH;
   const totCur=visH.reduce((s,h)=>s+getVal(h),0);
   const totInv=visH.reduce((s,h)=>s+getInv(h),0);
   const totGain=totCur-totInv, totPct=totInv>0?(totGain/totInv)*100:0;
@@ -1851,11 +1887,30 @@ ${alertLines||"  None"}`;
             <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",margin:"0 -0.9rem",padding:"0 0.9rem"}}>
               <table className="ht" style={{minWidth:680}}>
                 <thead><tr>
-                  <th>Asset</th><th>Ticker / Code</th><th>Type</th><th>Member</th><th>Source</th>
-                  <th className="r">Units</th><th className="r">Avg Price</th>
-                  <th className="r">Cur. Price</th>
-                  <th className="r">Invested</th><th className="r">Current Value</th>
-                  <th className="r">Gain</th><th className="r">Return</th><th className="r" title="XIRR (from transactions) → CAGR (from start date) → Simple return">Ann. Return</th>
+                  {[
+                    {key:"name",    label:"Asset",       align:""},
+                    {key:"ticker",  label:"Ticker / Code",align:""},
+                    {key:"type",    label:"Type",        align:""},
+                    {key:"member",  label:"Member",      align:""},
+                    {key:"source",  label:"Source",      align:""},
+                    {key:"units",   label:"Units",       align:"r"},
+                    {key:"avg",     label:"Avg Price",   align:"r"},
+                    {key:"price",   label:"Cur. Price",  align:"r"},
+                    {key:"invested",label:"Invested",    align:"r"},
+                    {key:"current", label:"Current Value",align:"r"},
+                    {key:"gain",    label:"Gain",        align:"r"},
+                    {key:"return",  label:"Return",      align:"r"},
+                    {key:"xirr",    label:"Ann. Return", align:"r", title:"XIRR (from transactions) → CAGR (from start date) → Simple return"},
+                  ].map(c=>(
+                    <th key={c.key} className={c.align} title={c.title||undefined}
+                      onClick={()=>toggleSort(c.key)}
+                      style={{cursor:"pointer",userSelect:"none",whiteSpace:"nowrap"}}>
+                      {c.label}
+                      {sortCol===c.key
+                        ? <span style={{marginLeft:3,fontSize:".55rem",opacity:.7}}>{sortDir==="asc"?"▲":"▼"}</span>
+                        : <span style={{marginLeft:3,fontSize:".55rem",opacity:.25}}>⇅</span>}
+                    </th>
+                  ))}
                   <th className="r">Price source</th><th/>
                 </tr></thead>
                 <tbody>
