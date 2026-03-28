@@ -1049,6 +1049,8 @@ export default function App() {
                 _shared: true,
                 _shared_owner: resp.owner_name || s.owner_name,
                 _shared_owner_id: s.owner_id,
+                // Prefix member_id to match the prefixed shared member IDs
+                member_id: h.member_id ? `shared_${s.owner_id}_${h.member_id}` : null,
               })),
               members: (resp.portfolio?.members || []).map(m => ({
                 ...m,
@@ -1891,7 +1893,7 @@ ${alertLines||"  None"}`;
             </div>
           )}
           {/* Empty state with demo button */}
-          {!demoMode&&holdings.length===0&&(
+          {!demoMode&&holdings.length===0&&sharedHoldings.length===0&&(
             <div style={{textAlign:"center",padding:"2.5rem 1rem",marginBottom:"1rem",background:"rgba(255,255,255,.02)",border:"1px dashed rgba(255,255,255,.1)",borderRadius:12}}>
               <div style={{fontSize:"2rem",marginBottom:".7rem"}}>📂</div>
               <div style={{fontSize:".9rem",color:"rgba(255,255,255,.85)",fontWeight:500,marginBottom:".3rem"}}>Your portfolio is empty</div>
@@ -1901,6 +1903,15 @@ ${alertLines||"  None"}`;
               <div style={{display:"flex",gap:".7rem",justifyContent:"center",flexWrap:"wrap"}}>
                 <button className="btns" onClick={()=>setModal("add")}>+ Add to portfolio</button>
                 <button className="btn-o" onClick={loadDemoData}>Try sample data</button>
+              </div>
+            </div>
+          )}
+          {/* User has no own holdings but has shared data */}
+          {!demoMode&&holdings.length===0&&sharedHoldings.length>0&&(
+            <div style={{textAlign:"center",padding:"1.5rem 1rem",marginBottom:"1rem",background:"rgba(167,139,250,.04)",border:"1px solid rgba(167,139,250,.15)",borderRadius:12}}>
+              <div style={{fontSize:".85rem",color:"rgba(167,139,250,.8)",marginBottom:".3rem"}}>You're viewing shared portfolios</div>
+              <div style={{fontSize:".72rem",color:"rgba(255,255,255,.45)"}}>
+                {sharedHoldings.length} holdings from {sharedWithMe.length} shared portfolio{sharedWithMe.length>1?"s":""}. Add your own holdings to see the combined family view.
               </div>
             </div>
           )}
