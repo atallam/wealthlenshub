@@ -1674,8 +1674,9 @@ ${alertLines||"  None"}`;
   }
 
   // ── Derived data ──
-  const allCur=holdings.reduce((s,h)=>s+getVal(h),0);
-  const allInv=holdings.reduce((s,h)=>s+getInv(h),0);
+  // allCur/allInv represent the total across own + shared portfolios
+  const allCur=allHoldings.reduce((s,h)=>s+getVal(h),0);
+  const allInv=allHoldings.reduce((s,h)=>s+getInv(h),0);
 
   // Sort toggle: click same col flips direction, click new col sorts asc
   function toggleSort(col) {
@@ -1689,7 +1690,7 @@ ${alertLines||"  None"}`;
       case "name":    return (h.name || "").toLowerCase();
       case "ticker":  return (h.ticker || h.scheme_code || "").toLowerCase();
       case "type":    return (AT[h.type]?.label || h.type || "").toLowerCase();
-      case "member":  return (members.find(m => m.id === h.member_id)?.name || "").toLowerCase();
+      case "member":  return (allMembers.find(m => m.id === h.member_id)?.name || "").toLowerCase();
       case "source":  return (h.brokerage_name || h.source || "").toLowerCase();
       case "units":   return Number(h.net_units ?? h.units ?? 0);
       case "avg":     return Number(h.avg_cost ?? h.purchase_price ?? h.purchase_nav ?? 0);
@@ -1737,7 +1738,7 @@ ${alertLines||"  None"}`;
   const mSum=allMembers.map(m=>{const hs=allHoldings.filter(h=>h.member_id===m.id);const c=hs.reduce((s,h)=>s+getVal(h),0),i=hs.reduce((s,h)=>s+getInv(h),0);return{...m,cur:c,inv:i,gain:c-i,pct:i>0?((c-i)/i)*100:0};});
   const trigAlerts=alerts.filter(a=>{
     if(!a.active)return false;
-    if(a.type==="ALLOCATION_DRIFT"||a.type==="CONCENTRATION"){const v=holdings.filter(h=>h.type===a.assetType).reduce((s,h)=>s+getVal(h),0);const p=allCur>0?(v/allCur)*100:0;return a.type==="CONCENTRATION"?p<a.threshold:p>a.threshold;}
+    if(a.type==="ALLOCATION_DRIFT"||a.type==="CONCENTRATION"){const v=allHoldings.filter(h=>h.type===a.assetType).reduce((s,h)=>s+getVal(h),0);const p=allCur>0?(v/allCur)*100:0;return a.type==="CONCENTRATION"?p<a.threshold:p>a.threshold;}
     if(a.type==="RETURN_TARGET")return totPct<a.threshold;
     return false;
   });
@@ -1939,7 +1940,7 @@ ${alertLines||"  None"}`;
 
           {/* ── NET WORTH TIMELINE ── */}
           {(()=>{
-            const nwHoldings = nwMember==="all" ? holdings : holdings.filter(h=>h.member_id===nwMember);
+            const nwHoldings = nwMember==="all" ? allHoldings : allHoldings.filter(h=>h.member_id===nwMember);
             const nwCur = nwHoldings.reduce((s,h)=>s+getVal(h),0);
             const nwInv = nwHoldings.reduce((s,h)=>s+getInv(h),0);
 
@@ -2175,11 +2176,13 @@ ${alertLines||"  None"}`;
                             <button className="delbtn" title="View transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transactions||[]).length>0?"#a084ca":"rgba(255,255,255,.38)"}}>
                               📋{(h.transactions||[]).length>0?` ${(h.transactions||[]).length}`:""}
                             </button>
-                            <button className="delbtn" title="Attach documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"rgba(255,255,255,.38)"}}>
-                              📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}
-                            </button>
-                            <button className="delbtn" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>editH(h)}>✎</button>
-                            <button className="delbtn" onClick={()=>deleteHolding(h.id)}>✕</button>
+                            {!isSharedH && <>
+                              <button className="delbtn" title="Attach documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"rgba(255,255,255,.38)"}}>
+                                📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}
+                              </button>
+                              <button className="delbtn" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>editH(h)}>✎</button>
+                              <button className="delbtn" onClick={()=>deleteHolding(h.id)}>✕</button>
+                            </>}
                           </div>
                         </td>
                       </tr>
@@ -2219,7 +2222,7 @@ ${alertLines||"  None"}`;
           function goalCur(g){
             const lm=g.linkedMembers||["all"];
             if(lm.includes("all")||lm.length===0) return allCur;
-            return holdings.reduce((s,h)=>lm.includes(h.member_id)?s+getVal(h):s,0);
+            return allHoldings.reduce((s,h)=>lm.includes(h.member_id)?s+getVal(h):s,0);
           }
           return(<>
           {/* Header */}
@@ -2305,7 +2308,7 @@ ${alertLines||"  None"}`;
         {tab==="members"&&(<>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Family Members</div><button className="btn-sm" onClick={()=>openMemberModal(null)}>+ Add Member</button></div>
           {mSum.length===0&&(<div className="empty">No members yet. Add a family member to start tracking individual portfolios.</div>)}
-          {mSum.map(m=>{const hs=holdings.filter(h=>h.member_id===m.id);const byT=Object.keys(AT).map(t=>({t,v:hs.filter(h=>h.type===t).reduce((s,h)=>s+getVal(h),0)})).filter(x=>x.v>0);const holdingCount=hs.length;return(<div key={m.id} className="card" style={{marginBottom:"1rem"}}>
+          {mSum.map(m=>{const hs=allHoldings.filter(h=>h.member_id===m.id);const byT=Object.keys(AT).map(t=>({t,v:hs.filter(h=>h.type===t).reduce((s,h)=>s+getVal(h),0)})).filter(x=>x.v>0);const holdingCount=hs.length;return(<div key={m.id} className="card" style={{marginBottom:"1rem"}}>
             <div style={{display:"flex",alignItems:"center",gap:".82rem",marginBottom:".95rem"}}>
               <div className="av" style={{width:42,height:42,fontSize:"1rem"}}>{m.name[0]}</div>
               <div style={{flex:1}}>
@@ -3124,7 +3127,7 @@ ${alertLines||"  None"}`;
 
         {/* ── REBALANCING PLANNER ── */}
         {tab==="rebalance"&&(()=>{
-          const rHoldings = rebalMember==="all" ? holdings : holdings.filter(h=>h.member_id===rebalMember);
+          const rHoldings = rebalMember==="all" ? allHoldings : allHoldings.filter(h=>h.member_id===rebalMember);
           const rTotal    = rHoldings.reduce((s,h)=>s+getVal(h),0);
           const cash      = +rebalCash||0;
           const totalWithCash = rTotal + cash;
