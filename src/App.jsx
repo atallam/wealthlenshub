@@ -1697,8 +1697,7 @@ ${alertLines||"  None"}`;
       case "ticker":  return (h.ticker || h.scheme_code || "").toLowerCase();
       case "type":    return (AT[h.type]?.label || h.type || "").toLowerCase();
       case "member":  return (allMembers.find(m => m.id === h.member_id)?.name || "").toLowerCase();
-      case "brokerage": return (h.brokerage_name || "").toLowerCase();
-      case "imported":  return (h.source || "manual").toLowerCase();
+      case "brokerage": return (h.brokerage_name || h.source || "").toLowerCase();
       case "units":   return Number(h.net_units ?? h.units ?? 0);
       case "avg":     return Number(h.avg_cost ?? h.purchase_price ?? h.purchase_nav ?? 0);
       case "price":   return Number(h.type === "MF" ? (h.current_nav || 0) : (h.current_price || 0));
@@ -2061,22 +2060,19 @@ ${alertLines||"  None"}`;
           </div>
           {visH.length===0?<div className="empty">{demoMode?"No holdings match the current filter":"No holdings yet"} — <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setModal("add")}>add to portfolio</span>{!demoMode&&<>{" or "}<span style={{color:"#a084ca",cursor:"pointer",textDecoration:"underline"}} onClick={loadDemoData}>try sample data</span></>}</div>:(
             <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",margin:"0 -0.9rem",padding:"0 0.9rem"}}>
-              <table className="ht" style={{minWidth:680}}>
+              <table className="ht">
                 <thead><tr>
                   {[
                     {key:"name",    label:"Asset",       align:""},
-                    {key:"ticker",  label:"Ticker / Code",align:""},
+                    {key:"ticker",  label:"Ticker",      align:""},
                     {key:"type",    label:"Type",        align:""},
                     {key:"member",  label:"Member",      align:""},
-                    {key:"brokerage",label:"Brokerage",  align:""},
-                    {key:"imported",label:"Imported Via", align:""},
+                    {key:"brokerage",label:"Source",     align:""},
                     {key:"units",   label:"Units",       align:"r"},
                     {key:"avg",     label:"Avg Price",   align:"r"},
                     {key:"price",   label:"Cur. Price",  align:"r"},
-                    {key:"invested",label:"Invested",    align:"r"},
-                    {key:"current", label:"Current Value",align:"r"},
-                    {key:"gain",    label:"Gain",        align:"r"},
-                    {key:"return",  label:"Return",      align:"r"},
+                    {key:"current", label:"Value",       align:"r"},
+                    {key:"gain",    label:"P&L",         align:"r"},
                   ].map(c=>(
                     <th key={c.key} className={c.align} title={c.title||undefined}
                       onClick={()=>toggleSort(c.key)}
@@ -2087,7 +2083,7 @@ ${alertLines||"  None"}`;
                         : <span style={{marginLeft:3,fontSize:".55rem",opacity:.25}}>⇅</span>}
                     </th>
                   ))}
-                  <th className="r">Price source</th><th/>
+                  <th/>
                 </tr></thead>
                 <tbody>
                   {visH.map(h=>{
@@ -2103,20 +2099,23 @@ ${alertLines||"  None"}`;
                     const isUS    = USD_TYPES.has(h.type);
                     const nativeSym = isUS ? "$" : "₹";
 
-                    // Avg price display (native currency of the holding)
                     const avgDisplay = avgCost
                       ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(255,255,255,.85)"}}>
                           {nativeSym}{h.type==="MF"?Number(avgCost).toFixed(4):Number(avgCost).toLocaleString(isUS?"en-US":"en-IN",{maximumFractionDigits:2})}
                         </span>
                       : <span style={{color:"rgba(255,255,255,.35)"}}>—</span>;
 
-                    // Current price per unit display (native currency of the holding)
                     const rawPrice = h.type==="MF" ? (h.current_nav||h.purchase_nav||null) : (h.current_price||h.purchase_price||null);
                     const curPriceDisplay = rawPrice
                       ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"#ffffff"}}>
                           {nativeSym}{h.type==="MF"?Number(rawPrice).toFixed(4):Number(rawPrice).toLocaleString(isUS?"en-US":"en-IN",{maximumFractionDigits:2})}
                         </span>
                       : <span style={{color:"rgba(255,255,255,.35)"}}>—</span>;
+
+                    // Source: brokerage name + import method stacked
+                    const brokerLabel = h.brokerage_name && h.brokerage_name !== "Unknown" ? h.brokerage_name : null;
+                    const src = h.source || "manual";
+                    const srcLabel = src === "snaptrade" ? "SnapTrade" : src === "csv" || src === "import" ? "CSV" : src === "cas" ? "CAS" : "Manual";
 
                     return(
                       <tr key={h.id}>
@@ -2136,37 +2135,34 @@ ${alertLines||"  None"}`;
                         <td className="dim">
                           {mn}{isSharedH && <span style={{fontSize:".55rem",marginLeft:4,padding:".1rem .3rem",borderRadius:3,background:"rgba(167,139,250,.1)",color:"rgba(167,139,250,.6)"}}>👁 {sharedOwnerLabel}</span>}
                         </td>
-                        <td>{h.brokerage_name&&h.brokerage_name!=="Unknown"
-                          ?<span style={{fontSize:".62rem",background:"rgba(167,139,250,.08)",color:"rgba(167,139,250,.7)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(167,139,250,.15)"}}>{h.brokerage_name}</span>
-                          :<span style={{fontSize:".62rem",color:"rgba(255,255,255,.2)"}}>—</span>
-                        }</td>
-                        <td>{(()=>{
-                          const src = h.source || "manual";
-                          if (src === "snaptrade") return <span style={{fontSize:".62rem",background:"rgba(76,175,154,.08)",color:"rgba(76,175,154,.65)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(76,175,154,.15)"}}>SnapTrade</span>;
-                          if (src === "csv" || src === "import") return <span style={{fontSize:".62rem",background:"rgba(90,156,224,.08)",color:"rgba(90,156,224,.65)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(90,156,224,.15)"}}>CSV Import</span>;
-                          if (src === "cas") return <span style={{fontSize:".62rem",background:"rgba(160,132,202,.08)",color:"rgba(160,132,202,.65)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(160,132,202,.15)"}}>CAS Import</span>;
-                          return <span style={{fontSize:".62rem",color:"rgba(255,255,255,.3)"}}>Manual</span>;
-                        })()}</td>
+                        {/* Source: brokerage + import method */}
+                        <td>
+                          {brokerLabel
+                            ? <div><span style={{fontSize:".62rem",background:"rgba(167,139,250,.08)",color:"rgba(167,139,250,.7)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(167,139,250,.15)"}}>{brokerLabel}</span>
+                                <div style={{fontSize:".55rem",color:"rgba(255,255,255,.3)",marginTop:2}}>{srcLabel}</div></div>
+                            : <span style={{fontSize:".62rem",color:"rgba(255,255,255,.3)"}}>{srcLabel}</span>
+                          }
+                        </td>
                         <td className="r">
                           {units!=null
                             ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(255,255,255,.85)"}}>{Number(units).toLocaleString("en-IN",{maximumFractionDigits:4})}</span>
                             : <span style={{color:"rgba(255,255,255,.35)"}}>—</span>}
                         </td>
                         <td className="r">{avgDisplay}</td>
-                        <td className="r">{curPriceDisplay}</td>
-                        <td className="r mono dim">{fmt(inv)}</td>
-                        <td className="r mono" style={{fontWeight:500}}>{fmt(cur)}</td>
-                        <td className={`r mono${g>=0?" gain":" loss"}`}>{g>=0?"+":""}{fmt(g)}</td>
-                        <td className={`r mono${p>=0?" gain":" loss"}`}>{fmtPct(p)}</td>
+                        {/* Cur. Price with live indicator */}
                         <td className="r">
-                          {isLive
-                            ?<span style={{fontSize:".62rem",background:"rgba(76,175,154,.12)",color:"#4caf9a",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(76,175,154,.25)"}}>● Live · {ago(h.price_fetched_at)}</span>
-                            :(h.type==="FD"||h.type==="PPF"||h.type==="EPF")
-                              ?<span style={{fontSize:".62rem",color:"rgba(255,255,255,.4)"}}>Auto-calc</span>
-                              :USD_TYPES.has(h.type)
-                                ?<span title="Add ticker and click Live Prices" style={{fontSize:".62rem",color:"rgba(224,124,90,.7)",cursor:"help"}}>⚠ Add ticker for live</span>
-                                :<span style={{fontSize:".62rem",color:"rgba(255,255,255,.38)"}}>Manual</span>
-                          }
+                          <div>{curPriceDisplay}</div>
+                          {isLive&&<div style={{fontSize:".52rem",color:"#4caf9a",marginTop:1}}>● {ago(h.price_fetched_at)}</div>}
+                        </td>
+                        {/* Value: current (bold) + invested (dim subtitle) */}
+                        <td className="r">
+                          <div style={{fontFamily:"'DM Mono',monospace",fontWeight:500,fontSize:".78rem"}}>{fmt(cur)}</div>
+                          <div style={{fontFamily:"'DM Mono',monospace",fontSize:".65rem",color:"rgba(255,255,255,.4)",marginTop:1}}>inv. {fmt(inv)}</div>
+                        </td>
+                        {/* P&L: gain amount + return % */}
+                        <td className="r">
+                          <div className={`mono${g>=0?" gain":" loss"}`} style={{fontSize:".78rem"}}>{g>=0?"+":""}{fmt(g)}</div>
+                          <div className={`mono${p>=0?" gain":" loss"}`} style={{fontSize:".65rem",marginTop:1}}>{fmtPct(p)}</div>
                         </td>
                         <td>
                           <div style={{display:"flex",gap:3}}>
@@ -2195,12 +2191,16 @@ ${alertLines||"  None"}`;
                   return(
                   <tfoot>
                     <tr style={{borderTop:"2px solid rgba(201,168,76,.2)"}}>
-                      <td colSpan={9} style={{padding:".75rem .65rem",fontSize:".7rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.42)",fontWeight:600}}>Total · {visH.length} holding{visH.length!==1?"s":""}</td>
-                      <td className="r mono" style={{padding:".75rem .65rem",fontWeight:600,color:"rgba(255,255,255,.65)",fontSize:".83rem"}}>{fmt(totI)}</td>
-                      <td className="r mono" style={{padding:".75rem .65rem",fontWeight:700,color:"#c9a84c",fontSize:".88rem"}}>{fmt(totC)}</td>
-                      <td className={`r mono${totG>=0?" gain":" loss"}`} style={{padding:".75rem .65rem",fontWeight:600,fontSize:".83rem"}}>{totG>=0?"+":""}{fmt(totG)}</td>
-                      <td className={`r mono${totP>=0?" gain":" loss"}`} style={{padding:".75rem .65rem",fontWeight:600,fontSize:".83rem"}}>{fmtPct(totP)}</td>
-                      <td colSpan={2} style={{padding:".75rem .65rem"}}/>
+                      <td colSpan={8} style={{padding:".75rem .65rem",fontSize:".7rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.42)",fontWeight:600}}>Total · {visH.length} holding{visH.length!==1?"s":""}</td>
+                      <td className="r" style={{padding:".75rem .65rem"}}>
+                        <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,color:"#c9a84c",fontSize:".88rem"}}>{fmt(totC)}</div>
+                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:".65rem",color:"rgba(255,255,255,.45)",marginTop:1}}>inv. {fmt(totI)}</div>
+                      </td>
+                      <td className="r" style={{padding:".75rem .65rem"}}>
+                        <div className={`mono${totG>=0?" gain":" loss"}`} style={{fontWeight:600,fontSize:".83rem"}}>{totG>=0?"+":""}{fmt(totG)}</div>
+                        <div className={`mono${totP>=0?" gain":" loss"}`} style={{fontSize:".65rem",marginTop:1}}>{fmtPct(totP)}</div>
+                      </td>
+                      <td style={{padding:".75rem .65rem"}}/>
                     </tr>
                   </tfoot>);
                 })()}
