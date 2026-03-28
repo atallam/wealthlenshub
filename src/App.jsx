@@ -3935,10 +3935,28 @@ ${alertLines||"  None"}`;
     {modal==="add"&&(
       <Overlay onClose={()=>setModal(null)}>
         <div className="modtitle">Add to portfolio</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:".65rem",marginBottom:"1rem"}}>
+        {/* ── Featured: SnapTrade ── */}
+        <div onClick={()=>{setModal(null);setShowSnapTrade(true);}}
+          style={{padding:"1.1rem 1.4rem",borderRadius:12,border:"1.5px solid rgba(167,139,250,.45)",
+            background:"linear-gradient(135deg,rgba(167,139,250,.10) 0%,rgba(90,156,224,.06) 100%)",
+            cursor:"pointer",marginBottom:"1rem",display:"flex",alignItems:"center",gap:"1.2rem",transition:"all .2s",position:"relative",overflow:"hidden"}}
+          onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,.7)";e.currentTarget.style.background="linear-gradient(135deg,rgba(167,139,250,.16) 0%,rgba(90,156,224,.10) 100%)";}}
+          onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,.45)";e.currentTarget.style.background="linear-gradient(135deg,rgba(167,139,250,.10) 0%,rgba(90,156,224,.06) 100%)";}}>
+          <div style={{fontSize:"1.8rem",flexShrink:0}}>🇺🇸</div>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".25rem"}}>
+              <span style={{fontSize:".92rem",color:"#ffffff",fontWeight:600}}>SnapTrade Import</span>
+              <span style={{fontSize:".55rem",padding:".15rem .5rem",borderRadius:10,background:"rgba(167,139,250,.18)",color:"#a78bfa",fontWeight:600,letterSpacing:".04em",textTransform:"uppercase"}}>Recommended</span>
+            </div>
+            <div style={{fontSize:".74rem",color:"rgba(255,255,255,.6)",lineHeight:1.5}}>Connect Robinhood, Schwab, Fidelity & more — automatic sync from US brokerages</div>
+          </div>
+          <div style={{fontSize:"1.1rem",color:"rgba(167,139,250,.6)",flexShrink:0}}>→</div>
+        </div>
+        {/* ── Other options ── */}
+        <div style={{fontSize:".6rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.35)",marginBottom:".5rem",paddingLeft:".1rem"}}>Other ways to add</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:".65rem",marginBottom:"1rem"}}>
           {[
-            {key:"snaptrade",icon:"🇺🇸",title:"SnapTrade Import",desc:"Connect Robinhood, Schwab, Fidelity & more",tag:"US brokerages",tagColor:"#a78bfa"},
-            {key:"import",icon:"📂",title:"Import file",desc:"Drop a CSV or Excel from any broker",tag:"most used",tagColor:"#4caf9a"},
+            {key:"import",icon:"📂",title:"Import file",desc:"CSV or Excel from any broker",tag:"most used",tagColor:"#4caf9a"},
             {key:"holding",icon:"✏️",title:"Add holding",desc:"Manually add a single instrument",tag:null},
             {key:"txn",icon:"📋",title:"Log transaction",desc:"Record a buy/sell on existing holding",tag:null},
           ].map(opt=>(
@@ -3946,16 +3964,15 @@ ${alertLines||"  None"}`;
               setModal(null);
               if(opt.key==="import") openImportModal();
               else if(opt.key==="holding"){setForm(BF);setEditHolding(null);setModal("holding");}
-              else if(opt.key==="snaptrade") setShowSnapTrade(true);
               else {setTxnForm(BT);setGlobalTxnModal(true);}
-            }} style={{padding:"1rem",borderRadius:10,border:`1px solid ${opt.key==="import"?"rgba(201,168,76,.35)":opt.key==="snaptrade"?"rgba(167,139,250,.35)":"rgba(255,255,255,.08)"}`,
-              background:opt.key==="import"?"rgba(201,168,76,.06)":opt.key==="snaptrade"?"rgba(167,139,250,.06)":"rgba(255,255,255,.03)",cursor:"pointer",textAlign:"center",transition:"all .15s"}}
-              onMouseEnter={e=>e.currentTarget.style.borderColor=opt.key==="snaptrade"?"rgba(167,139,250,.5)":"rgba(201,168,76,.5)"}
-              onMouseLeave={e=>e.currentTarget.style.borderColor=opt.key==="import"?"rgba(201,168,76,.35)":opt.key==="snaptrade"?"rgba(167,139,250,.35)":"rgba(255,255,255,.08)"}>
+            }} style={{padding:"1rem",borderRadius:10,border:`1px solid ${opt.key==="import"?"rgba(201,168,76,.35)":"rgba(255,255,255,.08)"}`,
+              background:opt.key==="import"?"rgba(201,168,76,.06)":"rgba(255,255,255,.03)",cursor:"pointer",textAlign:"center",transition:"all .15s"}}
+              onMouseEnter={e=>e.currentTarget.style.borderColor=opt.key==="import"?"rgba(201,168,76,.5)":"rgba(255,255,255,.18)"}
+              onMouseLeave={e=>e.currentTarget.style.borderColor=opt.key==="import"?"rgba(201,168,76,.35)":"rgba(255,255,255,.08)"}>
               <div style={{fontSize:"1.3rem",marginBottom:".5rem"}}>{opt.icon}</div>
               <div style={{fontSize:".82rem",color:"#ffffff",fontWeight:500,marginBottom:".3rem"}}>{opt.title}</div>
               <div style={{fontSize:".68rem",color:"rgba(255,255,255,.5)",lineHeight:1.5}}>{opt.desc}</div>
-              {opt.tag&&<div style={{fontSize:".6rem",display:"inline-block",marginTop:".5rem",padding:".15rem .45rem",borderRadius:3,background:opt.key==="snaptrade"?"rgba(167,139,250,.12)":"rgba(76,175,154,.12)",color:opt.tagColor}}>{opt.tag}</div>}
+              {opt.tag&&<div style={{fontSize:".6rem",display:"inline-block",marginTop:".5rem",padding:".15rem .45rem",borderRadius:3,background:"rgba(76,175,154,.12)",color:opt.tagColor}}>{opt.tag}</div>}
             </div>
           ))}
         </div>
