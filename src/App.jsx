@@ -1851,7 +1851,7 @@ ${alertLines||"  None"}`;
             <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",margin:"0 -0.9rem",padding:"0 0.9rem"}}>
               <table className="ht" style={{minWidth:680}}>
                 <thead><tr>
-                  <th>Asset</th><th>Ticker / Code</th><th>Type</th><th>Member</th>
+                  <th>Asset</th><th>Ticker / Code</th><th>Type</th><th>Member</th><th>Source</th>
                   <th className="r">Units</th><th className="r">Avg Price</th>
                   <th className="r">Cur. Price</th>
                   <th className="r">Invested</th><th className="r">Current Value</th>
@@ -1901,6 +1901,12 @@ ${alertLines||"  None"}`;
                         </td>
                         <td><span className="tbadge2" style={{background:a.color+"22",color:a.color}}>{a.icon} {a.label}</span></td>
                         <td className="dim">{mn}</td>
+                        <td>{h.brokerage_name
+                          ?<span style={{fontSize:".62rem",background:"rgba(167,139,250,.08)",color:"rgba(167,139,250,.7)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(167,139,250,.15)"}}>{h.brokerage_name}</span>
+                          :h.source&&h.source!=="manual"
+                            ?<span style={{fontSize:".62rem",color:"rgba(255,255,255,.4)"}}>{h.source}</span>
+                            :<span style={{fontSize:".62rem",color:"rgba(255,255,255,.25)"}}>Manual</span>
+                        }</td>
                         <td className="r">
                           {units!=null
                             ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(255,255,255,.85)"}}>{Number(units).toLocaleString("en-IN",{maximumFractionDigits:4})}</span>
@@ -3980,7 +3986,7 @@ ${alertLines||"  None"}`;
     )}
     {showSnapTrade&&(
       <Overlay onClose={()=>{setShowSnapTrade(false);reloadHoldings();}} wide>
-        <SnapTradeImport onClose={async()=>{setShowSnapTrade(false);await reloadHoldings();}} />
+        <SnapTradeImport onClose={async()=>{setShowSnapTrade(false);await reloadHoldings();}} members={members} />
       </Overlay>
     )}
     {modal==="import"&&(<ImportModal importState={importState} setImportState={setImportState} members={members} AT={AT} handleImportFile={handleImportFile} executeImport={executeImport} resetImport={resetImport} importFileRef={importFileRef} onClose={()=>{setModal(null);resetImport();}} fmt={fmt} submitCASPassword={submitCASPassword}/>)}

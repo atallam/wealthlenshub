@@ -1225,6 +1225,7 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
     const acctId = req.params.accountId;
     const resolutions = req.body?.resolutions || {};
     const brokerageName = req.body?.brokerage_name || "SnapTrade";
+    const memberId = req.body?.member_id || null;
 
     const [posResp, balResp, existingResp] = await Promise.all([
       client.accountInformation.getUserAccountPositions({
@@ -1272,6 +1273,7 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
               current_price: price,
               brokerage_name: brokerageName,
               source: "snaptrade",
+              ...(memberId && { member_id: memberId }),
               price_fetched_at: now,
               last_synced: now,
             }).eq("id", existing.id).then(r => { if (!r.error) merged++; })
@@ -1289,6 +1291,7 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
               source: "snaptrade",
               source_account: acctId,
               brokerage_name: brokerageName,
+              ...(memberId && { member_id: memberId }),
               last_synced: now,
               price_fetched_at: now,
             }).eq("id", existing.id).then(r => { if (!r.error) replaced++; })
@@ -1311,6 +1314,7 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
         source: "snaptrade",
         source_account: acctId,
         brokerage_name: brokerageName,
+        ...(memberId && { member_id: memberId }),
         last_synced: now,
         price_fetched_at: now,
         start_date: now.slice(0, 10),
@@ -1335,6 +1339,7 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
         source: "snaptrade",
         source_account: acctId,
         brokerage_name: brokerageName,
+        ...(memberId && { member_id: memberId }),
         last_synced: now,
         price_fetched_at: now,
         start_date: now.slice(0, 10),

@@ -69,7 +69,7 @@ const DUP_DISPLAY = {
   manual_exists: { label: "Manual", color: "#e07c5a", icon: "⚠", bg: "rgba(224,124,90,.1)" },
 };
 
-export default function SnapTradeImport({ onClose }) {
+export default function SnapTradeImport({ onClose, members = [] }) {
   const [step, setStep] = useState("connect");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -84,6 +84,7 @@ export default function SnapTradeImport({ onClose }) {
   const [importResult, setImportResult] = useState(null);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [memberMap, setMemberMap] = useState({});  // { accountId: memberId }
 
   useEffect(() => { checkStatus(); }, []);
 
@@ -160,7 +161,11 @@ export default function SnapTradeImport({ onClose }) {
     try {
       const resp = await api(`/api/snaptrade/import/${selectedAcct}`, {
         method: "POST",
-        body: JSON.stringify({ resolutions, brokerage_name: selectedBrokerage }),
+        body: JSON.stringify({
+          resolutions,
+          brokerage_name: selectedBrokerage,
+          member_id: memberMap[selectedAcct] || null,
+        }),
       });
       setImportResult(resp);
       setStep("done");
@@ -241,13 +246,28 @@ export default function SnapTradeImport({ onClose }) {
         </div>)}
 
         {accounts.length > 0 ? (<>
-          <div style={{ fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginBottom: ".6rem" }}>Accounts — click to preview & import</div>
-          {accounts.map(a => (<div key={a.account_id} onClick={() => previewHoldings(a.account_id, a.brokerage)} style={{ display: "flex", alignItems: "center", gap: ".7rem", padding: ".75rem .85rem", marginBottom: ".4rem", background: "rgba(167,139,250,.04)", border: "1px solid rgba(167,139,250,.15)", borderRadius: 8, cursor: "pointer", transition: "all .2s" }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,.4)"; e.currentTarget.style.background = "rgba(167,139,250,.08)"; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,.15)"; e.currentTarget.style.background = "rgba(167,139,250,.04)"; }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: ".85rem", background: "rgba(167,139,250,.12)", border: "1px solid rgba(167,139,250,.25)", color: "#a78bfa", flexShrink: 0 }}>{brokerIcon(a.brokerage_slug)}</div>
-            <div style={{ flex: 1 }}><div style={{ fontSize: ".8rem", color: "#ffffff", fontWeight: 500 }}>{a.account_name || a.brokerage}</div><div style={{ fontSize: ".62rem", color: "rgba(255,255,255,.4)", marginTop: 2 }}>{a.brokerage} · {a.account_number ? `••${a.account_number.slice(-4)}` : "Account"}</div></div>
-            <div style={{ fontSize: ".72rem", color: "#a78bfa" }}>Preview →</div>
+          <div style={{ fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginBottom: ".6rem" }}>Accounts — assign member & click to preview</div>
+          {accounts.map(a => (<div key={a.account_id} style={{ marginBottom: ".4rem", background: "rgba(167,139,250,.04)", border: "1px solid rgba(167,139,250,.15)", borderRadius: 8, transition: "all .2s" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: ".7rem", padding: ".75rem .85rem", cursor: "pointer" }}
+              onClick={() => previewHoldings(a.account_id, a.brokerage)}
+              onMouseEnter={e => { e.currentTarget.parentElement.style.borderColor = "rgba(167,139,250,.4)"; e.currentTarget.parentElement.style.background = "rgba(167,139,250,.08)"; }}
+              onMouseLeave={e => { e.currentTarget.parentElement.style.borderColor = "rgba(167,139,250,.15)"; e.currentTarget.parentElement.style.background = "rgba(167,139,250,.04)"; }}>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: ".85rem", background: "rgba(167,139,250,.12)", border: "1px solid rgba(167,139,250,.25)", color: "#a78bfa", flexShrink: 0 }}>{brokerIcon(a.brokerage_slug)}</div>
+              <div style={{ flex: 1 }}><div style={{ fontSize: ".8rem", color: "#ffffff", fontWeight: 500 }}>{a.account_name || a.brokerage}</div><div style={{ fontSize: ".62rem", color: "rgba(255,255,255,.4)", marginTop: 2 }}>{a.brokerage} · {a.account_number ? `••${a.account_number.slice(-4)}` : "Account"}</div></div>
+              <div style={{ fontSize: ".72rem", color: "#a78bfa" }}>Preview →</div>
+            </div>
+            {members.length > 0 && (
+              <div style={{ padding: "0 .85rem .6rem", display: "flex", alignItems: "center", gap: ".5rem" }}
+                onClick={e => e.stopPropagation()}>
+                <span style={{ fontSize: ".6rem", color: "rgba(255,255,255,.4)", whiteSpace: "nowrap" }}>Assign to:</span>
+                <select value={memberMap[a.account_id] || ""}
+                  onChange={e => setMemberMap(prev => ({ ...prev, [a.account_id]: e.target.value || null }))}
+                  style={{ flex: 1, fontSize: ".68rem", padding: ".25rem .4rem", borderRadius: 4, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", color: "#fff", fontFamily: "'DM Sans',sans-serif", cursor: "pointer", maxWidth: 200 }}>
+                  <option value="">— No member —</option>
+                  {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+            )}
           </div>))}
         </>) : (<div style={{ textAlign: "center", padding: "1.5rem", color: "rgba(255,255,255,.4)", fontSize: ".8rem" }}>{connections.length === 0 ? "No brokerages connected yet." : "No accounts found. Try refreshing."}</div>)}
         <button onClick={() => setStep("connect")} style={{ display: "block", width: "100%", marginTop: ".8rem", background: "none", border: "1px dashed rgba(167,139,250,.25)", color: "rgba(167,139,250,.6)", padding: ".55rem", borderRadius: 6, cursor: "pointer", fontSize: ".72rem", transition: "all .2s" }}
