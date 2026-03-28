@@ -899,6 +899,180 @@ app.delete("/api/artifacts/:id", auth, async (req, res) => {
 
 
 // ══════════════════════════════════════════════════════════════════
+//  PORTFOLIO SHARING
+// ══════════════════════════════════════════════════════════════════
+
+// ── List shares I've granted (as owner) ──────────────────────────
+app.get("/api/shares", auth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("portfolio_shares")
+      .select("id, shared_with, role, created_at")
+      .eq("owner_id", req.user.id);
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Resolve shared_with to display names
+    const userIds = (data || []).map(s => s.shared_with);
+    const { data: profiles } = userIds.length
+      ? await supabase.from("profiles").select("id, display_name").in("id", userIds)
+      : { data: [] };
+    const nameMap = {};
+    for (const p of profiles || []) nameMap[p.id] = p.display_name;
+
+    const shares = (data || []).map(s => ({
+      ...s,
+      shared_with_name: nameMap[s.shared_with] || null,
+      shared_with_email: null, // not exposed for privacy
+    }));
+    res.json({ shares });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── List portfolios shared WITH me ───────────────────────────────
+app.get("/api/shares/received", auth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("portfolio_shares")
+      .select("id, owner_id, role, created_at")
+      .eq("shared_with", req.user.id);
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Resolve owner names
+    const ownerIds = (data || []).map(s => s.owner_id);
+    const { data: profiles } = ownerIds.length
+      ? await supabase.from("profiles").select("id, display_name").in("id", ownerIds)
+      : { data: [] };
+    const nameMap = {};
+    for (const p of profiles || []) nameMap[p.id] = p.display_name;
+
+    const shared = (data || []).map(s => ({
+      ...s,
+      owner_name: nameMap[s.owner_id] || "Unknown",
+    }));
+    res.json({ shared_with_me: shared });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Share my portfolio with another user (by email) ──────────────
+app.post("/api/shares", auth, async (req, res) => {
+  try {
+    const { email, role } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required" });
+    const validRole = ["viewer", "editor"].includes(role) ? role : "viewer";
+
+    // Look up user by email
+    const { data: { users }, error: lookupErr } = await supabase.auth.admin.listUsers();
+    if (lookupErr) return res.status(500).json({ error: lookupErr.message });
+    const target = users.find(u => u.email?.toLowerCase() === email.toLowerCase().trim());
+    if (!target) return res.status(404).json({ error: "No account found with that email. They need to sign up first." });
+    if (target.id === req.user.id) return res.status(400).json({ error: "You can't share with yourself." });
+
+    // Create or update the share
+    const { data, error } = await supabase.from("portfolio_shares").upsert({
+      owner_id: req.user.id,
+      shared_with: target.id,
+      role: validRole,
+      created_at: new Date().toISOString(),
+    }, { onConflict: "owner_id,shared_with" });
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.json({ ok: true, shared_with: target.id, role: validRole });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Update share role ────────────────────────────────────────────
+app.put("/api/shares/:shareId", auth, async (req, res) => {
+  try {
+    const { role } = req.body;
+    const validRole = ["viewer", "editor"].includes(role) ? role : "viewer";
+    const { error } = await supabase
+      .from("portfolio_shares")
+      .update({ role: validRole })
+      .eq("id", req.params.shareId)
+      .eq("owner_id", req.user.id); // only owner can change role
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Revoke a share ───────────────────────────────────────────────
+app.delete("/api/shares/:shareId", auth, async (req, res) => {
+  try {
+    // Owner can revoke, or shared user can remove themselves
+    const { error } = await supabase
+      .from("portfolio_shares")
+      .delete()
+      .eq("id", req.params.shareId)
+      .or(`owner_id.eq.${req.user.id},shared_with.eq.${req.user.id}`);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Load a shared portfolio (read-only, as a viewer) ─────────────
+app.get("/api/shared-portfolio/:ownerId", auth, async (req, res) => {
+  try {
+    const ownerId = req.params.ownerId;
+    // Verify share exists
+    const { data: share } = await supabase
+      .from("portfolio_shares")
+      .select("role")
+      .eq("owner_id", ownerId)
+      .eq("shared_with", req.user.id)
+      .single();
+    if (!share) return res.status(403).json({ error: "No access to this portfolio" });
+
+    // Fetch owner's data in parallel
+    const [portfolioResp, holdingsResp, profileResp] = await Promise.all([
+      supabase.from("portfolio").select("*").eq("user_id", ownerId).single(),
+      supabase.from("holdings")
+        .select("*, transactions(id,txn_type,units,price,txn_date,notes,created_at)")
+        .eq("user_id", ownerId)
+        .order("created_at", { ascending: true }),
+      supabase.from("profiles").select("display_name, currency").eq("id", ownerId).single(),
+    ]);
+
+    // Enrich holdings with net_units (same logic as /api/holdings)
+    const enriched = (holdingsResp.data || []).map(h => {
+      const txns = h.transactions || [];
+      if (txns.length === 0) return h;
+      const buys = txns.filter(t => t.txn_type === "BUY");
+      const sells = txns.filter(t => t.txn_type === "SELL");
+      const buyUnits = buys.reduce((s, t) => s + Number(t.units), 0);
+      const sellUnits = sells.reduce((s, t) => s + Number(t.units), 0);
+      const netUnits = buyUnits - sellUnits;
+      const avgCost = buyUnits > 0
+        ? buys.reduce((s, t) => s + Number(t.units) * Number(t.price), 0) / buyUnits : 0;
+      return { ...h, net_units: netUnits, avg_cost: avgCost, units: netUnits,
+        purchase_price: avgCost, purchase_nav: avgCost, purchase_value: avgCost * netUnits,
+        start_date: h.start_date || txns.sort((a, b) => new Date(a.txn_date) - new Date(b.txn_date))[0]?.txn_date || null,
+      };
+    });
+
+    res.json({
+      role: share.role,
+      owner_name: profileResp.data?.display_name || "Unknown",
+      owner_currency: profileResp.data?.currency || "INR",
+      portfolio: portfolioResp.data || null,
+      holdings: enriched,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
 //  SNAPTRADE INTEGRATION — US Portfolio Import
 // ══════════════════════════════════════════════════════════════════
 
