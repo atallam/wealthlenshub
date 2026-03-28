@@ -929,10 +929,21 @@ function snapHoldingType(symbolObj) {
 // ── SnapTrade: Health check ───────────────────────────────────────
 app.get("/api/snaptrade/status", async (_req, res) => {
   try {
-    const resp = await getSnapClient().apiStatus.check();
+    const cid = process.env.SNAPTRADE_CLIENT_ID;
+    const ckey = process.env.SNAPTRADE_CONSUMER_KEY;
+    console.log(`🔍 SnapTrade status check — CLIENT_ID set: ${!!cid} (${cid ? cid.length + " chars" : "empty"}), CONSUMER_KEY set: ${!!ckey} (${ckey ? ckey.length + " chars" : "empty"})`);
+    const client = getSnapClient();
+    const resp = await client.apiStatus.check();
+    console.log("✅ SnapTrade API reachable:", JSON.stringify(resp.data));
     res.json({ status: "ok", snaptrade: resp.data });
   } catch (e) {
-    res.status(502).json({ error: "SnapTrade API unreachable", detail: e.message });
+    console.error("❌ SnapTrade status error:", e.message);
+    if (e.response) {
+      console.error("   HTTP status:", e.response.status);
+      console.error("   Response data:", JSON.stringify(e.response.data));
+    }
+    if (e.code) console.error("   Error code:", e.code);
+    res.status(502).json({ error: "SnapTrade API unreachable", detail: e.message, code: e.code || null });
   }
 });
 
