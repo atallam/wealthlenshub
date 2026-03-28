@@ -1260,7 +1260,7 @@ app.get("/api/snaptrade/accounts", auth, async (req, res) => {
     });
     const accounts = (resp.data || []).map(a => ({
       account_id: a.id,
-      brokerage: a.brokerage?.name || "Unknown",
+      brokerage: a.brokerage?.name || "",
       brokerage_slug: a.brokerage?.slug || "",
       brokerage_type: a.brokerage?.brokerage_type || a.brokerage?.type || "",
       account_name: a.name || "",
@@ -1559,7 +1559,7 @@ app.get("/api/snaptrade/connections", auth, async (req, res) => {
     });
     const connections = (resp.data || []).map(c => ({
       authorization_id: c.id,
-      brokerage: c.brokerage?.name || "Unknown",
+      brokerage: c.brokerage?.name || "",
       brokerage_slug: c.brokerage?.slug || "",
       status: c.disabled ? "disabled" : "active",
       created_at: c.createdDate || c.created_date || null,

@@ -2136,10 +2136,10 @@ ${alertLines||"  None"}`;
                         <td className="dim">
                           {mn}{isSharedH && <span style={{fontSize:".55rem",marginLeft:4,padding:".1rem .3rem",borderRadius:3,background:"rgba(167,139,250,.1)",color:"rgba(167,139,250,.6)"}}>👁 {sharedOwnerLabel}</span>}
                         </td>
-                        <td>{h.brokerage_name
+                        <td>{h.brokerage_name&&h.brokerage_name!=="Unknown"
                           ?<span style={{fontSize:".62rem",background:"rgba(167,139,250,.08)",color:"rgba(167,139,250,.7)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(167,139,250,.15)"}}>{h.brokerage_name}</span>
                           :h.source&&h.source!=="manual"
-                            ?<span style={{fontSize:".62rem",color:"rgba(255,255,255,.4)"}}>{h.source}</span>
+                            ?<span style={{fontSize:".62rem",background:"rgba(76,175,154,.06)",color:"rgba(76,175,154,.6)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(76,175,154,.12)"}}>{h.source==="snaptrade"?"SnapTrade":h.source}</span>
                             :<span style={{fontSize:".62rem",color:"rgba(255,255,255,.25)"}}>Manual</span>
                         }</td>
                         <td className="r">
