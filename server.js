@@ -1103,25 +1103,27 @@ app.get("/api/snaptrade/accounts", auth, async (req, res) => {
 // ── SnapTrade: Preview holdings (with duplicate detection) ────────
 app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
   try {
+    const t0 = Date.now();
     const conn = await getSnapConn(req.user.id);
     const client = getSnapClient();
     const brokerageName = req.query.brokerage || "SnapTrade";
-    const [posResp, balResp] = await Promise.all([
+
+    // Fetch SnapTrade positions, balances, AND existing holdings in parallel
+    const [posResp, balResp, existingResp] = await Promise.all([
       client.accountInformation.getUserAccountPositions({
         userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: req.params.accountId,
       }),
       client.accountInformation.getUserAccountBalance({
         userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: req.params.accountId,
       }),
+      supabase.from("holdings")
+        .select("id, ticker, units, name, type, source, source_account, brokerage_name, current_price, purchase_price")
+        .eq("user_id", req.user.id),
     ]);
+    const tApi = Date.now();
 
-    // Fetch existing holdings for duplicate detection
-    const { data: existingHoldings } = await supabase
-      .from("holdings")
-      .select("id, ticker, units, name, type, source, source_account, brokerage_name, current_price, purchase_price")
-      .eq("user_id", req.user.id);
     const existingMap = {};
-    for (const h of existingHoldings || []) {
+    for (const h of existingResp.data || []) {
       if (h.ticker) existingMap[h.ticker.toUpperCase()] = h;
     }
 
@@ -1195,12 +1197,15 @@ app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
       qty_changed_count: all.filter(a => a.dup_status === "qty_changed").length,
       manual_exists_count: all.filter(a => a.dup_status === "manual_exists").length,
     };
+    const tTotal = Date.now();
+    console.log(`⏱ SnapTrade preview: api=${tApi - t0}ms, transform=${tTotal - tApi}ms, total=${tTotal - t0}ms, positions=${all.length}`);
     res.json({
       account_id: req.params.accountId,
       assets: all,
       asset_count: all.length,
       total_market_value: Math.round(all.reduce((s, a) => s + a.market_value, 0) * 100) / 100,
       duplicates: dupSummary,
+      _timing: { api_ms: tApi - t0, total_ms: tTotal - t0 },
     });
   } catch (e) {
     console.error("SnapTrade holdings:", e.message);
@@ -1211,36 +1216,38 @@ app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
 // ── SnapTrade: Import holdings → WealthLens Hub ───────────────────
 // Accepts body: { resolutions: { "AAPL": "skip"|"replace"|"merge" }, brokerage_name: "Fidelity" }
 // ALL duplicates MUST have an explicit resolution — unresolved duplicates are skipped with a warning
+// OPTIMISED: bulk upsert for new holdings, parallel updates for replace/merge
 app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
   try {
     const conn  = await getSnapConn(req.user.id);
     const client = getSnapClient();
     const now = new Date().toISOString();
     const acctId = req.params.accountId;
-    const resolutions = req.body?.resolutions || {}; // { ticker: "skip"|"replace"|"merge" }
+    const resolutions = req.body?.resolutions || {};
     const brokerageName = req.body?.brokerage_name || "SnapTrade";
 
-    const [posResp, balResp] = await Promise.all([
+    const [posResp, balResp, existingResp] = await Promise.all([
       client.accountInformation.getUserAccountPositions({
         userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: acctId,
       }),
       client.accountInformation.getUserAccountBalance({
         userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: acctId,
       }),
+      supabase.from("holdings")
+        .select("id, ticker, units, name, type, source, current_price, purchase_price")
+        .eq("user_id", req.user.id),
     ]);
 
-    // Fetch existing holdings for merge/skip logic
-    const { data: existingHoldings } = await supabase
-      .from("holdings")
-      .select("id, ticker, units, name, type, source, current_price, purchase_price")
-      .eq("user_id", req.user.id);
     const existingMap = {};
-    for (const h of existingHoldings || []) {
+    for (const h of existingResp.data || []) {
       if (h.ticker) existingMap[h.ticker.toUpperCase()] = h;
     }
 
-    let imported = 0, skipped = 0, merged = 0, replaced = 0;
-    const unresolved = [];  // duplicates with no explicit user resolution
+    // ── Classify positions into batches ───────────────────────────
+    const newRows = [];       // bulk upsert
+    const updateOps = [];     // parallel update promises
+    let skipped = 0, merged = 0, replaced = 0;
+    const unresolved = [];
 
     for (const p of posResp.data || []) {
       const ticker = p.symbol?.symbol?.symbol || "UNKNOWN";
@@ -1252,56 +1259,47 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
       const existing = existingMap[ticker.toUpperCase()];
       const resolution = resolutions[ticker] || resolutions[ticker.toUpperCase()];
 
-      // Determine action based on resolution — require explicit choice for duplicates
       if (existing) {
-        if (!resolution) {
-          // No explicit resolution from user — skip and flag it
-          unresolved.push(ticker);
-          skipped++;
-          continue;
-        }
+        if (!resolution) { unresolved.push(ticker); skipped++; continue; }
+        if (resolution === "skip") { skipped++; continue; }
 
         const existingUnits = Number(existing.units || 0);
 
-        if (resolution === "skip") { skipped++; continue; }
-
         if (resolution === "merge") {
-          // Add units from SnapTrade to existing holding, update price
-          const mergedUnits = existingUnits + units;
-          const { error } = await supabase.from("holdings").update({
-            units: mergedUnits,
-            current_price: price,
-            brokerage_name: brokerageName,
-            source: "snaptrade",
-            price_fetched_at: now,
-            last_synced: now,
-          }).eq("id", existing.id);
-          if (!error) merged++;
-          continue;
+          updateOps.push(
+            supabase.from("holdings").update({
+              units: existingUnits + units,
+              current_price: price,
+              brokerage_name: brokerageName,
+              source: "snaptrade",
+              price_fetched_at: now,
+              last_synced: now,
+            }).eq("id", existing.id).then(r => { if (!r.error) merged++; })
+          );
+        } else {
+          // replace
+          updateOps.push(
+            supabase.from("holdings").update({
+              units,
+              type: snapHoldingType(p.symbol?.symbol),
+              name: p.symbol?.symbol?.description || ticker,
+              purchase_price: avg || price,
+              current_price: price,
+              currency: p.symbol?.symbol?.currency?.code || "USD",
+              source: "snaptrade",
+              source_account: acctId,
+              brokerage_name: brokerageName,
+              last_synced: now,
+              price_fetched_at: now,
+            }).eq("id", existing.id).then(r => { if (!r.error) replaced++; })
+          );
         }
-
-        // resolution === "replace" — update existing record in place
-        const { error } = await supabase.from("holdings").update({
-          units,
-          type: snapHoldingType(p.symbol?.symbol),
-          name: p.symbol?.symbol?.description || ticker,
-          purchase_price: avg || price,
-          current_price: price,
-          currency: p.symbol?.symbol?.currency?.code || "USD",
-          source: "snaptrade",
-          source_account: acctId,
-          brokerage_name: brokerageName,
-          last_synced: now,
-          price_fetched_at: now,
-        }).eq("id", existing.id);
-        if (!error) replaced++;
         continue;
       }
 
-      // New holding — insert
-      const id = `snap_${acctId}_${ticker}`.replace(/[^a-zA-Z0-9_-]/g, "_");
-      const { error } = await supabase.from("holdings").upsert({
-        id,
+      // New holding — collect for bulk upsert
+      newRows.push({
+        id: `snap_${acctId}_${ticker}`.replace(/[^a-zA-Z0-9_-]/g, "_"),
         user_id: req.user.id,
         type: snapHoldingType(p.symbol?.symbol),
         ticker,
@@ -1316,18 +1314,16 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
         last_synced: now,
         price_fetched_at: now,
         start_date: now.slice(0, 10),
-      }, { onConflict: "id" });
-      if (!error) imported++;
+      });
     }
 
+    // Cash positions
     for (const b of balResp.data || []) {
       const cash = Number(b.cash || 0);
       if (cash <= 0) continue;
       const cur = b.currency?.code || "USD";
-      const id  = `snap_${acctId}_CASH_${cur}`;
-
-      await supabase.from("holdings").upsert({
-        id,
+      newRows.push({
+        id: `snap_${acctId}_CASH_${cur}`,
         user_id: req.user.id,
         type: "CASH",
         ticker: `CASH-${cur}`,
@@ -1342,11 +1338,23 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
         last_synced: now,
         price_fetched_at: now,
         start_date: now.slice(0, 10),
-      }, { onConflict: "id" });
-      imported++;
+      });
     }
 
-    await supabase.from("snaptrade_connections").update({ last_synced_at: now }).eq("owner_id", req.user.id);
+    // ── Execute all DB writes in parallel ─────────────────────────
+    const bulkUpsertPromise = newRows.length > 0
+      ? supabase.from("holdings").upsert(newRows, { onConflict: "id" })
+      : Promise.resolve({ error: null });
+
+    const [bulkResult] = await Promise.all([
+      bulkUpsertPromise,
+      ...updateOps,
+      supabase.from("snaptrade_connections").update({ last_synced_at: now }).eq("owner_id", req.user.id),
+    ]);
+
+    const imported = bulkResult.error ? 0 : newRows.length;
+    if (bulkResult.error) console.error("SnapTrade bulk upsert error:", bulkResult.error.message);
+
     res.json({
       status: "imported",
       assets_imported: imported,

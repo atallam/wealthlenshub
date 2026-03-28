@@ -3979,8 +3979,8 @@ ${alertLines||"  None"}`;
       </Overlay>
     )}
     {showSnapTrade&&(
-      <Overlay onClose={()=>setShowSnapTrade(false)} wide>
-        <SnapTradeImport onClose={()=>setShowSnapTrade(false)} />
+      <Overlay onClose={()=>{setShowSnapTrade(false);reloadHoldings();}} wide>
+        <SnapTradeImport onClose={async()=>{setShowSnapTrade(false);await reloadHoldings();}} />
       </Overlay>
     )}
     {modal==="import"&&(<ImportModal importState={importState} setImportState={setImportState} members={members} AT={AT} handleImportFile={handleImportFile} executeImport={executeImport} resetImport={resetImport} importFileRef={importFileRef} onClose={()=>{setModal(null);resetImport();}} fmt={fmt} submitCASPassword={submitCASPassword}/>)}
