@@ -1861,7 +1861,7 @@ ${alertLines||"  None"}`;
                 <tbody>
                   {visH.map(h=>{
                     const cur=getVal(h),inv=getInv(h),g=cur-inv,p=inv>0?(g/inv)*100:0;
-                    const xr=getXIRR(h);const a=AT[h.type];
+                    const xr=getXIRR(h);const a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
                     const mn=members.find(m=>m.id===h.member_id)?.name||"";
                     const isLive=!!h.price_fetched_at;
                     const units   = h.net_units ?? h.units ?? null;
@@ -3578,7 +3578,7 @@ ${alertLines||"  None"}`;
             <option value="">Select holding…</option>
             {filteredHoldings.map(h=>{
               const mn=members.find(m=>m.id===h.member_id)?.name||"";
-              const a=AT[h.type];
+              const a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
               return <option key={h.id} value={h.id}>{a.icon} {h.name}{mn?` · ${mn}`:""}</option>;
             })}
           </select>
@@ -3937,10 +3937,10 @@ ${alertLines||"  None"}`;
         <div className="modtitle">Add to portfolio</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:".65rem",marginBottom:"1rem"}}>
           {[
+            {key:"snaptrade",icon:"🇺🇸",title:"SnapTrade Import",desc:"Connect Robinhood, Schwab, Fidelity & more",tag:"US brokerages",tagColor:"#a78bfa"},
             {key:"import",icon:"📂",title:"Import file",desc:"Drop a CSV or Excel from any broker",tag:"most used",tagColor:"#4caf9a"},
             {key:"holding",icon:"✏️",title:"Add holding",desc:"Manually add a single instrument",tag:null},
             {key:"txn",icon:"📋",title:"Log transaction",desc:"Record a buy/sell on existing holding",tag:null},
-            {key:"snaptrade",icon:"🇺🇸",title:"SnapTrade Import",desc:"Connect Robinhood, Schwab, Fidelity & more",tag:"US brokerages",tagColor:"#a78bfa"},
           ].map(opt=>(
             <div key={opt.key} onClick={()=>{
               setModal(null);
@@ -4183,7 +4183,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
             <div style={{display:"flex",flexWrap:"wrap",gap:".35rem"}}>
               {US_FORMATS.map(f=>(
                 <span key={f.name} style={{fontSize:".67rem",padding:".22rem .55rem",borderRadius:4,
-                  background:f.color+"18",color:f.color,border:`1px solid ${f.color}33`,whiteSpace:"nowrap"}}>
+                  background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.82)",border:"1px solid rgba(255,255,255,.12)",borderLeft:`3px solid ${f.color}`,whiteSpace:"nowrap"}}>
                   {f.name}
                 </span>
               ))}
@@ -4194,7 +4194,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
             <div style={{display:"flex",flexWrap:"wrap",gap:".35rem"}}>
               {IN_FORMATS.map(f=>(
                 <span key={f.name} style={{fontSize:".67rem",padding:".22rem .55rem",borderRadius:4,
-                  background:f.color+"18",color:f.color,border:`1px solid ${f.color}33`,whiteSpace:"nowrap"}}>
+                  background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.82)",border:"1px solid rgba(255,255,255,.12)",borderLeft:`3px solid ${f.color}`,whiteSpace:"nowrap"}}>
                   {f.name}
                 </span>
               ))}
@@ -4205,7 +4205,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
             <div style={{display:"flex",flexWrap:"wrap",gap:".35rem"}}>
               {OTHER_FORMATS.map(f=>(
                 <span key={f.name} style={{fontSize:".67rem",padding:".22rem .55rem",borderRadius:4,
-                  background:f.color+"18",color:f.color,border:`1px solid ${f.color}33`,whiteSpace:"nowrap"}}>
+                  background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.82)",border:"1px solid rgba(255,255,255,.12)",borderLeft:`3px solid ${f.color}`,whiteSpace:"nowrap"}}>
                   {f.name}
                 </span>
               ))}
