@@ -920,13 +920,93 @@ async function getSnapConn(userId) {
   return { ...data, user_secret: decrypt(data.user_secret_enc) };
 }
 
+// ── Extract SnapTrade security type code safely ──────────────────
+// The SDK v9 `type` field can be:
+//   - An object: { id: "...", code: "cs", description: "Common Stock" }
+//   - A string:  "cs"  (older SDK or raw API responses)
+//   - Undefined/null
+function _extractTypeCode(typeField) {
+  if (!typeField) return "";
+  if (typeof typeField === "string") return typeField.toLowerCase().trim();
+  if (typeof typeField === "object" && typeField.code) return typeField.code.toLowerCase().trim();
+  return "";
+}
+
+function _extractTypeDesc(typeField) {
+  if (!typeField) return "";
+  if (typeof typeField === "object" && typeField.description) return typeField.description.toLowerCase().trim();
+  return "";
+}
+
+// ── Detect Indian exchange from code or MIC code ─────────────────
+const INDIAN_EXCHANGE_CODES = new Set(["NSE", "BSE", "XNSE", "XBOM"]);
+function _isIndianExchange(exchangeObj) {
+  if (!exchangeObj) return false;
+  const code = (exchangeObj.code || "").toUpperCase();
+  const mic  = (exchangeObj.mic_code || "").toUpperCase();
+  return INDIAN_EXCHANGE_CODES.has(code) || INDIAN_EXCHANGE_CODES.has(mic);
+}
+
+// ── Map SnapTrade security type → WealthLens holding type ────────
+// SnapTrade type codes (from SDK SecurityType docs):
+//   cs  = Common Stock      ad  = ADR           ps  = Preferred Stock
+//   et  = ETF               cef = Closed End Fund
+//   oef = Open Ended Fund   bnd = Bond          crypto = Cryptocurrency
+//   pm  = Precious Metals   struct = Structured Product
+//   ut  = Unit              wi  = When Issued   wt = Warrant   rt = Right
 function snapHoldingType(symbolObj) {
-  const code = (symbolObj?.type?.code || symbolObj?.type || "").toString().toLowerCase();
-  const exch = (symbolObj?.exchange?.code || "").toUpperCase();
-  if (["equity", "stock"].includes(code)) return ["NSE", "BSE"].includes(exch) ? "IN_STOCK" : "US_STOCK";
-  if (code === "etf") return ["NSE", "BSE"].includes(exch) ? "IN_ETF" : "US_ETF";
-  if (["crypto", "cryptocurrency"].includes(code)) return "CRYPTO";
-  if (["bond", "fixed_income"].includes(code)) return "BOND";
+  const code    = _extractTypeCode(symbolObj?.type);
+  const desc    = _extractTypeDesc(symbolObj?.type);
+  const isIndia = _isIndianExchange(symbolObj?.exchange);
+  const ticker  = (symbolObj?.symbol || symbolObj?.raw_symbol || "").toUpperCase();
+
+  // ── Stocks ─────────────────────────────────────────────────────
+  if (["cs", "ad", "ps", "wi", "wt", "rt"].includes(code)
+      || desc.includes("common stock") || desc.includes("preferred stock")
+      || desc.includes("equity") || desc === "stock") {
+    return isIndia ? "IN_STOCK" : "US_STOCK";
+  }
+
+  // ── ETFs ───────────────────────────────────────────────────────
+  if (["et", "etf", "cef"].includes(code)
+      || desc.includes("etf") || desc.includes("exchange traded") || desc.includes("closed end")) {
+    return isIndia ? "IN_ETF" : "US_ETF";
+  }
+
+  // ── Mutual Funds ───────────────────────────────────────────────
+  if (["oef"].includes(code)
+      || desc.includes("open ended") || desc.includes("open-ended") || desc.includes("mutual fund")) {
+    return isIndia ? "MF" : "MF";
+  }
+
+  // ── Crypto ─────────────────────────────────────────────────────
+  if (["crypto", "cryptocurrency"].includes(code) || desc.includes("crypto")) {
+    return "CRYPTO";
+  }
+
+  // ── Bonds / structured products ────────────────────────────────
+  if (["bnd", "bond", "fixed_income", "struct"].includes(code)
+      || desc.includes("bond") || desc.includes("fixed income") || desc.includes("structured")) {
+    return isIndia ? "FD" : "US_BOND";
+  }
+
+  // ── Precious metals → Gold in WealthLens ───────────────────────
+  if (["pm"].includes(code) || desc.includes("precious metal")) {
+    return "GOLD";
+  }
+
+  // ── Unit trusts ────────────────────────────────────────────────
+  if (["ut"].includes(code) || desc.includes("unit trust") || desc.includes("unit")) {
+    return isIndia ? "MF" : "US_ETF";
+  }
+
+  // ── Ticker-based heuristic fallback ────────────────────────────
+  // Crypto tickers often end in -USD / -USDT / -BTC
+  if (ticker.includes("-USD") || ticker.includes("-USDT") || ticker.includes("-BTC")) {
+    return "CRYPTO";
+  }
+
+  console.warn(`⚠️ Unknown SnapTrade type: code="${code}", desc="${desc}", exchange="${symbolObj?.exchange?.code || "?"}", ticker="${ticker}"`);
   return "OTHER";
 }
 
@@ -1018,7 +1098,7 @@ app.get("/api/snaptrade/accounts", auth, async (req, res) => {
   }
 });
 
-// ── SnapTrade: Preview holdings ───────────────────────────────────
+// ── SnapTrade: Preview holdings (with duplicate detection) ────────
 app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
   try {
     const conn = await getSnapConn(req.user.id);
@@ -1032,18 +1112,54 @@ app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
       }),
     ]);
 
+    // Fetch existing holdings for duplicate detection
+    const { data: existingHoldings } = await supabase
+      .from("holdings")
+      .select("id, ticker, units, name, type, source, current_price, purchase_price")
+      .eq("user_id", req.user.id);
+    const existingMap = {};
+    for (const h of existingHoldings || []) {
+      if (h.ticker) existingMap[h.ticker.toUpperCase()] = h;
+    }
+
     const positions = (posResp.data || []).map(p => {
       const units = Number(p.units || 0);
       const price = Number(p.price || 0);
-      const avg   = Number(p.averageEntryPrice || 0);
+      const avg   = Number(p.average_purchase_price || p.averageEntryPrice || 0);
+      const ticker = p.symbol?.symbol?.symbol || "UNKNOWN";
+      const existing = existingMap[ticker.toUpperCase()];
+
+      // Determine duplicate status
+      let dup_status = "new";           // no match
+      let dup_detail = null;
+      if (existing) {
+        const existingUnits = Number(existing.units || 0);
+        if (existingUnits === units && existing.source === "snaptrade") {
+          dup_status = "exact_match";   // same ticker + same units from snaptrade
+          dup_detail = `Already imported: ${existingUnits} units via SnapTrade`;
+        } else if (existing.source === "snaptrade") {
+          dup_status = "qty_changed";   // same ticker, different units (re-sync)
+          dup_detail = `Existing: ${existingUnits} units → New: ${units} units`;
+        } else {
+          dup_status = "manual_exists"; // user added this ticker manually
+          dup_detail = `Manual entry exists: ${existing.name} (${existingUnits || "?"} units)`;
+        }
+      }
+
       return {
-        ticker: p.symbol?.symbol?.symbol || "UNKNOWN",
+        ticker,
         asset_name: p.symbol?.symbol?.description || p.symbol?.symbol?.symbol || "",
         asset_type: snapHoldingType(p.symbol?.symbol),
+        snap_type_raw: _extractTypeCode(p.symbol?.symbol?.type),
+        snap_type_desc: _extractTypeDesc(p.symbol?.symbol?.type),
+        snap_exchange: p.symbol?.symbol?.exchange?.code || p.symbol?.symbol?.exchange?.mic_code || "",
         units, current_price: price, avg_cost: avg,
         market_value: units * price,
         unrealized_pnl: avg ? (price - avg) * units : 0,
         currency: p.symbol?.symbol?.currency?.code || "USD",
+        dup_status,
+        dup_detail,
+        existing_id: existing?.id || null,
       };
     });
 
@@ -1052,19 +1168,31 @@ app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
       .map(b => {
         const cash = Number(b.cash);
         const cur  = b.currency?.code || "USD";
+        const ticker = `CASH-${cur}`;
+        const existing = existingMap[ticker.toUpperCase()];
         return {
-          ticker: `CASH-${cur}`, asset_name: `Cash (${cur})`, asset_type: "CASH",
+          ticker, asset_name: `Cash (${cur})`, asset_type: "CASH",
           units: 1, current_price: cash, avg_cost: cash,
           market_value: cash, unrealized_pnl: 0, currency: cur,
+          dup_status: existing ? "exact_match" : "new",
+          dup_detail: existing ? "Cash balance already tracked" : null,
+          existing_id: existing?.id || null,
         };
       });
 
     const all = [...positions, ...cashPositions];
+    const dupSummary = {
+      new_count: all.filter(a => a.dup_status === "new").length,
+      exact_match_count: all.filter(a => a.dup_status === "exact_match").length,
+      qty_changed_count: all.filter(a => a.dup_status === "qty_changed").length,
+      manual_exists_count: all.filter(a => a.dup_status === "manual_exists").length,
+    };
     res.json({
       account_id: req.params.accountId,
       assets: all,
       asset_count: all.length,
       total_market_value: Math.round(all.reduce((s, a) => s + a.market_value, 0) * 100) / 100,
+      duplicates: dupSummary,
     });
   } catch (e) {
     console.error("SnapTrade holdings:", e.message);
@@ -1073,12 +1201,15 @@ app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
 });
 
 // ── SnapTrade: Import holdings → WealthLens Hub ───────────────────
+// Accepts optional body: { resolutions: { "AAPL": "skip"|"replace"|"merge", ... } }
+// Default for unresolved duplicates: "skip" for exact_match, "replace" for qty_changed, "skip" for manual_exists
 app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
   try {
     const conn  = await getSnapConn(req.user.id);
     const client = getSnapClient();
     const now = new Date().toISOString();
     const acctId = req.params.accountId;
+    const resolutions = req.body?.resolutions || {}; // { ticker: "skip"|"replace"|"merge" }
 
     const [posResp, balResp] = await Promise.all([
       client.accountInformation.getUserAccountPositions({
@@ -1089,15 +1220,70 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
       }),
     ]);
 
-    let imported = 0;
+    // Fetch existing holdings for merge/skip logic
+    const { data: existingHoldings } = await supabase
+      .from("holdings")
+      .select("id, ticker, units, name, type, source, current_price, purchase_price")
+      .eq("user_id", req.user.id);
+    const existingMap = {};
+    for (const h of existingHoldings || []) {
+      if (h.ticker) existingMap[h.ticker.toUpperCase()] = h;
+    }
+
+    let imported = 0, skipped = 0, merged = 0, replaced = 0;
 
     for (const p of posResp.data || []) {
       const ticker = p.symbol?.symbol?.symbol || "UNKNOWN";
       const units  = Number(p.units || 0);
       const price  = Number(p.price || 0);
-      const avg    = Number(p.averageEntryPrice || 0);
+      const avg    = Number(p.average_purchase_price || p.averageEntryPrice || 0);
       if (units <= 0) continue;
 
+      const existing = existingMap[ticker.toUpperCase()];
+      const resolution = resolutions[ticker] || resolutions[ticker.toUpperCase()];
+
+      // Determine action based on resolution or defaults
+      if (existing) {
+        const existingUnits = Number(existing.units || 0);
+        const isSnaptrade = existing.source === "snaptrade";
+        const isExact = isSnaptrade && existingUnits === units;
+
+        // Apply explicit resolution, or default
+        let action = resolution || (isExact ? "skip" : isSnaptrade ? "replace" : "skip");
+
+        if (action === "skip") { skipped++; continue; }
+
+        if (action === "merge") {
+          // Add units from SnapTrade to existing holding, update price
+          const mergedUnits = existingUnits + units;
+          const { error } = await supabase.from("holdings").update({
+            units: mergedUnits,
+            current_price: price,
+            price_fetched_at: now,
+            last_synced: now,
+          }).eq("id", existing.id);
+          if (!error) merged++;
+          continue;
+        }
+
+        // action === "replace" — update existing record in place
+        const { error } = await supabase.from("holdings").update({
+          units,
+          type: snapHoldingType(p.symbol?.symbol),
+          name: p.symbol?.symbol?.description || ticker,
+          purchase_price: avg || price,
+          current_price: price,
+          currency: p.symbol?.symbol?.currency?.code || "USD",
+          source: "snaptrade",
+          source_account: acctId,
+          last_synced: now,
+          price_fetched_at: now,
+        }).eq("id", existing.id);
+        if (!error) replaced++;
+        continue;
+      }
+
+      // New holding — insert
       const id = `snap_${acctId}_${ticker}`.replace(/[^a-zA-Z0-9_-]/g, "_");
       const { error } = await supabase.from("holdings").upsert({
         id,
@@ -1105,6 +1291,7 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
         type: snapHoldingType(p.symbol?.symbol),
         ticker,
         name: p.symbol?.symbol?.description || ticker,
+        units,
         purchase_price: avg || price,
         current_price: price,
         currency: p.symbol?.symbol?.currency?.code || "USD",
@@ -1129,6 +1316,7 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
         type: "CASH",
         ticker: `CASH-${cur}`,
         name: `Cash (${cur})`,
+        units: 1,
         purchase_price: cash,
         current_price: cash,
         currency: cur,
@@ -1142,7 +1330,14 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
     }
 
     await supabase.from("snaptrade_connections").update({ last_synced_at: now }).eq("owner_id", req.user.id);
-    res.json({ status: "imported", assets_imported: imported, account_id: acctId });
+    res.json({
+      status: "imported",
+      assets_imported: imported,
+      assets_skipped: skipped,
+      assets_merged: merged,
+      assets_replaced: replaced,
+      account_id: acctId,
+    });
   } catch (e) {
     console.error("SnapTrade import:", e.message);
     res.status(500).json({ error: e.message });
