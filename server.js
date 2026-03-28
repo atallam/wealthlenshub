@@ -1088,8 +1088,10 @@ app.get("/api/snaptrade/accounts", auth, async (req, res) => {
       account_id: a.id,
       brokerage: a.brokerage?.name || "Unknown",
       brokerage_slug: a.brokerage?.slug || "",
+      brokerage_type: a.brokerage?.brokerage_type || a.brokerage?.type || "",
       account_name: a.name || "",
       account_number: a.number || "",
+      account_type: a.meta?.type || a.raw_type || "",
     }));
     res.json({ accounts, count: accounts.length });
   } catch (e) {
@@ -1103,6 +1105,7 @@ app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
   try {
     const conn = await getSnapConn(req.user.id);
     const client = getSnapClient();
+    const brokerageName = req.query.brokerage || "SnapTrade";
     const [posResp, balResp] = await Promise.all([
       client.accountInformation.getUserAccountPositions({
         userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: req.params.accountId,
@@ -1115,7 +1118,7 @@ app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
     // Fetch existing holdings for duplicate detection
     const { data: existingHoldings } = await supabase
       .from("holdings")
-      .select("id, ticker, units, name, type, source, current_price, purchase_price")
+      .select("id, ticker, units, name, type, source, source_account, brokerage_name, current_price, purchase_price")
       .eq("user_id", req.user.id);
     const existingMap = {};
     for (const h of existingHoldings || []) {
@@ -1134,15 +1137,16 @@ app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
       let dup_detail = null;
       if (existing) {
         const existingUnits = Number(existing.units || 0);
+        const existSrc = existing.brokerage_name || existing.source || "manual";
         if (existingUnits === units && existing.source === "snaptrade") {
           dup_status = "exact_match";   // same ticker + same units from snaptrade
-          dup_detail = `Already imported: ${existingUnits} units via SnapTrade`;
+          dup_detail = `Already imported: ${existingUnits} units via ${existSrc}`;
         } else if (existing.source === "snaptrade") {
           dup_status = "qty_changed";   // same ticker, different units (re-sync)
-          dup_detail = `Existing: ${existingUnits} units → New: ${units} units`;
+          dup_detail = `${existSrc}: ${existingUnits} units → New: ${units} units`;
         } else {
           dup_status = "manual_exists"; // user added this ticker manually
-          dup_detail = `Manual entry exists: ${existing.name} (${existingUnits || "?"} units)`;
+          dup_detail = `Manual entry exists: ${existing.name} (${existingUnits || "?"} units) via ${existSrc}`;
         }
       }
 
@@ -1153,6 +1157,8 @@ app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
         snap_type_raw: _extractTypeCode(p.symbol?.symbol?.type),
         snap_type_desc: _extractTypeDesc(p.symbol?.symbol?.type),
         snap_exchange: p.symbol?.symbol?.exchange?.code || p.symbol?.symbol?.exchange?.mic_code || "",
+        brokerage_name: brokerageName,
+        source: "snaptrade",
         units, current_price: price, avg_cost: avg,
         market_value: units * price,
         unrealized_pnl: avg ? (price - avg) * units : 0,
@@ -1172,6 +1178,8 @@ app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
         const existing = existingMap[ticker.toUpperCase()];
         return {
           ticker, asset_name: `Cash (${cur})`, asset_type: "CASH",
+          brokerage_name: brokerageName,
+          source: "snaptrade",
           units: 1, current_price: cash, avg_cost: cash,
           market_value: cash, unrealized_pnl: 0, currency: cur,
           dup_status: existing ? "exact_match" : "new",
@@ -1201,8 +1209,8 @@ app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
 });
 
 // ── SnapTrade: Import holdings → WealthLens Hub ───────────────────
-// Accepts optional body: { resolutions: { "AAPL": "skip"|"replace"|"merge", ... } }
-// Default for unresolved duplicates: "skip" for exact_match, "replace" for qty_changed, "skip" for manual_exists
+// Accepts body: { resolutions: { "AAPL": "skip"|"replace"|"merge" }, brokerage_name: "Fidelity" }
+// ALL duplicates MUST have an explicit resolution — unresolved duplicates are skipped with a warning
 app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
   try {
     const conn  = await getSnapConn(req.user.id);
@@ -1210,6 +1218,7 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
     const now = new Date().toISOString();
     const acctId = req.params.accountId;
     const resolutions = req.body?.resolutions || {}; // { ticker: "skip"|"replace"|"merge" }
+    const brokerageName = req.body?.brokerage_name || "SnapTrade";
 
     const [posResp, balResp] = await Promise.all([
       client.accountInformation.getUserAccountPositions({
@@ -1231,6 +1240,7 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
     }
 
     let imported = 0, skipped = 0, merged = 0, replaced = 0;
+    const unresolved = [];  // duplicates with no explicit user resolution
 
     for (const p of posResp.data || []) {
       const ticker = p.symbol?.symbol?.symbol || "UNKNOWN";
@@ -1242,23 +1252,27 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
       const existing = existingMap[ticker.toUpperCase()];
       const resolution = resolutions[ticker] || resolutions[ticker.toUpperCase()];
 
-      // Determine action based on resolution or defaults
+      // Determine action based on resolution — require explicit choice for duplicates
       if (existing) {
+        if (!resolution) {
+          // No explicit resolution from user — skip and flag it
+          unresolved.push(ticker);
+          skipped++;
+          continue;
+        }
+
         const existingUnits = Number(existing.units || 0);
-        const isSnaptrade = existing.source === "snaptrade";
-        const isExact = isSnaptrade && existingUnits === units;
 
-        // Apply explicit resolution, or default
-        let action = resolution || (isExact ? "skip" : isSnaptrade ? "replace" : "skip");
+        if (resolution === "skip") { skipped++; continue; }
 
-        if (action === "skip") { skipped++; continue; }
-
-        if (action === "merge") {
+        if (resolution === "merge") {
           // Add units from SnapTrade to existing holding, update price
           const mergedUnits = existingUnits + units;
           const { error } = await supabase.from("holdings").update({
             units: mergedUnits,
             current_price: price,
+            brokerage_name: brokerageName,
+            source: "snaptrade",
             price_fetched_at: now,
             last_synced: now,
           }).eq("id", existing.id);
@@ -1266,7 +1280,7 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
           continue;
         }
 
-        // action === "replace" — update existing record in place
+        // resolution === "replace" — update existing record in place
         const { error } = await supabase.from("holdings").update({
           units,
           type: snapHoldingType(p.symbol?.symbol),
@@ -1276,6 +1290,7 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
           currency: p.symbol?.symbol?.currency?.code || "USD",
           source: "snaptrade",
           source_account: acctId,
+          brokerage_name: brokerageName,
           last_synced: now,
           price_fetched_at: now,
         }).eq("id", existing.id);
@@ -1297,6 +1312,7 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
         currency: p.symbol?.symbol?.currency?.code || "USD",
         source: "snaptrade",
         source_account: acctId,
+        brokerage_name: brokerageName,
         last_synced: now,
         price_fetched_at: now,
         start_date: now.slice(0, 10),
@@ -1322,6 +1338,7 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
         currency: cur,
         source: "snaptrade",
         source_account: acctId,
+        brokerage_name: brokerageName,
         last_synced: now,
         price_fetched_at: now,
         start_date: now.slice(0, 10),
@@ -1336,7 +1353,9 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
       assets_skipped: skipped,
       assets_merged: merged,
       assets_replaced: replaced,
+      unresolved_tickers: unresolved,
       account_id: acctId,
+      brokerage_name: brokerageName,
     });
   } catch (e) {
     console.error("SnapTrade import:", e.message);
