@@ -826,6 +826,8 @@ export default function App() {
   const [shares,        setShares]        = useState([]);      // shares I've granted
   const [sharedWithMe,  setSharedWithMe]  = useState([]);      // portfolios shared to me
   const [viewingShared, setViewingShared] = useState(null);    // { owner_id, owner_name, role } or null
+  const [sharedHoldings, setSharedHoldings] = useState([]);   // holdings from shared portfolios (tagged with _shared)
+  const [sharedMembers,  setSharedMembers]  = useState([]);   // members from shared portfolios
   const [shareEmail,    setShareEmail]    = useState("");
   const [shareRole,     setShareRole]     = useState("viewer");
   const [shareLoading,  setShareLoading]  = useState(false);
@@ -1018,20 +1020,51 @@ export default function App() {
     try {
       const resp = await api(`/api/shared-portfolio/${ownerId}`);
       setViewingShared({ owner_id: ownerId, owner_name: resp.owner_name || ownerName, role: resp.role || role });
-      setHoldings(resp.holdings || []);
-      setMembers(resp.portfolio?.members || []);
-      setGoals(resp.portfolio?.goals || []);
-      setAlerts(resp.portfolio?.alerts || []);
+      // Tag each shared holding with _shared metadata so the UI can distinguish them
+      const tagged = (resp.holdings || []).map(h => ({
+        ...h,
+        _shared: true,
+        _shared_owner: resp.owner_name || ownerName,
+        _shared_owner_id: ownerId,
+      }));
+      setSharedHoldings(tagged);
+      setSharedMembers(resp.portfolio?.members || []);
     } catch (e) { console.error("Shared portfolio load:", e.message); }
   }
   async function exitSharedView() {
     setViewingShared(null);
-    // Reload own data
+    setSharedHoldings([]);
+    setSharedMembers([]);
+  }
+  // Load all shared portfolios into the merged view (for "Family Portfolio" combined view)
+  async function loadAllSharedHoldings() {
+    if (sharedWithMe.length === 0) { setSharedHoldings([]); setSharedMembers([]); return; }
     try {
-      const [portfolio, hlds] = await Promise.all([api("/api/portfolio"), api("/api/holdings")]);
-      if (portfolio) { setMembers(portfolio.members || []); setGoals(portfolio.goals || []); setAlerts(portfolio.alerts || []); }
-      setHoldings(hlds || []);
-    } catch {}
+      const results = await Promise.all(
+        sharedWithMe.map(s =>
+          api(`/api/shared-portfolio/${s.owner_id}`)
+            .then(resp => ({
+              holdings: (resp.holdings || []).map(h => ({
+                ...h,
+                _shared: true,
+                _shared_owner: resp.owner_name || s.owner_name,
+                _shared_owner_id: s.owner_id,
+              })),
+              members: (resp.portfolio?.members || []).map(m => ({
+                ...m,
+                _shared: true,
+                _shared_owner: resp.owner_name || s.owner_name,
+                _shared_owner_id: s.owner_id,
+                // Prefix member ID to avoid collisions with own member IDs
+                id: `shared_${s.owner_id}_${m.id}`,
+              })),
+            }))
+            .catch(() => ({ holdings: [], members: [] }))
+        )
+      );
+      setSharedHoldings(results.flatMap(r => r.holdings));
+      setSharedMembers(results.flatMap(r => r.members));
+    } catch { setSharedHoldings([]); setSharedMembers([]); }
   }
 
   // ── Persist portfolio config (debounced) ──
@@ -1047,6 +1080,9 @@ export default function App() {
   },[]);
 
   useEffect(()=>{ if(loaded&&user) savePortfolio(members,goals,alerts); },[members,goals,alerts,loaded,user,savePortfolio]);
+
+  // Auto-load shared portfolio data when sharedWithMe list updates
+  useEffect(()=>{ if(loaded && sharedWithMe.length > 0) loadAllSharedHoldings(); },[sharedWithMe,loaded]);
 
   // ── Real-time price refresh ──
   async function refreshPrices(){
@@ -1178,9 +1214,9 @@ export default function App() {
   function openMemberModal(memberId) {
     if (memberId) {
       const m = members.find(x => x.id === memberId);
-      if (m) { setNewMember({ name: m.name, relation: m.relation || "" }); setEditingMemberId(m.id); }
+      if (m) { setNewMember({ name: m.name, relation: m.relation || "", email: m.email || "" }); setEditingMemberId(m.id); }
     } else {
-      setNewMember({ name: "", relation: "" }); setEditingMemberId(null);
+      setNewMember({ name: "", relation: "", email: "" }); setEditingMemberId(null);
     }
     setMergeCandidate(null);
     setModal("member");
@@ -1199,14 +1235,21 @@ export default function App() {
 
   function saveMember() {
     if (!newMember.name.trim()) return;
+    const email = (newMember.email || "").trim().toLowerCase();
     if (editingMemberId) {
       // Update existing member
-      setMembers(p => p.map(m => m.id === editingMemberId ? { ...m, name: newMember.name.trim(), relation: newMember.relation } : m));
+      setMembers(p => p.map(m => m.id === editingMemberId ? { ...m, name: newMember.name.trim(), relation: newMember.relation, email: email || m.email || "" } : m));
     } else {
       // Add new member
-      setMembers(p => [...p, { id: uid(), name: newMember.name.trim(), relation: newMember.relation }]);
+      setMembers(p => [...p, { id: uid(), name: newMember.name.trim(), relation: newMember.relation, email: email || "" }]);
     }
-    setNewMember({ name: "", relation: "" }); setEditingMemberId(null); setMergeCandidate(null); setModal(null);
+    // Auto-create portfolio share if email is provided
+    if (email && email !== user?.email?.toLowerCase()) {
+      api("/api/shares", { method: "POST", body: JSON.stringify({ email, role: "viewer" }) })
+        .then(() => loadShares())
+        .catch(e => console.warn("Auto-share failed:", e.message));
+    }
+    setNewMember({ name: "", relation: "", email: "" }); setEditingMemberId(null); setMergeCandidate(null); setModal(null);
   }
 
   async function mergeMember(targetId) {
@@ -1660,7 +1703,26 @@ ${alertLines||"  None"}`;
     }
   }
 
-  const filteredH = holdings.filter(h => selMember === "all" || h.member_id === selMember).filter(h => filterType === "ALL" || h.type === filterType);
+  // Combine own holdings with shared holdings for Family Portfolio view
+  // "all" = my holdings + shared holdings; a specific member = only that member's holdings from whichever portfolio
+  const allHoldings = [...holdings, ...sharedHoldings];
+  const allMembers = [...members, ...sharedMembers];
+
+  // Build member selector entries: own members + one entry per shared portfolio owner
+  const sharedOwnerChips = sharedWithMe.map(s => ({
+    id: `_owner_${s.owner_id}`,
+    name: `${s.owner_name}'s`,
+    _shared: true,
+    _shared_owner_id: s.owner_id,
+  }));
+
+  const filteredH = (selMember === "all"
+    ? allHoldings
+    : selMember.startsWith("_owner_")
+      ? allHoldings.filter(h => h._shared_owner_id === selMember.replace("_owner_", ""))
+      : allHoldings.filter(h => h.member_id === selMember)
+  ).filter(h => filterType === "ALL" || h.type === filterType);
+
   const visH = sortCol
     ? [...filteredH].sort((a, b) => {
         const va = _sortVal(a, sortCol), vb = _sortVal(b, sortCol);
@@ -1672,7 +1734,7 @@ ${alertLines||"  None"}`;
   const totInv=visH.reduce((s,h)=>s+getInv(h),0);
   const totGain=totCur-totInv, totPct=totInv>0?(totGain/totInv)*100:0;
   const byType=Object.keys(AT).map(t=>{const hs=visH.filter(h=>h.type===t);const v=hs.reduce((s,h)=>s+getVal(h),0),i=hs.reduce((s,h)=>s+getInv(h),0);return{t,v,i,count:hs.length,pct:totCur>0?(v/totCur)*100:0};}).filter(x=>x.v>0);
-  const mSum=members.map(m=>{const hs=holdings.filter(h=>h.member_id===m.id);const c=hs.reduce((s,h)=>s+getVal(h),0),i=hs.reduce((s,h)=>s+getInv(h),0);return{...m,cur:c,inv:i,gain:c-i,pct:i>0?((c-i)/i)*100:0};});
+  const mSum=allMembers.map(m=>{const hs=allHoldings.filter(h=>h.member_id===m.id);const c=hs.reduce((s,h)=>s+getVal(h),0),i=hs.reduce((s,h)=>s+getInv(h),0);return{...m,cur:c,inv:i,gain:c-i,pct:i>0?((c-i)/i)*100:0};});
   const trigAlerts=alerts.filter(a=>{
     if(!a.active)return false;
     if(a.type==="ALLOCATION_DRIFT"||a.type==="CONCENTRATION"){const v=holdings.filter(h=>h.type===a.assetType).reduce((s,h)=>s+getVal(h),0);const p=allCur>0?(v/allCur)*100:0;return a.type==="CONCENTRATION"?p<a.threshold:p>a.threshold;}
@@ -1762,6 +1824,16 @@ ${alertLines||"  None"}`;
           {[{id:"all",name:"Family Portfolio"},...members].map(m=>(
             <div key={m.id} className={`mchip${selMember===m.id?" act":""}`} onClick={()=>setSelMember(m.id)}>{m.name}</div>
           ))}
+          {sharedOwnerChips.length > 0 && <>
+            <span style={{width:1,height:16,background:"rgba(255,255,255,.1)",margin:"0 .2rem"}}/>
+            {sharedOwnerChips.map(m=>(
+              <div key={m.id} className={`mchip${selMember===m.id?" act":""}`}
+                onClick={()=>setSelMember(m.id)}
+                style={{borderColor:selMember===m.id?"rgba(167,139,250,.5)":"rgba(167,139,250,.2)",color:selMember===m.id?"#a78bfa":"rgba(167,139,250,.6)",background:selMember===m.id?"rgba(167,139,250,.12)":"rgba(167,139,250,.04)"}}>
+                👁 {m.name}
+              </div>
+            ))}
+          </>}
         </div>
 
         {/* Tabs */}
@@ -2010,7 +2082,9 @@ ${alertLines||"  None"}`;
                   {visH.map(h=>{
                     const cur=getVal(h),inv=getInv(h),g=cur-inv,p=inv>0?(g/inv)*100:0;
                     const xr=getXIRR(h);const a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
-                    const mn=members.find(m=>m.id===h.member_id)?.name||"";
+                    const mn=allMembers.find(m=>m.id===h.member_id)?.name||"";
+                    const isSharedH = h._shared;
+                    const sharedOwnerLabel = isSharedH ? h._shared_owner : "";
                     const isLive=!!h.price_fetched_at;
                     const units   = h.net_units ?? h.units ?? null;
                     const avgCost = h.avg_cost  ?? h.purchase_price ?? h.purchase_nav ?? null;
@@ -2048,7 +2122,9 @@ ${alertLines||"  None"}`;
                           }
                         </td>
                         <td><span className="tbadge2" style={{background:a.color+"22",color:a.color}}>{a.icon} {a.label}</span></td>
-                        <td className="dim">{mn}</td>
+                        <td className="dim">
+                          {mn}{isSharedH && <span style={{fontSize:".55rem",marginLeft:4,padding:".1rem .3rem",borderRadius:3,background:"rgba(167,139,250,.1)",color:"rgba(167,139,250,.6)"}}>👁 {sharedOwnerLabel}</span>}
+                        </td>
                         <td>{h.brokerage_name
                           ?<span style={{fontSize:".62rem",background:"rgba(167,139,250,.08)",color:"rgba(167,139,250,.7)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(167,139,250,.15)"}}>{h.brokerage_name}</span>
                           :h.source&&h.source!=="manual"
@@ -2234,7 +2310,9 @@ ${alertLines||"  None"}`;
               <div className="av" style={{width:42,height:42,fontSize:"1rem"}}>{m.name[0]}</div>
               <div style={{flex:1}}>
                 <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",color:"#ffffff"}}>{m.name}</div>
-                <div style={{fontSize:".68rem",color:"rgba(255,255,255,.4)",textTransform:"uppercase",letterSpacing:".08em"}}>{m.relation}{holdingCount>0?` · ${holdingCount} holding${holdingCount>1?"s":""}`:""}</div>
+                <div style={{fontSize:".68rem",color:"rgba(255,255,255,.4)",textTransform:"uppercase",letterSpacing:".08em"}}>
+                  {m.relation}{holdingCount>0?` · ${holdingCount} holding${holdingCount>1?"s":""}`:""}{m.email?<span style={{textTransform:"none",letterSpacing:"normal",marginLeft:6,fontSize:".6rem",color:"rgba(76,175,154,.6)"}}>● Linked: {m.email}</span>:""}
+                </div>
               </div>
               <div style={{display:"flex",gap:".35rem",alignItems:"center"}}>
                 <button className="delbtn" title="Edit member" onClick={()=>openMemberModal(m.id)}
@@ -3908,7 +3986,7 @@ ${alertLines||"  None"}`;
             <button className="btns" style={{fontSize:".72rem",padding:".35rem .8rem"}}
               onClick={()=>{
                 // Use existing member — close modal
-                setNewMember({name:"",relation:""}); setMergeCandidate(null); setModal(null);
+                setNewMember({name:"",relation:"",email:""}); setMergeCandidate(null); setModal(null);
               }}>Yes, use "{mergeCandidate.name}"</button>
             <button className="btnc" style={{fontSize:".72rem",padding:".35rem .8rem"}}
               onClick={()=>setMergeCandidate(null)}>No, add as separate</button>
@@ -3920,6 +3998,14 @@ ${alertLines||"  None"}`;
           <option value="">Select</option>
           {["Self","Spouse","Son","Daughter","Father","Mother","Sibling"].map(r=><option key={r} value={r}>{r}</option>)}
         </select>
+      </FG>
+      <FG label="Email (optional — enables shared login access)">
+        <input className="fi" type="email" value={newMember.email||""} placeholder="e.g. priya@gmail.com"
+          onChange={e=>setNewMember(p=>({...p,email:e.target.value}))}/>
+        <div style={{fontSize:".62rem",color:"rgba(255,255,255,.38)",marginTop:".3rem",lineHeight:1.5}}>
+          If this person has a WealthLens account, they'll be able to see your portfolio when they log in.
+          They'll need to sign up first if they don't have an account.
+        </div>
       </FG>
       <MA>
         <button className="btnc" onClick={()=>{setModal(null);setEditingMemberId(null);setMergeCandidate(null);}}>Cancel</button>
