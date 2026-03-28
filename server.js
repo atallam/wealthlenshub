@@ -18,6 +18,10 @@ if (missing.length) {
   process.exit(1);
 }
 
+// ── SnapTrade env diagnostic (remove after confirming) ───────────
+console.log("🔑 SNAPTRADE_CLIENT_ID:", process.env.SNAPTRADE_CLIENT_ID ? `set (${process.env.SNAPTRADE_CLIENT_ID.length} chars, starts "${process.env.SNAPTRADE_CLIENT_ID.slice(0,4)}...")` : "❌ NOT SET");
+console.log("🔑 SNAPTRADE_CONSUMER_KEY:", process.env.SNAPTRADE_CONSUMER_KEY ? `set (${process.env.SNAPTRADE_CONSUMER_KEY.length} chars)` : "❌ NOT SET");
+
 // ── Supabase admin client (service key — full DB access) ─────────
 const supabase = createClient(
   process.env.SUPABASE_URL,
