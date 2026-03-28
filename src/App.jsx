@@ -979,14 +979,18 @@ export default function App() {
         if(prof){ setProfile(prof); const c=prof.currency||"INR"; setUserCurrency(c); _activeCurrency=c; }
         if(ats?.length) setAssetTypes(ats);
       } catch(e){ console.warn("Profile load:", e.message); }
-      // Load sharing info
+      // Load sharing info + sync missing shares
       try {
+        // First sync: create shares for any members whose emails now have accounts
+        await api("/api/shares/sync", { method: "POST" }).catch(() => {});
+        // Then load the share lists
         const [myShares, receivedShares] = await Promise.all([
           api("/api/shares").catch(() => ({ shares: [] })),
           api("/api/shares/received").catch(() => ({ shared_with_me: [] })),
         ]);
         setShares(myShares.shares || []);
         setSharedWithMe(receivedShares.shared_with_me || []);
+        console.log("📤 Shares granted:", myShares.shares?.length || 0, "📥 Shared with me:", receivedShares.shared_with_me?.length || 0);
       } catch(e) { console.warn("Shares load:", e.message); }
     })();
   },[user]);
@@ -1039,17 +1043,19 @@ export default function App() {
   // Load all shared portfolios into the merged view (for "Family Portfolio" combined view)
   async function loadAllSharedHoldings() {
     if (sharedWithMe.length === 0) { setSharedHoldings([]); setSharedMembers([]); return; }
+    console.log("🔄 Loading shared holdings from", sharedWithMe.length, "portfolios:", sharedWithMe.map(s => s.owner_name));
     try {
       const results = await Promise.all(
         sharedWithMe.map(s =>
           api(`/api/shared-portfolio/${s.owner_id}`)
-            .then(resp => ({
+            .then(resp => {
+              console.log(`📦 Shared portfolio from ${resp.owner_name}: ${resp.holdings?.length || 0} holdings`);
+              return {
               holdings: (resp.holdings || []).map(h => ({
                 ...h,
                 _shared: true,
                 _shared_owner: resp.owner_name || s.owner_name,
                 _shared_owner_id: s.owner_id,
-                // Prefix member_id to match the prefixed shared member IDs
                 member_id: h.member_id ? `shared_${s.owner_id}_${h.member_id}` : null,
               })),
               members: (resp.portfolio?.members || []).map(m => ({
@@ -1057,16 +1063,17 @@ export default function App() {
                 _shared: true,
                 _shared_owner: resp.owner_name || s.owner_name,
                 _shared_owner_id: s.owner_id,
-                // Prefix member ID to avoid collisions with own member IDs
                 id: `shared_${s.owner_id}_${m.id}`,
               })),
-            }))
-            .catch(() => ({ holdings: [], members: [] }))
+            };})
+            .catch(e => { console.error(`❌ Failed to load shared portfolio ${s.owner_id}:`, e.message); return { holdings: [], members: [] }; })
         )
       );
+      const totalH = results.reduce((s, r) => s + r.holdings.length, 0);
+      console.log(`✅ Loaded ${totalH} shared holdings total`);
       setSharedHoldings(results.flatMap(r => r.holdings));
       setSharedMembers(results.flatMap(r => r.members));
-    } catch { setSharedHoldings([]); setSharedMembers([]); }
+    } catch(e) { console.error("❌ loadAllSharedHoldings failed:", e.message); setSharedHoldings([]); setSharedMembers([]); }
   }
 
   // ── Persist portfolio config (debounced) ──
@@ -2086,7 +2093,43 @@ ${alertLines||"  None"}`;
                   <th/>
                 </tr></thead>
                 <tbody>
-                  {visH.map(h=>{
+                  {(()=>{
+                    // Group holdings into 3 categories
+                    const US_TYPES = new Set(["US_STOCK","US_ETF","US_BOND","CRYPTO"]);
+                    const IN_TYPES = new Set(["IN_STOCK","IN_ETF","MF"]);
+                    const groups = [
+                      { key: "us", label: "US Assets", icon: "🇺🇸", color: "#5a9ce0", items: visH.filter(h => US_TYPES.has(h.type)) },
+                      { key: "in", label: "Indian Assets", icon: "🇮🇳", color: "#e07c5a", items: visH.filter(h => IN_TYPES.has(h.type)) },
+                      { key: "other", label: "Other Assets", icon: "📦", color: "#c9a84c", items: visH.filter(h => !US_TYPES.has(h.type) && !IN_TYPES.has(h.type)) },
+                    ].filter(g => g.items.length > 0);
+
+                    // Total column count: 10 data columns + 1 action = 11
+                    const COL_COUNT = 11;
+
+                    return groups.map(grp => {
+                      const grpCur = grp.items.reduce((s, h) => s + getVal(h), 0);
+                      const grpInv = grp.items.reduce((s, h) => s + getInv(h), 0);
+                      const grpG = grpCur - grpInv;
+                      const grpP = grpInv > 0 ? (grpG / grpInv) * 100 : 0;
+                      return [
+                        // Section header row
+                        <tr key={`hdr_${grp.key}`} style={{background:"rgba(255,255,255,.02)"}}>
+                          <td colSpan={8} style={{padding:".55rem .65rem",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
+                            <span style={{fontSize:".68rem",letterSpacing:".08em",textTransform:"uppercase",color:grp.color,fontWeight:600}}>
+                              {grp.icon} {grp.label}
+                            </span>
+                            <span style={{fontSize:".62rem",color:"rgba(255,255,255,.35)",marginLeft:8}}>{grp.items.length} holding{grp.items.length!==1?"s":""}</span>
+                          </td>
+                          <td className="r" style={{padding:".55rem .65rem",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
+                            <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:grp.color,fontWeight:500}}>{fmt(grpCur)}</span>
+                          </td>
+                          <td className="r" style={{padding:".55rem .65rem",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
+                            <span className={`mono${grpG>=0?" gain":" loss"}`} style={{fontSize:".68rem"}}>{grpG>=0?"+":""}{fmt(grpG)} ({fmtPct(grpP)})</span>
+                          </td>
+                          <td style={{borderBottom:"1px solid rgba(255,255,255,.08)"}}/>
+                        </tr>,
+                        // Holdings rows within this group
+                        ...grp.items.map(h => {
                     const cur=getVal(h),inv=getInv(h),g=cur-inv,p=inv>0?(g/inv)*100:0;
                     const a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
                     const mn=allMembers.find(m=>m.id===h.member_id)?.name||"";
@@ -2112,7 +2155,6 @@ ${alertLines||"  None"}`;
                         </span>
                       : <span style={{color:"rgba(255,255,255,.35)"}}>—</span>;
 
-                    // Source: brokerage name + import method stacked
                     const brokerLabel = h.brokerage_name && h.brokerage_name !== "Unknown" ? h.brokerage_name : null;
                     const src = h.source || "manual";
                     const srcLabel = src === "snaptrade" ? "SnapTrade" : src === "csv" || src === "import" ? "CSV" : src === "cas" ? "CAS" : "Manual";
@@ -2135,7 +2177,6 @@ ${alertLines||"  None"}`;
                         <td className="dim">
                           {mn}{isSharedH && <span style={{fontSize:".55rem",marginLeft:4,padding:".1rem .3rem",borderRadius:3,background:"rgba(167,139,250,.1)",color:"rgba(167,139,250,.6)"}}>👁 {sharedOwnerLabel}</span>}
                         </td>
-                        {/* Source: brokerage + import method */}
                         <td>
                           {brokerLabel
                             ? <div><span style={{fontSize:".62rem",background:"rgba(167,139,250,.08)",color:"rgba(167,139,250,.7)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(167,139,250,.15)"}}>{brokerLabel}</span>
@@ -2149,17 +2190,14 @@ ${alertLines||"  None"}`;
                             : <span style={{color:"rgba(255,255,255,.35)"}}>—</span>}
                         </td>
                         <td className="r">{avgDisplay}</td>
-                        {/* Cur. Price with live indicator */}
                         <td className="r">
                           <div>{curPriceDisplay}</div>
                           {isLive&&<div style={{fontSize:".52rem",color:"#4caf9a",marginTop:1}}>● {ago(h.price_fetched_at)}</div>}
                         </td>
-                        {/* Value: current (bold) + invested (dim subtitle) */}
                         <td className="r">
                           <div style={{fontFamily:"'DM Mono',monospace",fontWeight:500,fontSize:".78rem"}}>{fmt(cur)}</div>
                           <div style={{fontFamily:"'DM Mono',monospace",fontSize:".65rem",color:"rgba(255,255,255,.4)",marginTop:1}}>inv. {fmt(inv)}</div>
                         </td>
-                        {/* P&L: gain amount + return % */}
                         <td className="r">
                           <div className={`mono${g>=0?" gain":" loss"}`} style={{fontSize:".78rem"}}>{g>=0?"+":""}{fmt(g)}</div>
                           <div className={`mono${p>=0?" gain":" loss"}`} style={{fontSize:".65rem",marginTop:1}}>{fmtPct(p)}</div>
@@ -2180,7 +2218,10 @@ ${alertLines||"  None"}`;
                         </td>
                       </tr>
                     );
-                  })}
+                        })
+                      ];
+                    });
+                  })()}
                 </tbody>
                 {/* Totals footer row */}
                 {visH.length>0&&(()=>{
