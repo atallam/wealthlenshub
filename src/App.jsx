@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from "./supabase.js";
 import SnapTradeImport from "./SnapTradeImport";
+import SetuAAImport from "./SetuAAImport";
 
 const GF = `@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');`;
 
@@ -928,6 +929,7 @@ export default function App() {
   const [aiInput,        setAiInput]        = useState("");
   const [aiLoading,      setAiLoading]      = useState(false);
   const [showSnapTrade,  setShowSnapTrade]   = useState(false);
+  const [showSetuAA,     setShowSetuAA]      = useState(false);
   const aiBottomRef = useRef();
 
   const importFileRef = useRef();
@@ -2928,7 +2930,7 @@ ${alertLines||"  None"}`;
                     {icon:"💰",title:"Kuvera / MF Export",desc:"Mutual fund portfolio exports with scheme name, units, NAV. Scheme codes auto-mapped.",badge:"Auto-Detect"},
                     {icon:"📊",title:"Excel / XLSX",desc:"Any spreadsheet with Name, Qty, Avg Cost columns. Drag and drop directly into the import modal.",badge:"Auto-Detect"},
                     {icon:"🔗",title:"CDSL / NSDL CAS",desc:"Consolidated Account Statement from CDSL or NSDL with all demat holdings across brokers.",badge:"Coming Soon"},
-                    {icon:"🤖",title:"Account Aggregator",desc:"India's RBI-regulated AA framework (Finvu, Setu) for consent-based auto-sync.",badge:"Roadmap"},
+                    {icon:"🤖",title:"Account Aggregator",desc:"India's RBI-regulated AA framework (Setu) for consent-based auto-sync of stocks, MFs, FDs, EPF, PPF.",badge:"New"},
                   ].map(tip=>(
                     <div key={tip.title} style={{padding:".75rem .9rem",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:8}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:".4rem"}}>
@@ -4295,9 +4297,9 @@ ${alertLines||"  None"}`;
         <div onClick={()=>{setModal(null);setShowSnapTrade(true);}}
           style={{padding:"1.1rem 1.4rem",borderRadius:12,border:"1.5px solid rgba(167,139,250,.45)",
             background:"linear-gradient(135deg,rgba(167,139,250,.10) 0%,rgba(90,156,224,.06) 100%)",
-            cursor:"pointer",marginBottom:"1rem",display:"flex",alignItems:"center",gap:"1.2rem",transition:"all .2s",position:"relative",overflow:"hidden"}}
-          onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,.7)";e.currentTarget.style.background="linear-gradient(135deg,rgba(167,139,250,.16) 0%,rgba(90,156,224,.10) 100%)";}}
-          onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,.45)";e.currentTarget.style.background="linear-gradient(135deg,rgba(167,139,250,.10) 0%,rgba(90,156,224,.06) 100%)";}}>
+            cursor:"pointer",marginBottom:".6rem",display:"flex",alignItems:"center",gap:"1.2rem",transition:"all .2s",position:"relative",overflow:"hidden"}}
+          onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,.7)";}}
+          onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,.45)";}}>
           <div style={{fontSize:"1.8rem",flexShrink:0}}>🇺🇸</div>
           <div style={{flex:1}}>
             <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".25rem"}}>
@@ -4307,6 +4309,23 @@ ${alertLines||"  None"}`;
             <div style={{fontSize:".74rem",color:"rgba(255,255,255,.6)",lineHeight:1.5}}>Connect Robinhood, Schwab, Fidelity & more — automatic sync from US brokerages</div>
           </div>
           <div style={{fontSize:"1.1rem",color:"rgba(167,139,250,.6)",flexShrink:0}}>→</div>
+        </div>
+        {/* ── Featured: Setu Account Aggregator ── */}
+        <div onClick={()=>{setModal(null);setShowSetuAA(true);}}
+          style={{padding:"1.1rem 1.4rem",borderRadius:12,border:"1.5px solid rgba(76,175,154,.45)",
+            background:"linear-gradient(135deg,rgba(76,175,154,.10) 0%,rgba(201,168,76,.06) 100%)",
+            cursor:"pointer",marginBottom:"1rem",display:"flex",alignItems:"center",gap:"1.2rem",transition:"all .2s"}}
+          onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(76,175,154,.7)";}}
+          onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(76,175,154,.45)";}}>
+          <div style={{fontSize:"1.8rem",flexShrink:0}}>🇮🇳</div>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".25rem"}}>
+              <span style={{fontSize:".92rem",color:"#ffffff",fontWeight:600}}>Account Aggregator</span>
+              <span style={{fontSize:".55rem",padding:".15rem .5rem",borderRadius:10,background:"rgba(76,175,154,.18)",color:"#4caf9a",fontWeight:600,letterSpacing:".04em",textTransform:"uppercase"}}>India</span>
+            </div>
+            <div style={{fontSize:".74rem",color:"rgba(255,255,255,.6)",lineHeight:1.5}}>Import stocks, MFs, FDs, EPF, PPF, bank accounts — via Setu's RBI-regulated consent flow</div>
+          </div>
+          <div style={{fontSize:"1.1rem",color:"rgba(76,175,154,.6)",flexShrink:0}}>→</div>
         </div>
         {/* ── Other options ── */}
         <div style={{fontSize:".6rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.35)",marginBottom:".5rem",paddingLeft:".1rem"}}>Other ways to add</div>
@@ -4337,6 +4356,11 @@ ${alertLines||"  None"}`;
     {showSnapTrade&&(
       <Overlay onClose={()=>{setShowSnapTrade(false);reloadHoldings();}} wide>
         <SnapTradeImport onClose={async()=>{setShowSnapTrade(false);await reloadHoldings();}} members={members} />
+      </Overlay>
+    )}
+    {showSetuAA&&(
+      <Overlay onClose={()=>{setShowSetuAA(false);reloadHoldings();}} wide>
+        <SetuAAImport onClose={async()=>{setShowSetuAA(false);await reloadHoldings();}} onImported={reloadHoldings} members={members} api={api} />
       </Overlay>
     )}
     {modal==="import"&&(<ImportModal importState={importState} setImportState={setImportState} members={members} AT={AT} handleImportFile={handleImportFile} executeImport={executeImport} resetImport={resetImport} importFileRef={importFileRef} onClose={()=>{setModal(null);resetImport();}} fmt={fmt} submitCASPassword={submitCASPassword}/>)}
