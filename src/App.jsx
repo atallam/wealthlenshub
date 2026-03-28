@@ -1697,7 +1697,8 @@ ${alertLines||"  None"}`;
       case "ticker":  return (h.ticker || h.scheme_code || "").toLowerCase();
       case "type":    return (AT[h.type]?.label || h.type || "").toLowerCase();
       case "member":  return (allMembers.find(m => m.id === h.member_id)?.name || "").toLowerCase();
-      case "source":  return (h.brokerage_name || h.source || "").toLowerCase();
+      case "brokerage": return (h.brokerage_name || "").toLowerCase();
+      case "imported":  return (h.source || "manual").toLowerCase();
       case "units":   return Number(h.net_units ?? h.units ?? 0);
       case "avg":     return Number(h.avg_cost ?? h.purchase_price ?? h.purchase_nav ?? 0);
       case "price":   return Number(h.type === "MF" ? (h.current_nav || 0) : (h.current_price || 0));
@@ -2068,7 +2069,8 @@ ${alertLines||"  None"}`;
                     {key:"ticker",  label:"Ticker / Code",align:""},
                     {key:"type",    label:"Type",        align:""},
                     {key:"member",  label:"Member",      align:""},
-                    {key:"source",  label:"Source",      align:""},
+                    {key:"brokerage",label:"Brokerage",  align:""},
+                    {key:"imported",label:"Imported Via", align:""},
                     {key:"units",   label:"Units",       align:"r"},
                     {key:"avg",     label:"Avg Price",   align:"r"},
                     {key:"price",   label:"Cur. Price",  align:"r"},
@@ -2138,10 +2140,15 @@ ${alertLines||"  None"}`;
                         </td>
                         <td>{h.brokerage_name&&h.brokerage_name!=="Unknown"
                           ?<span style={{fontSize:".62rem",background:"rgba(167,139,250,.08)",color:"rgba(167,139,250,.7)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(167,139,250,.15)"}}>{h.brokerage_name}</span>
-                          :h.source&&h.source!=="manual"
-                            ?<span style={{fontSize:".62rem",background:"rgba(76,175,154,.06)",color:"rgba(76,175,154,.6)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(76,175,154,.12)"}}>{h.source==="snaptrade"?"SnapTrade":h.source}</span>
-                            :<span style={{fontSize:".62rem",color:"rgba(255,255,255,.25)"}}>Manual</span>
+                          :<span style={{fontSize:".62rem",color:"rgba(255,255,255,.2)"}}>—</span>
                         }</td>
+                        <td>{(()=>{
+                          const src = h.source || "manual";
+                          if (src === "snaptrade") return <span style={{fontSize:".62rem",background:"rgba(76,175,154,.08)",color:"rgba(76,175,154,.65)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(76,175,154,.15)"}}>SnapTrade</span>;
+                          if (src === "csv" || src === "import") return <span style={{fontSize:".62rem",background:"rgba(90,156,224,.08)",color:"rgba(90,156,224,.65)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(90,156,224,.15)"}}>CSV Import</span>;
+                          if (src === "cas") return <span style={{fontSize:".62rem",background:"rgba(160,132,202,.08)",color:"rgba(160,132,202,.65)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(160,132,202,.15)"}}>CAS Import</span>;
+                          return <span style={{fontSize:".62rem",color:"rgba(255,255,255,.3)"}}>Manual</span>;
+                        })()}</td>
                         <td className="r">
                           {units!=null
                             ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(255,255,255,.85)"}}>{Number(units).toLocaleString("en-IN",{maximumFractionDigits:4})}</span>
