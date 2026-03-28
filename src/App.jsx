@@ -1674,6 +1674,10 @@ ${alertLines||"  None"}`;
   }
 
   // ── Derived data ──
+  // Combine own holdings with shared holdings for Family Portfolio view
+  const allHoldings = [...holdings, ...sharedHoldings];
+  const allMembers = [...members, ...sharedMembers];
+
   // allCur/allInv represent the total across own + shared portfolios
   const allCur=allHoldings.reduce((s,h)=>s+getVal(h),0);
   const allInv=allHoldings.reduce((s,h)=>s+getInv(h),0);
@@ -1703,11 +1707,6 @@ ${alertLines||"  None"}`;
       default:         return 0;
     }
   }
-
-  // Combine own holdings with shared holdings for Family Portfolio view
-  // "all" = my holdings + shared holdings; a specific member = only that member's holdings from whichever portfolio
-  const allHoldings = [...holdings, ...sharedHoldings];
-  const allMembers = [...members, ...sharedMembers];
 
   // Build member selector entries: own members + one entry per shared portfolio owner
   const sharedOwnerChips = sharedWithMe.map(s => ({
