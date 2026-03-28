@@ -1195,7 +1195,7 @@ function snapHoldingType(symbolObj) {
   // ── Mutual Funds ───────────────────────────────────────────────
   if (["oef"].includes(code)
       || desc.includes("open ended") || desc.includes("open-ended") || desc.includes("mutual fund")) {
-    return isIndia ? "MF" : "MF";
+    return isIndia ? "MF" : "US_ETF";
   }
 
   // ── Crypto ─────────────────────────────────────────────────────
