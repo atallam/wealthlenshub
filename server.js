@@ -1173,6 +1173,9 @@ function _isIndianExchange(exchangeObj) {
 //   oef = Open Ended Fund   bnd = Bond          crypto = Cryptocurrency
 //   pm  = Precious Metals   struct = Structured Product
 //   ut  = Unit              wi  = When Issued   wt = Warrant   rt = Right
+// Money market / cash sweep tickers — these duplicate the cash balance from SnapTrade
+const CASH_SWEEP_TICKERS = new Set(["SPAXX","FDRXX","FZFXX","FCASH","VMFXX","SWVXX","TTTXX","SPRXX","CORE","QCEQX"]);
+
 function snapHoldingType(symbolObj) {
   const code    = _extractTypeCode(symbolObj?.type);
   const desc    = _extractTypeDesc(symbolObj?.type);
@@ -1351,6 +1354,14 @@ app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
       const price = Number(p.price || 0);
       const avg   = Number(p.average_purchase_price || p.averageEntryPrice || 0);
       const ticker = p.symbol?.symbol?.symbol || "UNKNOWN";
+      const desc  = (p.symbol?.symbol?.description || "").toLowerCase();
+      const typeCode = _extractTypeCode(p.symbol?.symbol?.type);
+
+      // Skip money market / cash sweep funds — their value is in the cash balance
+      const isCashSweep = CASH_SWEEP_TICKERS.has(ticker.toUpperCase())
+        || (typeCode === "oef" && (desc.includes("money market") || desc.includes("cash") || desc.includes("sweep") || desc.includes("government money")));
+      if (isCashSweep) return null;
+
       const existing = existingMap[ticker.toUpperCase()];
 
       // Determine duplicate status
@@ -1388,7 +1399,7 @@ app.get("/api/snaptrade/holdings/:accountId", auth, async (req, res) => {
         dup_detail,
         existing_id: existing?.id || null,
       };
-    });
+    }).filter(Boolean);
 
     const cashPositions = (balResp.data || [])
       .filter(b => Number(b.cash || 0) > 0)
@@ -1475,6 +1486,13 @@ app.post("/api/snaptrade/import/:accountId", auth, async (req, res) => {
       const price  = Number(p.price || 0);
       const avg    = Number(p.average_purchase_price || p.averageEntryPrice || 0);
       if (units <= 0) continue;
+
+      // Skip money market / cash sweep — value is in cash balance
+      const descLow = (p.symbol?.symbol?.description || "").toLowerCase();
+      const typeCode = _extractTypeCode(p.symbol?.symbol?.type);
+      const isCashSweep = CASH_SWEEP_TICKERS.has(ticker.toUpperCase())
+        || (typeCode === "oef" && (descLow.includes("money market") || descLow.includes("cash") || descLow.includes("sweep") || descLow.includes("government money")));
+      if (isCashSweep) { skipped++; continue; }
 
       const existing = existingMap[ticker.toUpperCase()];
       const resolution = resolutions[ticker] || resolutions[ticker.toUpperCase()];
