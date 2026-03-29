@@ -3052,90 +3052,105 @@ function parseNSDLCASStatement(rawText) {
       if (!isNaN(val) && val !== 0) allNums.push(val);
     }
 
+    // Skip transaction detail headers (not summary rows)
+    if (/Scheme\s*Name/i.test(name) || /Mutual\s*Fund\s*-\s*Scheme/i.test(rawName)) {
+      console.log(`   → Skipping (transaction detail header, not summary row)`);
+      continue;
+    }
+
     console.log(`📋 CAS MF: ${name} (${isin}) — ${allNums.length} numbers: [${allNums.slice(0,10).join(", ")}]`);
 
     if (allNums.length < 4) continue; // Need at least folio + nav + units + value
 
     // ── Identify columns by cross-validation: Units × NAV ≈ Value ──
-    // Skip the first number (likely folio — very large, no decimal)
-    // Then try all permutations of remaining numbers to find the triplet where a*b≈c
-    let bestMatch = null;
+    // Find ALL valid triplets, then pick the one with the LARGEST value (= current value)
+    // This distinguishes current value from invested amount
+    const matches = [];
 
     for (let i = 0; i < Math.min(allNums.length, 8); i++) {
       for (let j = i + 1; j < Math.min(allNums.length, 8); j++) {
         const product = allNums[i] * allNums[j];
-        // Look for a third number that matches this product
         for (let k = 0; k < Math.min(allNums.length, 10); k++) {
           if (k === i || k === j) continue;
           if (allNums[k] <= 0) continue;
           const err = Math.abs(product - allNums[k]) / allNums[k];
-          if (err < 0.03) { // within 3%
-            // Found: allNums[i] × allNums[j] ≈ allNums[k]
-            // The two factors are NAV and Units; the product is a Value
+          if (err < 0.03) {
             const n1 = allNums[i], n2 = allNums[j], val = allNums[k];
-            // NAV is the per-unit price (typically 10-5000 range for Indian MFs)
-            // Units is the count (can be fractional)
-            // Prefer the match where one factor looks like NAV (10-10000) and product is the value
-            const score = err;
-            if (!bestMatch || score < bestMatch.err) {
-              // Figure out which is NAV and which is Units
-              // Heuristic: if both are similar magnitude, the one that appears first in the text is NAV
-              // But more reliably: the larger value × smaller value ≈ product
-              const nav = Math.max(n1, n2);
-              const units = Math.min(n1, n2);
-              bestMatch = { nav, units, val, err: score, indices: [i, j, k] };
-            }
+            // NAV is per-unit (typically larger per unit for most MFs)
+            // But we need to figure out which factor is NAV and which is units
+            // The value matched is the product; we'll resolve nav/units later
+            matches.push({ a: n1, b: n2, val, err, indices: [i, j, k] });
           }
         }
       }
     }
 
-    if (!bestMatch) {
+
+    if (matches.length === 0) {
       console.log(`   ⚠ No Units×NAV≈Value match found. Skipping.`);
       continue;
     }
 
-    let { nav, units, val: currentValue } = bestMatch;
-    console.log(`   ✓ Matched: units=${units}, nav=${nav}, value=${currentValue} (err=${(bestMatch.err*100).toFixed(1)}%)`);
+    // CAS text column order: Units, PurchaseNAV, Invested, CurrentNAV, CurrentValue, Gain, Gain%
+    // The value appearing LATER in the number array = current value (not invested)
+    // Among valid triplets, pick the one whose value index (k) is HIGHEST = appears later in text
+    matches.sort((a, b) => b.indices[2] - a.indices[2]);
+    const currentValueMatch = matches[0];
+    const investedMatch = matches.find(m => m.val !== currentValueMatch.val && m.indices[2] < currentValueMatch.indices[2]);
+    
+    // Determine units: common factor between currentValue and invested triplets
+    let nav, units;
+    const cvFactors = [currentValueMatch.a, currentValueMatch.b];
+    
+    if (investedMatch) {
+      const invFactors = [investedMatch.a, investedMatch.b];
+      const common = cvFactors.find(f => invFactors.some(o => Math.abs(f - o) / Math.max(f, 0.001) < 0.001));
+      if (common) {
+        units = common;
+        nav = cvFactors.find(f => Math.abs(f - common) / Math.max(f, 0.001) > 0.001) ?? cvFactors[0];
+      } else {
+        // No common — the factor at the earlier index position is units (CAS order: Units before NAV)
+        const [iA, iB] = [currentValueMatch.indices[0], currentValueMatch.indices[1]];
+        if (iA < iB) { units = currentValueMatch.a; nav = currentValueMatch.b; }
+        else { units = currentValueMatch.b; nav = currentValueMatch.a; }
+      }
+    } else {
+      // Single triplet — earlier factor = units
+      const [iA, iB] = [currentValueMatch.indices[0], currentValueMatch.indices[1]];
+      if (iA < iB) { units = currentValueMatch.a; nav = currentValueMatch.b; }
+      else { units = currentValueMatch.b; nav = currentValueMatch.a; }
+    }
+    const currentValue = currentValueMatch.val;
+
+    console.log(`   ✓ Matched: units=${units}, nav=${nav}, value=${currentValue} (err=${(currentValueMatch.err*100).toFixed(1)}%, ${matches.length} triplets)`);
 
     // ── Find invested amount and purchase NAV ──
-    // Invested is usually a round number (like 1,00,000 or 25,000 or 3,10,000)
-    // It should be different from currentValue but in the same ballpark
     let invested = 0, purchaseNav = 0;
 
-    // Look for another pair: Units × PurchaseNAV ≈ Invested
-    for (let i = 0; i < Math.min(allNums.length, 8); i++) {
-      if (bestMatch.indices.includes(i)) continue;
-      const candidateInvested = allNums[i];
-      if (candidateInvested <= 0 || candidateInvested > currentValue * 5) continue;
-      // Check if there's a purchase NAV: units * purchaseNAV ≈ candidateInvested
-      const derivedPurchaseNav = candidateInvested / units;
-      // The purchaseNAV should be in a reasonable range relative to current NAV
-      if (derivedPurchaseNav > 0 && derivedPurchaseNav < nav * 10 && derivedPurchaseNav > nav * 0.01) {
-        // Check if this derivedPurchaseNav appears as one of the numbers
-        for (let j = 0; j < Math.min(allNums.length, 10); j++) {
-          if (j === i || bestMatch.indices.includes(j)) continue;
-          const navErr = Math.abs(allNums[j] - derivedPurchaseNav) / derivedPurchaseNav;
-          if (navErr < 0.03) {
-            invested = candidateInvested;
-            purchaseNav = allNums[j];
-            console.log(`   ✓ Invested=${invested}, PurchaseNAV=${purchaseNav}`);
-            break;
-          }
-        }
-        if (invested > 0) break;
-        // Even without finding the exact NAV in the numbers, if the invested amount is round, use it
-        if (candidateInvested % 1000 === 0 || candidateInvested % 500 === 0) {
-          invested = candidateInvested;
-          purchaseNav = derivedPurchaseNav;
-          console.log(`   ✓ Invested=${invested} (round number), PurchaseNAV=${purchaseNav.toFixed(4)} (derived)`);
+    if (investedMatch) {
+      invested = investedMatch.val;
+      const invFactors = [investedMatch.a, investedMatch.b];
+      purchaseNav = invFactors.find(f => Math.abs(f - units) / Math.max(units, 0.001) > 0.001) || invFactors[0];
+      if (Math.abs(purchaseNav - units) / Math.max(units, 0.001) < 0.001) purchaseNav = invFactors[1] || 0;
+      console.log(`   ✓ Invested=${invested}, PurchaseNAV=${purchaseNav}`);
+    }
+
+    if (!invested) {
+      // Fallback: look for a round number that could be invested amount
+      for (let i = 0; i < Math.min(allNums.length, 8); i++) {
+        if (currentValueMatch.indices.includes(i)) continue;
+        const n = allNums[i];
+        if (n > 100 && n < currentValue * 3 && (n % 1000 === 0 || n % 500 === 0 || n % 100 === 0)) {
+          invested = n;
+          purchaseNav = units > 0 ? invested / units : nav;
+          console.log(`   ✓ Invested=${invested} (round number fallback), PurchaseNAV=${purchaseNav.toFixed(4)}`);
           break;
         }
       }
     }
 
     if (!invested) {
-      invested = currentValue; // fallback: cost = current value (no gain data)
+      invested = currentValue;
       purchaseNav = nav;
     }
 
@@ -3159,7 +3174,7 @@ function parseNSDLCASStatement(rawText) {
     seen.add(key);
 
     // Extract folio (first very large number, likely >6 digits, no decimal)
-    const folio = allNums.find(n => n > 100000 && n === Math.floor(n) && !bestMatch.indices.includes(allNums.indexOf(n)))?.toString() || "";
+    const folio = allNums.find(n => n > 100000 && n === Math.floor(n) && !best.indices.includes(allNums.indexOf(n)))?.toString() || "";
 
     holdings.push({
       name, type: "MF", ticker: isin, scheme_code: "",
