@@ -2224,12 +2224,11 @@ ${alertLines||"  None"}`;
                           {isLive&&<div style={{fontSize:".52rem",color:"#4caf9a",marginTop:1}}>● {ago(h.price_fetched_at)}</div>}
                         </td>
                         <td className="r">
-                          <div style={{fontFamily:"'DM Mono',monospace",fontWeight:500,fontSize:".78rem"}}>{fmtCr(toINR(cur, h))}</div>
-                          <div style={{fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:"rgba(201,168,76,.55)",marginTop:1}}>{fmtNative(cur, h)}</div>
-                          <div style={{fontFamily:"'DM Mono',monospace",fontSize:".6rem",color:"rgba(255,255,255,.35)",marginTop:1}}>inv. {fmtCr(toINR(inv, h))}</div>
+                          <div style={{fontFamily:"'DM Mono',monospace",fontWeight:500,fontSize:".78rem"}}>{fmtCrNative(cur, h)}</div>
+                          <div style={{fontFamily:"'DM Mono',monospace",fontSize:".6rem",color:"rgba(255,255,255,.35)",marginTop:1}}>inv. {fmtCrNative(inv, h)}</div>
                         </td>
                         <td className="r">
-                          <div className={`mono${g>=0?" gain":" loss"}`} style={{fontSize:".78rem"}}>{g>=0?"+":""}{fmtCr(toINR(g, h))}</div>
+                          <div className={`mono${g>=0?" gain":" loss"}`} style={{fontSize:".78rem"}}>{g>=0?"+":""}{fmtNative(Math.abs(g), h)}</div>
                           <div className={`mono${p>=0?" gain":" loss"}`} style={{fontSize:".65rem",marginTop:1}}>{fmtPct(p)}</div>
                         </td>
                         <td>
