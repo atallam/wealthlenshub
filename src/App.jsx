@@ -902,7 +902,7 @@ export default function App() {
   const [calMonth,          setCalMonth]          = useState(()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;});
 
   // ── Rebalancing state ────────────────────────────────────────
-  const [targetAlloc, setTargetAlloc] = useState({IN_STOCK:35,MF:25,IN_ETF:5,US_STOCK:10,US_ETF:5,US_BOND:0,CRYPTO:3,FD:5,PPF:5,EPF:5,REAL_ESTATE:2});
+  const [targetAlloc, setTargetAlloc] = useState({IN_STOCK:35,MF:25,IN_ETF:5,US_STOCK:10,US_ETF:5,US_BOND:0,CRYPTO:3,CASH:0,FD:5,PPF:5,EPF:5,REAL_ESTATE:2,OTHER:0});
   const [rebalMember, setRebalMember] = useState("all");
   const [rebalCash,   setRebalCash]   = useState("");
   const [txnFilterMember, setTxnFilterMember] = useState("all");
@@ -3200,211 +3200,185 @@ ${alertLines||"  None"}`;
             normTarget[k] = tSum>0 ? (+v||0)/tSum*100 : 0;
           }
 
-          // Compute trade list
+          // Compute trade list — only types with a target or current holding
           const trades = Object.keys(AT).map(type=>{
             const cur = curAlloc[type]||0;
             const curPct = rTotal>0?(cur/rTotal)*100:0;
             const tgtPct = normTarget[type]||0;
             const tgtAmt = totalWithCash * (tgtPct/100);
-            const delta  = tgtAmt - cur;  // +ve = buy more, -ve = sell/reduce
+            const delta  = tgtAmt - cur;
             return { type, cur, curPct, tgtPct, tgtAmt, delta };
           }).filter(r=>r.tgtPct>0||r.cur>0);
 
-          const maxAbs = Math.max(...trades.map(t=>Math.abs(t.delta)),1);
-          const totalBuy  = trades.filter(t=>t.delta>0).reduce((s,t)=>s+t.delta,0);
-          const totalSell = trades.filter(t=>t.delta<0).reduce((s,t)=>s+Math.abs(t.delta),0);
+          const totalBuy  = trades.filter(t=>t.delta>500).reduce((s,t)=>s+t.delta,0);
+          const totalSell = trades.filter(t=>t.delta<-500).reduce((s,t)=>s+Math.abs(t.delta),0);
+
+          // Types that have holdings or target — used to filter the input panel
+          const activeTypes = new Set(trades.map(t=>t.type));
+          // Also include types from AT that user might want to add
+          const inputTypes = Object.keys(AT).filter(t=>activeTypes.has(t) || (+targetAlloc[t]||0)>0);
 
           return(<>
-            <div style={{display:"grid",gridTemplateColumns:"340px 1fr",gap:"1rem",alignItems:"start"}}>
-
-              {/* ── Left: Target allocation inputs ── */}
+            {/* ── Member selector + Cash — compact top bar ── */}
+            <div style={{display:"flex",gap:"1rem",alignItems:"flex-end",marginBottom:"1rem",flexWrap:"wrap"}}>
               <div>
-                <div className="card" style={{marginBottom:"1rem"}}>
-                  <div className="ctitle">Set Target Allocation %</div>
-                  <div style={{marginBottom:".85rem",display:"flex",gap:".5rem",flexWrap:"wrap"}}>
-                    {["all",...members.map(m=>m.id)].map(id=>(
-                      <div key={id} onClick={()=>setRebalMember(id)}
-                        style={{padding:".28rem .6rem",borderRadius:4,cursor:"pointer",fontSize:".72rem",
-                          background:rebalMember===id?"rgba(201,168,76,.16)":"rgba(255,255,255,.04)",
-                          border:`1px solid ${rebalMember===id?"rgba(201,168,76,.4)":"rgba(255,255,255,.1)"}`,
-                          color:rebalMember===id?"#c9a84c":"rgba(255,255,255,.55)"}}>
-                        {id==="all"?"All":members.find(m=>m.id===id)?.name}
-                      </div>
-                    ))}
-                  </div>
-
-                  {Object.entries(AT).map(([type,a])=>{
-                    const tgtVal = +targetAlloc[type]||0;
-                    const cur = curAlloc[type]||0;
-                    const curPct = rTotal>0?(cur/rTotal)*100:0;
-                    return(
-                    <div key={type} style={{marginBottom:".7rem"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".25rem"}}>
-                        <span style={{fontSize:".77rem",color:"rgba(255,255,255,.85)"}}>{a.icon} {a.label}</span>
-                        <div style={{display:"flex",alignItems:"center",gap:".4rem"}}>
-                          <span style={{fontSize:".65rem",color:"rgba(255,255,255,.4)"}}>cur {curPct.toFixed(1)}%</span>
-                          <div style={{position:"relative",display:"flex",alignItems:"center"}}>
-                            <input type="number" min="0" max="100" step="1"
-                              value={targetAlloc[type]||0}
-                              onChange={e=>setTargetAlloc(p=>({...p,[type]:+e.target.value}))}
-                              style={{width:56,textAlign:"right",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",
-                                borderRadius:4,padding:".22rem .5rem",color:"#c9a84c",fontFamily:"'DM Mono',monospace",fontSize:".82rem"}}/>
-                            <span style={{marginLeft:".2rem",fontSize:".75rem",color:"rgba(255,255,255,.5)"}}>%</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{height:3,background:"rgba(255,255,255,.06)",borderRadius:2,overflow:"hidden"}}>
-                        <div style={{display:"flex",height:"100%"}}>
-                          <div style={{width:`${Math.min(curPct,100)}%`,background:a.color,opacity:.5,transition:"width .4s"}}/>
-                          {tgtVal>curPct&&<div style={{width:`${Math.min(tgtVal-curPct,100-curPct)}%`,background:a.color,opacity:.2,borderLeft:`1px dashed ${a.color}`}}/>}
-                        </div>
-                      </div>
-                    </div>);
-                  })}
-
-                  {/* Total % indicator */}
-                  <div style={{marginTop:".75rem",padding:".5rem .75rem",borderRadius:5,
-                    background:Math.abs(tSum-100)<0.5?"rgba(76,175,154,.08)":"rgba(224,124,90,.08)",
-                    border:`1px solid ${Math.abs(tSum-100)<0.5?"rgba(76,175,154,.25)":"rgba(224,124,90,.25)"}`,
-                    fontSize:".72rem",color:Math.abs(tSum-100)<0.5?"#4caf9a":"#e07c5a",textAlign:"center"}}>
-                    Total: {tSum.toFixed(1)}% {Math.abs(tSum-100)<0.5?"✓":"— should be 100%"}
-                  </div>
-
-                  {/* Available cash */}
-                  <div style={{marginTop:".75rem"}}>
-                    <label className="flbl">Available Cash to Deploy (₹)</label>
-                    <FmtInput value={rebalCash} placeholder="e.g. 50000 (optional)"
-                      onChange={e=>setRebalCash(e.target.value)}/>
-                  </div>
-                </div>
-
-                {/* Quick presets */}
-                <div className="card">
-                  <div className="ctitle">Quick Presets</div>
-                  {[
-                    {name:"Conservative",alloc:{IN_STOCK:15,MF:20,IN_ETF:5,US_STOCK:0,US_ETF:0,US_BOND:5,CRYPTO:0,FD:25,PPF:15,EPF:15,REAL_ESTATE:0}},
-                    {name:"Balanced",    alloc:{IN_STOCK:25,MF:25,IN_ETF:5,US_STOCK:8,US_ETF:5,US_BOND:0,CRYPTO:2,FD:10,PPF:10,EPF:10,REAL_ESTATE:0}},
-                    {name:"Aggressive",  alloc:{IN_STOCK:30,MF:25,IN_ETF:5,US_STOCK:15,US_ETF:5,US_BOND:0,CRYPTO:5,FD:5,PPF:5,EPF:5,REAL_ESTATE:0}},
-                    {name:"Global Growth",alloc:{IN_STOCK:20,MF:15,IN_ETF:5,US_STOCK:20,US_ETF:15,US_BOND:0,CRYPTO:5,FD:5,PPF:5,EPF:5,REAL_ESTATE:5}},
-                  ].map(p=>(
-                    <div key={p.name} onClick={()=>setTargetAlloc(p.alloc)}
-                      style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:".55rem .7rem",
-                        borderRadius:5,cursor:"pointer",marginBottom:".35rem",
-                        background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",transition:"background .15s"}}
-                      onMouseEnter={e=>e.currentTarget.style.background="rgba(201,168,76,.07)"}
-                      onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.03)"}>
-                      <span style={{fontSize:".78rem",color:"rgba(255,255,255,.85)"}}>{p.name}</span>
-                      <span style={{fontSize:".65rem",color:"rgba(255,255,255,.45)"}}>
-                        {Object.entries(p.alloc).filter(([,v])=>v>0).map(([k,v])=>`${AT[k]?.label} ${v}%`).join(" · ")}
-                      </span>
+                <label className="flbl">Member</label>
+                <div style={{display:"flex",gap:".35rem",marginTop:".3rem"}}>
+                  {["all",...members.map(m=>m.id)].map(id=>(
+                    <div key={id} onClick={()=>setRebalMember(id)}
+                      style={{padding:".28rem .6rem",borderRadius:4,cursor:"pointer",fontSize:".72rem",
+                        background:rebalMember===id?"rgba(201,168,76,.16)":"rgba(255,255,255,.04)",
+                        border:`1px solid ${rebalMember===id?"rgba(201,168,76,.4)":"rgba(255,255,255,.1)"}`,
+                        color:rebalMember===id?"#c9a84c":"rgba(255,255,255,.55)"}}>
+                      {id==="all"?"All":members.find(m=>m.id===id)?.name}
                     </div>
                   ))}
                 </div>
               </div>
-
-              {/* ── Right: Trade plan ── */}
-              <div>
-                {/* Summary KPIs */}
-                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:".75rem",marginBottom:"1rem"}}>
-                  {[
-                    {label:"Portfolio Value",val:fmtCr(rTotal),color:"#ffffff"},
-                    {label:"Total to Buy",val:fmtCr(totalBuy),color:"#4caf9a"},
-                    {label:"Total to Sell/Reduce",val:fmtCr(totalSell),color:"#e07c5a"},
-                  ].map(k=>(
-                    <div key={k.label} className="card" style={{padding:".75rem 1rem"}}>
-                      <div style={{fontSize:".62rem",color:"rgba(255,255,255,.45)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:".35rem"}}>{k.label}</div>
-                      <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1rem",color:k.color}}>{k.val}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Trade list */}
-                <div className="card" style={{marginBottom:"1rem"}}>
-                  <div className="ctitle">Rebalancing Trade Plan</div>
-                  {rTotal===0?<div className="empty">Add holdings to generate a rebalancing plan</div>:(
-                    <>
-                    <table className="ht" style={{fontSize:".78rem"}}>
-                      <thead><tr>
-                        <th>Asset Class</th>
-                        <th className="r">Current</th><th className="r">Current %</th>
-                        <th className="r">Target %</th><th className="r">Target ₹</th>
-                        <th className="r">Action</th>
-                      </tr></thead>
-                      <tbody>
-                        {trades.sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta)).map(t=>{
-                          const a=AT[t.type];
-                          const isOver=t.delta<0, isUnder=t.delta>0, isFlat=Math.abs(t.delta)<500;
-                          return(
-                          <tr key={t.type}>
-                            <td><span style={{color:a.color}}>{a.icon}</span> {a.label}</td>
-                            <td className="r mono" style={{color:"rgba(255,255,255,.7)"}}>{fmtCr(t.cur)}</td>
-                            <td className="r mono" style={{color:"rgba(255,255,255,.6)"}}>{t.curPct.toFixed(1)}%</td>
-                            <td className="r mono" style={{color:"#c9a84c"}}>{t.tgtPct.toFixed(1)}%</td>
-                            <td className="r mono" style={{color:"rgba(255,255,255,.7)"}}>{fmtCr(t.tgtAmt)}</td>
-                            <td className="r">
-                              {isFlat?<span style={{color:"rgba(255,255,255,.4)",fontSize:".68rem"}}>✓ On target</span>:(
-                                <span style={{
-                                  background:isUnder?"rgba(76,175,154,.12)":"rgba(224,124,90,.12)",
-                                  color:isUnder?"#4caf9a":"#e07c5a",
-                                  border:`1px solid ${isUnder?"rgba(76,175,154,.3)":"rgba(224,124,90,.3)"}`,
-                                  borderRadius:4,padding:"2px 8px",fontSize:".7rem",fontFamily:"'DM Mono',monospace",
-                                  fontWeight:600,whiteSpace:"nowrap"
-                                }}>
-                                  {isUnder?"▲ Buy ":"▼ Reduce "}{fmtCr(Math.abs(t.delta))}
-                                </span>
-                              )}
-                            </td>
-                          </tr>);
-                        })}
-                      </tbody>
-                    </table>
-                    <div style={{marginTop:".75rem",padding:".55rem .85rem",background:"rgba(255,255,255,.03)",borderRadius:6,fontSize:".7rem",color:"rgba(255,255,255,.45)",lineHeight:1.6}}>
-                      ℹ️ "Reduce" means sell or stop investing new money in that class. Selling may have tax implications — consult your CA before executing.
-                      {cash>0&&<span style={{color:"rgba(201,168,76,.6)"}}>  Cash of {fmtCr(cash)} included in Buy calculations.</span>}
-                    </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Visual drift chart */}
-                <div className="card">
-                  <div className="ctitle">Allocation Drift — Current vs Target</div>
-                  <div style={{display:"flex",flexDirection:"column",gap:".6rem"}}>
-                    {trades.filter(t=>t.tgtPct>0||t.cur>0).sort((a,b)=>b.tgtPct-a.tgtPct).map(t=>{
-                      const a=AT[t.type];
-                      const over=t.curPct>t.tgtPct+1;
-                      const under=t.curPct<t.tgtPct-1;
-                      return(
-                      <div key={t.type}>
-                        <div style={{display:"flex",justifyContent:"space-between",fontSize:".7rem",marginBottom:".2rem"}}>
-                          <span style={{color:"rgba(255,255,255,.65)"}}>{a.icon} {a.label}</span>
-                          <span style={{fontFamily:"'DM Mono',monospace",color:over?"#e07c5a":under?"#4caf9a":"rgba(255,255,255,.5)"}}>
-                            {t.curPct.toFixed(1)}% / {t.tgtPct.toFixed(1)}%
-                          </span>
-                        </div>
-                        <div style={{height:8,background:"rgba(255,255,255,.05)",borderRadius:4,overflow:"visible",position:"relative"}}>
-                          {/* Target marker */}
-                          <div style={{position:"absolute",left:`${Math.min(t.tgtPct,100)}%`,top:-2,width:2,height:12,
-                            background:"rgba(201,168,76,.6)",borderRadius:1,transform:"translateX(-50%)",zIndex:2}}/>
-                          {/* Current bar */}
-                          <div style={{height:"100%",width:`${Math.min(t.curPct,100)}%`,
-                            background:over?`${a.color}cc`:under?`${a.color}66`:`${a.color}99`,
-                            borderRadius:4,transition:"width .5s",position:"relative",zIndex:1}}/>
-                        </div>
-                        <div style={{fontSize:".6rem",color:"rgba(255,255,255,.35)",marginTop:".15rem"}}>
-                          {over?`Over by ${(t.curPct-t.tgtPct).toFixed(1)}%`:under?`Under by ${(t.tgtPct-t.curPct).toFixed(1)}%`:"On target"}
-                        </div>
-                      </div>);
-                    })}
-                  </div>
-                  <div style={{marginTop:".75rem",display:"flex",gap:"1rem",fontSize:".65rem",color:"rgba(255,255,255,.4)"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:".3rem"}}><div style={{width:12,height:2,background:"rgba(201,168,76,.6)"}}/> Target</div>
-                    <div style={{display:"flex",alignItems:"center",gap:".3rem"}}><div style={{width:12,height:8,background:"rgba(76,175,154,.5)",borderRadius:2}}/> Under</div>
-                    <div style={{display:"flex",alignItems:"center",gap:".3rem"}}><div style={{width:12,height:8,background:"rgba(224,124,90,.5)",borderRadius:2}}/> Over</div>
-                  </div>
-                </div>
+              <div style={{flex:"0 0 180px"}}>
+                <label className="flbl">Fresh Cash to Deploy</label>
+                <FmtInput value={rebalCash} placeholder="e.g. 50000"
+                  onChange={e=>setRebalCash(e.target.value)} style={{marginTop:".3rem"}}/>
+              </div>
+              <div style={{flex:1,textAlign:"right"}}>
+                <div style={{fontSize:".62rem",color:"rgba(255,255,255,.45)",letterSpacing:".08em",textTransform:"uppercase"}}>Portfolio</div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.15rem",color:"#ffffff"}}>{fmtCr(rTotal)}</div>
+                {cash>0&&<div style={{fontSize:".65rem",color:"rgba(201,168,76,.6)"}}>+ {fmtCr(cash)} cash</div>}
               </div>
             </div>
+
+            {/* ── Presets — inline row ── */}
+            <div style={{display:"flex",gap:".4rem",marginBottom:"1rem",flexWrap:"wrap"}}>
+              <span style={{fontSize:".62rem",color:"rgba(255,255,255,.4)",alignSelf:"center",marginRight:".2rem"}}>PRESET:</span>
+              {[
+                {name:"Conservative",alloc:{IN_STOCK:15,MF:20,IN_ETF:5,US_STOCK:0,US_ETF:0,US_BOND:5,CRYPTO:0,FD:25,PPF:15,EPF:15,REAL_ESTATE:0}},
+                {name:"Balanced",    alloc:{IN_STOCK:25,MF:25,IN_ETF:5,US_STOCK:8,US_ETF:5,US_BOND:0,CRYPTO:2,FD:10,PPF:10,EPF:10,REAL_ESTATE:0}},
+                {name:"Aggressive",  alloc:{IN_STOCK:30,MF:25,IN_ETF:5,US_STOCK:15,US_ETF:5,US_BOND:0,CRYPTO:5,FD:5,PPF:5,EPF:5,REAL_ESTATE:0}},
+                {name:"Global",      alloc:{IN_STOCK:20,MF:15,IN_ETF:5,US_STOCK:20,US_ETF:15,US_BOND:0,CRYPTO:5,FD:5,PPF:5,EPF:5,REAL_ESTATE:5}},
+              ].map(p=>(
+                <div key={p.name} onClick={()=>setTargetAlloc(p.alloc)}
+                  style={{padding:".3rem .65rem",borderRadius:4,cursor:"pointer",fontSize:".7rem",
+                    background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",
+                    color:"rgba(255,255,255,.65)",transition:"all .15s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.background="rgba(201,168,76,.1)";e.currentTarget.style.borderColor="rgba(201,168,76,.3)";e.currentTarget.style.color="#c9a84c";}}
+                  onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,.04)";e.currentTarget.style.borderColor="rgba(255,255,255,.08)";e.currentTarget.style.color="rgba(255,255,255,.65)";}}>
+                  {p.name}
+                </div>
+              ))}
+            </div>
+
+            {/* ── Unified table: Target % input + Current vs Target + Action ── */}
+            <div className="card" style={{marginBottom:"1rem"}}>
+              {rTotal===0?<div className="empty">Add holdings to see your rebalancing plan</div>:(
+                <>
+                <table className="ht" style={{fontSize:".78rem"}}>
+                  <thead><tr>
+                    <th>Asset Class</th>
+                    <th className="r" style={{width:70}}>Target %</th>
+                    <th className="r">Current</th>
+                    <th style={{width:"22%"}}>Drift</th>
+                    <th className="r">Action</th>
+                  </tr></thead>
+                  <tbody>
+                    {trades.sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta)).map(t=>{
+                      const a=AT[t.type]||{icon:"?",label:t.type,color:"#999"};
+                      const isFlat=Math.abs(t.delta)<500;
+                      const isOver=t.curPct>t.tgtPct+1;
+                      const isUnder=t.curPct<t.tgtPct-1;
+                      const driftPct = t.curPct - t.tgtPct;
+                      const maxPct = Math.max(...trades.map(x=>Math.max(x.curPct,x.tgtPct)),1);
+                      return(
+                      <tr key={t.type}>
+                        <td>
+                          <span style={{color:a.color}}>{a.icon}</span> {a.label}
+                          <div style={{fontSize:".62rem",color:"rgba(255,255,255,.4)",marginTop:1}}>{fmtCr(t.cur)}</div>
+                        </td>
+                        <td className="r">
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:".2rem"}}>
+                            <input type="number" min="0" max="100" step="1"
+                              value={targetAlloc[t.type]||0}
+                              onChange={e=>setTargetAlloc(p=>({...p,[t.type]:+e.target.value}))}
+                              style={{width:44,textAlign:"right",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",
+                                borderRadius:3,padding:".18rem .35rem",color:"#c9a84c",fontFamily:"'DM Mono',monospace",fontSize:".78rem"}}/>
+                            <span style={{fontSize:".68rem",color:"rgba(255,255,255,.4)"}}>%</span>
+                          </div>
+                        </td>
+                        <td className="r mono" style={{color:"rgba(255,255,255,.6)",fontSize:".75rem"}}>{t.curPct.toFixed(1)}%</td>
+                        <td>
+                          <div style={{display:"flex",alignItems:"center",gap:".5rem"}}>
+                            <div style={{flex:1,height:6,background:"rgba(255,255,255,.05)",borderRadius:3,overflow:"visible",position:"relative"}}>
+                              {/* Target marker */}
+                              <div style={{position:"absolute",left:`${Math.min(t.tgtPct/maxPct*100,100)}%`,top:-1,width:2,height:8,
+                                background:"rgba(201,168,76,.7)",borderRadius:1,transform:"translateX(-50%)",zIndex:2}}/>
+                              {/* Current bar */}
+                              <div style={{height:"100%",width:`${Math.min(t.curPct/maxPct*100,100)}%`,
+                                background:isOver?`${a.color}cc`:isUnder?`${a.color}55`:`${a.color}88`,
+                                borderRadius:3,transition:"width .4s"}}/>
+                            </div>
+                            <span style={{fontSize:".6rem",fontFamily:"'DM Mono',monospace",minWidth:40,textAlign:"right",
+                              color:isFlat?"rgba(255,255,255,.35)":isOver?"#e07c5a":"#4caf9a"}}>
+                              {isFlat?"—":`${driftPct>0?"+":""}${driftPct.toFixed(1)}%`}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="r">
+                          {isFlat?<span style={{color:"rgba(255,255,255,.35)",fontSize:".68rem"}}>✓</span>:(
+                            <span style={{
+                              background:t.delta>0?"rgba(76,175,154,.12)":"rgba(224,124,90,.12)",
+                              color:t.delta>0?"#4caf9a":"#e07c5a",
+                              border:`1px solid ${t.delta>0?"rgba(76,175,154,.3)":"rgba(224,124,90,.3)"}`,
+                              borderRadius:4,padding:"2px 7px",fontSize:".68rem",fontFamily:"'DM Mono',monospace",
+                              fontWeight:600,whiteSpace:"nowrap"
+                            }}>
+                              {t.delta>0?"▲ ":"▼ "}{fmtCr(Math.abs(t.delta))}
+                            </span>
+                          )}
+                        </td>
+                      </tr>);
+                    })}
+                  </tbody>
+                </table>
+
+                {/* Total % + summary footer */}
+                <div style={{marginTop:".75rem",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:".5rem"}}>
+                  <div style={{padding:".4rem .7rem",borderRadius:4,fontSize:".7rem",
+                    background:Math.abs(tSum-100)<0.5?"rgba(76,175,154,.08)":"rgba(224,124,90,.08)",
+                    border:`1px solid ${Math.abs(tSum-100)<0.5?"rgba(76,175,154,.2)":"rgba(224,124,90,.2)"}`,
+                    color:Math.abs(tSum-100)<0.5?"#4caf9a":"#e07c5a"}}>
+                    Target total: {tSum.toFixed(0)}% {Math.abs(tSum-100)<0.5?"✓":"— adjust to 100%"}
+                  </div>
+                  <div style={{display:"flex",gap:"1rem",fontSize:".72rem"}}>
+                    {totalBuy>0&&<span style={{color:"#4caf9a"}}>Buy {fmtCr(totalBuy)}</span>}
+                    {totalSell>0&&<span style={{color:"#e07c5a"}}>Reduce {fmtCr(totalSell)}</span>}
+                  </div>
+                </div>
+
+                <div style={{marginTop:".6rem",fontSize:".65rem",color:"rgba(255,255,255,.35)",lineHeight:1.5}}>
+                  ℹ️ "Reduce" = sell or redirect future SIPs. Selling may have tax implications — consult your CA.
+                  {cash>0&&<span style={{color:"rgba(201,168,76,.5)"}}> Cash of {fmtCr(cash)} included in Buy amounts.</span>}
+                </div>
+
+                {/* Legend */}
+                <div style={{marginTop:".5rem",display:"flex",gap:".8rem",fontSize:".6rem",color:"rgba(255,255,255,.35)"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:".25rem"}}><div style={{width:8,height:2,background:"rgba(201,168,76,.7)"}}/> Target</div>
+                  <div style={{display:"flex",alignItems:"center",gap:".25rem"}}><div style={{width:8,height:6,background:"rgba(76,175,154,.5)",borderRadius:1}}/> Under</div>
+                  <div style={{display:"flex",alignItems:"center",gap:".25rem"}}><div style={{width:8,height:6,background:"rgba(224,124,90,.5)",borderRadius:1}}/> Over</div>
+                </div>
+                </>
+              )}
+            </div>
+
+            {/* ── Add more asset types (collapsed) ── */}
+            {Object.keys(AT).filter(t=>!activeTypes.has(t)&&(+targetAlloc[t]||0)===0).length>0&&(
+              <div style={{fontSize:".68rem",color:"rgba(255,255,255,.4)",cursor:"pointer",textAlign:"center",padding:".4rem",
+                border:"1px dashed rgba(255,255,255,.1)",borderRadius:6}}
+                onClick={()=>{
+                  const missing = Object.keys(AT).filter(t=>!activeTypes.has(t)&&(+targetAlloc[t]||0)===0);
+                  if(missing.length) setTargetAlloc(p=>{const n={...p};missing.forEach(t=>n[t]=0);return n;});
+                }}>
+                + Show all asset types ({Object.keys(AT).filter(t=>!activeTypes.has(t)&&(+targetAlloc[t]||0)===0).length} hidden — no holdings or target)
+              </div>
+            )}
           </>);
         })()}
 
