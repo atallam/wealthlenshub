@@ -211,7 +211,7 @@ const SEED = {
     "h15": [{date:"2022-09-01",units:210,price:428.57,type:"BUY"}],
   }
 };
-const BG={name:"",targetAmount:"",targetDate:"",linkedMembers:["all"],category:"Retirement",color:"#c9a84c",notes:"",priority:1,monthlyContribution:""};
+const BG={name:"",targetAmount:"",targetDate:"",linkedMembers:["all"],linkedHoldings:[],category:"Retirement",color:"#c9a84c",notes:"",priority:1,monthlyContribution:""};
 const BA={type:"ALLOCATION_DRIFT",assetType:"IN_STOCK",threshold:"",label:"",active:true};
 
 // ── Goal category metadata ──────────────────────────────────────
@@ -1351,7 +1351,7 @@ export default function App() {
     setHoldings(hlds || []);
   }
   function saveGoal(){
-    const gd={...goalForm,targetAmount:+goalForm.targetAmount,monthlyContribution:+goalForm.monthlyContribution||0,linkedMembers:goalForm.linkedMembers||["all"]};
+    const gd={...goalForm,targetAmount:+goalForm.targetAmount,monthlyContribution:+goalForm.monthlyContribution||0,linkedMembers:goalForm.linkedMembers||["all"],linkedHoldings:goalForm.linkedHoldings||[]};
     if(editingGoalId){
       // Edit existing goal
       setGoals(p=>p.map(g=>g.id===editingGoalId?{...g,...gd}:g));
@@ -1362,7 +1362,7 @@ export default function App() {
     }
     setGoalForm(BG);setEditingGoalId(null);setModal(null);
   }
-  function openGoalEdit(g){setGoalForm({name:g.name,targetAmount:g.targetAmount,targetDate:g.targetDate,linkedMembers:g.linkedMembers||["all"],category:g.category,color:g.color,notes:g.notes||"",priority:g.priority,monthlyContribution:g.monthlyContribution||""});setEditingGoalId(g.id);setModal("goal");}
+  function openGoalEdit(g){setGoalForm({name:g.name,targetAmount:g.targetAmount,targetDate:g.targetDate,linkedMembers:g.linkedMembers||["all"],linkedHoldings:g.linkedHoldings||[],category:g.category,color:g.color,notes:g.notes||"",priority:g.priority,monthlyContribution:g.monthlyContribution||""});setEditingGoalId(g.id);setModal("goal");}
   function addAlert(){setAlerts(p=>[...p,{id:uid(),...alertForm,threshold:+alertForm.threshold}]);setAlertForm(BA);setModal(null);}
 
   // ── MF Search ────────────────────────────────────────────────────
@@ -2309,8 +2309,14 @@ ${alertLines||"  None"}`;
         {/* ── GOALS ── */}
         {tab==="goals"&&(()=>{
           const sortedGoals=[...goals].sort((a,b)=>(a.priority||99)-(b.priority||99));
-          // helper: compute current value relevant to a goal's linked members
+          // helper: compute current value relevant to a goal's linked holdings (or fall back to linked members)
           function goalCur(g){
+            const lh=g.linkedHoldings||[];
+            if(lh.length>0){
+              // New: sum only earmarked holdings
+              return allHoldings.reduce((s,h)=>lh.includes(h.id)?s+getVal(h):s,0);
+            }
+            // Fallback: old behavior — all holdings for linked members
             const lm=g.linkedMembers||["all"];
             if(lm.includes("all")||lm.length===0) return allCur;
             return allHoldings.reduce((s,h)=>lm.includes(h.member_id)?s+getVal(h):s,0);
@@ -2473,11 +2479,18 @@ ${alertLines||"  None"}`;
                   </div>
                 </div>
 
-                {/* Members + SIP strip */}
+                {/* Members + Holdings + SIP strip */}
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:".4rem",marginTop:".15rem"}}>
-                  <span style={{fontSize:".62rem",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:12,padding:"2px 9px",color:"rgba(255,255,255,.5)"}}>
-                    👤 {g.memberNames}
-                  </span>
+                  <div style={{display:"flex",gap:".3rem",flexWrap:"wrap"}}>
+                    <span style={{fontSize:".62rem",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:12,padding:"2px 9px",color:"rgba(255,255,255,.5)"}}>
+                      👤 {g.memberNames}
+                    </span>
+                    {(g.linkedHoldings||[]).length>0&&(
+                      <span style={{fontSize:".62rem",background:"rgba(160,132,202,.06)",border:"1px solid rgba(160,132,202,.15)",borderRadius:12,padding:"2px 9px",color:"rgba(160,132,202,.7)"}}>
+                        📌 {g.linkedHoldings.length} holding{g.linkedHoldings.length!==1?"s":""}
+                      </span>
+                    )}
+                  </div>
                   {g.monthly>0&&(
                     <span style={{fontSize:".62rem",background:"rgba(76,175,154,.06)",border:"1px solid rgba(76,175,154,.15)",borderRadius:12,padding:"2px 9px",color:"rgba(76,175,154,.7)",fontFamily:"'DM Mono',monospace"}}>
                       SIP ₹{g.monthly.toLocaleString("en-IN")}/mo
@@ -2486,7 +2499,7 @@ ${alertLines||"  None"}`;
                 </div>
 
                 {/* Expandable details panel */}
-                <div style={{overflow:"hidden",transition:"max-height .35s ease, opacity .25s ease, margin-top .25s ease",maxHeight:expanded?200:0,opacity:expanded?1:0,marginTop:expanded?".7rem":0}}>
+                <div style={{overflow:"hidden",transition:"max-height .35s ease, opacity .25s ease, margin-top .25s ease",maxHeight:expanded?380:0,opacity:expanded?1:0,marginTop:expanded?".7rem":0}}>
                   <div style={{borderTop:"1px solid rgba(255,255,255,.06)",paddingTop:".65rem"}}>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:".45rem .8rem",fontSize:".68rem"}}>
                       <div>
@@ -2517,6 +2530,27 @@ ${alertLines||"  None"}`;
                             :"Set a monthly SIP to see projection"}
                         </div>
                       </div>
+                      {/* Earmarked holdings */}
+                      {(g.linkedHoldings||[]).length>0&&(
+                        <div style={{gridColumn:"1 / -1",marginTop:".15rem"}}>
+                          <span style={{color:"rgba(255,255,255,.35)"}}>Earmarked Holdings ({g.linkedHoldings.length})</span>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:".3rem",marginTop:4}}>
+                            {g.linkedHoldings.map(hid=>{
+                              const h=allHoldings.find(x=>x.id===hid);
+                              if(!h) return null;
+                              const a=AT[h.type];
+                              return(
+                                <span key={hid} style={{fontSize:".6rem",padding:"1px 7px",borderRadius:10,
+                                  background:a?a.color+"14":"rgba(255,255,255,.04)",
+                                  border:`1px solid ${a?a.color+"33":"rgba(255,255,255,.08)"}`,
+                                  color:a?a.color:"rgba(255,255,255,.6)",whiteSpace:"nowrap"}}>
+                                  {a?.icon} {h.name.length>22?h.name.slice(0,20)+"…":h.name}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -4308,6 +4342,92 @@ ${alertLines||"  None"}`;
           <div style={{fontSize:".65rem",color:"rgba(255,255,255,.38)",marginTop:".4rem"}}>Progress will be calculated using selected members' portfolio value</div>
         </div>
 
+        {/* Earmark holdings to this goal */}
+        {holdings.length>0&&(
+        <div className="fg">
+          <label className="flbl">Earmark Holdings <span style={{textTransform:"none",letterSpacing:"normal",fontWeight:400,opacity:.6}}>(optional — leave empty to use all)</span></label>
+          {(()=>{
+            const lh=goalForm.linkedHoldings||[];
+            const lm=goalForm.linkedMembers||["all"];
+            // Filter holdings by linked members first
+            const eligible=allHoldings.filter(h=>lm.includes("all")||lm.includes(h.member_id));
+            // Group by asset type
+            const grouped={};
+            eligible.forEach(h=>{
+              const t=h.type||"OTHER";
+              if(!grouped[t]) grouped[t]=[];
+              grouped[t].push(h);
+            });
+            const types=Object.keys(grouped).sort();
+            const totalLinked=lh.reduce((s,hid)=>{const h=allHoldings.find(x=>x.id===hid);return h?s+getVal(h):s;},0);
+
+            return(<>
+              {/* Summary bar */}
+              {lh.length>0&&(
+                <div style={{display:"flex",alignItems:"center",gap:".7rem",padding:".45rem .75rem",marginBottom:".5rem",background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.15)",borderRadius:7,fontSize:".7rem"}}>
+                  <span style={{color:"rgba(255,255,255,.5)"}}>{lh.length} holding{lh.length!==1?"s":""} earmarked</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>{fmtCr(totalLinked)}</span>
+                  {goalForm.targetAmount>0&&<span style={{color:"rgba(255,255,255,.35)"}}>({(totalLinked/(+goalForm.targetAmount)*100).toFixed(0)}% of target)</span>}
+                  <button onClick={()=>setGoalForm(p=>({...p,linkedHoldings:[]}))}
+                    style={{marginLeft:"auto",background:"none",border:"1px solid rgba(255,255,255,.1)",borderRadius:4,padding:"1px 8px",fontSize:".6rem",cursor:"pointer",color:"rgba(255,255,255,.4)"}}>Clear all</button>
+                </div>
+              )}
+              {/* Holdings grouped by type */}
+              <div style={{maxHeight:220,overflowY:"auto",border:"1px solid rgba(255,255,255,.07)",borderRadius:8,background:"rgba(255,255,255,.02)"}}>
+                {types.map(t=>{
+                  const a=AT[t];
+                  const items=grouped[t];
+                  if(!a||!items||items.length===0) return null;
+                  return(
+                  <div key={t}>
+                    <div style={{padding:".35rem .7rem",fontSize:".6rem",letterSpacing:".08em",textTransform:"uppercase",color:a.color,background:"rgba(255,255,255,.02)",borderBottom:"1px solid rgba(255,255,255,.04)",position:"sticky",top:0}}>
+                      {a.icon} {a.label} ({items.length})
+                    </div>
+                    {items.map(h=>{
+                      const sel=lh.includes(h.id);
+                      const val=getVal(h);
+                      const mn=members.find(m=>m.id===h.member_id)?.name;
+                      // Check if this holding is already earmarked for another goal
+                      const otherGoal=goals.find(og=>og.id!==editingGoalId&&(og.linkedHoldings||[]).includes(h.id));
+                      return(
+                      <div key={h.id} onClick={()=>{
+                        setGoalForm(p=>{
+                          const cur=p.linkedHoldings||[];
+                          return{...p,linkedHoldings:sel?cur.filter(x=>x!==h.id):[...cur,h.id]};
+                        });
+                      }}
+                        style={{display:"flex",alignItems:"center",gap:".55rem",padding:".4rem .7rem",cursor:"pointer",transition:"background .15s",
+                          borderBottom:"1px solid rgba(255,255,255,.03)",
+                          background:sel?"rgba(201,168,76,.08)":"transparent"}}>
+                        {/* Checkbox */}
+                        <div style={{width:16,height:16,borderRadius:4,border:`1.5px solid ${sel?"#c9a84c":"rgba(255,255,255,.18)"}`,
+                          background:sel?"rgba(201,168,76,.3)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .15s"}}>
+                          {sel&&<span style={{color:"#c9a84c",fontSize:".6rem",fontWeight:700}}>✓</span>}
+                        </div>
+                        {/* Name + member */}
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:".74rem",color:sel?"rgba(255,255,255,.95)":"rgba(255,255,255,.7)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{h.name}</div>
+                          <div style={{fontSize:".6rem",color:"rgba(255,255,255,.3)",display:"flex",gap:".5rem"}}>
+                            {mn&&<span>{mn}</span>}
+                            {h.ticker&&<span style={{fontFamily:"'DM Mono',monospace"}}>{h.ticker}</span>}
+                            {otherGoal&&<span style={{color:"rgba(224,124,90,.6)"}}>⚠ also in "{otherGoal.name}"</span>}
+                          </div>
+                        </div>
+                        {/* Value */}
+                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:sel?"#c9a84c":"rgba(255,255,255,.45)",flexShrink:0}}>{fmtCr(val)}</div>
+                      </div>);
+                    })}
+                  </div>);
+                })}
+              </div>
+              <div style={{fontSize:".6rem",color:"rgba(255,255,255,.3)",marginTop:".35rem"}}>
+                {lh.length===0?"If no holdings are selected, progress uses total portfolio value for linked members":"Only selected holdings count toward this goal's progress"}
+              </div>
+            </>);
+          })()}
+        </div>
+        )}
+
         <FG label="Monthly SIP ₹ (optional)" style={{marginBottom:"1.5rem"}}>
           <FmtInput placeholder="e.g. 10000" value={goalForm.monthlyContribution} onChange={e=>setGoalForm(p=>({...p,monthlyContribution:e.target.value}))}/>
           {goalForm.monthlyContribution>0&&goalForm.targetAmount>0&&(
@@ -4568,6 +4688,8 @@ function GoalPlanModal({open,onClose,goals,members,holdings,allCur,allInv}){
   const [error,setError]     = useState("");
 
   function goalCurVal(g){
+    const lh=g.linkedHoldings||[];
+    if(lh.length>0) return holdings.reduce((s,h)=>lh.includes(h.id)?s+getVal(h):s,0);
     const lm=g.linkedMembers||["all"];
     if(lm.includes("all")||lm.length===0) return allCur;
     return holdings.reduce((s,h)=>lm.includes(h.member_id)?s+getVal(h):s,0);
@@ -4589,7 +4711,9 @@ function GoalPlanModal({open,onClose,goals,members,holdings,allCur,allInv}){
       const yLeft=((Math.max(0,new Date(g.targetDate)-new Date()))/(864e5*365.25)).toFixed(1);
       const lm=g.linkedMembers||["all"];
       const mNames=lm.includes("all")?"all family members":lm.map(id=>members.find(m=>m.id===id)?.name||"?").join(", ");
-      return `${i+1}. ${g.name} [Priority ${g.priority||i+1}] — Category: ${g.category} | Target: ${fmtCr(g.targetAmount)} by ${g.targetDate} | Current: ${fmtCr(cur)} (${pct}%) | Remaining: ${fmtCr(rem)} | Time left: ${yLeft}y | Linked to: ${mNames}${g.monthlyContribution>0?` | Monthly SIP: ₹${(+g.monthlyContribution).toLocaleString("en-IN")}`:""}`;
+      const lh=g.linkedHoldings||[];
+      const linkedHNames=lh.length>0?lh.map(hid=>{const h=holdings.find(x=>x.id===hid);return h?`${h.name} (${fmtCr(getVal(h))})`:"?";}).join(", "):"none (using total portfolio)";
+      return `${i+1}. ${g.name} [Priority ${g.priority||i+1}] — Category: ${g.category} | Target: ${fmtCr(g.targetAmount)} by ${g.targetDate} | Current: ${fmtCr(cur)} (${pct}%) | Remaining: ${fmtCr(rem)} | Time left: ${yLeft}y | Linked to: ${mNames} | Earmarked holdings: ${linkedHNames}${g.monthlyContribution>0?` | Monthly SIP: ₹${(+g.monthlyContribution).toLocaleString("en-IN")}`:""}`;
     }).join("\n");
 
     const memberBreakdown=members.map(m=>{
