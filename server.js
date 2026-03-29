@@ -3401,6 +3401,20 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
         const rawPdfText = pages.join("\n");
         console.log(`📄 PDF: extracted ${rawPdfText.length} chars from ${pages.length} pages. First 200: "${rawPdfText.substring(0,200).replace(/\n/g,"\\n")}"`);
 
+        // ── Diagnostic: check what keywords exist in the text ──
+        const hasCAS = /consolidated\s*account\s*statement|nsdl\s*cas|cdsl\s*cas/i.test(rawPdfText);
+        const hasNSDL = /nsdl/i.test(rawPdfText);
+        const hasCDSL = /cdsl/i.test(rawPdfText);
+        const hasMF = /mutual\s*fund/i.test(rawPdfText);
+        const hasDemat = /demat/i.test(rawPdfText);
+        const hasFolio = /folio/i.test(rawPdfText);
+        const hasClosingBal = /closing\s*unit\s*balance/i.test(rawPdfText);
+        const hasINF = /\bINF[A-Z0-9]{9}\b/.test(rawPdfText);
+        const hasINE = /\bINE[A-Z0-9]{9}\b/.test(rawPdfText);
+        const hasNAV = /\bNAV\b/i.test(rawPdfText);
+        const hasValuation = /valuation/i.test(rawPdfText);
+        console.log(`📄 PDF keywords: CAS=${hasCAS} NSDL=${hasNSDL} CDSL=${hasCDSL} MF=${hasMF} Demat=${hasDemat} Folio=${hasFolio} ClosingBal=${hasClosingBal} INF=${hasINF} INE=${hasINE} NAV=${hasNAV} Val=${hasValuation}`);
+
         // Debug mode: return raw PDF text for troubleshooting
         if (req.query.debug === "1" || req.body?.debug === "1") {
           return res.json({
@@ -3433,15 +3447,18 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
 
         // ── Route 1: NSDL/CDSL CAS statement ──
         if (/consolidated\s*account\s*statement|nsdl|cdsl/i.test(rawPdfText) && /mutual\s*fund|demat|folio/i.test(rawPdfText)) {
+          console.log("📋 CAS: Route 1 matched — entering CAS parser");
           // Debug: log a snippet around each "Closing Unit Balance" match
           const debugRe = /Closing\s*Unit\s*Balance/gi;
           let dm;
           while ((dm = debugRe.exec(rawPdfText)) !== null) {
-            const snippet = rawPdfText.substring(Math.max(0, dm.index - 100), dm.index + 200);
-            console.log(`📋 CAS DEBUG — Closing Unit Balance found at ${dm.index}:\n  ...${snippet.replace(/\n/g,"\\n")}...`);
+            const snippet = rawPdfText.substring(Math.max(0, dm.index - 100), dm.index + 250);
+            console.log(`📋 CAS DEBUG — Closing Unit Balance at ${dm.index}:\n  ...${snippet.replace(/\n/g,"\\n")}...`);
           }
           const result = parseNSDLCASStatement(rawPdfText);
+          console.log(`📋 CAS: parser returned ${result.holdings.length} holdings, ${result.warnings.length} warnings`);
           if (result.holdings.length > 0) {
+            result.holdings.forEach((h,i) => console.log(`   [${i}] ${h.name} | units=${h.units} | nav=${h.current_nav||h.current_price} | val=${h.current_value} | cost=${h.purchase_value} | type=${h.type}`));
             const { data: existing } = await supabase.from("holdings")
               .select("name, ticker, scheme_code, type").eq("user_id", req.user.id);
             const existingSet = new Set(
@@ -3456,6 +3473,7 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
           }
         }
 
+        console.log("📄 PDF: Route 1 (CAS) did not match or returned 0 holdings. Trying Route 2...");
         // ── Route 2: Fidelity statement ──
         if (/fidelity/i.test(rawPdfText) && /account\s*#/i.test(rawPdfText)) {
           const result = parseFidelityPDFStatement(rawPdfText);
