@@ -152,10 +152,10 @@ const SEED = {
     { id:m2, name:"Priya",   relation:"Spouse" },
   ],
   goals: [
-    { id:"g1", name:"Retirement Corpus",    targetAmount:30000000, targetDate:"2040-03-31", category:"Retirement",    color:"#c9a84c", priority:1, linkedMembers:["all"],  monthlyContribution:50000, notes:"Target 3Cr by 55" },
-    { id:"g2", name:"Daughter's Education", targetAmount:5000000,  targetDate:"2032-06-01", category:"Education",     color:"#a084ca", priority:2, linkedMembers:[m1,m2], monthlyContribution:15000, notes:"Engineering + Masters" },
-    { id:"g3", name:"Dream Home Upgrade",   targetAmount:8000000,  targetDate:"2028-12-31", category:"Real Estate",   color:"#5a9ce0", priority:3, linkedMembers:["all"],  monthlyContribution:25000, notes:"Upgrade to 3BHK" },
-    { id:"g4", name:"Emergency Fund",       targetAmount:1500000,  targetDate:"2025-12-31", category:"Emergency Fund",color:"#4caf9a", priority:4, linkedMembers:["all"],  monthlyContribution:20000, notes:"6 months expenses" },
+    { id:"g1", name:"Retirement Corpus",    targetAmount:30000000, targetDate:"2040-03-31", category:"Retirement",    color:"#c9a84c", priority:1, linkedMembers:["all"],  linkedHoldings:[], monthlyContribution:50000, notes:"Target 3Cr by 55" },
+    { id:"g2", name:"Daughter's Education", targetAmount:5000000,  targetDate:"2032-06-01", category:"Education",     color:"#a084ca", priority:2, linkedMembers:[m1,m2], linkedHoldings:["h1","h3","h12"], monthlyContribution:15000, notes:"Engineering + Masters — funded by large cap + flexi cap MFs" },
+    { id:"g3", name:"Dream Home Upgrade",   targetAmount:8000000,  targetDate:"2028-12-31", category:"Real Estate",   color:"#5a9ce0", priority:3, linkedMembers:["all"],  linkedHoldings:["h10","h11"], monthlyContribution:25000, notes:"Upgrade to 3BHK — funded by FD + PPF" },
+    { id:"g4", name:"Emergency Fund",       targetAmount:1500000,  targetDate:"2025-12-31", category:"Emergency Fund",color:"#4caf9a", priority:4, linkedMembers:["all"],  linkedHoldings:[], monthlyContribution:20000, notes:"6 months expenses" },
   ],
   alerts: [
     { id:"al1", type:"ALLOCATION_DRIFT",   assetType:"IN_STOCK", threshold:60, label:"Equity over 60% — allocation review needed", active:true },
@@ -203,7 +203,7 @@ const SEED = {
     "h15": [{date:"2022-09-01",units:210,price:428.57,type:"BUY"}],
   }
 };
-const BG={name:"",targetAmount:"",targetDate:"",linkedMembers:["all"],category:"Retirement",color:"#c9a84c",notes:"",priority:1,monthlyContribution:""};
+const BG={name:"",targetAmount:"",targetDate:"",linkedMembers:["all"],linkedHoldings:[],category:"Retirement",color:"#c9a84c",notes:"",priority:1,monthlyContribution:""};
 const BA={type:"ALLOCATION_DRIFT",assetType:"IN_STOCK",threshold:"",label:"",active:true};
 
 // ── API helper (attaches Supabase JWT) ───────────────────────────
@@ -1306,7 +1306,7 @@ export default function App() {
     const hlds = await api("/api/holdings");
     setHoldings(hlds || []);
   }
-  function addGoal(){setGoals(p=>{const nextPri=p.length>0?Math.max(...p.map(x=>x.priority||1))+1:1;return[...p,{id:uid(),...goalForm,targetAmount:+goalForm.targetAmount,priority:goalForm.priority||nextPri,linkedMembers:goalForm.linkedMembers||["all"],monthlyContribution:+goalForm.monthlyContribution||0}];});setGoalForm(BG);setModal(null);}
+  function addGoal(){setGoals(p=>{const nextPri=p.length>0?Math.max(...p.map(x=>x.priority||1))+1:1;return[...p,{id:uid(),...goalForm,targetAmount:+goalForm.targetAmount,priority:goalForm.priority||nextPri,linkedMembers:goalForm.linkedMembers||["all"],linkedHoldings:goalForm.linkedHoldings||[],monthlyContribution:+goalForm.monthlyContribution||0}];});setGoalForm(BG);setModal(null);}
   function addAlert(){setAlerts(p=>[...p,{id:uid(),...alertForm,threshold:+alertForm.threshold}]);setAlertForm(BA);setModal(null);}
 
   // ── MF Search ────────────────────────────────────────────────────
@@ -2282,8 +2282,15 @@ ${alertLines||"  None"}`;
         {/* ── GOALS ── */}
         {tab==="goals"&&(()=>{
           const sortedGoals=[...goals].sort((a,b)=>(a.priority||99)-(b.priority||99));
-          // helper: compute current value relevant to a goal's linked members
+          // helper: compute current value relevant to a goal
+          // Priority: linkedHoldings (specific) > linkedMembers (member-level) > all
           function goalCur(g){
+            const lh=g.linkedHoldings||[];
+            if(lh.length>0){
+              // Specific holdings linked to this goal
+              const linkedSet=new Set(lh);
+              return allHoldings.filter(h=>linkedSet.has(h.id)).reduce((s,h)=>s+getValINR(h),0);
+            }
             const lm=g.linkedMembers||["all"];
             if(lm.includes("all")||lm.length===0) return allCur;
             return allHoldings.reduce((s,h)=>lm.includes(h.member_id)?s+getValINR(h):s,0);
@@ -2332,11 +2339,33 @@ ${alertLines||"  None"}`;
                 {g.notes&&<div style={{fontSize:".72rem",color:"rgba(255,255,255,.4)",marginBottom:".6rem"}}>{g.notes}</div>}
 
                 {/* Linked members pill */}
-                <div style={{marginBottom:".85rem"}}>
+                <div style={{marginBottom:".6rem",display:"flex",flexWrap:"wrap",gap:".35rem"}}>
                   <span style={{fontSize:".65rem",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,padding:"2px 9px",color:"rgba(255,255,255,.55)"}}>
                     👤 {memberNames}
                   </span>
+                  {(g.linkedHoldings||[]).length>0&&(
+                    <span style={{fontSize:".65rem",background:"rgba(201,168,76,.08)",border:"1px solid rgba(201,168,76,.2)",borderRadius:12,padding:"2px 9px",color:"rgba(201,168,76,.7)"}}>
+                      📌 {g.linkedHoldings.length} holding{g.linkedHoldings.length!==1?"s":""} linked
+                    </span>
+                  )}
                 </div>
+
+                {/* Linked holdings detail (collapsible) */}
+                {(g.linkedHoldings||[]).length>0&&(
+                  <div style={{marginBottom:".75rem",padding:".45rem .6rem",background:"rgba(255,255,255,.02)",borderRadius:6,border:"1px solid rgba(255,255,255,.05)"}}>
+                    {g.linkedHoldings.slice(0,5).map(hid=>{
+                      const lh=allHoldings.find(h=>h.id===hid);
+                      if(!lh) return null;
+                      const a=AT[lh.type]||{icon:"📦",color:"#888"};
+                      return(
+                      <div key={hid} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:".2rem 0",fontSize:".68rem"}}>
+                        <span style={{color:"rgba(255,255,255,.7)"}}>{a.icon} {lh.name?.slice(0,30)}{lh.name?.length>30?"…":""}</span>
+                        <span style={{fontFamily:"'DM Mono',monospace",color:"rgba(255,255,255,.5)"}}>{fmtCr(getValINR(lh))}</span>
+                      </div>);
+                    })}
+                    {g.linkedHoldings.length>5&&<div style={{fontSize:".6rem",color:"rgba(255,255,255,.35)",marginTop:".2rem"}}>+{g.linkedHoldings.length-5} more</div>}
+                  </div>
+                )}
 
                 {/* Progress */}
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:".45rem"}}>
@@ -4121,7 +4150,52 @@ ${alertLines||"  None"}`;
               </div>);
             })}
           </div>
-          <div style={{fontSize:".65rem",color:"rgba(255,255,255,.38)",marginTop:".4rem"}}>Progress will be calculated using selected members' portfolio value</div>
+          <div style={{fontSize:".65rem",color:"rgba(255,255,255,.38)",marginTop:".4rem"}}>Progress will be calculated using selected members' portfolio value — unless specific holdings are linked below.</div>
+        </div>
+
+        {/* Linked holdings — specific assets funding this goal */}
+        <div className="fg">
+          <label className="flbl">Link Specific Holdings (optional)</label>
+          <div style={{fontSize:".63rem",color:"rgba(255,255,255,.35)",marginBottom:".4rem"}}>Select individual holdings to track against this goal. Leave empty to use total member portfolio.</div>
+          <div style={{maxHeight:200,overflowY:"auto",border:"1px solid rgba(255,255,255,.08)",borderRadius:6,padding:".3rem"}}>
+            {(()=>{
+              const lm=goalForm.linkedMembers||["all"];
+              const relevantH = lm.includes("all") ? holdings : holdings.filter(h=>lm.includes(h.member_id));
+              const selectedSet = new Set(goalForm.linkedHoldings||[]);
+              if(relevantH.length===0) return <div style={{fontSize:".68rem",color:"rgba(255,255,255,.3)",padding:".5rem",textAlign:"center"}}>No holdings available</div>;
+              return relevantH.map(h=>{
+                const a=AT[h.type]||{icon:"📦",color:"#888",label:h.type};
+                const sel=selectedSet.has(h.id);
+                const val=getValINR(h);
+                return(
+                <div key={h.id} onClick={()=>setGoalForm(p=>{
+                  const cur=new Set(p.linkedHoldings||[]);
+                  sel?cur.delete(h.id):cur.add(h.id);
+                  return {...p,linkedHoldings:[...cur]};
+                })}
+                style={{display:"flex",alignItems:"center",gap:".5rem",padding:".35rem .5rem",cursor:"pointer",borderRadius:4,
+                  background:sel?"rgba(201,168,76,.1)":"transparent",
+                  border:`1px solid ${sel?"rgba(201,168,76,.3)":"transparent"}`,
+                  transition:"all .12s",marginBottom:".15rem"}}
+                onMouseEnter={e=>{if(!sel)e.currentTarget.style.background="rgba(255,255,255,.03)";}}
+                onMouseLeave={e=>{if(!sel)e.currentTarget.style.background="transparent";}}>
+                  <div style={{width:16,height:16,borderRadius:3,border:`1.5px solid ${sel?"#c9a84c":"rgba(255,255,255,.2)"}`,
+                    background:sel?"rgba(201,168,76,.25)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",
+                    fontSize:".6rem",color:"#c9a84c",flexShrink:0}}>{sel?"✓":""}</div>
+                  <span style={{fontSize:".7rem",color:a.color,flexShrink:0}}>{a.icon}</span>
+                  <span style={{fontSize:".72rem",color:"rgba(255,255,255,.8)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.name}</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:".65rem",color:"rgba(255,255,255,.4)",flexShrink:0}}>{fmtCr(val)}</span>
+                </div>);
+              });
+            })()}
+          </div>
+          {(goalForm.linkedHoldings||[]).length>0&&(
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:".4rem"}}>
+              <span style={{fontSize:".65rem",color:"rgba(201,168,76,.7)"}}>{goalForm.linkedHoldings.length} holding{goalForm.linkedHoldings.length!==1?"s":""} selected · {fmtCr(holdings.filter(h=>(goalForm.linkedHoldings||[]).includes(h.id)).reduce((s,h)=>s+getValINR(h),0))}</span>
+              <button onClick={()=>setGoalForm(p=>({...p,linkedHoldings:[]}))}
+                style={{background:"none",border:"none",cursor:"pointer",fontSize:".62rem",color:"rgba(224,124,90,.6)"}}>Clear all</button>
+            </div>
+          )}
         </div>
 
         <FG label="Monthly Contribution ₹ (optional)" style={{marginBottom:"1.5rem"}}><FmtInput placeholder="e.g. 10000" value={goalForm.monthlyContribution} onChange={e=>setGoalForm(p=>({...p,monthlyContribution:e.target.value}))}/></FG>
@@ -4366,6 +4440,11 @@ function GoalPlanModal({open,onClose,goals,members,holdings,allCur,allInv}){
   const [error,setError]     = useState("");
 
   function goalCurVal(g){
+    const lh=g.linkedHoldings||[];
+    if(lh.length>0){
+      const linkedSet=new Set(lh);
+      return holdings.filter(h=>linkedSet.has(h.id)).reduce((s,h)=>s+getValINR(h),0);
+    }
     const lm=g.linkedMembers||["all"];
     if(lm.includes("all")||lm.length===0) return allCur;
     return holdings.reduce((s,h)=>lm.includes(h.member_id)?s+getValINR(h):s,0);
@@ -4387,8 +4466,9 @@ function GoalPlanModal({open,onClose,goals,members,holdings,allCur,allInv}){
       const yLeft=((Math.max(0,new Date(g.targetDate)-new Date()))/(864e5*365.25)).toFixed(1);
       const lm=g.linkedMembers||["all"];
       const mNames=lm.includes("all")?"all family members":lm.map(id=>members.find(m=>m.id===id)?.name||"?").join(", ");
-      return `${i+1}. ${g.name} [Priority ${g.priority||i+1}] — Category: ${g.category} | Target: ${fmtCr(g.targetAmount)} by ${g.targetDate} | Current: ${fmtCr(cur)} (${pct}%) | Remaining: ${fmtCr(rem)} | Time left: ${yLeft}y | Linked to: ${mNames}${g.monthlyContribution>0?` | Monthly SIP: ₹${(+g.monthlyContribution).toLocaleString("en-IN")}`:""}`;
-    }).join("\n");
+      const lh=g.linkedHoldings||[];
+      const linkedDetail=lh.length>0?` | Funded by: ${lh.slice(0,5).map(hid=>{const h=holdings.find(x=>x.id===hid);return h?`${h.name} (${fmtCr(getValINR(h))})`:"?";}).join(", ")}${lh.length>5?` +${lh.length-5} more`:""}`:"";
+      return `${i+1}. ${g.name} [Priority ${g.priority||i+1}] — Category: ${g.category} | Target: ${fmtCr(g.targetAmount)} by ${g.targetDate} | Current: ${fmtCr(cur)} (${pct}%) | Remaining: ${fmtCr(rem)} | Time left: ${yLeft}y | Linked to: ${mNames}${g.monthlyContribution>0?` | Monthly SIP: ₹${(+g.monthlyContribution).toLocaleString("en-IN")}`:""}${linkedDetail}`;    }).join("\n");
 
     const memberBreakdown=members.map(m=>{
       const mCur=holdings.reduce((s,h)=>h.member_id===m.id?s+getValINR(h):s,0);
