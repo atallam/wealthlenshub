@@ -170,7 +170,7 @@ const SEED = {
     { id:"g4", name:"Emergency Fund",       targetAmount:1500000,  targetDate:"2025-12-31", category:"Emergency Fund",color:"#4caf9a", priority:4, linkedMembers:["all"],  monthlyContribution:20000, notes:"6 months expenses" },
   ],
   alerts: [
-    { id:"al1", type:"ALLOCATION_DRIFT",   assetType:"IN_STOCK", threshold:60, label:"Equity over 60% — rebalance needed", active:true },
+    { id:"al1", type:"ALLOCATION_DRIFT",   assetType:"IN_STOCK", threshold:60, label:"Equity over 60% — allocation review needed", active:true },
     { id:"al2", type:"CONCENTRATION",      assetType:"FD",       threshold:10, label:"FD below 10% — add fixed income",    active:true },
     { id:"al3", type:"RETURN_TARGET",      assetType:"",         threshold:10, label:"Portfolio return below 10%",          active:true },
   ],
@@ -901,7 +901,7 @@ export default function App() {
   const [nwMember,          setNwMember]          = useState("all");
   const [calMonth,          setCalMonth]          = useState(()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;});
 
-  // ── Rebalancing state ────────────────────────────────────────
+  // ── Asset Allocation state ─────────────────────────────────────
   const [targetAlloc, setTargetAlloc] = useState({IN_STOCK:35,MF:25,IN_ETF:5,US_STOCK:10,US_ETF:5,US_BOND:0,CRYPTO:3,CASH:0,FD:5,PPF:5,EPF:5,REAL_ESTATE:2,OTHER:0});
   const [rebalMember, setRebalMember] = useState("all");
   const [rebalCash,   setRebalCash]   = useState("");
@@ -1890,7 +1890,7 @@ ${alertLines||"  None"}`;
                     <span>Budget</span>
                     <span style={{fontSize:".55rem",padding:"1px 4px",borderRadius:3,background:"rgba(160,132,202,.25)",color:"rgba(160,132,202,.9)",letterSpacing:".04em"}}>SPEND</span>
                   </span>
-                :t==="rebalance"?"Rebalance"
+                :t==="rebalance"?"Asset Allocation"
                 :t[0].toUpperCase()+t.slice(1)}
             </div>);
           })}
@@ -2355,7 +2355,7 @@ ${alertLines||"  None"}`;
 
         {/* ── ALERTS ── */}
         {tab==="alerts"&&(<>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Rebalancing Alerts</div><button className="btn-sm" onClick={()=>{setAlertForm(BA);setModal("alert");}}>+ New Alert</button></div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Allocation Alerts</div><button className="btn-sm" onClick={()=>{setAlertForm(BA);setModal("alert");}}>+ New Alert</button></div>
           {trigAlerts.length>0&&(<div className="card" style={{marginBottom:"1.2rem",borderColor:"rgba(224,124,90,.3)"}}><div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#e07c5a",marginBottom:".7rem"}}>⚠ Triggered Now</div>{trigAlerts.map(a=>(<div key={a.id} style={{display:"flex",alignItems:"center",gap:".7rem",padding:".7rem",background:"rgba(224,124,90,.07)",borderRadius:"6px",marginBottom:".45rem",border:"1px solid rgba(224,124,90,.2)"}}><span>⚠️</span><div style={{flex:1,fontSize:".82rem",color:"#e07c5a"}}>{a.label}</div></div>))}</div>)}
           <div className="card">{alerts.map(a=>{const trig=!!trigAlerts.find(t=>t.id===a.id);return(<div key={a.id} style={{display:"flex",alignItems:"center",gap:".7rem",padding:".7rem",borderRadius:"6px",marginBottom:".45rem",background:trig?"rgba(224,124,90,.04)":"rgba(255,255,255,.02)",border:`1px solid ${trig?"rgba(224,124,90,.2)":"rgba(255,255,255,.06)"}`}}><div style={{width:7,height:7,borderRadius:"50%",background:trig?"#e07c5a":a.active?"#4caf9a":"rgba(255,255,255,.18)",flexShrink:0}}/><div style={{flex:1}}><div style={{fontSize:".82rem",color:trig?"#e07c5a":"rgba(255,255,255,.85)"}}>{a.label}</div><div style={{fontSize:".68rem",color:"rgba(255,255,255,.38)",marginTop:2}}>{a.type==="CONCENTRATION"?"Below ":"Above "}{a.threshold}%</div></div><button onClick={()=>setAlerts(p=>p.map(x=>x.id===a.id?{...x,active:!x.active}:x))} style={{background:"none",border:"1px solid rgba(255,255,255,.1)",borderRadius:4,padding:"2px 9px",fontSize:".68rem",cursor:"pointer",color:a.active?"#4caf9a":"rgba(255,255,255,.38)"}}>{a.active?"ON":"OFF"}</button><button className="delbtn" onClick={()=>setAlerts(p=>p.filter(x=>x.id!==a.id))}>✕</button></div>);})}</div>
         </>)}
@@ -3181,7 +3181,7 @@ ${alertLines||"  None"}`;
         })()}
 
 
-        {/* ── REBALANCING PLANNER ── */}
+        {/* ── ASSET ALLOCATION PLANNER ── */}
         {tab==="rebalance"&&(()=>{
           const rHoldings = rebalMember==="all" ? allHoldings : allHoldings.filter(h=>h.member_id===rebalMember);
           const rTotal    = rHoldings.reduce((s,h)=>s+getVal(h),0);
@@ -3268,17 +3268,17 @@ ${alertLines||"  None"}`;
               ))}
             </div>
 
-            {/* ── Unified table: Target % input + Current vs Target + Action ── */}
+            {/* ── Unified table: allocation + drift + action ── */}
             <div className="card" style={{marginBottom:"1rem"}}>
-              {rTotal===0?<div className="empty">Add holdings to see your rebalancing plan</div>:(
+              {rTotal===0?<div className="empty">Add holdings to see your allocation plan</div>:(
                 <>
                 <table className="ht" style={{fontSize:".78rem"}}>
                   <thead><tr>
                     <th>Asset Class</th>
-                    <th className="r" style={{width:70}}>Target %</th>
-                    <th className="r">Current</th>
+                    <th className="r" style={{width:80}}>Target Alloc %</th>
+                    <th className="r">Current Alloc %</th>
                     <th style={{width:"22%"}}>Drift</th>
-                    <th className="r">Action</th>
+                    <th className="r">Recommendation</th>
                   </tr></thead>
                   <tbody>
                     {trades.sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta)).map(t=>{
@@ -3288,6 +3288,9 @@ ${alertLines||"  None"}`;
                       const isUnder=t.curPct<t.tgtPct-1;
                       const driftPct = t.curPct - t.tgtPct;
                       const maxPct = Math.max(...trades.map(x=>Math.max(x.curPct,x.tgtPct)),1);
+                      const absDelta = Math.abs(t.delta);
+                      // Contextual action hint
+                      const monthlySIP = absDelta > 5000 ? Math.round(absDelta / 12) : 0;
                       return(
                       <tr key={t.type}>
                         <td>
@@ -3323,16 +3326,36 @@ ${alertLines||"  None"}`;
                           </div>
                         </td>
                         <td className="r">
-                          {isFlat?<span style={{color:"rgba(255,255,255,.35)",fontSize:".68rem"}}>✓</span>:(
-                            <span style={{
-                              background:t.delta>0?"rgba(76,175,154,.12)":"rgba(224,124,90,.12)",
-                              color:t.delta>0?"#4caf9a":"#e07c5a",
-                              border:`1px solid ${t.delta>0?"rgba(76,175,154,.3)":"rgba(224,124,90,.3)"}`,
-                              borderRadius:4,padding:"2px 7px",fontSize:".68rem",fontFamily:"'DM Mono',monospace",
-                              fontWeight:600,whiteSpace:"nowrap"
-                            }}>
-                              {t.delta>0?"▲ ":"▼ "}{fmtCr(Math.abs(t.delta))}
-                            </span>
+                          {isFlat?(
+                            <span style={{color:"rgba(76,175,154,.6)",fontSize:".68rem"}}>✓ Aligned</span>
+                          ):t.delta>0?(
+                            <div>
+                              <span style={{
+                                background:"rgba(76,175,154,.12)",color:"#4caf9a",
+                                border:"1px solid rgba(76,175,154,.3)",
+                                borderRadius:4,padding:"2px 7px",fontSize:".68rem",fontFamily:"'DM Mono',monospace",
+                                fontWeight:600,whiteSpace:"nowrap"
+                              }}>
+                                ▲ Invest {fmtCr(absDelta)}
+                              </span>
+                              {monthlySIP>0&&<div style={{fontSize:".58rem",color:"rgba(76,175,154,.5)",marginTop:2}}>
+                                {absDelta>50000?`SIP ~${fmtCr(monthlySIP)}/mo for 12mo`:"lump sum"}
+                              </div>}
+                            </div>
+                          ):(
+                            <div>
+                              <span style={{
+                                background:"rgba(224,124,90,.12)",color:"#e07c5a",
+                                border:"1px solid rgba(224,124,90,.3)",
+                                borderRadius:4,padding:"2px 7px",fontSize:".68rem",fontFamily:"'DM Mono',monospace",
+                                fontWeight:600,whiteSpace:"nowrap"
+                              }}>
+                                ▼ Trim {fmtCr(absDelta)}
+                              </span>
+                              <div style={{fontSize:".58rem",color:"rgba(224,124,90,.45)",marginTop:2}}>
+                                {absDelta>100000?"redeem or pause SIPs":"pause new investments"}
+                              </div>
+                            </div>
                           )}
                         </td>
                       </tr>);
@@ -3349,14 +3372,14 @@ ${alertLines||"  None"}`;
                     Target total: {tSum.toFixed(0)}% {Math.abs(tSum-100)<0.5?"✓":"— adjust to 100%"}
                   </div>
                   <div style={{display:"flex",gap:"1rem",fontSize:".72rem"}}>
-                    {totalBuy>0&&<span style={{color:"#4caf9a"}}>Buy {fmtCr(totalBuy)}</span>}
-                    {totalSell>0&&<span style={{color:"#e07c5a"}}>Reduce {fmtCr(totalSell)}</span>}
+                    {totalBuy>0&&<span style={{color:"#4caf9a"}}>Invest {fmtCr(totalBuy)}</span>}
+                    {totalSell>0&&<span style={{color:"#e07c5a"}}>Trim {fmtCr(totalSell)}</span>}
                   </div>
                 </div>
 
                 <div style={{marginTop:".6rem",fontSize:".65rem",color:"rgba(255,255,255,.35)",lineHeight:1.5}}>
-                  ℹ️ "Reduce" = sell or redirect future SIPs. Selling may have tax implications — consult your CA.
-                  {cash>0&&<span style={{color:"rgba(201,168,76,.5)"}}> Cash of {fmtCr(cash)} included in Buy amounts.</span>}
+                  ℹ️ "Trim" = redeem units or redirect future SIPs to other asset classes. Selling may have tax implications — consult your CA.
+                  {cash>0&&<span style={{color:"rgba(201,168,76,.5)"}}> Fresh cash of {fmtCr(cash)} is factored into Invest amounts.</span>}
                 </div>
 
                 {/* Legend */}
