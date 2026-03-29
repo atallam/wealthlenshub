@@ -2988,6 +2988,29 @@ function parseNSDLCASStatement(rawText) {
 
   const seen = new Set();
 
+  // ── Helper: clean CAS holding names ────────────────────────────
+  // CAS PDFs often have names like:
+  //   "KIMS.NSE KRISHNA INSTITUTE OF MEDICAL SCIENCES LIMITED"
+  //   "MFPPFA0001 Parag Parikh Flexi Cap Fund - Regular Plan Growth"
+  //   "MFRILC0135 NIPPON INDIA SMALL CAP FUND - GROWTH PLAN"
+  //   "NOT AVAILABLE ICICI Prudential Energy Opportunities Fund"
+  function cleanCASName(rawName) {
+    let name = rawName;
+    // Remove "NOT AVAILABLE" prefix
+    name = name.replace(/^NOT\s+AVAILABLE\s+/i, "").trim();
+    // Remove scheme code prefixes like "MFPPFA0001", "MFRILC0135", "MFSBIM0250"
+    name = name.replace(/^MF[A-Z0-9]{4,10}\s+/i, "").trim();
+    // Remove exchange prefix like "KIMS.NSE", "TCS.BSE", "SBICARD.NSE"
+    name = name.replace(/^[A-Z0-9]+\.(NSE|BSE)\s+/i, "").trim();
+    return name;
+  }
+
+  // Extract NSE/BSE ticker from CAS name like "KIMS.NSE KRISHNA..."
+  function extractExchangeTicker(rawName) {
+    const m = rawName.match(/^([A-Z0-9]+)\.(NSE|BSE)\s/i);
+    return m ? m[1].toUpperCase() : "";
+  }
+
   // ── Strategy 1: Find MF via "Closing Unit Balance" anchors ──
   const closingRe = /Closing\s*Unit\s*Balance\s*[:\s]*([\d,.]+)/gi;
   let cm;
@@ -3030,7 +3053,7 @@ function parseNSDLCASStatement(rawText) {
     seen.add(key);
 
     holdings.push({
-      name: schemeName, type: "MF", ticker: isin, scheme_code: "",
+      name: cleanCASName(schemeName), type: "MF", ticker: isin, scheme_code: "",
       units, purchase_nav: nav, current_nav: nav,
       purchase_price: nav, current_price: nav,
       purchase_value: valuation, current_value: valuation,
@@ -3044,7 +3067,7 @@ function parseNSDLCASStatement(rawText) {
     const summaryRe = /\b(INF[A-Z0-9]{9})\b\s+(.{5,100}?)\s+([\d,.]+)\s+([\d,.]+)\s+(?:[\d,.]+\s+)?([\d,.]+)/g;
     let sr;
     while ((sr = summaryRe.exec(rawText)) !== null) {
-      const isin = sr[1], name = sr[2].replace(/\s+/g, " ").trim();
+      const isin = sr[1], name = cleanCASName(sr[2].replace(/\s+/g, " ").trim());
       const n1 = pNum(sr[3]), n2 = pNum(sr[4]), n3 = pNum(sr[5]);
       const sorted = [n1, n2, n3].sort((a, b) => a - b);
       const nav = sorted[0], units = sorted[1], val = sorted[2];
@@ -3071,20 +3094,25 @@ function parseNSDLCASStatement(rawText) {
 
     const after = rawText.substring(ineMatch.index, ineMatch.index + 300);
     const rowMatch = after.match(/^[A-Z0-9]+\s+(.{3,80}?)\s+([\d,.]+)\s/);
-    let name = "", qty = 0;
+    let rawName = "", qty = 0;
     if (rowMatch) {
-      name = rowMatch[1].replace(/\s+/g, " ").trim();
+      rawName = rowMatch[1].replace(/\s+/g, " ").trim();
       qty = pNum(rowMatch[2]);
     }
 
-    if (!name || qty <= 0) {
+    if (!rawName || qty <= 0) {
       const before = rawText.substring(Math.max(0, ineMatch.index - 200), ineMatch.index);
       const backName = before.match(/([A-Z][A-Za-z\s&().'-]{3,60})\s*$/);
-      if (backName) name = backName[1].trim();
+      if (backName) rawName = backName[1].trim();
       const qtyMatch = after.match(/(?:Free|Total|Net|Closing)?\s*(?:Balance|Quantity|Qty)[:\s]*([\d,.]+)/i)
         || after.match(/\b([\d,]+)\s*$/m);
       if (qtyMatch) qty = pNum(qtyMatch[1]);
     }
+
+    // Also check the text BEFORE the ISIN for "TICKER.NSE COMPANY NAME" pattern
+    const beforeIsin = rawText.substring(Math.max(0, ineMatch.index - 300), ineMatch.index);
+    const exchangeTicker = extractExchangeTicker(rawName) || extractExchangeTicker(beforeIsin.split(/\n/).pop() || "");
+    const name = cleanCASName(rawName);
 
     if (!name || qty <= 0 || /total|sub.?total|header|page/i.test(name)) continue;
     seen.add(isin);
@@ -3098,7 +3126,10 @@ function parseNSDLCASStatement(rawText) {
     const val = valMatch ? pNum(valMatch[1]) : 0;
 
     holdings.push({
-      name, type, ticker: isin, scheme_code: "", units: qty,
+      name, type,
+      ticker: exchangeTicker || isin,   // prefer NSE/BSE ticker over ISIN
+      scheme_code: isin,                // store ISIN in scheme_code for reference
+      units: qty,
       purchase_price: 0, current_price: val && qty ? val / qty : 0,
       purchase_value: val, current_value: val,
       source: _source, brokerage_name: _brokerage, currency: "INR",
