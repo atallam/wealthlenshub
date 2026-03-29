@@ -1612,7 +1612,8 @@ ${alertLines||"  None"}`;
         }));
         const res = await fetch("/api/holdings/import", {
           method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({ holdings: enriched, member_id: assignMember || members[0]?.id || "",
+          body: JSON.stringify({ holdings: enriched,
+            member_id: assignMember || members[0]?.id || "",
             account_map: Object.keys(accountMap).length > 0 ? accountMap : undefined }),
         });
         result = await res.json();
@@ -4646,7 +4647,7 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
                   <div key={acct} style={{display:"flex",gap:".6rem",alignItems:"center",marginBottom:".35rem"}}>
                     <span style={{fontSize:".72rem",color:"rgba(255,255,255,.7)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{acct}</span>
                     <span style={{fontSize:".65rem",color:"rgba(255,255,255,.4)"}}>→</span>
-                    <select className="fi" style={{padding:".22rem .5rem",fontSize:".7rem",width:"auto",minWidth:120,
+                    <select className="fi fs" style={{padding:".22rem .5rem",fontSize:".7rem",width:"auto",minWidth:120,
                       borderColor: autoMatched ? "rgba(76,175,154,.4)" : undefined}}
                       value={accountMap[acct]||""} onChange={e=>setImportState(s=>({...s,accountMap:{...s.accountMap,[acct]:e.target.value}}))}>
                       <option value="">Auto (first member)</option>
@@ -4657,18 +4658,18 @@ function ImportModal({ importState, setImportState, members, AT, handleImportFil
                 );})}
 
               </div>
-            ):members.length>1?(
+            ):(
               <div style={{display:"flex",gap:"1rem",alignItems:"center",flexWrap:"wrap"}}>
                 <label style={{display:"flex",alignItems:"center",gap:".4rem",fontSize:".73rem",color:"rgba(255,255,255,.7)"}}>
                   Assign to:
-                  <select className="fi" style={{padding:".25rem .5rem",fontSize:".72rem",width:"auto"}}
-                    value={assignMember} onChange={e=>setImportState(s=>({...s,assignMember:e.target.value}))}>
-                    <option value="">First member</option>
+                  <select className="fi fs" style={{padding:".25rem .5rem",fontSize:".72rem",width:"auto"}}
+                    value={assignMember||members[0]?.id||""} onChange={e=>setImportState(s=>({...s,assignMember:e.target.value}))}>
                     {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
                   </select>
                 </label>
+                {members.length===1&&<span style={{fontSize:".62rem",color:"rgba(76,175,154,.6)"}}>✓ auto-selected</span>}
               </div>
-            ):null}
+            )}
           </div>
         )}
         {warnings.length>0&&(

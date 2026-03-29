@@ -3407,6 +3407,15 @@ app.post("/api/holdings/import", auth, async (req, res) => {
   // account_map: { "Brokerage XXXX1234": "member_id_abc", ... }
   if (!holdings?.length) return res.status(400).json({ error: "No holdings to import" });
 
+  // Auto-resolve member_id: if not provided, use the first member from user's portfolio
+  let effectiveMemberId = member_id || null;
+  if (!effectiveMemberId) {
+    const { data: portfolio } = await supabase
+      .from("portfolio").select("members").eq("user_id", req.user.id).single();
+    const pMembers = portfolio?.members || [];
+    if (pMembers.length > 0) effectiveMemberId = pMembers[0].id;
+  }
+
   // Fetch existing holdings for this user
   const { data: existing } = await supabase.from("holdings")
     .select("id, name, ticker, scheme_code, type").eq("user_id", req.user.id);
@@ -3433,9 +3442,9 @@ app.post("/api/holdings/import", auth, async (req, res) => {
     }
 
     const isMF = (h.type || "IN_STOCK") === "MF";
-    // Resolve member: account_map > explicit member_id > default
+    // Resolve member: account_map > explicit member_id > auto-resolved > holding's own > null
     const resolvedMember = (account_map && h._account_name && account_map[h._account_name])
-      || member_id || h.member_id || null;
+      || effectiveMemberId || h.member_id || null;
     const payload = sanitizeDates({
       member_id: resolvedMember,
       type: h.type || "IN_STOCK", name: h.name,
