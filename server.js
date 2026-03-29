@@ -3015,9 +3015,20 @@ function parseNSDLCASStatement(rawText) {
     return m ? m[1].toUpperCase() : "";
   }
 
-  // ── Strategy 1: Find MF via "Closing Unit Balance" anchors ──
-  const closingRe = /Closing\s*Unit\s*Balance\s*[:\s]*([\d,.]+)/gi;
+  // ── Strategy 1: Find MF via "Closing Unit Balance" or "Closing Balance" anchors ──
+  // Some CAS formats use "Closing Unit Balance", others just "Closing Balance"
+  const closingRe = /Closing\s*(?:Unit\s*)?Balance\s*[:\s]*([\d,.]+)/gi;
   let cm;
+  // DEBUG: log what anchors exist
+  const debugAnchors = rawText.match(/Closing\s*(?:Unit\s*)?Balance[^a-z]{0,30}/gi) || [];
+  console.log(`📋 CAS Strategy1: found ${debugAnchors.length} "Closing Balance" anchors:`, debugAnchors.slice(0,5));
+  // Also log what the text looks like around first INF ISIN
+  const firstINF = rawText.match(/\b(INF[A-Z0-9]{9})\b/);
+  if (firstINF) {
+    const idx = rawText.indexOf(firstINF[0]);
+    console.log(`📋 CAS text around first INF (${firstINF[0]}) at pos ${idx}:`);
+    console.log(`   "${rawText.substring(idx, idx + 500).replace(/\n/g,"\\n")}"`);
+  }
   while ((cm = closingRe.exec(rawText)) !== null) {
     const rawUnits = pNum(cm[1]);
     if (rawUnits <= 0) continue;
