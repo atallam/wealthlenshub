@@ -7,7 +7,7 @@ import SnapTradeImport from "./SnapTradeImport";
 const GF = `@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');`;
 
 const AT = {
-  US_STOCK:    { label:"US Stocks",     color:"#5a9ce0", icon:"🇺🇸", cat:"US Market" },
+  US_STOCK:    { label:"US Stocks",     color:"#5a9ce0", icon:"$",  cat:"US Market" },
   US_ETF:      { label:"US ETF",        color:"#4a8cd8", icon:"🔵", cat:"US Market" },
   CRYPTO:      { label:"Crypto",        color:"#f7931a", icon:"₿",  cat:"US Market" },
   US_BOND:     { label:"US Bonds",      color:"#7095b0", icon:"📜", cat:"US Market" },
@@ -375,7 +375,7 @@ function TransactionPanel({ holding, onAddTxn, onReload, onDeleteTxn, txnForm, s
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1.2rem"}}>
           <div>
             <div className="modtitle" style={{marginBottom:".15rem"}}>📋 Transactions</div>
-            <div style={{fontSize:".73rem",color:"rgba(255,255,255,.5)"}}>{holding.name} {isUS&&<span style={{fontSize:".65rem",color:"#5a9ce0",marginLeft:4}}>{holding.type==="CRYPTO"?"₿":"🇺🇸"} USD input</span>}</div>
+            <div style={{fontSize:".73rem",color:"rgba(255,255,255,.5)"}}>{holding.name} {isUS&&<span style={{fontSize:".65rem",color:"#5a9ce0",marginLeft:4}}>{holding.type==="CRYPTO"?"₿":"$"} USD input</span>}</div>
           </div>
           <div style={{display:"flex",gap:".4rem",alignItems:"center"}}>
             {isMF&&holding.scheme_code&&(
@@ -2101,8 +2101,8 @@ ${alertLines||"  None"}`;
                     const US_TYPES = new Set(["US_STOCK","US_ETF","US_BOND","CRYPTO"]);
                     const IN_TYPES = new Set(["IN_STOCK","IN_ETF","MF"]);
                     const groups = [
-                      { key: "us", label: "US Assets", icon: "🇺🇸", color: "#5a9ce0", items: visH.filter(h => US_TYPES.has(h.type)) },
-                      { key: "in", label: "Indian Assets", icon: "🇮🇳", color: "#e07c5a", items: visH.filter(h => IN_TYPES.has(h.type)) },
+                      { key: "us", label: "US Assets", icon: "$", color: "#5a9ce0", items: visH.filter(h => US_TYPES.has(h.type)) },
+                      { key: "in", label: "Indian Assets", icon: "₹", color: "#e07c5a", items: visH.filter(h => IN_TYPES.has(h.type)) },
                       { key: "other", label: "Other Assets", icon: "📦", color: "#c9a84c", items: visH.filter(h => !US_TYPES.has(h.type) && !IN_TYPES.has(h.type)) },
                     ].filter(g => g.items.length > 0);
 
@@ -2733,12 +2733,12 @@ ${alertLines||"  None"}`;
                             </td>
                             <td><span className="tbadge2" style={{background:t.txn_type==="DEBIT"?"rgba(224,124,90,.15)":"rgba(76,175,154,.15)",color:t.txn_type==="DEBIT"?"#e07c5a":"#4caf9a",fontSize:".65rem"}}>{t.txn_type}</span></td>
                             <td>
-                              <select value={t.category} style={{background:"transparent",border:"none",color:cat?.color||"#c9a84c",fontSize:".73rem",cursor:"pointer",fontFamily:"inherit"}}
+                              <select value={t.category} style={{background:"transparent",border:"none",color:cat?.color||"#c9a84c",fontSize:".73rem",cursor:"pointer",fontFamily:"inherit",colorScheme:"dark"}}
                                 onChange={async e=>{
                                   await api(`/api/budget/transactions/${t.id}`,{method:"PATCH",body:JSON.stringify({category:e.target.value})});
                                   setBudgetTxns(p=>p.map(x=>x.id===t.id?{...x,category:e.target.value}:x));
                                 }}>
-                                {budgetCategories.map(c=><option key={c.id} value={c.name}>{c.icon} {c.name}</option>)}
+                                {budgetCategories.map(c=><option key={c.id} value={c.name} style={{background:"#0c1526",color:"#ffffff"}}>{c.icon} {c.name}</option>)}
                               </select>
                             </td>
                           </tr>);
@@ -2925,7 +2925,7 @@ ${alertLines||"  None"}`;
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:".75rem",marginBottom:"1rem"}}>
                   {[
                     {icon:"📄",title:"Indian Broker CSV",desc:"Zerodha, Groww, ICICI Direct, HDFC Securities, Upstox, Angel One — auto-detected from column headers.",badge:"Auto-Detect"},
-                    {icon:"🇺🇸",title:"US Broker CSV",desc:"Schwab, Fidelity, Robinhood, Vanguard, IBKR, E*TRADE, Merrill, J.P. Morgan, Webull, SoFi, Wealthfront, Betterment, Firstrade, Ally, Public, Tastytrade — all auto-detected.",badge:"Auto-Detect"},
+                    {icon:"$",title:"US Broker CSV",desc:"Schwab, Fidelity, Robinhood, Vanguard, IBKR, E*TRADE, Merrill, J.P. Morgan, Webull, SoFi, Wealthfront, Betterment, Firstrade, Ally, Public, Tastytrade — all auto-detected.",badge:"Auto-Detect"},
                     {icon:"₿",title:"Crypto (Coinbase)",desc:"Coinbase portfolio export with assets, quantities, cost basis. Auto-classified as crypto with USD pricing.",badge:"Auto-Detect"},
                     {icon:"📋",title:"Tradebook Import",desc:"Import buy/sell transactions from broker tradebook exports. Auto-matches to your existing holdings.",badge:"New"},
                     {icon:"💰",title:"Kuvera / MF Export",desc:"Mutual fund portfolio exports with scheme name, units, NAV. Scheme codes auto-mapped.",badge:"Auto-Detect"},
@@ -4298,10 +4298,12 @@ ${alertLines||"  None"}`;
         <div onClick={()=>{setModal(null);setShowSnapTrade(true);}}
           style={{padding:"1.1rem 1.4rem",borderRadius:12,border:"1.5px solid rgba(167,139,250,.45)",
             background:"linear-gradient(135deg,rgba(167,139,250,.10) 0%,rgba(90,156,224,.06) 100%)",
-            cursor:"pointer",marginBottom:".6rem",display:"flex",alignItems:"center",gap:"1.2rem",transition:"all .2s",position:"relative",overflow:"hidden"}}
+            cursor:"pointer",marginBottom:"1rem",display:"flex",alignItems:"center",gap:"1.2rem",transition:"all .2s",position:"relative",overflow:"hidden"}}
           onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,.7)";}}
           onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,.45)";}}>
-          <div style={{fontSize:"1.8rem",flexShrink:0}}>🇺🇸</div>
+          <div style={{width:40,height:40,borderRadius:10,background:"linear-gradient(135deg,#1a3a6e 0%,#2d5aa0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:"1px solid rgba(90,156,224,.35)"}}>
+            <span style={{fontSize:".75rem",fontWeight:700,color:"#ffffff",letterSpacing:".06em"}}>US</span>
+          </div>
           <div style={{flex:1}}>
             <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".25rem"}}>
               <span style={{fontSize:".92rem",color:"#ffffff",fontWeight:600}}>SnapTrade Import</span>
@@ -4310,21 +4312,6 @@ ${alertLines||"  None"}`;
             <div style={{fontSize:".74rem",color:"rgba(255,255,255,.6)",lineHeight:1.5}}>Connect Robinhood, Schwab, Fidelity & more — automatic sync from US brokerages</div>
           </div>
           <div style={{fontSize:"1.1rem",color:"rgba(167,139,250,.6)",flexShrink:0}}>→</div>
-        </div>
-        {/* ── Account Aggregator (Coming Soon) ── */}
-        <div
-          style={{padding:"1.1rem 1.4rem",borderRadius:12,border:"1.5px solid rgba(76,175,154,.25)",
-            background:"linear-gradient(135deg,rgba(76,175,154,.06) 0%,rgba(201,168,76,.03) 100%)",
-            marginBottom:"1rem",display:"flex",alignItems:"center",gap:"1.2rem",opacity:.6,cursor:"default"}}>
-          <div style={{fontSize:"1.8rem",flexShrink:0}}>🇮🇳</div>
-          <div style={{flex:1}}>
-            <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".25rem"}}>
-              <span style={{fontSize:".92rem",color:"#ffffff",fontWeight:600}}>Account Aggregator</span>
-              <span style={{fontSize:".55rem",padding:".15rem .5rem",borderRadius:10,background:"rgba(201,168,76,.18)",color:"#c9a84c",fontWeight:600,letterSpacing:".04em",textTransform:"uppercase"}}>Coming Soon</span>
-            </div>
-            <div style={{fontSize:".74rem",color:"rgba(255,255,255,.5)",lineHeight:1.5}}>Import stocks, MFs, FDs, EPF, PPF, bank accounts — via RBI-regulated consent flow</div>
-          </div>
-          <div style={{fontSize:"1.1rem",color:"rgba(76,175,154,.3)",flexShrink:0}}>→</div>
         </div>
         {/* ── Other options ── */}
         <div style={{fontSize:".6rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.35)",marginBottom:".5rem",paddingLeft:".1rem"}}>Other ways to add</div>
@@ -4951,9 +4938,9 @@ body{background:#070d1a}
 .modtitle{font-family:'Cormorant Garamond',serif;font-size:1.3rem;color:#ffffff;margin-bottom:1.2rem}
 .frow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem;margin-bottom:.05rem}
 .fg{display:flex;flex-direction:column;gap:.32rem;margin-bottom:.8rem}
-.flbl{font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.55)}
-.fi{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#ffffff;padding:.52rem .75rem;border-radius:6px;font-size:.85rem;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .2s;width:100%;-webkit-appearance:none}.fi:focus{border-color:rgba(201,168,76,.48)}.fi::placeholder{color:rgba(255,255,255,.3)}
-.fs{appearance:none;-webkit-appearance:none;cursor:pointer;color:#ffffff}.fs option{background:#0c1526;color:#ffffff}
+.flbl{font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.62)}
+.fi{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#ffffff;padding:.52rem .75rem;border-radius:6px;font-size:.85rem;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .2s;width:100%;-webkit-appearance:none;color-scheme:dark}.fi:focus{border-color:rgba(201,168,76,.48)}.fi::placeholder{color:rgba(255,255,255,.3)}
+.fs{appearance:none;-webkit-appearance:none;cursor:pointer;color:#ffffff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='rgba(255,255,255,0.45)' stroke-width='1.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .65rem center;padding-right:1.8rem}.fs option{background:#0c1526;color:#ffffff;padding:.35rem .5rem}
 .ma{display:flex;gap:.6rem;justify-content:flex-end;margin-top:1.2rem}
 .btnc{background:none;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);padding:.52rem 1rem;border-radius:6px;cursor:pointer;font-size:.78rem;transition:all .2s;font-family:'DM Sans',sans-serif}.btnc:hover{border-color:rgba(255,255,255,.25);color:#ffffff}
 .btns{background:rgba(201,168,76,.14);border:1px solid rgba(201,168,76,.48);color:#c9a84c;padding:.52rem 1.2rem;border-radius:6px;cursor:pointer;font-size:.78rem;font-weight:500;transition:all .2s;font-family:'DM Sans',sans-serif}.btns:hover{background:rgba(201,168,76,.24)}.btns:disabled{opacity:.38;cursor:not-allowed}
