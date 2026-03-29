@@ -3056,6 +3056,16 @@ function parseNSDLCASStatement(rawText) {
     const valuation = valMatch ? pNum(valMatch[1]) : 0;
     const costValue = costMatch ? pNum(costMatch[1]) : 0;
 
+    // ── DEBUG: log extracted values for each scheme ──
+    console.log(`📋 CAS PARSE: ${cleanCASName(schemeName)}`);
+    console.log(`   rawUnits=${rawUnits}, nav=${nav}, valuation=${valuation}, cost=${costValue}`);
+    console.log(`   AFTER snippet: "${after.substring(0, 200).replace(/\n/g,"\\n")}"`);
+    if (navMatch) console.log(`   NAV match: "${navMatch[0].substring(0,60)}"`);
+    if (valMatch) console.log(`   VAL match: "${valMatch[0].substring(0,60)}"`);
+    if (costMatch) console.log(`   COST match: "${costMatch[0].substring(0,60)}"`);
+    if (!navMatch) console.log(`   ⚠ NAV not found in after region`);
+    if (!valMatch) console.log(`   ⚠ VALUATION not found in after region`);
+
     // Also check BEFORE the closing balance for cost
     const costMatchBefore = !costValue ? before.match(/Cost\s*(?:Value)?\s*[:\s]\s*(?:INR|Rs\.?|`)?\s*([\d,.]+)/i) : null;
     const totalCost = costValue || (costMatchBefore ? pNum(costMatchBefore[1]) : 0);
@@ -3383,6 +3393,13 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
 
         // ── Route 1: NSDL/CDSL CAS statement ──
         if (/consolidated\s*account\s*statement|nsdl|cdsl/i.test(rawPdfText) && /mutual\s*fund|demat|folio/i.test(rawPdfText)) {
+          // Debug: log a snippet around each "Closing Unit Balance" match
+          const debugRe = /Closing\s*Unit\s*Balance/gi;
+          let dm;
+          while ((dm = debugRe.exec(rawPdfText)) !== null) {
+            const snippet = rawPdfText.substring(Math.max(0, dm.index - 100), dm.index + 200);
+            console.log(`📋 CAS DEBUG — Closing Unit Balance found at ${dm.index}:\n  ...${snippet.replace(/\n/g,"\\n")}...`);
+          }
           const result = parseNSDLCASStatement(rawPdfText);
           if (result.holdings.length > 0) {
             const { data: existing } = await supabase.from("holdings")
