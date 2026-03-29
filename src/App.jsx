@@ -27,52 +27,52 @@ const PPF_R=7.1, EPF_R=8.15;
 // ── Math ─────────────────────────────────────────────────────────
 function calcFD(p,r,s,mat){const start=new Date(s),now=new Date(),m=new Date(mat);const end=now<m?now:m;const y=Math.max(0,(end-start)/(864e5*365.25));return p*Math.pow(1+r/400,y*4);}
 function calcAccr(p,rate,s){const y=Math.max(0,(new Date()-new Date(s))/(864e5*365.25));return p*Math.pow(1+rate/100,y);}
-// FX factor: converts a holding's native currency to the user's display currency
-function fxFor(h){
-  const isUSD = USD_TYPES.has(h.type) || (h.currency && h.currency.toUpperCase() === "USD");
-  const rate = h.usd_inr_rate || 83.2;
-  if(_activeCurrency === "USD"){
-    return isUSD ? 1 : 1/rate;  // INR holdings → divide by rate to show in USD
-  }
-  // _activeCurrency === "INR"
-  return isUSD ? rate : 1;      // USD holdings → multiply by rate to show in INR
+// FX: live rate updated on app load; used only for portfolio-level INR↔USD conversion
+let _liveUsdInr = 83.5; // overwritten by /api/forex/usdinr on load
+
+function isUSDHolding(h) {
+  return USD_TYPES.has(h.type) || (h.currency && h.currency.toUpperCase() === "USD");
 }
+
+// getVal / getInv return NATIVE currency (₹ for Indian, $ for US)
 function getVal(h){
   const units = h.net_units!=null ? h.net_units : (h.units||0);
-  const fx = fxFor(h);
   switch(h.type){
-    case"FD":          return calcFD(h.principal,h.interest_rate,h.start_date,h.maturity_date)*fx;
-    case"PPF":         return calcAccr(h.principal,PPF_R,h.start_date)*fx;
-    case"EPF":         return calcAccr(h.principal,EPF_R,h.start_date)*fx;
-    case"MF":          return units*(h.current_nav||h.purchase_nav||0)*fx;
+    case"FD":          return calcFD(h.principal,h.interest_rate,h.start_date,h.maturity_date);
+    case"PPF":         return calcAccr(h.principal,PPF_R,h.start_date);
+    case"EPF":         return calcAccr(h.principal,EPF_R,h.start_date);
+    case"MF":          return units*(h.current_nav||h.purchase_nav||0);
     case"IN_STOCK":
-    case"IN_ETF":      return units*(h.current_price||h.purchase_price||0)*fx;
+    case"IN_ETF":      return units*(h.current_price||h.purchase_price||0);
     case"US_STOCK":
     case"US_ETF":
     case"US_BOND":
-    case"CRYPTO":      return units*(h.current_price||h.purchase_price||0)*fx;
-    case"CASH":        return(h.current_price||h.current_value||h.purchase_price||0)*fx;
-    case"REAL_ESTATE": return(h.current_value||h.purchase_value||0)*fx;
-    default:           return(h.current_value||h.principal||0)*fx;
+    case"CRYPTO":      return units*(h.current_price||h.purchase_price||0);
+    case"CASH":        return(h.current_price||h.current_value||h.purchase_price||0);
+    case"REAL_ESTATE": return(h.current_value||h.purchase_value||0);
+    default:           return(h.current_value||h.principal||0);
   }
 }
 function getInv(h){
-  const fx = fxFor(h);
-  // If transactions exist, avg_cost is stored in the holding's native currency
-  if(h.avg_cost!=null && h.net_units!=null) return h.net_units * h.avg_cost * fx;
+  if(h.avg_cost!=null && h.net_units!=null) return h.net_units * h.avg_cost;
   switch(h.type){
-    case"MF":          return(h.units||0)*(h.purchase_nav||0)*fx;
+    case"MF":          return(h.units||0)*(h.purchase_nav||0);
     case"IN_STOCK":
-    case"IN_ETF":      return(h.units||0)*(h.purchase_price||0)*fx;
+    case"IN_ETF":      return(h.units||0)*(h.purchase_price||0);
     case"US_STOCK":
     case"US_ETF":
     case"US_BOND":
-    case"CRYPTO":      return(h.units||0)*(h.purchase_price||0)*fx;
-    case"CASH":        return(h.purchase_price||h.purchase_value||h.current_price||0)*fx;
-    case"REAL_ESTATE": return(h.purchase_value||0)*fx;
-    default:           return(h.purchase_value||h.principal||0)*fx;
+    case"CRYPTO":      return(h.units||0)*(h.purchase_price||0);
+    case"CASH":        return(h.purchase_price||h.purchase_value||h.current_price||0);
+    case"REAL_ESTATE": return(h.purchase_value||0);
+    default:           return(h.purchase_value||h.principal||0);
   }
 }
+// Convert native value → INR for unified portfolio totals
+function toINR(val, h) { return isUSDHolding(h) ? val * (h.usd_inr_rate || _liveUsdInr) : val; }
+function toUSD(val, h) { return isUSDHolding(h) ? val : val / _liveUsdInr; }
+function getValINR(h) { return toINR(getVal(h), h); }
+function getInvINR(h) { return toINR(getInv(h), h); }
 function xirr(cfs,dates){if(cfs.length<2)return null;const d0=dates[0],yrs=dates.map(d=>(d-d0)/(864e5*365.25));const npv=r=>cfs.reduce((s,c,i)=>s+c/Math.pow(1+r,yrs[i]),0);const dnpv=r=>cfs.reduce((s,c,i)=>s-yrs[i]*c/Math.pow(1+r,yrs[i]+1),0);let r=0.1;for(let i=0;i<100;i++){const f=npv(r),df=dnpv(r);if(Math.abs(df)<1e-12)break;const nr=r-f/df;if(Math.abs(nr-r)<1e-7){r=nr;break;}r=nr;if(r<-0.999)r=-0.999;}return isFinite(r)?r*100:null;}
 
 // Returns { value: number|null, method: "xirr"|"cagr"|"simple"|null }
@@ -124,35 +124,23 @@ function getXIRR(h){
   return { value: null, method: null };
 }
 
-// ── Multi-currency support ───────────────────────────────────────
-const CURRENCIES = {
-  USD:  { symbol:"$",  locale:"en-US",  name:"US Dollar" },
-  INR:  { symbol:"₹",  locale:"en-IN",  name:"Indian Rupee" },
-};
-// fmt and fmtCr are now driven by a shared currency context set per-user
-// Default to INR; overridden after profile loads
-let _activeCurrency = "INR";
-const getCur = () => CURRENCIES[_activeCurrency] || CURRENCIES.INR;
-const fmt = n => {
-  const c = getCur();
-  return c.symbol + Math.abs(n).toLocaleString(c.locale, {maximumFractionDigits:0});
-};
-const fmtCr = n => {
-  const c = getCur();
-  const s = c.symbol;
-  if(_activeCurrency === "INR"){
-    return n>=1e7?`${s}${(n/1e7).toFixed(2)}Cr`:n>=1e5?`${s}${(n/1e5).toFixed(2)}L`:fmt(n);
-  }
-  // For other currencies use K/M suffix
-  return n>=1e6?`${s}${(n/1e6).toFixed(2)}M`:n>=1e3?`${s}${(n/1e3).toFixed(1)}K`:fmt(n);
-};
+// ── Currency formatting: native per-holding, ₹ for totals ───────
+const fmtINR = n => "₹" + Math.abs(n).toLocaleString("en-IN", {maximumFractionDigits:0});
+const fmtUSD = n => "$" + Math.abs(n).toLocaleString("en-US", {maximumFractionDigits:0});
+const fmtCrINR = n => { const a=Math.abs(n); return a>=1e7?`₹${(a/1e7).toFixed(2)}Cr`:a>=1e5?`₹${(a/1e5).toFixed(2)}L`:fmtINR(a); };
+const fmtCrUSD = n => { const a=Math.abs(n); return a>=1e6?`$${(a/1e6).toFixed(2)}M`:a>=1e3?`$${(a/1e3).toFixed(1)}K`:fmtUSD(a); };
+const fmtNative = (n, h) => isUSDHolding(h) ? fmtUSD(n) : fmtINR(n);
+const fmtCrNative = (n, h) => isUSDHolding(h) ? fmtCrUSD(n) : fmtCrINR(n);
+// Portfolio totals always in ₹ (primary) — these are used everywhere
+const fmt = n => fmtINR(n);
+const fmtCr = n => fmtCrINR(n);
 const fmtPct=n=>`${n>=0?"+":""}${n.toFixed(2)}%`;
 const uid=()=>"x"+Date.now()+Math.random().toString(36).slice(2,6);
 const ago=d=>{if(!d)return"Never";const s=Math.floor((Date.now()-new Date(d))/1000);if(s<60)return`${s}s ago`;if(s<3600)return`${Math.floor(s/60)}m ago`;if(s<86400)return`${Math.floor(s/3600)}h ago`;return`${Math.floor(s/86400)}d ago`;};
 const fmtSize=b=>b>1e6?`${(b/1e6).toFixed(1)}MB`:b>1e3?`${(b/1e3).toFixed(0)}KB`:`${b}B`;
 
 // Holding form — instrument details only, no transaction data
-const BF={member_id:"",type:"IN_STOCK",name:"",ticker:"",scheme_code:"",interest_rate:"",start_date:"",maturity_date:"",purchase_value:"",current_value:"",principal:"",usd_inr_rate:"83.2"};
+const BF={member_id:"",type:"IN_STOCK",name:"",ticker:"",scheme_code:"",interest_rate:"",start_date:"",maturity_date:"",purchase_value:"",current_value:"",principal:"",usd_inr_rate:""};
 // Transaction form
 const BT={holding_id:"",txn_type:"BUY",units:"",price:"",price_usd:"",txn_date:new Date().toISOString().slice(0,10),notes:""};
 
@@ -294,7 +282,7 @@ function TransactionPanel({ holding, onAddTxn, onReload, onDeleteTxn, txnForm, s
   const isUS   = USD_TYPES.has(holding.type);
   const isMF   = holding.type==="MF";
   const priceLabel = isMF ? "NAV" : isUS ? "Price $" : "Price ₹";
-  const fx = +(holding.usd_inr_rate||fxRate||83.2);
+  const fx = +(holding.usd_inr_rate||fxRate||_liveUsdInr);
 
   // SIP state
   const [sipMode,       setSipMode]       = useState(false);
@@ -826,7 +814,7 @@ export default function App() {
 
   // ── Hub: profile, currency, asset types, settings ───────────────
   const [profile,       setProfile]       = useState(null);
-  const [userCurrency,  setUserCurrency]  = useState("INR");
+  // userCurrency removed — native currency display (₹ for Indian, $ for US)
   const [assetTypes,    setAssetTypes]    = useState([]);
   const [showSettings,  setShowSettings]  = useState(false);
   const [shares,        setShares]        = useState([]);      // shares I've granted
@@ -913,7 +901,7 @@ export default function App() {
   const [mfNav,          setMfNav]          = useState(null); // {nav, date, fund_house, scheme_category}
   const [stockInfo,      setStockInfo]      = useState(null); // {name, price, exchange, found}
   const [stockLooking,   setStockLooking]   = useState(false);
-  const [usdInrRate,     setUsdInrRate]     = useState(83.2);
+  const [usdInrRate,     setUsdInrRate]     = useState(_liveUsdInr);
   const [usdInrLoading,  setUsdInrLoading]  = useState(false);
   const [etfSearch,      setEtfSearch]      = useState("");
   const [etfResults,     setEtfResults]     = useState([]);
@@ -983,7 +971,9 @@ export default function App() {
           api("/api/profile"),
           api("/api/asset-types")
         ]);
-        if(prof){ setProfile(prof); const c=prof.currency||"INR"; setUserCurrency(c); _activeCurrency=c; }
+        if(prof){ setProfile(prof); }
+        // Fetch live FX rate on login
+        try { const fxData = await api("/api/forex/usdinr"); if(fxData?.rate) _liveUsdInr = fxData.rate; } catch{}
         if(ats?.length) setAssetTypes(ats);
       } catch(e){ console.warn("Profile load:", e.message); }
       // Load sharing info + sync missing shares
@@ -1125,7 +1115,7 @@ export default function App() {
       interest_rate:  +form.interest_rate||null,
       purchase_value: +form.purchase_value||null,
       current_value:  +form.current_value||null,
-      usd_inr_rate:   +form.usd_inr_rate||83.2,
+      usd_inr_rate:   +form.usd_inr_rate||_liveUsdInr,
     };
     try{
       if(editHolding){
@@ -1207,7 +1197,7 @@ export default function App() {
   }
 
   function editH(h){ setEditHolding(h); setForm({...BF,...h,
-    interest_rate:h.interest_rate||"", usd_inr_rate:h.usd_inr_rate||83.2}); setModal("holding"); }
+    interest_rate:h.interest_rate||"", usd_inr_rate:h.usd_inr_rate||_liveUsdInr}); setModal("holding"); }
 
   // ── Fuzzy name match helper ──
   function fuzzyMemberMatch(name) {
@@ -1371,9 +1361,12 @@ export default function App() {
     setUsdInrLoading(true);
     try{
       const data = await api("/api/forex/usdinr");
-      const rate = data.rate || 83.2;
-      setUsdInrRate(rate);
-      setForm(f=>({...f, usd_inr_rate: rate.toFixed(2)}));
+      const rate = data.rate;
+      if(rate && rate > 50 && rate < 200) {
+        _liveUsdInr = rate;   // update global live rate for all conversions
+        setUsdInrRate(rate);
+        setForm(f=>({...f, usd_inr_rate: rate.toFixed(2)}));
+      }
     }catch{ /* keep existing rate */ }
     setUsdInrLoading(false);
   }
@@ -1406,15 +1399,15 @@ export default function App() {
     }catch{ setEtfInfo(null); }
   }
   function buildPortfolioContext(){
-    const allCurCtx  = holdings.reduce((s,h)=>s+getVal(h),0);
-    const allInvCtx  = holdings.reduce((s,h)=>s+getInv(h),0);
+    const allCurCtx  = holdings.reduce((s,h)=>s+getValINR(h),0);
+    const allInvCtx  = holdings.reduce((s,h)=>s+getInvINR(h),0);
     const allGainCtx = allCurCtx - allInvCtx;
     const allPctCtx  = allInvCtx>0 ? (allGainCtx/allInvCtx)*100 : 0;
 
     const memberLines = members.map(m=>{
       const hs = holdings.filter(h=>h.member_id===m.id);
-      const cur = hs.reduce((s,h)=>s+getVal(h),0);
-      const inv = hs.reduce((s,h)=>s+getInv(h),0);
+      const cur = hs.reduce((s,h)=>s+getValINR(h),0);
+      const inv = hs.reduce((s,h)=>s+getInvINR(h),0);
       return `  ${m.name} (${m.relation}): current=${fmtCr(cur)}, invested=${fmtCr(inv)}, return=${inv>0?((cur-inv)/inv*100).toFixed(1):0}%`;
     }).join("\n");
 
@@ -1430,7 +1423,7 @@ export default function App() {
     }).join("\n");
 
     const allocationLines = Object.entries(AT).map(([t,a])=>{
-      const val=holdings.filter(h=>h.type===t).reduce((s,h)=>s+getVal(h),0);
+      const val=holdings.filter(h=>h.type===t).reduce((s,h)=>s+getValINR(h),0);
       if(val===0) return null;
       return `  ${a.label}: ${fmtCr(val)} (${allCurCtx>0?(val/allCurCtx*100).toFixed(1):0}%)`;
     }).filter(Boolean).join("\n");
@@ -1641,10 +1634,10 @@ ${alertLines||"  None"}`;
   // ── PDF report ──
   async function generatePDF(){
     setPdfState({loading:true,summary:""}); setModal("pdf");
-    const allInv=holdings.reduce((s,h)=>s+getInv(h),0);
-    const allCur=holdings.reduce((s,h)=>s+getVal(h),0);
-    const byTA=Object.keys(AT).map(t=>{const v=holdings.filter(h=>h.type===t).reduce((s,h)=>s+getVal(h),0);return{...AT[t],t,v,pct:allCur>0?(v/allCur)*100:0};}).filter(x=>x.v>0);
-    const mSum=members.map(m=>{const hs=holdings.filter(h=>h.member_id===m.id);const c=hs.reduce((s,h)=>s+getVal(h),0),i=hs.reduce((s,h)=>s+getInv(h),0);return{...m,cur:c,inv:i,pct:i>0?((c-i)/i)*100:0};});
+    const allInv=holdings.reduce((s,h)=>s+getInvINR(h),0);
+    const allCur=holdings.reduce((s,h)=>s+getValINR(h),0);
+    const byTA=Object.keys(AT).map(t=>{const v=holdings.filter(h=>h.type===t).reduce((s,h)=>s+getValINR(h),0);return{...AT[t],t,v,pct:allCur>0?(v/allCur)*100:0};}).filter(x=>x.v>0);
+    const mSum=members.map(m=>{const hs=holdings.filter(h=>h.member_id===m.id);const c=hs.reduce((s,h)=>s+getValINR(h),0),i=hs.reduce((s,h)=>s+getInvINR(h),0);return{...m,cur:c,inv:i,pct:i>0?((c-i)/i)*100:0};});
     const ctx=`Portfolio: ${fmtCr(allCur)} | Invested: ${fmtCr(allInv)} | Gain: ${fmtCr(allCur-allInv)} (${allCur>0?((allCur-allInv)/allInv*100).toFixed(1):0}%)\nMembers: ${mSum.map(m=>`${m.name}: ${fmtCr(m.cur)} (${m.pct.toFixed(1)}%)`).join("; ")}\nAllocation: ${byTA.map(x=>`${x.label}: ${fmtCr(x.v)} (${x.pct.toFixed(1)}%)`).join(", ")}\nGoals: ${goals.map(g=>`${g.name}: target ${fmtCr(g.targetAmount)} by ${g.targetDate}`).join("; ")}`;
     try{
       const data = await api("/api/ai/chat", {
@@ -1706,8 +1699,8 @@ ${alertLines||"  None"}`;
   const allMembers = [...members, ...sharedMembers];
 
   // allCur/allInv represent the total across own + shared portfolios
-  const allCur=allHoldings.reduce((s,h)=>s+getVal(h),0);
-  const allInv=allHoldings.reduce((s,h)=>s+getInv(h),0);
+  const allCur=allHoldings.reduce((s,h)=>s+getValINR(h),0);
+  const allInv=allHoldings.reduce((s,h)=>s+getInvINR(h),0);
 
   // Sort toggle: click same col flips direction, click new col sorts asc
   function toggleSort(col) {
@@ -1726,10 +1719,10 @@ ${alertLines||"  None"}`;
       case "units":   return Number(h.net_units ?? h.units ?? 0);
       case "avg":     return Number(h.avg_cost ?? h.purchase_price ?? h.purchase_nav ?? 0);
       case "price":   return Number(h.type === "MF" ? (h.current_nav || 0) : (h.current_price || 0));
-      case "invested": return getInv(h);
-      case "current":  return getVal(h);
-      case "gain":     return getVal(h) - getInv(h);
-      case "return":   { const inv = getInv(h); return inv > 0 ? ((getVal(h) - inv) / inv) * 100 : 0; }
+      case "invested": return getInvINR(h);
+      case "current":  return getValINR(h);
+      case "gain":     return getValINR(h) - getInvINR(h);
+      case "return":   { const inv = getInvINR(h); return inv > 0 ? ((getValINR(h) - inv) / inv) * 100 : 0; }
       default:         return 0;
     }
   }
@@ -1756,14 +1749,14 @@ ${alertLines||"  None"}`;
         return sortDir === "asc" ? cmp : -cmp;
       })
     : filteredH;
-  const totCur=visH.reduce((s,h)=>s+getVal(h),0);
-  const totInv=visH.reduce((s,h)=>s+getInv(h),0);
+  const totCur=visH.reduce((s,h)=>s+getValINR(h),0);
+  const totInv=visH.reduce((s,h)=>s+getInvINR(h),0);
   const totGain=totCur-totInv, totPct=totInv>0?(totGain/totInv)*100:0;
-  const byType=Object.keys(AT).map(t=>{const hs=visH.filter(h=>h.type===t);const v=hs.reduce((s,h)=>s+getVal(h),0),i=hs.reduce((s,h)=>s+getInv(h),0);return{t,v,i,count:hs.length,pct:totCur>0?(v/totCur)*100:0};}).filter(x=>x.v>0);
-  const mSum=allMembers.map(m=>{const hs=allHoldings.filter(h=>h.member_id===m.id);const c=hs.reduce((s,h)=>s+getVal(h),0),i=hs.reduce((s,h)=>s+getInv(h),0);return{...m,cur:c,inv:i,gain:c-i,pct:i>0?((c-i)/i)*100:0};});
+  const byType=Object.keys(AT).map(t=>{const hs=visH.filter(h=>h.type===t);const v=hs.reduce((s,h)=>s+getValINR(h),0),i=hs.reduce((s,h)=>s+getInvINR(h),0);return{t,v,i,count:hs.length,pct:totCur>0?(v/totCur)*100:0};}).filter(x=>x.v>0);
+  const mSum=allMembers.map(m=>{const hs=allHoldings.filter(h=>h.member_id===m.id);const c=hs.reduce((s,h)=>s+getValINR(h),0),i=hs.reduce((s,h)=>s+getInvINR(h),0);return{...m,cur:c,inv:i,gain:c-i,pct:i>0?((c-i)/i)*100:0};});
   const trigAlerts=alerts.filter(a=>{
     if(!a.active)return false;
-    if(a.type==="ALLOCATION_DRIFT"||a.type==="CONCENTRATION"){const v=allHoldings.filter(h=>h.type===a.assetType).reduce((s,h)=>s+getVal(h),0);const p=allCur>0?(v/allCur)*100:0;return a.type==="CONCENTRATION"?p<a.threshold:p>a.threshold;}
+    if(a.type==="ALLOCATION_DRIFT"||a.type==="CONCENTRATION"){const v=allHoldings.filter(h=>h.type===a.assetType).reduce((s,h)=>s+getValINR(h),0);const p=allCur>0?(v/allCur)*100:0;return a.type==="CONCENTRATION"?p<a.threshold:p>a.threshold;}
     if(a.type==="RETURN_TARGET")return totPct<a.threshold;
     return false;
   });
@@ -1940,8 +1933,18 @@ ${alertLines||"  None"}`;
             </div>
           )}
           <div className="mg">
-            {[{label:"Portfolio Value",val:fmtCr(totCur),sub:`${visH.length} holdings`},{label:"Amount Invested",val:fmtCr(totInv)},{label:"Total Gains",val:(totGain>=0?"+":"")+fmtCr(totGain),sub:fmtPct(totPct),c:totGain>=0?"gain":"loss"},{label:"Return",val:fmtPct(totPct),c:totPct>=0?"gain":"loss",sub:"P&L %"}].map(m=>(
-              <div key={m.label} className="mc"><div className="mclbl">{m.label}</div><div className={`mcval${m.c?" "+m.c:""}`}>{m.val}</div>{m.sub&&<div className={`mcsub${m.c?" "+m.c:""}`}>{m.sub}</div>}</div>
+            {[
+              {label:"Portfolio Value",val:fmtCr(totCur),sub2:fmtCrUSD(totCur/_liveUsdInr),sub:`${visH.length} holdings`},
+              {label:"Amount Invested",val:fmtCr(totInv),sub2:fmtCrUSD(totInv/_liveUsdInr)},
+              {label:"Total Gains",val:(totGain>=0?"+":"")+fmtCr(totGain),sub:fmtPct(totPct),c:totGain>=0?"gain":"loss"},
+              {label:"Return",val:fmtPct(totPct),c:totPct>=0?"gain":"loss",sub:"P&L %"}
+            ].map(m=>(
+              <div key={m.label} className="mc">
+                <div className="mclbl">{m.label}</div>
+                <div className={`mcval${m.c?" "+m.c:""}`}>{m.val}</div>
+                {m.sub2&&<div style={{fontFamily:"'DM Mono',monospace",fontSize:".68rem",color:"rgba(90,156,224,.6)",marginTop:".2rem"}}>≈ {m.sub2}</div>}
+                {m.sub&&<div className={`mcsub${m.c?" "+m.c:""}`}>{m.sub}</div>}
+              </div>
             ))}
           </div>
           <div className="sg">
@@ -1975,8 +1978,8 @@ ${alertLines||"  None"}`;
           {/* ── NET WORTH TIMELINE ── */}
           {(()=>{
             const nwHoldings = nwMember==="all" ? allHoldings : allHoldings.filter(h=>h.member_id===nwMember);
-            const nwCur = nwHoldings.reduce((s,h)=>s+getVal(h),0);
-            const nwInv = nwHoldings.reduce((s,h)=>s+getInv(h),0);
+            const nwCur = nwHoldings.reduce((s,h)=>s+getValINR(h),0);
+            const nwInv = nwHoldings.reduce((s,h)=>s+getInvINR(h),0);
 
             // Build cumulative invested per month from transactions
             const monthlyInv = {};
@@ -1988,7 +1991,7 @@ ${alertLines||"  None"}`;
               }
               if(["FD","PPF","EPF","REAL_ESTATE"].includes(h.type)&&h.start_date){
                 const mo=h.start_date.slice(0,7);
-                monthlyInv[mo]=(monthlyInv[mo]||0)+getInv(h);
+                monthlyInv[mo]=(monthlyInv[mo]||0)+getInvINR(h);
               }
             }
             // Convert to cumulative
@@ -2125,10 +2128,13 @@ ${alertLines||"  None"}`;
                     const COL_COUNT = 11;
 
                     return groups.map(grp => {
-                      const grpCur = grp.items.reduce((s, h) => s + getVal(h), 0);
-                      const grpInv = grp.items.reduce((s, h) => s + getInv(h), 0);
+                      const grpCur = grp.items.reduce((s, h) => s + getValINR(h), 0);
+                      const grpInv = grp.items.reduce((s, h) => s + getInvINR(h), 0);
                       const grpG = grpCur - grpInv;
                       const grpP = grpInv > 0 ? (grpG / grpInv) * 100 : 0;
+                      const isUSGrp = grp.key === "us";
+                      // For US group, also show $ total
+                      const grpCurUSD = isUSGrp ? grp.items.reduce((s, h) => s + getVal(h), 0) : 0;
                       return [
                         // Section header row
                         <tr key={`hdr_${grp.key}`} style={{background:"rgba(255,255,255,.02)"}}>
@@ -2140,6 +2146,7 @@ ${alertLines||"  None"}`;
                           </td>
                           <td className="r" style={{padding:".55rem .65rem",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
                             <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:grp.color,fontWeight:500}}>{fmt(grpCur)}</span>
+                            {isUSGrp&&<div style={{fontFamily:"'DM Mono',monospace",fontSize:".6rem",color:"rgba(90,156,224,.55)"}}>≈ {fmtCrUSD(grpCurUSD)}</div>}
                           </td>
                           <td className="r" style={{padding:".55rem .65rem",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
                             <span className={`mono${grpG>=0?" gain":" loss"}`} style={{fontSize:".68rem"}}>{grpG>=0?"+":""}{fmt(grpG)} ({fmtPct(grpP)})</span>
@@ -2156,9 +2163,9 @@ ${alertLines||"  None"}`;
                     const isLive=!!h.price_fetched_at;
                     const units   = h.net_units ?? h.units ?? null;
                     const avgCost = h.avg_cost  ?? h.purchase_price ?? h.purchase_nav ?? null;
-                    const fx      = h.usd_inr_rate || 83.2;
-                    const isUS    = USD_TYPES.has(h.type) || (h.currency && h.currency.toUpperCase() === "USD");
+                    const isUS    = isUSDHolding(h);
                     const nativeSym = isUS ? "$" : "₹";
+                    const fmtH = n => fmtNative(n, h);  // native formatter for this holding
 
                     const avgDisplay = avgCost
                       ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(255,255,255,.85)"}}>
@@ -2213,11 +2220,11 @@ ${alertLines||"  None"}`;
                           {isLive&&<div style={{fontSize:".52rem",color:"#4caf9a",marginTop:1}}>● {ago(h.price_fetched_at)}</div>}
                         </td>
                         <td className="r">
-                          <div style={{fontFamily:"'DM Mono',monospace",fontWeight:500,fontSize:".78rem"}}>{fmt(cur)}</div>
-                          <div style={{fontFamily:"'DM Mono',monospace",fontSize:".65rem",color:"rgba(255,255,255,.4)",marginTop:1}}>inv. {fmt(inv)}</div>
+                          <div style={{fontFamily:"'DM Mono',monospace",fontWeight:500,fontSize:".78rem"}}>{fmtH(cur)}</div>
+                          <div style={{fontFamily:"'DM Mono',monospace",fontSize:".65rem",color:"rgba(255,255,255,.4)",marginTop:1}}>inv. {fmtH(inv)}</div>
                         </td>
                         <td className="r">
-                          <div className={`mono${g>=0?" gain":" loss"}`} style={{fontSize:".78rem"}}>{g>=0?"+":""}{fmt(g)}</div>
+                          <div className={`mono${g>=0?" gain":" loss"}`} style={{fontSize:".78rem"}}>{g>=0?"+":""}{fmtH(g)}</div>
                           <div className={`mono${p>=0?" gain":" loss"}`} style={{fontSize:".65rem",marginTop:1}}>{fmtPct(p)}</div>
                         </td>
                         <td>
@@ -2243,8 +2250,8 @@ ${alertLines||"  None"}`;
                 </tbody>
                 {/* Totals footer row */}
                 {visH.length>0&&(()=>{
-                  const totI=visH.reduce((s,h)=>s+getInv(h),0);
-                  const totC=visH.reduce((s,h)=>s+getVal(h),0);
+                  const totI=visH.reduce((s,h)=>s+getInvINR(h),0);
+                  const totC=visH.reduce((s,h)=>s+getValINR(h),0);
                   const totG=totC-totI;
                   const totP=totI>0?(totG/totI)*100:0;
                   return(
@@ -2253,7 +2260,8 @@ ${alertLines||"  None"}`;
                       <td colSpan={8} style={{padding:".75rem .65rem",fontSize:".7rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.42)",fontWeight:600}}>Total · {visH.length} holding{visH.length!==1?"s":""}</td>
                       <td className="r" style={{padding:".75rem .65rem"}}>
                         <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,color:"#c9a84c",fontSize:".88rem"}}>{fmt(totC)}</div>
-                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:".65rem",color:"rgba(255,255,255,.45)",marginTop:1}}>inv. {fmt(totI)}</div>
+                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:"rgba(90,156,224,.55)",marginTop:1}}>≈ {fmtCrUSD(totC/_liveUsdInr)}</div>
+                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:"rgba(255,255,255,.35)",marginTop:1}}>inv. {fmt(totI)}</div>
                       </td>
                       <td className="r" style={{padding:".75rem .65rem"}}>
                         <div className={`mono${totG>=0?" gain":" loss"}`} style={{fontWeight:600,fontSize:".83rem"}}>{totG>=0?"+":""}{fmt(totG)}</div>
@@ -2278,7 +2286,7 @@ ${alertLines||"  None"}`;
           function goalCur(g){
             const lm=g.linkedMembers||["all"];
             if(lm.includes("all")||lm.length===0) return allCur;
-            return allHoldings.reduce((s,h)=>lm.includes(h.member_id)?s+getVal(h):s,0);
+            return allHoldings.reduce((s,h)=>lm.includes(h.member_id)?s+getValINR(h):s,0);
           }
           return(<>
           {/* Header */}
@@ -2364,7 +2372,7 @@ ${alertLines||"  None"}`;
         {tab==="members"&&(<>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Family Members</div><button className="btn-sm" onClick={()=>openMemberModal(null)}>+ Add Member</button></div>
           {mSum.length===0&&(<div className="empty">No members yet. Add a family member to start tracking individual portfolios.</div>)}
-          {mSum.map(m=>{const hs=allHoldings.filter(h=>h.member_id===m.id);const byT=Object.keys(AT).map(t=>({t,v:hs.filter(h=>h.type===t).reduce((s,h)=>s+getVal(h),0)})).filter(x=>x.v>0);const holdingCount=hs.length;return(<div key={m.id} className="card" style={{marginBottom:"1rem"}}>
+          {mSum.map(m=>{const hs=allHoldings.filter(h=>h.member_id===m.id);const byT=Object.keys(AT).map(t=>({t,v:hs.filter(h=>h.type===t).reduce((s,h)=>s+getValINR(h),0)})).filter(x=>x.v>0);const holdingCount=hs.length;return(<div key={m.id} className="card" style={{marginBottom:"1rem"}}>
             <div style={{display:"flex",alignItems:"center",gap:".82rem",marginBottom:".95rem"}}>
               <div className="av" style={{width:42,height:42,fontSize:"1rem"}}>{m.name[0]}</div>
               <div style={{flex:1}}>
@@ -3184,14 +3192,14 @@ ${alertLines||"  None"}`;
         {/* ── ASSET ALLOCATION PLANNER ── */}
         {tab==="rebalance"&&(()=>{
           const rHoldings = rebalMember==="all" ? allHoldings : allHoldings.filter(h=>h.member_id===rebalMember);
-          const rTotal    = rHoldings.reduce((s,h)=>s+getVal(h),0);
+          const rTotal    = rHoldings.reduce((s,h)=>s+getValINR(h),0);
           const cash      = +rebalCash||0;
           const totalWithCash = rTotal + cash;
 
           // Current allocation per type
           const curAlloc = {};
           for(const h of rHoldings){
-            curAlloc[h.type] = (curAlloc[h.type]||0) + getVal(h);
+            curAlloc[h.type] = (curAlloc[h.type]||0) + getValINR(h);
           }
 
           // Normalise targets (ensure they sum to 100)
@@ -3725,7 +3733,7 @@ ${alertLines||"  None"}`;
                   {stockInfo.price&&(
                     <div style={{textAlign:"right"}}>
                       <div style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c",fontSize:".9rem"}}>${stockInfo.price.toLocaleString("en-US",{maximumFractionDigits:2})}</div>
-                      <div style={{fontFamily:"'DM Mono',monospace",color:"rgba(255,255,255,.55)",fontSize:".72rem"}}>₹{(stockInfo.price*(+form.usd_inr_rate||83.2)).toLocaleString("en-IN",{maximumFractionDigits:0})}</div>
+                      <div style={{fontFamily:"'DM Mono',monospace",color:"rgba(255,255,255,.55)",fontSize:".72rem"}}>₹{(stockInfo.price*(+form.usd_inr_rate||_liveUsdInr)).toLocaleString("en-IN",{maximumFractionDigits:0})}</div>
                     </div>
                   )}
                 </div>
@@ -3742,7 +3750,7 @@ ${alertLines||"  None"}`;
                     {usdInrLoading?"…":"⟳ Live"}
                   </button>
                 </div>
-                <div style={{fontSize:".65rem",color:"rgba(255,255,255,.4)",marginTop:".2rem"}}>1 USD = ₹{(+form.usd_inr_rate||83.2).toFixed(2)}</div>
+                <div style={{fontSize:".65rem",color:"rgba(255,255,255,.4)",marginTop:".2rem"}}>1 USD = ₹{(+form.usd_inr_rate||_liveUsdInr).toFixed(2)}</div>
               </div>
             </div>
           </div>
@@ -3825,7 +3833,7 @@ ${alertLines||"  None"}`;
     {globalTxnModal&&(()=>{
       const selHolding = holdings.find(h=>h.id===txnForm.holding_id);
       const isUS = USD_TYPES.has(selHolding?.type);
-      const fxRate = +(selHolding?.usd_inr_rate||usdInrRate||83.2);
+      const fxRate = +(selHolding?.usd_inr_rate||usdInrRate||_liveUsdInr);
       const priceUsd = isUS ? +txnForm.price_usd||0 : 0;
       const totalUsd = isUS ? priceUsd * +txnForm.units : 0;
       const totalInr = isUS ? totalUsd * fxRate : +txnForm.price * +txnForm.units;
@@ -4130,26 +4138,15 @@ ${alertLines||"  None"}`;
       <Overlay onClose={()=>setShowSettings(false)}>
         <div className="modtitle">⚙️ Account Settings</div>
 
-        {/* Currency */}
+        {/* Live FX Rate */}
         <div style={{marginBottom:"1.4rem"}}>
-          <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".75rem"}}>Base Currency</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:".5rem"}}>
-            {Object.entries(CURRENCIES).map(([code,c])=>(
-              <div key={code} onClick={async()=>{
-                setUserCurrency(code); _activeCurrency=code;
-                await api("/api/profile",{method:"PUT",body:JSON.stringify({display_name:profile?.display_name,currency:code})});
-                setProfile(p=>({...p,currency:code}));
-              }} style={{padding:".55rem .75rem",borderRadius:7,cursor:"pointer",
-                background:userCurrency===code?"rgba(201,168,76,.15)":"rgba(255,255,255,.04)",
-                border:`1px solid ${userCurrency===code?"rgba(201,168,76,.45)":"rgba(255,255,255,.08)"}`,
-                color:userCurrency===code?"#c9a84c":"rgba(255,255,255,.65)",transition:"all .15s"}}>
-                <div style={{fontSize:".85rem",fontWeight:600}}>{c.symbol} {code}</div>
-                <div style={{fontSize:".65rem",marginTop:".15rem",opacity:.7}}>{c.name}</div>
-              </div>
-            ))}
+          <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".75rem"}}>Live Exchange Rate</div>
+          <div style={{display:"flex",alignItems:"center",gap:"1rem",padding:".65rem .85rem",background:"rgba(90,156,224,.06)",border:"1px solid rgba(90,156,224,.15)",borderRadius:8}}>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1rem",color:"#5a9ce0"}}>1 USD = ₹{_liveUsdInr.toFixed(2)}</div>
+            <div style={{fontSize:".65rem",color:"rgba(255,255,255,.4)"}}>Auto-fetched · used for portfolio ₹↔$ conversion</div>
           </div>
-          <div style={{fontSize:".67rem",color:"rgba(255,255,255,.38)",marginTop:".6rem"}}>
-            All values will display in your selected currency. FX conversions use live rates.
+          <div style={{fontSize:".65rem",color:"rgba(255,255,255,.35)",marginTop:".5rem",lineHeight:1.5}}>
+            Indian assets display in ₹, US assets in $. Portfolio totals show both currencies.
           </div>
         </div>
 
@@ -4158,7 +4155,7 @@ ${alertLines||"  None"}`;
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".75rem"}}>
             <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c"}}>Asset Types</div>
             <button className="btn-sm" onClick={()=>{
-              const newAt={id:"",label:"",icon:"📦",color:"#c9a84c",price_source:"MANUAL",currency:userCurrency||"USD",is_default:false,_editing:true};
+              const newAt={id:"",label:"",icon:"📦",color:"#c9a84c",price_source:"MANUAL",currency:"INR",is_default:false,_editing:true};
               setAssetTypes(p=>[...p,newAt]);
             }}>+ Add Custom Type</button>
           </div>
@@ -4209,7 +4206,7 @@ ${alertLines||"  None"}`;
                 <button className="btn-sm" style={{padding:".28rem .6rem",fontSize:".68rem"}} onClick={async()=>{
                   if(!at.label.trim()) return;
                   if(at.id){ await api(`/api/asset-types/${at.id}`,{method:"PUT",body:JSON.stringify({label:at.label,icon:at.icon,color:at.color,price_source:at.price_source})}); }
-                  else { const r=await api("/api/asset-types",{method:"POST",body:JSON.stringify({label:at.label,icon:at.icon,color:at.color,price_source:at.price_source,currency:at.currency||userCurrency,is_default:false})}); setAssetTypes(p=>p.map((x,j)=>j===idx?{...x,id:r.id,_editing:false}:x)); }
+                  else { const r=await api("/api/asset-types",{method:"POST",body:JSON.stringify({label:at.label,icon:at.icon,color:at.color,price_source:at.price_source,currency:at.currency||"INR",is_default:false})}); setAssetTypes(p=>p.map((x,j)=>j===idx?{...x,id:r.id,_editing:false}:x)); }
                 }}>Save</button>
                 <button className="delbtn" onClick={async()=>{
                   if(at.id){ await api(`/api/asset-types/${at.id}`,{method:"DELETE"}); }
@@ -4371,7 +4368,7 @@ function GoalPlanModal({open,onClose,goals,members,holdings,allCur,allInv}){
   function goalCurVal(g){
     const lm=g.linkedMembers||["all"];
     if(lm.includes("all")||lm.length===0) return allCur;
-    return holdings.reduce((s,h)=>lm.includes(h.member_id)?s+getVal(h):s,0);
+    return holdings.reduce((s,h)=>lm.includes(h.member_id)?s+getValINR(h):s,0);
   }
 
   useEffect(()=>{
@@ -4394,7 +4391,7 @@ function GoalPlanModal({open,onClose,goals,members,holdings,allCur,allInv}){
     }).join("\n");
 
     const memberBreakdown=members.map(m=>{
-      const mCur=holdings.reduce((s,h)=>h.member_id===m.id?s+getVal(h):s,0);
+      const mCur=holdings.reduce((s,h)=>h.member_id===m.id?s+getValINR(h):s,0);
       const mInv=holdings.reduce((s,h)=>h.member_id===m.id?s+h.purchase_value||0:s,0);
       return `  ${m.name} (${m.relation}): ${fmtCr(mCur)}`;
     }).join("\n");

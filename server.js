@@ -3486,7 +3486,7 @@ app.post("/api/holdings/import", auth, async (req, res) => {
       purchase_value: h.purchase_value || 0,
       current_value: h.current_value || 0, principal: h.principal || 0,
       interest_rate: h.interest_rate || 0, start_date: h.start_date || null,
-      maturity_date: h.maturity_date || null, usd_inr_rate: h.usd_inr_rate || 83.2,
+      maturity_date: h.maturity_date || null, usd_inr_rate: h.usd_inr_rate || null,
       ...(h.source ? { source: h.source } : {}),
       ...(h.brokerage_name ? { brokerage_name: h.brokerage_name } : {}),
       ...(h.currency ? { currency: h.currency } : {}),
