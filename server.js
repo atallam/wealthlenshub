@@ -1891,9 +1891,9 @@ const XLSX = _require("xlsx");
 const pdfjsLib = _require("pdfjs-dist/legacy/build/pdf.mjs");
 import crypto from "crypto";
 
-// ── pdfjs-dist: resolve standard font path for PDF text extraction ──
-import { dirname, join } from "path";
-const _pdfjsFontPath = join(dirname(_require.resolve("pdfjs-dist/package.json")), "standard_fonts") + "/";
+// ── pdfjs-dist: resolve standard font path for text extraction ──
+const _pdfjsFontPath = path.join(path.dirname(_require.resolve("pdfjs-dist/package.json")), "standard_fonts") + "/";
+console.log("📄 pdfjs-dist font path:", _pdfjsFontPath);
 
 // ── Encryption helpers (AES-256-GCM) ─────────────────────────────
 const BUDGET_KEY = process.env.BUDGET_ENCRYPT_KEY
@@ -3349,6 +3349,7 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
             standardFontDataUrl: _pdfjsFontPath,
             useSystemFonts: true,
           });
+          console.log("📄 PDF: opening with standardFontDataUrl =", _pdfjsFontPath);
           // Handle password-protected PDFs via callback
           let passwordAttempted = false;
           loadingTask.onPassword = (updateCallback, reason) => {
@@ -3398,6 +3399,37 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
         }
         const pages = await Promise.all(pagePromises);
         const rawPdfText = pages.join("\n");
+        console.log(`📄 PDF: extracted ${rawPdfText.length} chars from ${pages.length} pages. First 200: "${rawPdfText.substring(0,200).replace(/\n/g,"\\n")}"`);
+
+        // Debug mode: return raw PDF text for troubleshooting
+        if (req.query.debug === "1" || req.body?.debug === "1") {
+          return res.json({
+            debug: true,
+            totalLength: rawPdfText.length,
+            pageCount: pages.length,
+            pageLengths: pages.map((p,i) => ({ page: i+1, chars: p.length })),
+            // First 8000 chars of raw text
+            rawText: rawPdfText.substring(0, 8000),
+            // Search for key anchors
+            anchors: {
+              closingUnitBalance: [...rawPdfText.matchAll(/Closing\s*Unit\s*Balance\s*[:\s]*([\d,.]+)/gi)].map(m => ({
+                position: m.index,
+                matched: m[0],
+                units: m[1],
+                surrounding: rawPdfText.substring(Math.max(0, m.index - 80), m.index + 250)
+              })),
+              nav: [...rawPdfText.matchAll(/NAV\s*(?:on|as\s*on)?[^:]*?[:\s]\s*(?:INR|Rs)?\.?\s*([\d,.]+)/gi)].map(m => ({
+                matched: m[0].substring(0,80), value: m[1]
+              })),
+              valuation: [...rawPdfText.matchAll(/Valuation\s*(?:on|as\s*on)?[^:]*?[:\s]\s*(?:INR|Rs)?\.?\s*([\d,.]+)/gi)].map(m => ({
+                matched: m[0].substring(0,80), value: m[1]
+              })),
+              costValue: [...rawPdfText.matchAll(/Cost\s*(?:Value)?[^:]*?[:\s]\s*(?:INR|Rs)?\.?\s*([\d,.]+)/gi)].map(m => ({
+                matched: m[0].substring(0,80), value: m[1]
+              })),
+            }
+          });
+        }
 
         // ── Route 1: NSDL/CDSL CAS statement ──
         if (/consolidated\s*account\s*statement|nsdl|cdsl/i.test(rawPdfText) && /mutual\s*fund|demat|folio/i.test(rawPdfText)) {
