@@ -2225,7 +2225,6 @@ ${alertLines||"  None"}`;
                         </td>
                         <td className="r">
                           <div style={{fontFamily:"'DM Mono',monospace",fontWeight:500,fontSize:".78rem"}}>{fmtCrNative(cur, h)}</div>
-                          <div style={{fontFamily:"'DM Mono',monospace",fontSize:".6rem",color:"rgba(255,255,255,.35)",marginTop:1}}>inv. {fmtCrNative(inv, h)}</div>
                         </td>
                         <td className="r">
                           <div className={`mono${g>=0?" gain":" loss"}`} style={{fontSize:".78rem"}}>{g>=0?"+":""}{fmtNative(Math.abs(g), h)}</div>
