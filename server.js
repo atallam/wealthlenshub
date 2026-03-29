@@ -3015,186 +3015,160 @@ function parseNSDLCASStatement(rawText) {
     return m ? m[1].toUpperCase() : "";
   }
 
-  // ── Strategy 1: Find MF via "Closing Unit Balance" or "Closing Balance" anchors ──
-  // Some CAS formats use "Closing Unit Balance", others just "Closing Balance"
-  const closingRe = /Closing\s*(?:Unit\s*)?Balance\s*[:\s]*([\d,.]+)/gi;
-  let cm;
-  // DEBUG: log what anchors exist
-  const debugAnchors = rawText.match(/Closing\s*(?:Unit\s*)?Balance[^a-z]{0,30}/gi) || [];
-  console.log(`📋 CAS Strategy1: found ${debugAnchors.length} "Closing Balance" anchors:`, debugAnchors.slice(0,5));
-  // Also log what the text looks like around first INF ISIN
-  const firstINF = rawText.match(/\b(INF[A-Z0-9]{9})\b/);
-  if (firstINF) {
-    const idx = rawText.indexOf(firstINF[0]);
-    console.log(`📋 CAS text around first INF (${firstINF[0]}) at pos ${idx}:`);
-    console.log(`   "${rawText.substring(idx, idx + 500).replace(/\n/g,"\\n")}"`);
-  }
-  while ((cm = closingRe.exec(rawText)) !== null) {
-    const rawUnits = pNum(cm[1]);
-    if (rawUnits <= 0) continue;
+  // ── Strategy A: Parse MF from INF ISIN rows in CAS summary/detail ──
+  // CAS text format (from actual PDF extraction):
+  //   INF109KC15W9 NOT AVAILABLE   ICICI Prudential...Fund 34425415   2,499.875   10.0005   25,000.00   11.0000   27,498.63   2,498.63   6.12
+  //   INF204K01HY3 MFRILC0135   NIPPON INDIA...FUND 477351147776   603.442   165.7160   1,00,000.00   162.1622   97,855.48   -2,144.52   -2.67
+  // Pattern: ISIN [junk] NAME [numbers...]
+  // The numbers include: folio, nav, units, invested, current_nav, current_value, gain, gain%
+  // We identify which is which using: Units × NAV ≈ Value (within 5%)
 
-    const before = rawText.substring(Math.max(0, cm.index - 800), cm.index);
+  const infRe = /\b(INF[A-Z0-9]{9})\b/g;
+  let infMatch;
+  while ((infMatch = infRe.exec(rawText)) !== null) {
+    const isin = infMatch[1];
+    if (seen.has(isin)) continue;
 
-    // Extract ISIN (mutual funds start with INF)
-    const isinMatch = before.match(/\b(INF[A-Z0-9]{9})\b/);
-    const isin = isinMatch ? isinMatch[1] : "";
+    // Extract text from this ISIN to the next ISIN (or 800 chars, whichever comes first)
+    const afterStart = infMatch.index + infMatch[0].length;
+    const nextIsin = rawText.substring(afterStart).match(/\b(IN[FE][A-Z0-9]{9})\b/);
+    const blockEnd = nextIsin ? afterStart + nextIsin.index : afterStart + 800;
+    const block = rawText.substring(afterStart, Math.min(blockEnd, afterStart + 800));
 
-    // Extract Folio
-    const folioMatch = before.match(/Folio\s*(?:No)?\.?\s*[:\s]*([A-Z0-9\/ -]+)/i);
-    const folio = folioMatch ? folioMatch[1].trim() : "";
+    // Extract the name: text between ISIN and the first long number sequence
+    // Skip scheme code prefix (e.g. "MFRILC0135", "NOT AVAILABLE")
+    const nameMatch = block.match(/^[\s\S]*?([A-Z][A-Za-z\s&().'-]{5,120}(?:Fund|Growth|IDCW|Plan|Option|Savings|Dividend|Bonus|Direct|Regular|Flexi|Equity|Debt|Liquid|Hybrid|Balanced|Cap|Index|ETF|ELSS)[A-Za-z\s()'-]{0,40})/i);
+    if (!nameMatch) continue;
+    const rawName = nameMatch[1].replace(/\s+/g, " ").trim();
+    const name = cleanCASName(rawName);
 
-    // Extract scheme name — look for text with fund keywords
-    let schemeName = "";
-    const namePatterns = [
-      /\b(?:INF[A-Z0-9]{9})\s+(.{10,120}?)(?=\s*(?:Advisor|Registrar|Opening|Date|Folio|INF[A-Z0-9]))/i,
-      /([A-Z][A-Za-z\s&().'-]{5,100}(?:Fund|Savings|Nifty|Sensex|ETF|Flexi|Equity|Debt|Liquid|Hybrid|Balanced|Growth|IDCW|Direct|Regular|Plan|Income|Advantage|Opportunities|BlueChip|Bluechip|Small\s*Cap|Mid\s*Cap|Large\s*Cap|Multi\s*Cap|Index)[A-Za-z\s()'-]{0,60})/i,
-    ];
-    for (const np of namePatterns) {
-      const nm = before.match(np);
-      if (nm) { schemeName = nm[1].replace(/\s+/g, " ").trim(); break; }
+    // Extract ALL numbers from the block after the name
+    const numRegion = block.substring(nameMatch[0].length);
+    const numRe = /-?[\d,]+\.?\d*/g;
+    const allNums = [];
+    let nm;
+    while ((nm = numRe.exec(numRegion)) !== null) {
+      const val = pNum(nm[0]);
+      if (!isNaN(val) && val !== 0) allNums.push(val);
     }
-    if (!schemeName && isin) schemeName = "MF Scheme (" + isin + ")";
-    if (!schemeName) continue;
 
-    // ── Extract key numbers from the region AFTER Closing Unit Balance ──
-    // CAS format:
-    //   NAV on DD-Mon-YYYY : INR 603.4420
-    //   Valuation on DD-Mon-YYYY : INR 3,64,31,873
-    //   Cost Value : INR 1,00,000
-    const after = rawText.substring(cm.index + cm[0].length, cm.index + cm[0].length + 600);
+    console.log(`📋 CAS MF: ${name} (${isin}) — ${allNums.length} numbers: [${allNums.slice(0,10).join(", ")}]`);
 
-    const navMatch = after.match(/NAV\s*(?:on|as\s*on)?\s*[^:]*?[:\s]\s*(?:INR|Rs\.?|`)?\s*([\d,.]+)/i);
-    const valMatch = after.match(/Valuation\s*(?:on|as\s*on)?\s*[^:]*?[:\s]\s*(?:INR|Rs\.?|`)?\s*([\d,.]+)/i);
-    const costMatch = after.match(/Cost\s*(?:Value)?\s*[:\s]\s*(?:INR|Rs\.?|`)?\s*([\d,.]+)/i);
+    if (allNums.length < 4) continue; // Need at least folio + nav + units + value
 
-    const nav = navMatch ? pNum(navMatch[1]) : 0;
-    const valuation = valMatch ? pNum(valMatch[1]) : 0;
-    const costValue = costMatch ? pNum(costMatch[1]) : 0;
+    // ── Identify columns by cross-validation: Units × NAV ≈ Value ──
+    // Skip the first number (likely folio — very large, no decimal)
+    // Then try all permutations of remaining numbers to find the triplet where a*b≈c
+    let bestMatch = null;
 
-    // ── DEBUG: log extracted values for each scheme ──
-    console.log(`📋 CAS PARSE: ${cleanCASName(schemeName)}`);
-    console.log(`   rawUnits=${rawUnits}, nav=${nav}, valuation=${valuation}, cost=${costValue}`);
-    console.log(`   AFTER snippet: "${after.substring(0, 200).replace(/\n/g,"\\n")}"`);
-    if (navMatch) console.log(`   NAV match: "${navMatch[0].substring(0,60)}"`);
-    if (valMatch) console.log(`   VAL match: "${valMatch[0].substring(0,60)}"`);
-    if (costMatch) console.log(`   COST match: "${costMatch[0].substring(0,60)}"`);
-    if (!navMatch) console.log(`   ⚠ NAV not found in after region`);
-    if (!valMatch) console.log(`   ⚠ VALUATION not found in after region`);
-
-    // Also check BEFORE the closing balance for cost
-    const costMatchBefore = !costValue ? before.match(/Cost\s*(?:Value)?\s*[:\s]\s*(?:INR|Rs\.?|`)?\s*([\d,.]+)/i) : null;
-    const totalCost = costValue || (costMatchBefore ? pNum(costMatchBefore[1]) : 0);
-
-    // ── Cross-validate units using NAV × units ≈ valuation ──
-    // The raw "Closing Unit Balance" number can be wrong if PDF text extraction
-    // concatenated adjacent numbers (e.g. picking 1,00,000 instead of 603.442)
-    let units = rawUnits;
-    if (nav > 0 && valuation > 0) {
-      const derivedUnits = valuation / nav;
-      const ratio = rawUnits / derivedUnits;
-      if (ratio > 5 || ratio < 0.2) {
-        // Raw units are way off — use Valuation / NAV instead
-        console.warn(`⚠️ CAS units corrected: ${schemeName}: raw=${rawUnits} → derived=${derivedUnits.toFixed(3)} (val=${valuation}/nav=${nav})`);
-        units = Math.round(derivedUnits * 10000) / 10000;
-      }
-    } else if (nav > 0 && totalCost > 0 && !valuation) {
-      // No valuation but have NAV and cost — sanity check units
-      const expectedVal = rawUnits * nav;
-      if (expectedVal > 0 && totalCost > expectedVal * 5) {
-        // Cost is much larger than units*nav — units is probably wrong
-        // This happens when the parser picks Amount instead of Units
-        console.warn(`⚠️ CAS units look like amount: ${schemeName}: raw=${rawUnits}, nav=${nav}, cost=${totalCost}`);
+    for (let i = 0; i < Math.min(allNums.length, 8); i++) {
+      for (let j = i + 1; j < Math.min(allNums.length, 8); j++) {
+        const product = allNums[i] * allNums[j];
+        // Look for a third number that matches this product
+        for (let k = 0; k < Math.min(allNums.length, 10); k++) {
+          if (k === i || k === j) continue;
+          if (allNums[k] <= 0) continue;
+          const err = Math.abs(product - allNums[k]) / allNums[k];
+          if (err < 0.03) { // within 3%
+            // Found: allNums[i] × allNums[j] ≈ allNums[k]
+            // The two factors are NAV and Units; the product is a Value
+            const n1 = allNums[i], n2 = allNums[j], val = allNums[k];
+            // NAV is the per-unit price (typically 10-5000 range for Indian MFs)
+            // Units is the count (can be fractional)
+            // Prefer the match where one factor looks like NAV (10-10000) and product is the value
+            const score = err;
+            if (!bestMatch || score < bestMatch.err) {
+              // Figure out which is NAV and which is Units
+              // Heuristic: if both are similar magnitude, the one that appears first in the text is NAV
+              // But more reliably: the larger value × smaller value ≈ product
+              const nav = Math.max(n1, n2);
+              const units = Math.min(n1, n2);
+              bestMatch = { nav, units, val, err: score, indices: [i, j, k] };
+            }
+          }
+        }
       }
     }
-    if (units <= 0) continue;
 
-    // ── Compute avg purchase NAV ──
-    // Priority: Cost Value / units > transaction-level calc > current NAV
-    const purchaseNavFromCost = totalCost > 0 && units > 0 ? totalCost / units : 0;
+    if (!bestMatch) {
+      console.log(`   ⚠ No Units×NAV≈Value match found. Skipping.`);
+      continue;
+    }
 
-    // Parse individual transactions for weighted avg cost
-    let txnCostSum = 0, txnUnitsSum = 0;
-    const txnRegion = rawText.substring(Math.max(0, cm.index - 3000), cm.index);
-    // CAS transactions: Date  Description  Amount(INR)  Units  NAV  CumulativeBalance
-    // Key insight: in each row, the 3 numbers follow Amount > Balance > Units > NAV ordering
-    // But we can identify them: Units * NAV ≈ Amount
-    const txnRe = /(\d{2}-[A-Za-z]{3}-\d{4})\s+([^\d\n]{3,60}?)\s+([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)/g;
-    let txnM;
-    while ((txnM = txnRe.exec(txnRegion)) !== null) {
-      const desc = txnM[2].toLowerCase();
-      const isBuy = desc.includes("purchase") || desc.includes("sip") || desc.includes("systematic")
-        || desc.includes("switch in") || desc.includes("switch-in");
-      if (!isBuy) continue;
+    let { nav, units, val: currentValue } = bestMatch;
+    console.log(`   ✓ Matched: units=${units}, nav=${nav}, value=${currentValue} (err=${(bestMatch.err*100).toFixed(1)}%)`);
 
-      const n1 = pNum(txnM[3]), n2 = pNum(txnM[4]), n3 = pNum(txnM[5]), n4 = pNum(txnM[6]);
-      // The 4 numbers are: Amount, Units, NAV, CumulativeBalance
-      // Amount is usually the largest, NAV is per-unit (small), Units is fractional
-      // Test all permutations of first 3 numbers to find Units*NAV≈Amount
-      const candidates = [
-        { amt: n1, u: n2, nav: n3 },
-        { amt: n1, u: n3, nav: n2 },
-        { amt: n2, u: n1, nav: n3 },
-        { amt: n2, u: n3, nav: n1 },
-        { amt: n3, u: n1, nav: n2 },
-        { amt: n3, u: n2, nav: n1 },
-      ];
-      let best = null;
-      for (const c of candidates) {
-        if (c.amt <= 0 || c.u <= 0 || c.nav <= 0) continue;
-        const err = Math.abs(c.u * c.nav - c.amt) / c.amt;
-        if (err < 0.02 && (!best || err < best.err)) best = { ...c, err }; // within 2%
-      }
-      if (best) {
-        txnCostSum += best.amt;
-        txnUnitsSum += best.u;
+    // ── Find invested amount and purchase NAV ──
+    // Invested is usually a round number (like 1,00,000 or 25,000 or 3,10,000)
+    // It should be different from currentValue but in the same ballpark
+    let invested = 0, purchaseNav = 0;
+
+    // Look for another pair: Units × PurchaseNAV ≈ Invested
+    for (let i = 0; i < Math.min(allNums.length, 8); i++) {
+      if (bestMatch.indices.includes(i)) continue;
+      const candidateInvested = allNums[i];
+      if (candidateInvested <= 0 || candidateInvested > currentValue * 5) continue;
+      // Check if there's a purchase NAV: units * purchaseNAV ≈ candidateInvested
+      const derivedPurchaseNav = candidateInvested / units;
+      // The purchaseNAV should be in a reasonable range relative to current NAV
+      if (derivedPurchaseNav > 0 && derivedPurchaseNav < nav * 10 && derivedPurchaseNav > nav * 0.01) {
+        // Check if this derivedPurchaseNav appears as one of the numbers
+        for (let j = 0; j < Math.min(allNums.length, 10); j++) {
+          if (j === i || bestMatch.indices.includes(j)) continue;
+          const navErr = Math.abs(allNums[j] - derivedPurchaseNav) / derivedPurchaseNav;
+          if (navErr < 0.03) {
+            invested = candidateInvested;
+            purchaseNav = allNums[j];
+            console.log(`   ✓ Invested=${invested}, PurchaseNAV=${purchaseNav}`);
+            break;
+          }
+        }
+        if (invested > 0) break;
+        // Even without finding the exact NAV in the numbers, if the invested amount is round, use it
+        if (candidateInvested % 1000 === 0 || candidateInvested % 500 === 0) {
+          invested = candidateInvested;
+          purchaseNav = derivedPurchaseNav;
+          console.log(`   ✓ Invested=${invested} (round number), PurchaseNAV=${purchaseNav.toFixed(4)} (derived)`);
+          break;
+        }
       }
     }
-    const purchaseNavFromTxns = txnUnitsSum > 0 ? txnCostSum / txnUnitsSum : 0;
 
-    // Final values
-    const avgPurchaseNav = purchaseNavFromCost > 0 ? purchaseNavFromCost
-      : purchaseNavFromTxns > 0 ? purchaseNavFromTxns
-      : nav;
-    const investedValue = totalCost > 0 ? totalCost
-      : txnCostSum > 0 ? txnCostSum
-      : valuation;
-    const currentValue = valuation > 0 ? valuation : units * nav;
+    if (!invested) {
+      invested = currentValue; // fallback: cost = current value (no gain data)
+      purchaseNav = nav;
+    }
 
-    const key = (isin || schemeName.toLowerCase().slice(0, 30)) + "|" + units.toFixed(3);
+    // Also look for Closing Balance pattern in region before this ISIN for transaction-detail CAS
+    const beforeIsin = rawText.substring(Math.max(0, infMatch.index - 1500), infMatch.index);
+    const closingBalMatch = beforeIsin.match(/Closing\s*(?:Unit\s*)?Balance\s*[:\s]*([\d,.]+)/i);
+    if (closingBalMatch) {
+      const cbUnits = pNum(closingBalMatch[1]);
+      // Verify: if this closing balance × nav ≈ currentValue, use it as units
+      if (cbUnits > 0 && nav > 0) {
+        const cbVal = cbUnits * nav;
+        if (Math.abs(cbVal - currentValue) / currentValue < 0.05) {
+          console.log(`   ✓ Closing Balance confirms units=${cbUnits}`);
+          units = cbUnits;
+        }
+      }
+    }
+
+    const key = isin + "|" + units.toFixed(3);
     if (seen.has(key)) continue;
     seen.add(key);
 
+    // Extract folio (first very large number, likely >6 digits, no decimal)
+    const folio = allNums.find(n => n > 100000 && n === Math.floor(n) && !bestMatch.indices.includes(allNums.indexOf(n)))?.toString() || "";
+
     holdings.push({
-      name: cleanCASName(schemeName), type: "MF", ticker: isin, scheme_code: "",
-      units, purchase_nav: avgPurchaseNav, current_nav: nav,
-      purchase_price: avgPurchaseNav, current_price: nav,
-      purchase_value: investedValue, current_value: currentValue,
+      name, type: "MF", ticker: isin, scheme_code: "",
+      units, purchase_nav: purchaseNav, current_nav: nav,
+      purchase_price: purchaseNav, current_price: nav,
+      purchase_value: invested, current_value: currentValue,
       source: _source, brokerage_name: _brokerage, currency: "INR",
       _folio: folio,
     });
-  }
-
-  // ── Strategy 2: Find MF via ISIN (INF...) + Valuation summary table ──
-  if (holdings.filter(h => h.type === "MF").length === 0) {
-    const summaryRe = /\b(INF[A-Z0-9]{9})\b\s+(.{5,100}?)\s+([\d,.]+)\s+([\d,.]+)\s+(?:[\d,.]+\s+)?([\d,.]+)/g;
-    let sr;
-    while ((sr = summaryRe.exec(rawText)) !== null) {
-      const isin = sr[1], name = cleanCASName(sr[2].replace(/\s+/g, " ").trim());
-      const n1 = pNum(sr[3]), n2 = pNum(sr[4]), n3 = pNum(sr[5]);
-      const sorted = [n1, n2, n3].sort((a, b) => a - b);
-      const nav = sorted[0], units = sorted[1], val = sorted[2];
-      if (units <= 0 || val <= 0) continue;
-      const key = isin + "|" + units.toFixed(3);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      holdings.push({
-        name, type: "MF", ticker: isin, scheme_code: "",
-        units, purchase_nav: nav, current_nav: nav,
-        purchase_price: nav, current_price: nav,
-        purchase_value: val, current_value: val,
-        source: _source, brokerage_name: _brokerage, currency: "INR",
-      });
-    }
   }
 
   // ── Strategy 3: Demat holdings — ISIN (INE...) + quantity ──
