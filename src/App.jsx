@@ -28,10 +28,14 @@ const PPF_R=7.1, EPF_R=8.15;
 function calcFD(p,r,s,mat){const start=new Date(s),now=new Date(),m=new Date(mat);const end=now<m?now:m;const y=Math.max(0,(end-start)/(864e5*365.25));return p*Math.pow(1+r/400,y*4);}
 function calcAccr(p,rate,s){const y=Math.max(0,(new Date()-new Date(s))/(864e5*365.25));return p*Math.pow(1+rate/100,y);}
 // FX: live rate updated on app load; used only for portfolio-level INR↔USD conversion
-let _liveUsdInr = 83.5; // overwritten by /api/forex/usdinr on load
+let _liveUsdInr = 94.5; // overwritten by /api/forex/usdinr on load
 
 function isUSDHolding(h) {
-  return USD_TYPES.has(h.type) || (h.currency && h.currency.toUpperCase() === "USD");
+  if (USD_TYPES.has(h.type)) return true;
+  if (h.currency && h.currency.toUpperCase() === "USD") return true;
+  // CASH-USD ticker from SnapTrade (even if currency field is missing in DB)
+  if (h.type === "CASH" && (h.ticker||"").toUpperCase().includes("USD")) return true;
+  return false;
 }
 
 // getVal / getInv return NATIVE currency (₹ for Indian, $ for US)
@@ -173,10 +177,10 @@ const SEED = {
     { id:"h4",  user_id:"",member_id:m1, type:"IN_STOCK", name:"Reliance Industries Ltd",                                    ticker:"RELIANCE",    scheme_code:"",      purchase_value:150000,  current_value:189000 },
     { id:"h5",  user_id:"",member_id:m1, type:"IN_STOCK", name:"HDFC Bank Ltd",                                              ticker:"HDFCBANK",    scheme_code:"",      purchase_value:120000,  current_value:138000 },
     { id:"h6",  user_id:"",member_id:m1, type:"IN_STOCK", name:"Infosys Ltd",                                                ticker:"INFY",        scheme_code:"",      purchase_value:95000,   current_value:121600 },
-    { id:"h7",  user_id:"",member_id:m1, type:"US_STOCK", name:"NVIDIA Corporation",                                         ticker:"NVDA",        scheme_code:"",      purchase_value:210000,  current_value:378000,  usd_inr_rate:83.2 },
-    { id:"h8",  user_id:"",member_id:m1, type:"US_STOCK", name:"Apple Inc",                                                  ticker:"AAPL",        scheme_code:"",      purchase_value:125000,  current_value:148750,  usd_inr_rate:83.2 },
-    { id:"h8a", user_id:"",member_id:m1, type:"US_ETF",   name:"Vanguard S&P 500 ETF",                                       ticker:"VOO",         scheme_code:"",      purchase_value:180000,  current_value:215000,  usd_inr_rate:83.2 },
-    { id:"h8b", user_id:"",member_id:m1, type:"CRYPTO",   name:"Bitcoin",                                                    ticker:"BTC-USD",     scheme_code:"",      purchase_value:100000,  current_value:165000,  usd_inr_rate:83.2 },
+    { id:"h7",  user_id:"",member_id:m1, type:"US_STOCK", name:"NVIDIA Corporation",                                         ticker:"NVDA",        scheme_code:"",      purchase_value:210000,  current_value:378000,  usd_inr_rate:94.5 },
+    { id:"h8",  user_id:"",member_id:m1, type:"US_STOCK", name:"Apple Inc",                                                  ticker:"AAPL",        scheme_code:"",      purchase_value:125000,  current_value:148750,  usd_inr_rate:94.5 },
+    { id:"h8a", user_id:"",member_id:m1, type:"US_ETF",   name:"Vanguard S&P 500 ETF",                                       ticker:"VOO",         scheme_code:"",      purchase_value:180000,  current_value:215000,  usd_inr_rate:94.5 },
+    { id:"h8b", user_id:"",member_id:m1, type:"CRYPTO",   name:"Bitcoin",                                                    ticker:"BTC-USD",     scheme_code:"",      purchase_value:100000,  current_value:165000,  usd_inr_rate:94.5 },
     { id:"h9",  user_id:"",member_id:m1, type:"IN_ETF",   name:"Nippon India ETF Nifty 50 BeES",                             ticker:"NIFTYBEES",   scheme_code:"",      purchase_value:80000,   current_value:103200 },
     { id:"h10", user_id:"",member_id:m1, type:"FD",       name:"HDFC Bank FD - 7.25% p.a.",                                  ticker:"",            scheme_code:"",      principal:500000,       current_value:537500,  interest_rate:7.25, start_date:"2024-04-01", maturity_date:"2025-04-01" },
     { id:"h11", user_id:"",member_id:m1, type:"PPF",      name:"PPF Account - SBI",                                          ticker:"",            scheme_code:"",      principal:150000,       current_value:162000,  start_date:"2020-04-01" },

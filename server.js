@@ -518,11 +518,11 @@ app.post("/api/ai/chat", auth, async (req, res) => {
 //  DATA SOURCE FALLBACK LAYER
 //  MF:     AMFI master list → MFAPI.in
 //  Stocks: Twelve Data → Yahoo Finance
-//  FX:     exchangerate-api → Yahoo Finance → 83.5
+//  FX:     exchangerate-api → Yahoo Finance → fallback
 // ══════════════════════════════════════════════════════════════════
 
 const TWELVE_KEY = process.env.TWELVE_DATA_KEY || "";  // optional — set in Render env
-const FX_FALLBACK = 83.5;
+const FX_FALLBACK = 94.5;
 
 // ── Generic fetch with timeout ────────────────────────────────────
 async function timedFetch(url, opts = {}, ms = 6000) {
@@ -742,7 +742,7 @@ function scoreMf(name, qLower, qWords) {
 
 // ── FX RATE: exchangerate-api → Yahoo → fallback ─────────────────
 const FX_CACHE = { rates: {}, ts: 0 };
-const FX_FALLBACKS = { INR: 83.5, EUR: 0.92, GBP: 0.79, SGD: 1.34, AED: 3.67, AUD: 1.53, JPY: 149.5, CAD: 1.36, CHF: 0.88 };
+const FX_FALLBACKS = { INR: 94.5, EUR: 0.88, GBP: 0.76, SGD: 1.30, AED: 3.67, AUD: 1.50, JPY: 150.0, CAD: 1.38, CHF: 0.85 };
 
 async function fetchAllFxRates() {
   // Cache for 10 minutes
