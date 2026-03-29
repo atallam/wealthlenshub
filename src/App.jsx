@@ -33,8 +33,8 @@ let _liveUsdInr = 94.5; // overwritten by /api/forex/usdinr on load
 function isUSDHolding(h) {
   if (USD_TYPES.has(h.type)) return true;
   if (h.currency && h.currency.toUpperCase() === "USD") return true;
-  // CASH-USD ticker from SnapTrade (even if currency field is missing in DB)
-  if (h.type === "CASH" && (h.ticker||"").toUpperCase().includes("USD")) return true;
+  // CASH from SnapTrade is always USD (even if currency field is missing in DB)
+  if (h.type === "CASH" && (h.source === "snaptrade" || (h.ticker||"").toUpperCase().includes("USD") || (h.name||"").includes("USD"))) return true;
   return false;
 }
 
@@ -2885,7 +2885,135 @@ ${alertLines||"  None"}`;
 
             {/* ═══ IMPORT ═══ */}
             {budgetView==="import"&&(<>
-              {/* Upload card */}
+              {/* ── Plaid: Connect US Bank ── */}
+              <div className="card" style={{marginBottom:"1.2rem",borderLeft:"3px solid #5a9ce0"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                  <div>
+                    <div className="ctitle" style={{color:"#5a9ce0"}}>🏦 Connect US Bank Account</div>
+                    <div style={{fontSize:".75rem",color:"rgba(255,255,255,.5)",marginBottom:".8rem",lineHeight:1.6}}>
+                      Auto-sync transactions from Chase, Bank of America, Wells Fargo, Citi, and 12,000+ US banks.
+                      Powered by <span style={{color:"#5a9ce0"}}>Plaid</span> — bank-grade security, no passwords stored.
+                    </div>
+                  </div>
+                </div>
+                {(()=>{
+                  const [plaidStatus, setPlaidStatus] = useState(null);
+                  const [plaidLoading, setPlaidLoading] = useState(false);
+                  const [plaidMsg, setPlaidMsg] = useState("");
+                  const [syncing, setSyncing] = useState("");
+
+                  useEffect(()=>{
+                    api("/api/plaid/status").then(setPlaidStatus).catch(()=>setPlaidStatus({configured:false}));
+                  },[]);
+
+                  async function connectPlaid() {
+                    setPlaidLoading(true); setPlaidMsg("");
+                    try {
+                      const { link_token } = await api("/api/plaid/link-token", { method: "POST" });
+                      // Load Plaid Link script dynamically
+                      if (!window.Plaid) {
+                        await new Promise((resolve, reject) => {
+                          const s = document.createElement("script");
+                          s.src = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
+                          s.onload = resolve; s.onerror = reject;
+                          document.head.appendChild(s);
+                        });
+                      }
+                      const handler = window.Plaid.create({
+                        token: link_token,
+                        onSuccess: async (public_token, metadata) => {
+                          setPlaidMsg("Connecting...");
+                          try {
+                            const result = await api("/api/plaid/exchange", {
+                              method: "POST",
+                              body: JSON.stringify({ public_token, metadata }),
+                            });
+                            setPlaidMsg(`✓ Connected ${result.institution_name} — ${result.accounts.length} account(s)`);
+                            const status = await api("/api/plaid/status");
+                            setPlaidStatus(status);
+                          } catch (e) { setPlaidMsg("⚠ " + e.message); }
+                        },
+                        onExit: (err) => {
+                          if (err) setPlaidMsg("⚠ " + (err.display_message || err.error_message || "Connection cancelled"));
+                        },
+                      });
+                      handler.open();
+                    } catch (e) { setPlaidMsg("⚠ " + e.message); }
+                    setPlaidLoading(false);
+                  }
+
+                  async function syncConnection(connId, name) {
+                    setSyncing(connId); setPlaidMsg("");
+                    try {
+                      const result = await api(`/api/plaid/sync/${connId}`, { method: "POST" });
+                      setPlaidMsg(`✓ Synced ${name}: ${result.added} new transactions`);
+                      const status = await api("/api/plaid/status");
+                      setPlaidStatus(status);
+                      await loadBudget();
+                      const stmts = await api("/api/budget/statements");
+                      setBudgetStatements(stmts || []);
+                    } catch (e) { setPlaidMsg("⚠ Sync failed: " + e.message); }
+                    setSyncing("");
+                  }
+
+                  async function disconnectPlaid(connId) {
+                    if (!confirm("Disconnect this bank? Transaction history will be kept.")) return;
+                    try {
+                      await api(`/api/plaid/connections/${connId}`, { method: "DELETE" });
+                      const status = await api("/api/plaid/status");
+                      setPlaidStatus(status);
+                      setPlaidMsg("✓ Disconnected");
+                    } catch (e) { setPlaidMsg("⚠ " + e.message); }
+                  }
+
+                  if (!plaidStatus) return <div style={{fontSize:".75rem",color:"rgba(255,255,255,.35)"}}>Loading...</div>;
+                  if (!plaidStatus.configured) return (
+                    <div style={{fontSize:".72rem",color:"rgba(255,255,255,.4)",padding:".5rem .7rem",background:"rgba(255,255,255,.03)",borderRadius:6}}>
+                      Plaid not configured. Add <code style={{color:"#c9a84c"}}>PLAID_CLIENT_ID</code> and <code style={{color:"#c9a84c"}}>PLAID_SECRET</code> to Render env vars.
+                    </div>
+                  );
+
+                  return(<>
+                    {/* Connected banks */}
+                    {(plaidStatus.connections||[]).length>0&&(
+                      <div style={{marginBottom:".8rem"}}>
+                        {plaidStatus.connections.map(c=>(
+                          <div key={c.id} style={{display:"flex",alignItems:"center",gap:".7rem",padding:".55rem .7rem",
+                            background:"rgba(90,156,224,.06)",border:"1px solid rgba(90,156,224,.15)",borderRadius:6,marginBottom:".4rem"}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontSize:".82rem",color:"#5a9ce0",fontWeight:500}}>{c.institution_name}</div>
+                              <div style={{fontSize:".65rem",color:"rgba(255,255,255,.4)"}}>
+                                {(c.accounts||[]).map(a=>`${a.name} ···${a.mask}`).join(" · ")}
+                                {c.last_synced&&<span> · Last sync: {ago(c.last_synced)}</span>}
+                              </div>
+                            </div>
+                            <button className="btn-sm" disabled={syncing===c.id}
+                              onClick={()=>syncConnection(c.id, c.institution_name)}
+                              style={{fontSize:".68rem",padding:".25rem .6rem"}}>
+                              {syncing===c.id?"Syncing…":"⟳ Sync"}
+                            </button>
+                            <button className="delbtn" onClick={()=>disconnectPlaid(c.id)} title="Disconnect">✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <button className="btns" onClick={connectPlaid} disabled={plaidLoading}
+                      style={{background:"rgba(90,156,224,.15)",border:"1px solid rgba(90,156,224,.3)",color:"#5a9ce0"}}>
+                      {plaidLoading ? "Opening Plaid..." : (plaidStatus.connections||[]).length > 0 ? "+ Connect Another Bank" : "Connect US Bank"}
+                    </button>
+
+                    {plaidMsg&&(
+                      <div style={{marginTop:".6rem",padding:".45rem .65rem",borderRadius:6,fontSize:".73rem",
+                        background:plaidMsg.startsWith("✓")?"rgba(76,175,154,.08)":"rgba(224,124,90,.08)",
+                        border:`1px solid ${plaidMsg.startsWith("✓")?"rgba(76,175,154,.25)":"rgba(224,124,90,.25)"}`,
+                        color:plaidMsg.startsWith("✓")?"#4caf9a":"#e07c5a"}}>{plaidMsg}</div>
+                    )}
+                  </>);
+                })()}
+              </div>
+
+              {/* Manual Upload card */}
               <div className="card" style={{marginBottom:"1.2rem"}}>
                 <div className="ctitle">Import Bank Statement</div>
                 <div style={{fontSize:".77rem",color:"rgba(255,255,255,.55)",marginBottom:"1rem",lineHeight:1.7}}>
