@@ -892,6 +892,12 @@ export default function App() {
   const [selectedTxnIds,    setSelectedTxnIds]    = useState(new Set());
   const [bulkCatTarget,     setBulkCatTarget]     = useState("");
 
+  // ── Plaid state ──────────────────────────────────────────────────
+  const [plaidStatus,   setPlaidStatus]   = useState(null);
+  const [plaidLoading,  setPlaidLoading]  = useState(false);
+  const [plaidMsg,      setPlaidMsg]      = useState("");
+  const [plaidSyncing,  setPlaidSyncing]  = useState("");
+
   // ── Net Worth Timeline + Calendar ─────────────────────────────
   const [nwMember,          setNwMember]          = useState("all");
   const [calMonth,          setCalMonth]          = useState(()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;});
@@ -2897,20 +2903,13 @@ ${alertLines||"  None"}`;
                   </div>
                 </div>
                 {(()=>{
-                  const [plaidStatus, setPlaidStatus] = useState(null);
-                  const [plaidLoading, setPlaidLoading] = useState(false);
-                  const [plaidMsg, setPlaidMsg] = useState("");
-                  const [syncing, setSyncing] = useState("");
-
-                  useEffect(()=>{
-                    api("/api/plaid/status").then(setPlaidStatus).catch(()=>setPlaidStatus({configured:false}));
-                  },[]);
+                  // Plaid status fetch on first render of import tab
+                  if(!plaidStatus) api("/api/plaid/status").then(setPlaidStatus).catch(()=>setPlaidStatus({configured:false}));
 
                   async function connectPlaid() {
                     setPlaidLoading(true); setPlaidMsg("");
                     try {
                       const { link_token } = await api("/api/plaid/link-token", { method: "POST" });
-                      // Load Plaid Link script dynamically
                       if (!window.Plaid) {
                         await new Promise((resolve, reject) => {
                           const s = document.createElement("script");
@@ -2924,18 +2923,12 @@ ${alertLines||"  None"}`;
                         onSuccess: async (public_token, metadata) => {
                           setPlaidMsg("Connecting...");
                           try {
-                            const result = await api("/api/plaid/exchange", {
-                              method: "POST",
-                              body: JSON.stringify({ public_token, metadata }),
-                            });
+                            const result = await api("/api/plaid/exchange", { method: "POST", body: JSON.stringify({ public_token, metadata }) });
                             setPlaidMsg(`✓ Connected ${result.institution_name} — ${result.accounts.length} account(s)`);
-                            const status = await api("/api/plaid/status");
-                            setPlaidStatus(status);
+                            setPlaidStatus(await api("/api/plaid/status"));
                           } catch (e) { setPlaidMsg("⚠ " + e.message); }
                         },
-                        onExit: (err) => {
-                          if (err) setPlaidMsg("⚠ " + (err.display_message || err.error_message || "Connection cancelled"));
-                        },
+                        onExit: (err) => { if (err) setPlaidMsg("⚠ " + (err.display_message || err.error_message || "Connection cancelled")); },
                       });
                       handler.open();
                     } catch (e) { setPlaidMsg("⚠ " + e.message); }
@@ -2943,25 +2936,22 @@ ${alertLines||"  None"}`;
                   }
 
                   async function syncConnection(connId, name) {
-                    setSyncing(connId); setPlaidMsg("");
+                    setPlaidSyncing(connId); setPlaidMsg("");
                     try {
                       const result = await api(`/api/plaid/sync/${connId}`, { method: "POST" });
                       setPlaidMsg(`✓ Synced ${name}: ${result.added} new transactions`);
-                      const status = await api("/api/plaid/status");
-                      setPlaidStatus(status);
+                      setPlaidStatus(await api("/api/plaid/status"));
                       await loadBudget();
-                      const stmts = await api("/api/budget/statements");
-                      setBudgetStatements(stmts || []);
+                      setBudgetStatements(await api("/api/budget/statements") || []);
                     } catch (e) { setPlaidMsg("⚠ Sync failed: " + e.message); }
-                    setSyncing("");
+                    setPlaidSyncing("");
                   }
 
                   async function disconnectPlaid(connId) {
                     if (!confirm("Disconnect this bank? Transaction history will be kept.")) return;
                     try {
                       await api(`/api/plaid/connections/${connId}`, { method: "DELETE" });
-                      const status = await api("/api/plaid/status");
-                      setPlaidStatus(status);
+                      setPlaidStatus(await api("/api/plaid/status"));
                       setPlaidMsg("✓ Disconnected");
                     } catch (e) { setPlaidMsg("⚠ " + e.message); }
                   }
@@ -2974,7 +2964,6 @@ ${alertLines||"  None"}`;
                   );
 
                   return(<>
-                    {/* Connected banks */}
                     {(plaidStatus.connections||[]).length>0&&(
                       <div style={{marginBottom:".8rem"}}>
                         {plaidStatus.connections.map(c=>(
@@ -2987,10 +2976,10 @@ ${alertLines||"  None"}`;
                                 {c.last_synced&&<span> · Last sync: {ago(c.last_synced)}</span>}
                               </div>
                             </div>
-                            <button className="btn-sm" disabled={syncing===c.id}
+                            <button className="btn-sm" disabled={plaidSyncing===c.id}
                               onClick={()=>syncConnection(c.id, c.institution_name)}
                               style={{fontSize:".68rem",padding:".25rem .6rem"}}>
-                              {syncing===c.id?"Syncing…":"⟳ Sync"}
+                              {plaidSyncing===c.id?"Syncing…":"⟳ Sync"}
                             </button>
                             <button className="delbtn" onClick={()=>disconnectPlaid(c.id)} title="Disconnect">✕</button>
                           </div>
