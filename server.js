@@ -3174,7 +3174,7 @@ function parseNSDLCASStatement(rawText) {
     seen.add(key);
 
     // Extract folio (first very large number, likely >6 digits, no decimal)
-    const folio = allNums.find(n => n > 100000 && n === Math.floor(n) && !best.indices.includes(allNums.indexOf(n)))?.toString() || "";
+    const folio = allNums.find(n => n > 100000 && n === Math.floor(n) && !currentValueMatch.indices.includes(allNums.indexOf(n)))?.toString() || "";
 
     holdings.push({
       name, type: "MF", ticker: isin, scheme_code: "",
