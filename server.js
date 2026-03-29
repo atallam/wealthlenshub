@@ -2979,6 +2979,13 @@ function parseNSDLCASStatement(rawText) {
   const isCAS = /consolidated\s*account\s*statement|nsdl\s*cas|cdsl\s*cas|nsdl\s*e-cas/i.test(rawText);
   if (!isCAS) return { holdings: [], warnings: ["Not a CAS statement"], format: null };
 
+  // Detect depository for source tagging
+  const isNSDL = /nsdl/i.test(rawText);
+  const isCDSL = /cdsl/i.test(rawText);
+  const depository = isNSDL && isCDSL ? "NSDL/CDSL" : isNSDL ? "NSDL" : isCDSL ? "CDSL" : "CAS";
+  const _source = "cas";
+  const _brokerage = `${depository} CAS`;
+
   const seen = new Set();
 
   // ── Strategy 1: Find MF via "Closing Unit Balance" anchors ──
@@ -3027,6 +3034,7 @@ function parseNSDLCASStatement(rawText) {
       units, purchase_nav: nav, current_nav: nav,
       purchase_price: nav, current_price: nav,
       purchase_value: valuation, current_value: valuation,
+      source: _source, brokerage_name: _brokerage, currency: "INR",
       _folio: folio,
     });
   }
@@ -3049,6 +3057,7 @@ function parseNSDLCASStatement(rawText) {
         units, purchase_nav: nav, current_nav: nav,
         purchase_price: nav, current_price: nav,
         purchase_value: val, current_value: val,
+        source: _source, brokerage_name: _brokerage, currency: "INR",
       });
     }
   }
@@ -3092,6 +3101,7 @@ function parseNSDLCASStatement(rawText) {
       name, type, ticker: isin, scheme_code: "", units: qty,
       purchase_price: 0, current_price: val && qty ? val / qty : 0,
       purchase_value: val, current_value: val,
+      source: _source, brokerage_name: _brokerage, currency: "INR",
     });
   }
 
@@ -3163,6 +3173,7 @@ function parseFidelityPDFStatement(rawText) {
       purchase_price: avgCost, current_price: price,
       purchase_value: costBasis || qty * avgCost,
       current_value: endMV || qty * price,
+      source: "pdf", brokerage_name: "Fidelity", currency: "USD",
       _account_name: accountName,
     });
   }
@@ -3436,6 +3447,9 @@ app.post("/api/holdings/import", auth, async (req, res) => {
       current_value: h.current_value || 0, principal: h.principal || 0,
       interest_rate: h.interest_rate || 0, start_date: h.start_date || null,
       maturity_date: h.maturity_date || null, usd_inr_rate: h.usd_inr_rate || 83.2,
+      ...(h.source ? { source: h.source } : {}),
+      ...(h.brokerage_name ? { brokerage_name: h.brokerage_name } : {}),
+      ...(h.currency ? { currency: h.currency } : {}),
     });
 
     if (existingId) {

@@ -11,6 +11,7 @@ const AT = {
   US_ETF:      { label:"US ETF",        color:"#4a8cd8", icon:"🔵", cat:"US Market" },
   CRYPTO:      { label:"Crypto",        color:"#f7931a", icon:"₿",  cat:"US Market" },
   US_BOND:     { label:"US Bonds",      color:"#7095b0", icon:"📜", cat:"US Market" },
+  CASH:        { label:"Cash",          color:"#8cb8c9", icon:"💵", cat:"US Market" },
   IN_STOCK:    { label:"Indian Stocks", color:"#e07c5a", icon:"📈", cat:"Indian Market" },
   IN_ETF:      { label:"Indian ETF",   color:"#f0a050", icon:"🔷", cat:"Indian Market" },
   MF:          { label:"Mutual Fund",   color:"#a084ca", icon:"📊", cat:"Indian Market" },
@@ -18,6 +19,7 @@ const AT = {
   PPF:         { label:"PPF",           color:"#4caf9a", icon:"📗", cat:"Debt" },
   EPF:         { label:"EPF",           color:"#6ec0c9", icon:"🏛️", cat:"Debt" },
   REAL_ESTATE: { label:"Real Estate",  color:"#7cb87c", icon:"🏠", cat:"Physical" },
+  OTHER:       { label:"Other",         color:"#999999", icon:"📁", cat:"Other" },
 };
 const USD_TYPES = new Set(["US_STOCK","US_ETF","US_BOND","CRYPTO"]);
 const PPF_R=7.1, EPF_R=8.15;
@@ -27,7 +29,7 @@ function calcFD(p,r,s,mat){const start=new Date(s),now=new Date(),m=new Date(mat
 function calcAccr(p,rate,s){const y=Math.max(0,(new Date()-new Date(s))/(864e5*365.25));return p*Math.pow(1+rate/100,y);}
 // FX factor: converts a holding's native currency to the user's display currency
 function fxFor(h){
-  const isUSD = USD_TYPES.has(h.type);
+  const isUSD = USD_TYPES.has(h.type) || (h.currency && h.currency.toUpperCase() === "USD");
   const rate = h.usd_inr_rate || 83.2;
   if(_activeCurrency === "USD"){
     return isUSD ? 1 : 1/rate;  // INR holdings → divide by rate to show in USD
@@ -49,8 +51,9 @@ function getVal(h){
     case"US_ETF":
     case"US_BOND":
     case"CRYPTO":      return units*(h.current_price||h.purchase_price||0)*fx;
+    case"CASH":        return(h.current_price||h.current_value||h.purchase_price||0)*fx;
     case"REAL_ESTATE": return(h.current_value||h.purchase_value||0)*fx;
-    default:           return(h.principal||0)*fx;
+    default:           return(h.current_value||h.principal||0)*fx;
   }
 }
 function getInv(h){
@@ -65,8 +68,9 @@ function getInv(h){
     case"US_ETF":
     case"US_BOND":
     case"CRYPTO":      return(h.units||0)*(h.purchase_price||0)*fx;
+    case"CASH":        return(h.purchase_price||h.purchase_value||h.current_price||0)*fx;
     case"REAL_ESTATE": return(h.purchase_value||0)*fx;
-    default:           return(h.principal||0)*fx;
+    default:           return(h.purchase_value||h.principal||0)*fx;
   }
 }
 function xirr(cfs,dates){if(cfs.length<2)return null;const d0=dates[0],yrs=dates.map(d=>(d-d0)/(864e5*365.25));const npv=r=>cfs.reduce((s,c,i)=>s+c/Math.pow(1+r,yrs[i]),0);const dnpv=r=>cfs.reduce((s,c,i)=>s-yrs[i]*c/Math.pow(1+r,yrs[i]+1),0);let r=0.1;for(let i=0;i<100;i++){const f=npv(r),df=dnpv(r);if(Math.abs(df)<1e-12)break;const nr=r-f/df;if(Math.abs(nr-r)<1e-7){r=nr;break;}r=nr;if(r<-0.999)r=-0.999;}return isFinite(r)?r*100:null;}
@@ -211,43 +215,8 @@ const SEED = {
     "h15": [{date:"2022-09-01",units:210,price:428.57,type:"BUY"}],
   }
 };
-const BG={name:"",targetAmount:"",targetDate:"",linkedMembers:["all"],linkedHoldings:[],category:"Retirement",color:"#c9a84c",notes:"",priority:1,monthlyContribution:""};
+const BG={name:"",targetAmount:"",targetDate:"",linkedMembers:["all"],category:"Retirement",color:"#c9a84c",notes:"",priority:1,monthlyContribution:""};
 const BA={type:"ALLOCATION_DRIFT",assetType:"IN_STOCK",threshold:"",label:"",active:true};
-
-// ── Goal category metadata ──────────────────────────────────────
-const GOAL_CAT_META = {
-  Retirement:      { icon: "🏖️", gradient: "linear-gradient(135deg, #c9a84c22, #c9a84c08)" },
-  Education:       { icon: "🎓", gradient: "linear-gradient(135deg, #a084ca22, #a084ca08)" },
-  "Real Estate":   { icon: "🏠", gradient: "linear-gradient(135deg, #5a9ce022, #5a9ce008)" },
-  "Emergency Fund":{ icon: "🛡️", gradient: "linear-gradient(135deg, #4caf9a22, #4caf9a08)" },
-  Wedding:         { icon: "💍", gradient: "linear-gradient(135deg, #e88bc022, #e88bc008)" },
-  Travel:          { icon: "✈️", gradient: "linear-gradient(135deg, #5ac4e022, #5ac4e008)" },
-  Business:        { icon: "💼", gradient: "linear-gradient(135deg, #e0a85a22, #e0a85a08)" },
-};
-const GOAL_CAT_COLORS = { Retirement:"#c9a84c", Education:"#a084ca", "Real Estate":"#5a9ce0", "Emergency Fund":"#4caf9a", Wedding:"#e88bc0", Travel:"#5ac4e0", Business:"#e0a85a" };
-const GOAL_STATUS_CONFIG = {
-  "achieved":        { label:"Achieved",        color:"#4caf9a", bg:"#4caf9a14", icon:"✓" },
-  "on-track":        { label:"On Track",        color:"#4caf9a", bg:"#4caf9a0a", icon:"●" },
-  "needs-attention": { label:"Needs Attention", color:"#e0a85a", bg:"#e0a85a0a", icon:"◐" },
-  "at-risk":         { label:"At Risk",         color:"#e07c5a", bg:"#e07c5a0a", icon:"▲" },
-  "overdue":         { label:"Overdue",         color:"#e05a6a", bg:"#e05a6a0a", icon:"!" },
-};
-function computeGoalStatus(prog, rem, targetDate, monthly){
-  const msLeft = Math.max(0, (new Date(targetDate) - new Date()) / (864e5 * 30.44));
-  const yLeft = (msLeft / 12).toFixed(1);
-  let projectedMonths = Infinity;
-  if (monthly > 0 && rem > 0) projectedMonths = rem / monthly;
-  const onTrack = monthly > 0 ? projectedMonths <= msLeft : prog >= 100;
-  const atRisk = monthly > 0 ? projectedMonths > msLeft * 1.3 : prog < 50 && msLeft < 36;
-  const overdue = new Date(targetDate) < new Date();
-  const sipNeeded = msLeft > 0 ? rem / msLeft : rem;
-  let status = "on-track";
-  if (overdue) status = "overdue";
-  else if (prog >= 100) status = "achieved";
-  else if (atRisk) status = "at-risk";
-  else if (!onTrack) status = "needs-attention";
-  return { status, sipNeeded, projectedMonths, msLeft, yLeft };
-}
 
 // ── API helper (attaches Supabase JWT) ───────────────────────────
 async function api(path, opts={}) {
@@ -888,9 +857,6 @@ export default function App() {
   const [mergeCandidate,  setMergeCandidate]  = useState(null);
   const [memberAction,    setMemberAction]    = useState(null); // {type:"delete"|"merge", memberId, reassignTo:""}
   const [goalForm,       setGoalForm]       = useState(BG);
-  const [editingGoalId,  setEditingGoalId]  = useState(null); // null | goal id being edited
-  const [goalFilter,     setGoalFilter]     = useState("all"); // "all" | status string
-  const [expandedGoalId, setExpandedGoalId] = useState(null); // goal id with expanded details
   const [alertForm,      setAlertForm]      = useState(BA);
   const [importState, setImportState] = useState({
     mode: null, step: "upload", format: "", holdings: [], transactions: [],
@@ -1350,19 +1316,7 @@ export default function App() {
     const hlds = await api("/api/holdings");
     setHoldings(hlds || []);
   }
-  function saveGoal(){
-    const gd={...goalForm,targetAmount:+goalForm.targetAmount,monthlyContribution:+goalForm.monthlyContribution||0,linkedMembers:goalForm.linkedMembers||["all"],linkedHoldings:goalForm.linkedHoldings||[]};
-    if(editingGoalId){
-      // Edit existing goal
-      setGoals(p=>p.map(g=>g.id===editingGoalId?{...g,...gd}:g));
-    }else{
-      // Add new goal
-      const nextPri=goals.length>0?Math.max(...goals.map(x=>x.priority||1))+1:1;
-      setGoals(p=>[...p,{id:uid(),...gd,priority:gd.priority||nextPri}]);
-    }
-    setGoalForm(BG);setEditingGoalId(null);setModal(null);
-  }
-  function openGoalEdit(g){setGoalForm({name:g.name,targetAmount:g.targetAmount,targetDate:g.targetDate,linkedMembers:g.linkedMembers||["all"],linkedHoldings:g.linkedHoldings||[],category:g.category,color:g.color,notes:g.notes||"",priority:g.priority,monthlyContribution:g.monthlyContribution||""});setEditingGoalId(g.id);setModal("goal");}
+  function addGoal(){setGoals(p=>{const nextPri=p.length>0?Math.max(...p.map(x=>x.priority||1))+1:1;return[...p,{id:uid(),...goalForm,targetAmount:+goalForm.targetAmount,priority:goalForm.priority||nextPri,linkedMembers:goalForm.linkedMembers||["all"],monthlyContribution:+goalForm.monthlyContribution||0}];});setGoalForm(BG);setModal(null);}
   function addAlert(){setAlerts(p=>[...p,{id:uid(),...alertForm,threshold:+alertForm.threshold}]);setAlertForm(BA);setModal(null);}
 
   // ── MF Search ────────────────────────────────────────────────────
@@ -1627,7 +1581,7 @@ ${alertLines||"  None"}`;
 
   async function executeImport() {
     if(demoMode) exitDemoMode();
-    const { mode, holdings: impHoldings, transactions: impTxns, assignMember, accountMap } = importState;
+    const { mode, holdings: impHoldings, transactions: impTxns, assignMember, accountMap, format } = importState;
     setImportState(s => ({ ...s, step: "importing", progress: 0 }));
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1640,10 +1594,20 @@ ${alertLines||"  None"}`;
         });
         result = await res.json();
       } else {
+        // Derive source and brokerage from detected format
+        const fmtLower = (format || "").toLowerCase();
+        const isCAS = fmtLower.includes("cas");
+        const isPDF = fmtLower.includes("pdf");
+        const derivedSource = isCAS ? "cas" : isPDF ? "pdf" : "csv";
+        // Use format name as brokerage (clean up suffixes)
+        const derivedBrokerage = (format || "CSV Import").replace(/\s*\(.*\)\s*$/, "").trim();
+
         // _dupAction is already set on each holding by the dup_review step
         // Defaults: new holdings → no action needed, duplicates → "update" unless user chose "skip"
         const enriched = impHoldings.map(h => ({
           ...h,
+          source: h.source || derivedSource,
+          brokerage_name: h.brokerage_name || derivedBrokerage,
           _dupAction: h._duplicate ? (h._dupAction || "update") : undefined,
         }));
         const res = await fetch("/api/holdings/import", {
@@ -2192,7 +2156,7 @@ ${alertLines||"  None"}`;
                     const units   = h.net_units ?? h.units ?? null;
                     const avgCost = h.avg_cost  ?? h.purchase_price ?? h.purchase_nav ?? null;
                     const fx      = h.usd_inr_rate || 83.2;
-                    const isUS    = USD_TYPES.has(h.type);
+                    const isUS    = USD_TYPES.has(h.type) || (h.currency && h.currency.toUpperCase() === "USD");
                     const nativeSym = isUS ? "$" : "₹";
 
                     const avgDisplay = avgCost
@@ -2309,256 +2273,79 @@ ${alertLines||"  None"}`;
         {/* ── GOALS ── */}
         {tab==="goals"&&(()=>{
           const sortedGoals=[...goals].sort((a,b)=>(a.priority||99)-(b.priority||99));
-          // helper: compute current value relevant to a goal's linked holdings (or fall back to linked members)
+          // helper: compute current value relevant to a goal's linked members
           function goalCur(g){
-            const lh=g.linkedHoldings||[];
-            if(lh.length>0){
-              // New: sum only earmarked holdings
-              return allHoldings.reduce((s,h)=>lh.includes(h.id)?s+getVal(h):s,0);
-            }
-            // Fallback: old behavior — all holdings for linked members
             const lm=g.linkedMembers||["all"];
             if(lm.includes("all")||lm.length===0) return allCur;
             return allHoldings.reduce((s,h)=>lm.includes(h.member_id)?s+getVal(h):s,0);
           }
-          // Compute enriched goal data with status
-          const enrichedGoals=sortedGoals.map(g=>{
-            const cur=goalCur(g);
-            const prog=Math.min((cur/g.targetAmount)*100,100);
-            const rem=Math.max(0,g.targetAmount-cur);
-            const monthly=g.monthlyContribution||0;
-            const lm=g.linkedMembers||["all"];
-            const memberNames=lm.includes("all")?"All members":lm.map(id=>members.find(m=>m.id===id)?.name||"?").join(", ");
-            const gs=computeGoalStatus(prog,rem,g.targetDate,monthly);
-            return{...g,cur,prog,rem,monthly,memberNames,...gs};
-          });
-          const filteredGoals=goalFilter==="all"?enrichedGoals:enrichedGoals.filter(g=>g.status===goalFilter);
-          // KPI summary
-          const totalTarget=goals.reduce((s,g)=>s+g.targetAmount,0);
-          const totalSIP=goals.reduce((s,g)=>s+(g.monthlyContribution||0),0);
-          const achievedCount=enrichedGoals.filter(g=>g.status==="achieved").length;
-          const atRiskCount=enrichedGoals.filter(g=>g.status==="at-risk"||g.status==="overdue").length;
-          // Status counts for filter pills
-          const statusCounts={all:enrichedGoals.length};
-          enrichedGoals.forEach(g=>{statusCounts[g.status]=(statusCounts[g.status]||0)+1;});
-
           return(<>
           {/* Header */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"1.4rem",flexWrap:"wrap",gap:".7rem"}}>
-            <div>
-              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.3rem",color:"#ffffff"}}>Financial Goals</div>
-              <div style={{fontSize:".7rem",color:"rgba(255,255,255,.4)",marginTop:".2rem"}}>
-                {goals.length} goal{goals.length!==1?"s":""} · {achievedCount} achieved · {atRiskCount>0?<span style={{color:"#e07c5a"}}>{atRiskCount} need{atRiskCount===1?"s":""} attention</span>:<span style={{color:"#4caf9a"}}>all on track</span>}
-              </div>
-            </div>
-            <div style={{display:"flex",gap:".5rem",flexWrap:"wrap"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem",flexWrap:"wrap",gap:".7rem"}}>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Financial Goals</div>
+            <div style={{display:"flex",gap:".5rem"}}>
               {goals.length>0&&<button className="btn-o" onClick={()=>setModal("goalplan")}>✦ Fulfillment Plan</button>}
-              <button className="btn-sm" onClick={()=>{setGoalForm({...BG,priority:goals.length+1});setEditingGoalId(null);setModal("goal");}}>+ New Goal</button>
+              <button className="btn-sm" onClick={()=>{setGoalForm({...BG,priority:goals.length+1});setModal("goal");}}>+ New Goal</button>
             </div>
           </div>
 
-          {/* KPI Summary Strip */}
-          {goals.length>0&&(
-            <div className="goal-kpi-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:".75rem",marginBottom:"1.3rem"}}>
-              {[
-                {label:"Total Target",value:fmtCr(totalTarget),sub:`${goals.length} goals`},
-                {label:"Current Value",value:fmtCr(allCur),sub:totalTarget>0?`${(allCur/totalTarget*100).toFixed(0)}% of target`:"—"},
-                {label:"Monthly SIP",value:fmtCr(totalSIP),sub:`across ${goals.filter(g=>g.monthlyContribution>0).length} goals`},
-                {label:"Gap to Close",value:fmtCr(Math.max(0,totalTarget-allCur)),sub:atRiskCount>0?`${atRiskCount} at risk`:"on track",subColor:atRiskCount>0?"#e07c5a":"#4caf9a"},
-              ].map((kpi,i)=>(
-                <div key={i} className="mc">
-                  <div className="mclbl">{kpi.label}</div>
-                  <div className="mcval" style={{fontSize:"1.25rem"}}>{kpi.value}</div>
-                  <div className="mcsub" style={{color:kpi.subColor||"rgba(255,255,255,.4)"}}>{kpi.sub}</div>
-                </div>
-              ))}
-            </div>
-          )}
+          {goals.length===0&&<div className="card empty">Set your first financial milestone</div>}
 
-          {/* Filter pills */}
-          {goals.length>1&&(
-            <div style={{display:"flex",gap:".4rem",marginBottom:"1.2rem",flexWrap:"wrap"}}>
-              {[
-                {key:"all",label:"All"},
-                {key:"on-track",label:"On Track"},
-                {key:"needs-attention",label:"Needs Attention"},
-                {key:"at-risk",label:"At Risk"},
-                {key:"achieved",label:"Achieved"},
-              ].filter(f=>f.key==="all"||statusCounts[f.key]).map(f=>{
-                const active=goalFilter===f.key;
-                const sc=f.key!=="all"?GOAL_STATUS_CONFIG[f.key]:null;
-                return(
-                  <div key={f.key} onClick={()=>setGoalFilter(f.key)}
-                    style={{padding:".3rem .72rem",borderRadius:20,fontSize:".7rem",fontWeight:500,cursor:"pointer",transition:"all .2s",
-                      background:active?(sc?sc.bg:"rgba(201,168,76,.12)"):"rgba(255,255,255,.03)",
-                      border:`1px solid ${active?(sc?sc.color+"44":"rgba(201,168,76,.35)"):"rgba(255,255,255,.08)"}`,
-                      color:active?(sc?sc.color:"#c9a84c"):"rgba(255,255,255,.5)"}}>
-                    {f.label} {statusCounts[f.key]!=null&&<span style={{opacity:.6,marginLeft:3}}>({statusCounts[f.key]})</span>}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Empty state */}
-          {goals.length===0&&(
-            <div style={{textAlign:"center",padding:"3rem 1.5rem",background:"rgba(255,255,255,.02)",border:"1px dashed rgba(201,168,76,.2)",borderRadius:14}}>
-              <div style={{fontSize:"2.2rem",marginBottom:".7rem"}}>🎯</div>
-              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.15rem",color:"#fff",marginBottom:".35rem"}}>Set your first financial milestone</div>
-              <div style={{fontSize:".76rem",color:"rgba(255,255,255,.4)",marginBottom:"1.3rem",maxWidth:360,margin:"0 auto 1.3rem"}}>
-                Define targets for retirement, education, home purchase, or any life goal — then track progress against your portfolio.
-              </div>
-              <button className="btn-sm" onClick={()=>{setGoalForm({...BG,priority:1});setEditingGoalId(null);setModal("goal");}} style={{padding:".42rem 1.1rem",fontSize:".76rem",borderStyle:"solid"}}>+ Create Your First Goal</button>
-            </div>
-          )}
-
-          {/* Goal Cards Grid */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:"1rem"}}>
-            {filteredGoals.map((g,idx)=>{
-              const cat=GOAL_CAT_META[g.category]||{icon:"🎯",gradient:"linear-gradient(135deg, #ffffff12, #ffffff04)"};
-              const sc=GOAL_STATUS_CONFIG[g.status];
-              const expanded=expandedGoalId===g.id;
-              // Progress ring values
-              const ringR=22,circ=2*Math.PI*ringR;
-              const dashOff=circ*(1-g.prog/100);
-
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(310px,1fr))",gap:"1rem"}}>
+            {sortedGoals.map((g,idx)=>{
+              const cur=goalCur(g);
+              const prog=Math.min((cur/g.targetAmount)*100,100);
+              const rem=Math.max(0,g.targetAmount-cur);
+              const yLeft=((Math.max(0,new Date(g.targetDate)-new Date()))/(864e5*365.25)).toFixed(1);
+              const lm=g.linkedMembers||["all"];
+              const memberNames=lm.includes("all")?"All members":lm.map(id=>members.find(m=>m.id===id)?.name||"?").join(", ");
+              const monthly=g.monthlyContribution||0;
               return(
-              <div key={g.id} className="card" style={{borderTop:`3px solid ${g.color}`,position:"relative",background:cat.gradient,cursor:"pointer",transition:"all .25s"}}
-                onClick={()=>setExpandedGoalId(expanded?null:g.id)}>
-
-                {/* Top row: Priority + Status + Actions */}
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:".65rem"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:".4rem"}}>
-                    <div style={{background:`${g.color}22`,border:`1px solid ${g.color}55`,borderRadius:4,padding:"1px 8px",fontSize:".58rem",letterSpacing:".08em",color:g.color,fontWeight:600}}>P{g.priority||idx+1}</div>
-                    <div style={{background:sc.bg,border:`1px solid ${sc.color}33`,borderRadius:12,padding:"1px 8px",fontSize:".58rem",color:sc.color,fontWeight:500,display:"flex",alignItems:"center",gap:3}}>
-                      <span style={{fontSize:".5rem"}}>{sc.icon}</span> {sc.label}
-                    </div>
-                  </div>
-                  <div style={{display:"flex",gap:".15rem"}} onClick={e=>e.stopPropagation()}>
-                    <button className="delbtn" title="Edit" onClick={()=>openGoalEdit(g)} style={{color:"rgba(255,255,255,.35)",fontSize:".7rem"}}>✏️</button>
-                    <button className="delbtn" title="Move up" onClick={()=>setGoals(p=>{const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===0)return p;const np=[...s];[np[i-1],np[i]]=[np[i],np[i-1]];return np.map((x,j)=>({...x,priority:j+1}));})}>↑</button>
-                    <button className="delbtn" title="Move down" onClick={()=>setGoals(p=>{const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===s.length-1)return p;const np=[...s];[np[i],np[i+1]]=[np[i+1],np[i]];return np.map((x,j)=>({...x,priority:j+1}));})}>↓</button>
-                    <button className="delbtn" onClick={()=>setGoals(p=>p.filter(x=>x.id!==g.id))}>✕</button>
-                  </div>
+              <div key={g.id} className="card" style={{borderTop:`3px solid ${g.color}`,position:"relative"}}>
+                {/* Priority badge + controls */}
+                <div style={{position:"absolute",top:10,left:12,display:"flex",alignItems:"center",gap:".3rem"}}>
+                  <div style={{background:`${g.color}22`,border:`1px solid ${g.color}55`,borderRadius:3,padding:"1px 7px",fontSize:".6rem",letterSpacing:".08em",color:g.color,fontWeight:600}}>P{g.priority||idx+1}</div>
+                </div>
+                <div style={{position:"absolute",top:8,right:8,display:"flex",gap:".2rem"}}>
+                  <button className="delbtn" title="Move up" onClick={()=>setGoals(p=>{const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===0)return p;const np=[...s];[np[i-1],np[i]]=[np[i],np[i-1]];return np.map((x,j)=>({...x,priority:j+1}));})}>↑</button>
+                  <button className="delbtn" title="Move down" onClick={()=>setGoals(p=>{const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===s.length-1)return p;const np=[...s];[np[i],np[i+1]]=[np[i+1],np[i]];return np.map((x,j)=>({...x,priority:j+1}));})}>↓</button>
+                  <button className="delbtn" onClick={()=>setGoals(p=>p.filter(x=>x.id!==g.id))}>✕</button>
                 </div>
 
-                {/* Category + Icon */}
-                <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".15rem"}}>
-                  <span style={{fontSize:".85rem"}}>{cat.icon}</span>
-                  <span style={{fontSize:".58rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.3)"}}>{g.category}</span>
+                {/* Category */}
+                <div style={{display:"flex",alignItems:"center",gap:".55rem",marginBottom:".9rem",marginTop:".25rem"}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:g.color}}/>
+                  <span style={{fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.33)"}}>{g.category}</span>
                 </div>
 
                 {/* Goal name */}
-                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.15rem",color:"#ffffff",marginBottom:".1rem",lineHeight:1.3}}>{g.name}</div>
-                {g.notes&&<div style={{fontSize:".7rem",color:"rgba(255,255,255,.38)",marginBottom:".5rem"}}>{g.notes}</div>}
+                <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",color:"#ffffff",marginBottom:".2rem"}}>{g.name}</div>
+                {g.notes&&<div style={{fontSize:".72rem",color:"rgba(255,255,255,.4)",marginBottom:".6rem"}}>{g.notes}</div>}
 
-                {/* Progress: ring + bar */}
-                <div style={{display:"flex",alignItems:"center",gap:"1rem",marginBottom:".45rem",marginTop:".45rem"}}>
-                  {/* Mini progress ring */}
-                  <div style={{position:"relative",width:54,height:54,flexShrink:0}}>
-                    <svg width="54" height="54" viewBox="0 0 54 54" style={{transform:"rotate(-90deg)"}}>
-                      <circle cx="27" cy="27" r={ringR} fill="none" stroke="rgba(255,255,255,.06)" strokeWidth="4"/>
-                      <circle cx="27" cy="27" r={ringR} fill="none" stroke={g.color} strokeWidth="4"
-                        strokeDasharray={circ} strokeDashoffset={dashOff} strokeLinecap="round" style={{transition:"stroke-dashoffset 1s ease"}}/>
-                    </svg>
-                    <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:g.color,fontWeight:600}}>
-                      {g.prog.toFixed(0)}%
-                    </div>
-                  </div>
-                  {/* Amounts + linear bar */}
-                  <div style={{flex:1}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:".3rem"}}>
-                      <span style={{fontFamily:"'DM Mono',monospace",fontSize:"1rem",color:g.color}}>{fmtCr(g.cur)}</span>
-                      <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(255,255,255,.4)"}}>of {fmtCr(g.targetAmount)}</span>
-                    </div>
-                    <div className="gbbg" style={{height:5}}><div className="gbfill" style={{width:`${g.prog}%`,background:`linear-gradient(90deg, ${g.color}, ${g.color}aa)`}}/></div>
-                    <div style={{display:"flex",justifyContent:"space-between",marginTop:".3rem",fontSize:".65rem"}}>
-                      <span style={{color:"rgba(255,255,255,.4)"}}>Gap: <span style={{color:"rgba(255,255,255,.7)",fontFamily:"'DM Mono',monospace"}}>{fmtCr(g.rem)}</span></span>
-                      <span style={{color:"rgba(255,255,255,.4)"}}>{g.yLeft}y left</span>
-                    </div>
-                  </div>
+                {/* Linked members pill */}
+                <div style={{marginBottom:".85rem"}}>
+                  <span style={{fontSize:".65rem",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,padding:"2px 9px",color:"rgba(255,255,255,.55)"}}>
+                    👤 {memberNames}
+                  </span>
                 </div>
 
-                {/* Members + Holdings + SIP strip */}
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:".4rem",marginTop:".15rem"}}>
-                  <div style={{display:"flex",gap:".3rem",flexWrap:"wrap"}}>
-                    <span style={{fontSize:".62rem",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:12,padding:"2px 9px",color:"rgba(255,255,255,.5)"}}>
-                      👤 {g.memberNames}
-                    </span>
-                    {(g.linkedHoldings||[]).length>0&&(
-                      <span style={{fontSize:".62rem",background:"rgba(160,132,202,.06)",border:"1px solid rgba(160,132,202,.15)",borderRadius:12,padding:"2px 9px",color:"rgba(160,132,202,.7)"}}>
-                        📌 {g.linkedHoldings.length} holding{g.linkedHoldings.length!==1?"s":""}
-                      </span>
-                    )}
-                  </div>
-                  {g.monthly>0&&(
-                    <span style={{fontSize:".62rem",background:"rgba(76,175,154,.06)",border:"1px solid rgba(76,175,154,.15)",borderRadius:12,padding:"2px 9px",color:"rgba(76,175,154,.7)",fontFamily:"'DM Mono',monospace"}}>
-                      SIP ₹{g.monthly.toLocaleString("en-IN")}/mo
-                    </span>
-                  )}
+                {/* Progress */}
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:".45rem"}}>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:"1.05rem",color:g.color}}>{fmtCr(cur)}</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:".82rem",color:"rgba(255,255,255,.5)"}}>of {fmtCr(g.targetAmount)}</span>
+                </div>
+                <div className="gbbg"><div className="gbfill" style={{width:`${prog}%`,background:g.color}}/></div>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:".55rem",fontSize:".7rem"}}>
+                  <span style={{color:"rgba(255,255,255,.5)"}}>Remaining <span style={{color:"#ffffff",fontFamily:"'DM Mono',monospace"}}>{fmtCr(rem)}</span></span>
+                  <span style={{color:"rgba(255,255,255,.5)"}}>{yLeft}y · {prog.toFixed(0)}%</span>
                 </div>
 
-                {/* Expandable details panel */}
-                <div style={{overflow:"hidden",transition:"max-height .35s ease, opacity .25s ease, margin-top .25s ease",maxHeight:expanded?380:0,opacity:expanded?1:0,marginTop:expanded?".7rem":0}}>
-                  <div style={{borderTop:"1px solid rgba(255,255,255,.06)",paddingTop:".65rem"}}>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:".45rem .8rem",fontSize:".68rem"}}>
-                      <div>
-                        <span style={{color:"rgba(255,255,255,.35)"}}>Target Date</span>
-                        <div style={{color:"rgba(255,255,255,.8)",marginTop:2}}>{new Date(g.targetDate).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>
-                      </div>
-                      <div>
-                        <span style={{color:"rgba(255,255,255,.35)"}}>SIP Needed</span>
-                        <div style={{color:g.sipNeeded>(g.monthly||0)?"#e0a85a":"#4caf9a",marginTop:2,fontFamily:"'DM Mono',monospace"}}>{fmtCr(Math.round(g.sipNeeded))}/mo</div>
-                      </div>
-                      {g.monthly>0&&(<>
-                        <div>
-                          <span style={{color:"rgba(255,255,255,.35)"}}>Current SIP</span>
-                          <div style={{color:"rgba(255,255,255,.8)",marginTop:2,fontFamily:"'DM Mono',monospace"}}>₹{g.monthly.toLocaleString("en-IN")}/mo</div>
-                        </div>
-                        <div>
-                          <span style={{color:"rgba(255,255,255,.35)"}}>SIP Gap</span>
-                          <div style={{color:g.sipNeeded>g.monthly?"#e07c5a":"#4caf9a",marginTop:2,fontFamily:"'DM Mono',monospace"}}>
-                            {g.sipNeeded>g.monthly?`+${fmtCr(Math.round(g.sipNeeded-g.monthly))} needed`:"Covered ✓"}
-                          </div>
-                        </div>
-                      </>)}
-                      <div style={{gridColumn:"1 / -1"}}>
-                        <span style={{color:"rgba(255,255,255,.35)"}}>Projected Fulfillment</span>
-                        <div style={{color:"rgba(255,255,255,.8)",marginTop:2}}>
-                          {g.monthly>0&&g.projectedMonths<Infinity
-                            ?`~${(g.projectedMonths/12).toFixed(1)} years (${new Date(Date.now()+g.projectedMonths*30.44*864e5).toLocaleDateString("en-IN",{month:"short",year:"numeric"})})`
-                            :"Set a monthly SIP to see projection"}
-                        </div>
-                      </div>
-                      {/* Earmarked holdings */}
-                      {(g.linkedHoldings||[]).length>0&&(
-                        <div style={{gridColumn:"1 / -1",marginTop:".15rem"}}>
-                          <span style={{color:"rgba(255,255,255,.35)"}}>Earmarked Holdings ({g.linkedHoldings.length})</span>
-                          <div style={{display:"flex",flexWrap:"wrap",gap:".3rem",marginTop:4}}>
-                            {g.linkedHoldings.map(hid=>{
-                              const h=allHoldings.find(x=>x.id===hid);
-                              if(!h) return null;
-                              const a=AT[h.type];
-                              return(
-                                <span key={hid} style={{fontSize:".6rem",padding:"1px 7px",borderRadius:10,
-                                  background:a?a.color+"14":"rgba(255,255,255,.04)",
-                                  border:`1px solid ${a?a.color+"33":"rgba(255,255,255,.08)"}`,
-                                  color:a?a.color:"rgba(255,255,255,.6)",whiteSpace:"nowrap"}}>
-                                  {a?.icon} {h.name.length>22?h.name.slice(0,20)+"…":h.name}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                {/* Monthly contribution if set */}
+                {monthly>0&&(
+                  <div style={{marginTop:".65rem",padding:".4rem .7rem",background:"rgba(255,255,255,.03)",borderRadius:5,fontSize:".68rem",color:"rgba(255,255,255,.5)"}}>
+                    Monthly SIP: <span style={{fontFamily:"'DM Mono',monospace",color:"rgba(255,255,255,.85)"}}>₹{monthly.toLocaleString("en-IN")}</span>
                   </div>
-                </div>
-
-                {/* Expand hint */}
-                <div style={{textAlign:"center",marginTop:".35rem",fontSize:".52rem",color:"rgba(255,255,255,.18)",transition:"color .2s"}}>
-                  {expanded?"▲ Less":"▼ Details"}
-                </div>
+                )}
               </div>);
             })}
           </div>
@@ -4286,28 +4073,17 @@ ${alertLines||"  None"}`;
       </MA>
     </Overlay>)}
     {modal==="goal"&&(
-      <Overlay onClose={()=>{setModal(null);setEditingGoalId(null);}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}>
-          <div>
-            <div className="modtitle" style={{marginBottom:".15rem"}}>{editingGoalId?"Edit Goal":"Add Financial Goal"}</div>
-            {!editingGoalId&&<div style={{fontSize:".68rem",color:"rgba(255,255,255,.35)"}}>Define a target and track progress against your portfolio</div>}
-          </div>
-        </div>
-        <FG label="Goal Name"><input className="fi" placeholder="e.g. Daughter's Education, Retirement Corpus" value={goalForm.name} onChange={e=>setGoalForm(p=>({...p,name:e.target.value}))}/></FG>
+      <Overlay onClose={()=>setModal(null)}>
+        <div className="modtitle">Add Financial Goal</div>
+        <FG label="Goal Name"><input className="fi" placeholder="e.g. Daughter's Education" value={goalForm.name} onChange={e=>setGoalForm(p=>({...p,name:e.target.value}))}/></FG>
         <div className="frow">
-          <FG label="Target Amount ₹" style={{marginBottom:"1.5rem"}}>
-            <FmtInput placeholder="e.g. 5000000" value={goalForm.targetAmount} onChange={e=>setGoalForm(p=>({...p,targetAmount:e.target.value}))}/>
-            {goalForm.targetAmount>0&&<div style={{fontSize:".6rem",color:"rgba(201,168,76,.5)",marginTop:".2rem"}}>{fmtCr(+goalForm.targetAmount)}</div>}
-          </FG>
+          <FG label="Target Amount ₹" style={{marginBottom:"1.5rem"}}><FmtInput placeholder="e.g. 5000000" value={goalForm.targetAmount} onChange={e=>setGoalForm(p=>({...p,targetAmount:e.target.value}))}/></FG>
           <FG label="Target Date"><input type="date" className="fi" value={goalForm.targetDate} onChange={e=>setGoalForm(p=>({...p,targetDate:e.target.value}))}/></FG>
         </div>
         <div className="frow">
           <FG label="Category">
-            <select className="fi fs" value={goalForm.category} onChange={e=>{
-              const cat=e.target.value;
-              setGoalForm(p=>({...p,category:cat,color:GOAL_CAT_COLORS[cat]||p.color}));
-            }}>
-              {["Retirement","Education","Real Estate","Emergency Fund","Wedding","Travel","Business"].map(c=><option key={c} value={c}>{(GOAL_CAT_META[c]?.icon||"🎯")+" "+c}</option>)}
+            <select className="fi fs" value={goalForm.category} onChange={e=>setGoalForm(p=>({...p,category:e.target.value}))}>
+              {["Retirement","Education","Real Estate","Emergency Fund","Wedding","Travel","Business"].map(c=><option key={c} value={c}>{c}</option>)}
             </select>
           </FG>
           <FG label="Priority (1 = highest)">
@@ -4342,104 +4118,11 @@ ${alertLines||"  None"}`;
           <div style={{fontSize:".65rem",color:"rgba(255,255,255,.38)",marginTop:".4rem"}}>Progress will be calculated using selected members' portfolio value</div>
         </div>
 
-        {/* Earmark holdings to this goal */}
-        {holdings.length>0&&(
-        <div className="fg">
-          <label className="flbl">Earmark Holdings <span style={{textTransform:"none",letterSpacing:"normal",fontWeight:400,opacity:.6}}>(optional — leave empty to use all)</span></label>
-          {(()=>{
-            const lh=goalForm.linkedHoldings||[];
-            const lm=goalForm.linkedMembers||["all"];
-            // Filter holdings by linked members first
-            const eligible=allHoldings.filter(h=>lm.includes("all")||lm.includes(h.member_id));
-            // Group by asset type
-            const grouped={};
-            eligible.forEach(h=>{
-              const t=h.type||"OTHER";
-              if(!grouped[t]) grouped[t]=[];
-              grouped[t].push(h);
-            });
-            const types=Object.keys(grouped).sort();
-            const totalLinked=lh.reduce((s,hid)=>{const h=allHoldings.find(x=>x.id===hid);return h?s+getVal(h):s;},0);
-
-            return(<>
-              {/* Summary bar */}
-              {lh.length>0&&(
-                <div style={{display:"flex",alignItems:"center",gap:".7rem",padding:".45rem .75rem",marginBottom:".5rem",background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.15)",borderRadius:7,fontSize:".7rem"}}>
-                  <span style={{color:"rgba(255,255,255,.5)"}}>{lh.length} holding{lh.length!==1?"s":""} earmarked</span>
-                  <span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>{fmtCr(totalLinked)}</span>
-                  {goalForm.targetAmount>0&&<span style={{color:"rgba(255,255,255,.35)"}}>({(totalLinked/(+goalForm.targetAmount)*100).toFixed(0)}% of target)</span>}
-                  <button onClick={()=>setGoalForm(p=>({...p,linkedHoldings:[]}))}
-                    style={{marginLeft:"auto",background:"none",border:"1px solid rgba(255,255,255,.1)",borderRadius:4,padding:"1px 8px",fontSize:".6rem",cursor:"pointer",color:"rgba(255,255,255,.4)"}}>Clear all</button>
-                </div>
-              )}
-              {/* Holdings grouped by type */}
-              <div style={{maxHeight:220,overflowY:"auto",border:"1px solid rgba(255,255,255,.07)",borderRadius:8,background:"rgba(255,255,255,.02)"}}>
-                {types.map(t=>{
-                  const a=AT[t];
-                  const items=grouped[t];
-                  if(!a||!items||items.length===0) return null;
-                  return(
-                  <div key={t}>
-                    <div style={{padding:".35rem .7rem",fontSize:".6rem",letterSpacing:".08em",textTransform:"uppercase",color:a.color,background:"rgba(255,255,255,.02)",borderBottom:"1px solid rgba(255,255,255,.04)",position:"sticky",top:0}}>
-                      {a.icon} {a.label} ({items.length})
-                    </div>
-                    {items.map(h=>{
-                      const sel=lh.includes(h.id);
-                      const val=getVal(h);
-                      const mn=members.find(m=>m.id===h.member_id)?.name;
-                      // Check if this holding is already earmarked for another goal
-                      const otherGoal=goals.find(og=>og.id!==editingGoalId&&(og.linkedHoldings||[]).includes(h.id));
-                      return(
-                      <div key={h.id} onClick={()=>{
-                        setGoalForm(p=>{
-                          const cur=p.linkedHoldings||[];
-                          return{...p,linkedHoldings:sel?cur.filter(x=>x!==h.id):[...cur,h.id]};
-                        });
-                      }}
-                        style={{display:"flex",alignItems:"center",gap:".55rem",padding:".4rem .7rem",cursor:"pointer",transition:"background .15s",
-                          borderBottom:"1px solid rgba(255,255,255,.03)",
-                          background:sel?"rgba(201,168,76,.08)":"transparent"}}>
-                        {/* Checkbox */}
-                        <div style={{width:16,height:16,borderRadius:4,border:`1.5px solid ${sel?"#c9a84c":"rgba(255,255,255,.18)"}`,
-                          background:sel?"rgba(201,168,76,.3)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .15s"}}>
-                          {sel&&<span style={{color:"#c9a84c",fontSize:".6rem",fontWeight:700}}>✓</span>}
-                        </div>
-                        {/* Name + member */}
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:".74rem",color:sel?"rgba(255,255,255,.95)":"rgba(255,255,255,.7)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{h.name}</div>
-                          <div style={{fontSize:".6rem",color:"rgba(255,255,255,.3)",display:"flex",gap:".5rem"}}>
-                            {mn&&<span>{mn}</span>}
-                            {h.ticker&&<span style={{fontFamily:"'DM Mono',monospace"}}>{h.ticker}</span>}
-                            {otherGoal&&<span style={{color:"rgba(224,124,90,.6)"}}>⚠ also in "{otherGoal.name}"</span>}
-                          </div>
-                        </div>
-                        {/* Value */}
-                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:sel?"#c9a84c":"rgba(255,255,255,.45)",flexShrink:0}}>{fmtCr(val)}</div>
-                      </div>);
-                    })}
-                  </div>);
-                })}
-              </div>
-              <div style={{fontSize:".6rem",color:"rgba(255,255,255,.3)",marginTop:".35rem"}}>
-                {lh.length===0?"If no holdings are selected, progress uses total portfolio value for linked members":"Only selected holdings count toward this goal's progress"}
-              </div>
-            </>);
-          })()}
-        </div>
-        )}
-
-        <FG label="Monthly SIP ₹ (optional)" style={{marginBottom:"1.5rem"}}>
-          <FmtInput placeholder="e.g. 10000" value={goalForm.monthlyContribution} onChange={e=>setGoalForm(p=>({...p,monthlyContribution:e.target.value}))}/>
-          {goalForm.monthlyContribution>0&&goalForm.targetAmount>0&&(
-            <div style={{fontSize:".6rem",color:"rgba(76,175,154,.6)",marginTop:".25rem"}}>
-              At ₹{(+goalForm.monthlyContribution).toLocaleString("en-IN")}/mo → reach {fmtCr(+goalForm.targetAmount)} in ~{((+goalForm.targetAmount)/(+goalForm.monthlyContribution)/12).toFixed(1)} years
-            </div>
-          )}
-        </FG>
-        <FG label="Notes"><input className="fi" placeholder="Optional description or context" value={goalForm.notes} onChange={e=>setGoalForm(p=>({...p,notes:e.target.value}))}/></FG>
+        <FG label="Monthly Contribution ₹ (optional)" style={{marginBottom:"1.5rem"}}><FmtInput placeholder="e.g. 10000" value={goalForm.monthlyContribution} onChange={e=>setGoalForm(p=>({...p,monthlyContribution:e.target.value}))}/></FG>
+        <FG label="Notes"><input className="fi" placeholder="Optional description" value={goalForm.notes} onChange={e=>setGoalForm(p=>({...p,notes:e.target.value}))}/></FG>
         <MA>
-          <button className="btnc" onClick={()=>{setModal(null);setEditingGoalId(null);}}>Cancel</button>
-          <button className="btns" onClick={saveGoal} disabled={!goalForm.name||!goalForm.targetAmount}>{editingGoalId?"Save Changes":"Add Goal"}</button>
+          <button className="btnc" onClick={()=>setModal(null)}>Cancel</button>
+          <button className="btns" onClick={addGoal} disabled={!goalForm.name||!goalForm.targetAmount}>Add Goal</button>
         </MA>
       </Overlay>
     )}
@@ -4688,8 +4371,6 @@ function GoalPlanModal({open,onClose,goals,members,holdings,allCur,allInv}){
   const [error,setError]     = useState("");
 
   function goalCurVal(g){
-    const lh=g.linkedHoldings||[];
-    if(lh.length>0) return holdings.reduce((s,h)=>lh.includes(h.id)?s+getVal(h):s,0);
     const lm=g.linkedMembers||["all"];
     if(lm.includes("all")||lm.length===0) return allCur;
     return holdings.reduce((s,h)=>lm.includes(h.member_id)?s+getVal(h):s,0);
@@ -4711,9 +4392,7 @@ function GoalPlanModal({open,onClose,goals,members,holdings,allCur,allInv}){
       const yLeft=((Math.max(0,new Date(g.targetDate)-new Date()))/(864e5*365.25)).toFixed(1);
       const lm=g.linkedMembers||["all"];
       const mNames=lm.includes("all")?"all family members":lm.map(id=>members.find(m=>m.id===id)?.name||"?").join(", ");
-      const lh=g.linkedHoldings||[];
-      const linkedHNames=lh.length>0?lh.map(hid=>{const h=holdings.find(x=>x.id===hid);return h?`${h.name} (${fmtCr(getVal(h))})`:"?";}).join(", "):"none (using total portfolio)";
-      return `${i+1}. ${g.name} [Priority ${g.priority||i+1}] — Category: ${g.category} | Target: ${fmtCr(g.targetAmount)} by ${g.targetDate} | Current: ${fmtCr(cur)} (${pct}%) | Remaining: ${fmtCr(rem)} | Time left: ${yLeft}y | Linked to: ${mNames} | Earmarked holdings: ${linkedHNames}${g.monthlyContribution>0?` | Monthly SIP: ₹${(+g.monthlyContribution).toLocaleString("en-IN")}`:""}`;
+      return `${i+1}. ${g.name} [Priority ${g.priority||i+1}] — Category: ${g.category} | Target: ${fmtCr(g.targetAmount)} by ${g.targetDate} | Current: ${fmtCr(cur)} (${pct}%) | Remaining: ${fmtCr(rem)} | Time left: ${yLeft}y | Linked to: ${mNames}${g.monthlyContribution>0?` | Monthly SIP: ₹${(+g.monthlyContribution).toLocaleString("en-IN")}`:""}`;
     }).join("\n");
 
     const memberBreakdown=members.map(m=>{
@@ -5320,7 +4999,6 @@ body{background:#070d1a}
   .empty{padding:2rem .5rem}
   .mbar{gap:.4rem;margin-bottom:1rem}
   .mchip{font-size:.7rem;padding:.28rem .65rem}
-  .goal-kpi-grid{grid-template-columns:repeat(2,1fr)!important}
 }
 
 /* Very small — 400px */
