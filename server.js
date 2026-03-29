@@ -18,9 +18,9 @@ if (missing.length) {
   process.exit(1);
 }
 
-// ── SnapTrade env diagnostic (remove after confirming) ───────────
-console.log("🔑 SNAPTRADE_CLIENT_ID:", process.env.SNAPTRADE_CLIENT_ID ? `set (${process.env.SNAPTRADE_CLIENT_ID.length} chars, starts "${process.env.SNAPTRADE_CLIENT_ID.slice(0,4)}...")` : "❌ NOT SET");
-console.log("🔑 SNAPTRADE_CONSUMER_KEY:", process.env.SNAPTRADE_CONSUMER_KEY ? `set (${process.env.SNAPTRADE_CONSUMER_KEY.length} chars)` : "❌ NOT SET");
+// ── SnapTrade env diagnostic ─────────────────────────────────────
+console.log("🔑 SNAPTRADE_CLIENT_ID:", process.env.SNAPTRADE_CLIENT_ID ? "✅ set" : "❌ NOT SET");
+console.log("🔑 SNAPTRADE_CONSUMER_KEY:", process.env.SNAPTRADE_CONSUMER_KEY ? "✅ set" : "❌ NOT SET");
 
 // ── Supabase admin client (service key — full DB access) ─────────
 const supabase = createClient(
@@ -30,9 +30,6 @@ const supabase = createClient(
 
 app.use(express.json({ limit: "10mb" }));
 const distPath = path.join(process.cwd(), "dist");
-console.log("📁 Serving static files from:", distPath);
-console.log("📁 __dirname:", __dirname);
-console.log("📁 process.cwd():", process.cwd());
 app.use(express.static(distPath, { maxAge: "1d" }));
 
 const upload = multer({
@@ -44,13 +41,22 @@ const upload = multer({
 // Hub is public — any authenticated Supabase user gets access.
 // All DB queries are scoped to req.user.id for full tenant isolation.
 async function auth(req, res, next) {
-  const token = req.headers.authorization?.replace("Bearer ", "");
-  if (!token) return res.status(401).json({ error: "No token" });
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return res.status(401).json({ error: "Unauthorized" });
-  req.user = user;
-  next();
+  const hdr = req.headers.authorization;
+  if (!hdr || !hdr.startsWith("Bearer ")) return res.status(401).json({ error: "No token" });
+  const token = hdr.slice(7);
+  if (!token || token.length < 10) return res.status(401).json({ error: "Invalid token" });
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) return res.status(401).json({ error: "Unauthorized" });
+    req.user = user;
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: "Authentication failed" });
+  }
 }
+
+// ── Setu feature flag — set SETU_ENABLED=true in env to expose ───
+const SETU_ENABLED = process.env.SETU_ENABLED === "true";
 
 // ── PORTFOLIO: members, goals, alerts ────────────────────────────
 app.get("/api/portfolio", auth, async (req, res) => {
@@ -82,6 +88,33 @@ function sanitizeDates(obj) {
   return result;
 }
 
+// ── Enrich holdings with computed fields from transactions ───────
+function enrichHoldings(holdings) {
+  return (holdings || []).map(h => {
+    const txns = h.transactions || [];
+    if (txns.length === 0) return h;
+    const buys  = txns.filter(t => t.txn_type === "BUY");
+    const sells = txns.filter(t => t.txn_type === "SELL");
+    const buyUnits  = buys.reduce((s, t) => s + Number(t.units || 0), 0);
+    const sellUnits = sells.reduce((s, t) => s + Number(t.units || 0), 0);
+    const netUnits  = Math.max(0, buyUnits - sellUnits);
+    const avgCost   = buyUnits > 0
+      ? buys.reduce((s, t) => s + Number(t.units || 0) * Number(t.price || 0), 0) / buyUnits
+      : 0;
+    const sortedTxns = [...txns].sort((a, b) => new Date(a.txn_date) - new Date(b.txn_date));
+    return {
+      ...h,
+      net_units: netUnits,
+      avg_cost:  avgCost,
+      units:          netUnits,
+      purchase_price: avgCost,
+      purchase_nav:   avgCost,
+      purchase_value: avgCost * netUnits,
+      start_date: h.start_date || sortedTxns[0]?.txn_date || null,
+    };
+  });
+}
+
 // ── HOLDINGS ─────────────────────────────────────────────────────
 app.get("/api/holdings", auth, async (req, res) => {
   let { data, error } = await supabase
@@ -91,6 +124,7 @@ app.get("/api/holdings", auth, async (req, res) => {
     .order("created_at", { ascending: true });
 
   if (error) {
+    // Fallback: transactions table might not exist yet
     ({ data, error } = await supabase
       .from("holdings")
       .select("*, artifacts(id,file_name,file_type,file_size,description,uploaded_at)")
@@ -99,31 +133,7 @@ app.get("/api/holdings", auth, async (req, res) => {
   }
 
   if (error) return res.status(500).json({ error: error.message });
-
-  // Compute net_units and avg_cost from transactions for each holding
-  const enriched = (data || []).map(h => {
-    const txns = h.transactions || [];
-    if (txns.length === 0) return h;
-    const buys  = txns.filter(t => t.txn_type === "BUY");
-    const sells = txns.filter(t => t.txn_type === "SELL");
-    const buyUnits  = buys.reduce((s, t) => s + Number(t.units), 0);
-    const sellUnits = sells.reduce((s, t) => s + Number(t.units), 0);
-    const netUnits  = buyUnits - sellUnits;
-    const avgCost   = buyUnits > 0
-      ? buys.reduce((s, t) => s + Number(t.units) * Number(t.price), 0) / buyUnits
-      : 0;
-    return {
-      ...h,
-      net_units: netUnits,
-      avg_cost:  avgCost,
-      units:          netUnits,
-      purchase_price: avgCost,
-      purchase_nav:   avgCost,
-      purchase_value: avgCost * netUnits,
-      start_date: h.start_date || txns.sort((a,b) => new Date(a.txn_date)-new Date(b.txn_date))[0]?.txn_date || null,
-    };
-  });
-  res.json(enriched);
+  res.json(enrichHoldings(data));
 });
 
 app.post("/api/holdings", auth, async (req, res) => {
@@ -162,13 +172,13 @@ app.put("/api/holdings/:id", auth, async (req, res) => {
   const { artifacts, transactions, net_units, avg_cost, purchase_nav, current_nav, purchase_price, ...holdingData } = req.body;
   const isMF = holdingData.type === "MF";
   const updateData = { ...holdingData, ...(isMF ? { purchase_nav: purchase_nav || 0, current_nav: current_nav || 0 } : {}) };
-  const { error } = await supabase.from("holdings").update(sanitizeDates(updateData)).eq("id", req.params.id);
+  const { error } = await supabase.from("holdings").update(sanitizeDates(updateData)).eq("id", req.params.id).eq("user_id", req.user.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
 
 app.delete("/api/holdings/:id", auth, async (req, res) => {
-  const { error } = await supabase.from("holdings").delete().eq("id", req.params.id);
+  const { error } = await supabase.from("holdings").delete().eq("id", req.params.id).eq("user_id", req.user.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
@@ -206,7 +216,7 @@ app.post("/api/transactions", auth, async (req, res) => {
 });
 
 app.delete("/api/transactions/:id", auth, async (req, res) => {
-  const { error } = await supabase.from("transactions").delete().eq("id", req.params.id);
+  const { error } = await supabase.from("transactions").delete().eq("id", req.params.id).eq("user_id", req.user.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
@@ -869,33 +879,21 @@ app.get("/api/artifacts/download/:id", auth, async (req, res) => {
 });
 
 app.delete("/api/artifacts/:id", auth, async (req, res) => {
+  // Verify ownership via the holding → user_id chain
   const { data } = await supabase
-    .from("artifacts").select("storage_path").eq("id", req.params.id).single();
-  if (data?.storage_path) {
+    .from("artifacts").select("storage_path, holding_id").eq("id", req.params.id).single();
+  if (!data) return res.status(404).json({ error: "Not found" });
+  // Verify the holding belongs to this user
+  const { data: holding } = await supabase
+    .from("holdings").select("id").eq("id", data.holding_id).eq("user_id", req.user.id).single();
+  if (!holding) return res.status(403).json({ error: "Not authorized" });
+  if (data.storage_path) {
     await supabase.storage.from("artifacts").remove([data.storage_path]);
   }
   await supabase.from("artifacts").delete().eq("id", req.params.id);
   res.json({ ok: true });
 });
 
-// ══════════════════════════════════════════════════════════════════
-//  PATCH INSTRUCTIONS FOR server.js
-// ══════════════════════════════════════════════════════════════════
-//
-//  TWO changes needed in your existing server.js:
-//
-//  CHANGE 1: Add this import at the TOP of server.js (with your other imports):
-//
-//     import { Snaptrade } from "snaptrade-typescript-sdk";
-//
-//  CHANGE 2: Paste EVERYTHING below this comment block into server.js
-//            DIRECTLY BEFORE the line:
-//
-//     // ── Serve React app for all other routes ─────────────────────────
-//     app.get("*", (_, res) => {
-//
-//  That's it. Two changes.
-// ══════════════════════════════════════════════════════════════════
 
 
 // ══════════════════════════════════════════════════════════════════
@@ -1088,21 +1086,7 @@ app.get("/api/shared-portfolio/:ownerId", auth, async (req, res) => {
     ]);
 
     // Enrich holdings with net_units (same logic as /api/holdings)
-    const enriched = (holdingsResp.data || []).map(h => {
-      const txns = h.transactions || [];
-      if (txns.length === 0) return h;
-      const buys = txns.filter(t => t.txn_type === "BUY");
-      const sells = txns.filter(t => t.txn_type === "SELL");
-      const buyUnits = buys.reduce((s, t) => s + Number(t.units), 0);
-      const sellUnits = sells.reduce((s, t) => s + Number(t.units), 0);
-      const netUnits = buyUnits - sellUnits;
-      const avgCost = buyUnits > 0
-        ? buys.reduce((s, t) => s + Number(t.units) * Number(t.price), 0) / buyUnits : 0;
-      return { ...h, net_units: netUnits, avg_cost: avgCost, units: netUnits,
-        purchase_price: avgCost, purchase_nav: avgCost, purchase_value: avgCost * netUnits,
-        start_date: h.start_date || txns.sort((a, b) => new Date(a.txn_date) - new Date(b.txn_date))[0]?.txn_date || null,
-      };
-    });
+    const enriched = enrichHoldings(holdingsResp.data);
 
     res.json({
       role: share.role,
@@ -1237,18 +1221,12 @@ app.get("/api/snaptrade/status", async (_req, res) => {
   try {
     const cid = process.env.SNAPTRADE_CLIENT_ID;
     const ckey = process.env.SNAPTRADE_CONSUMER_KEY;
-    console.log(`🔍 SnapTrade status check — CLIENT_ID set: ${!!cid} (${cid ? cid.length + " chars" : "empty"}), CONSUMER_KEY set: ${!!ckey} (${ckey ? ckey.length + " chars" : "empty"})`);
+    if (!cid || !ckey) return res.status(502).json({ error: "SnapTrade not configured", detail: "Missing SNAPTRADE_CLIENT_ID or SNAPTRADE_CONSUMER_KEY" });
     const client = getSnapClient();
     const resp = await client.apiStatus.check();
-    console.log("✅ SnapTrade API reachable:", JSON.stringify(resp.data));
     res.json({ status: "ok", snaptrade: resp.data });
   } catch (e) {
     console.error("❌ SnapTrade status error:", e.message);
-    if (e.response) {
-      console.error("   HTTP status:", e.response.status);
-      console.error("   Response data:", JSON.stringify(e.response.data));
-    }
-    if (e.code) console.error("   Error code:", e.code);
     res.status(502).json({ error: "SnapTrade API unreachable", detail: e.message, code: e.code || null });
   }
 });
@@ -1697,7 +1675,10 @@ app.delete("/api/snaptrade/disconnect", auth, async (req, res) => {
 
 // ══════════════════════════════════════════════════════════════════
 //  SETU ACCOUNT AGGREGATOR — India Financial Data Import
+//  Hidden behind SETU_ENABLED=true env flag (not yet production-ready)
 // ══════════════════════════════════════════════════════════════════
+
+if (SETU_ENABLED) {
 
 const SETU_BASE     = process.env.SETU_BASE_URL || "https://fiu-sandbox.setu.co";
 const SETU_CLIENT   = process.env.SETU_CLIENT_ID;
@@ -1874,6 +1855,12 @@ function parseSetuFIData(sessionData) {
 
 function _setuDate(d) { if (!d) return null; if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0,10); const m = d.match(/^(\d{2})-(\d{2})-(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : d; }
 
+} else {
+  // Setu not enabled — return disabled status for all Setu endpoints
+  app.get("/api/setu/status", auth, (_req, res) => res.json({ configured: false, sandbox: false, disabled: true }));
+  app.all("/api/setu/*", auth, (_req, res) => res.status(404).json({ error: "Account Aggregator not enabled. Set SETU_ENABLED=true to activate." }));
+}
+
 // ── Serve React app for all other routes ─────────────────────────
 app.get("*", (_, res) => {
   const indexPath = path.join(process.cwd(), "dist", "index.html");
@@ -1886,10 +1873,11 @@ app.get("*", (_, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅  WealthLens Pro running on port ${PORT} (public multi-tenant)`);
+  console.log(`✅  WealthLens Hub running on port ${PORT} (public multi-tenant)`);
   console.log(`📊  Price sources: Twelve Data → Yahoo Finance | MF: MFAPI → AMFI | FX: exchangerate-api → Yahoo → ${FX_FALLBACK}`);
-  console.log(`🔐  Google Auth via Supabase`);
+  console.log(`🔐  Auth: Google OAuth + Email/Password via Supabase`);
   console.log(`💾  Postgres DB + file storage via Supabase`);
+  console.log(`🔌  Setu AA: ${SETU_ENABLED ? "ENABLED" : "disabled (set SETU_ENABLED=true to activate)"}`);
 });
 
 // ══════════════════════════════════════════════════════════════════
@@ -3599,7 +3587,7 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
 // ── BUDGET: List statements ───────────────────────────────────────
 app.get("/api/budget/statements", auth, async (req, res) => {
   const { data, error } = await supabase.from("budget_statements")
-    .select("*").order("upload_date", { ascending: false });
+    .select("*").eq("user_id", req.user.id).order("upload_date", { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
@@ -3613,7 +3601,7 @@ app.delete("/api/budget/statements/:id", auth, async (req, res) => {
 // ── BUDGET: Get transactions (with decryption) ────────────────────
 app.get("/api/budget/transactions", auth, async (req, res) => {
   const { statement_id, category, month, search } = req.query;
-  let q = supabase.from("budget_transactions").select("*").order("txn_date", { ascending: false });
+  let q = supabase.from("budget_transactions").select("*").eq("user_id", req.user.id).order("txn_date", { ascending: false });
   if (statement_id) q = q.eq("statement_id", statement_id);
   if (category && category !== "All") q = q.eq("category", category);
   if (month) { q = q.gte("txn_date", `${month}-01`).lte("txn_date", `${month}-31`); }
@@ -3636,7 +3624,8 @@ app.get("/api/budget/transactions", auth, async (req, res) => {
 // ── BUDGET: Update transaction category ──────────────────────────
 app.patch("/api/budget/transactions/:id", auth, async (req, res) => {
   const { category } = req.body;
-  const { error } = await supabase.from("budget_transactions").update({ category }).eq("id", req.params.id);
+  if (!category) return res.status(400).json({ error: "category required" });
+  const { error } = await supabase.from("budget_transactions").update({ category }).eq("id", req.params.id).eq("user_id", req.user.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
@@ -3645,33 +3634,40 @@ app.patch("/api/budget/transactions/:id", auth, async (req, res) => {
 app.post("/api/budget/recategorise", auth, async (req, res) => {
   const { ids, category } = req.body;
   if (!ids?.length || !category) return res.status(400).json({ error: "ids and category required" });
-  const { error } = await supabase.from("budget_transactions").update({ category }).in("id", ids);
+  if (ids.length > 500) return res.status(400).json({ error: "Too many IDs (max 500)" });
+  const { error } = await supabase.from("budget_transactions").update({ category }).in("id", ids).eq("user_id", req.user.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true, updated: ids.length });
 });
 
 // ── BUDGET: Categories CRUD ───────────────────────────────────────
 app.get("/api/budget/categories", auth, async (req, res) => {
-  const { data, error } = await supabase.from("budget_categories").select("*").order("name");
+  const { data, error } = await supabase.from("budget_categories").select("*").eq("user_id", req.user.id).order("name");
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
 
 app.post("/api/budget/categories", auth, async (req, res) => {
   const id = "cat_" + Date.now().toString(36);
-  const { error } = await supabase.from("budget_categories").insert({ id, ...req.body });
+  const { name, keywords } = req.body;
+  if (!name) return res.status(400).json({ error: "name required" });
+  const { error } = await supabase.from("budget_categories").insert({ id, user_id: req.user.id, name, keywords: keywords || "" });
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true, id });
 });
 
 app.put("/api/budget/categories/:id", auth, async (req, res) => {
-  const { error } = await supabase.from("budget_categories").update(req.body).eq("id", req.params.id);
+  const { name, keywords } = req.body;
+  const update = {};
+  if (name !== undefined) update.name = name;
+  if (keywords !== undefined) update.keywords = keywords;
+  const { error } = await supabase.from("budget_categories").update(update).eq("id", req.params.id).eq("user_id", req.user.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
 
 app.delete("/api/budget/categories/:id", auth, async (req, res) => {
-  await supabase.from("budget_categories").delete().eq("id", req.params.id);
+  await supabase.from("budget_categories").delete().eq("id", req.params.id).eq("user_id", req.user.id);
   res.json({ ok: true });
 });
 
@@ -3683,6 +3679,7 @@ app.get("/api/budget/analytics", auth, async (req, res) => {
 
   const { data: txns } = await supabase.from("budget_transactions")
     .select("amount, txn_type, category, txn_date")
+    .eq("user_id", req.user.id)
     .gte("txn_date", from).lte("txn_date", to);
 
   const byCategory = {};
@@ -3699,6 +3696,7 @@ app.get("/api/budget/analytics", auth, async (req, res) => {
   // Monthly trend (last 6 months)
   const { data: allTxns } = await supabase.from("budget_transactions")
     .select("amount, txn_type, txn_date")
+    .eq("user_id", req.user.id)
     .gte("txn_date", new Date(Date.now() - 180*24*3600_000).toISOString().slice(0,10))
     .eq("txn_type", "DEBIT");
 

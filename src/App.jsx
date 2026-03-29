@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from "./supabase.js";
 import SnapTradeImport from "./SnapTradeImport";
-import SetuAAImport from "./SetuAAImport";
+// SetuAAImport — disabled until Setu integration is ready
+// import SetuAAImport from "./SetuAAImport";
 
 const GF = `@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');`;
 
@@ -929,7 +930,7 @@ export default function App() {
   const [aiInput,        setAiInput]        = useState("");
   const [aiLoading,      setAiLoading]      = useState(false);
   const [showSnapTrade,  setShowSnapTrade]   = useState(false);
-  const [showSetuAA,     setShowSetuAA]      = useState(false);
+  // const [showSetuAA, setShowSetuAA] = useState(false); // Setu AA disabled
   const aiBottomRef = useRef();
 
   const importFileRef = useRef();
@@ -2930,7 +2931,7 @@ ${alertLines||"  None"}`;
                     {icon:"💰",title:"Kuvera / MF Export",desc:"Mutual fund portfolio exports with scheme name, units, NAV. Scheme codes auto-mapped.",badge:"Auto-Detect"},
                     {icon:"📊",title:"Excel / XLSX",desc:"Any spreadsheet with Name, Qty, Avg Cost columns. Drag and drop directly into the import modal.",badge:"Auto-Detect"},
                     {icon:"🔗",title:"CDSL / NSDL CAS",desc:"Consolidated Account Statement from CDSL or NSDL with all demat holdings across brokers.",badge:"Coming Soon"},
-                    {icon:"🤖",title:"Account Aggregator",desc:"India's RBI-regulated AA framework (Setu) for consent-based auto-sync of stocks, MFs, FDs, EPF, PPF.",badge:"New"},
+                    {icon:"🤖",title:"Account Aggregator",desc:"India's RBI-regulated AA framework for consent-based auto-sync of stocks, MFs, FDs, EPF, PPF.",badge:"Coming Soon"},
                   ].map(tip=>(
                     <div key={tip.title} style={{padding:".75rem .9rem",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:8}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:".4rem"}}>
@@ -2953,7 +2954,7 @@ ${alertLines||"  None"}`;
                 <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#a084ca",marginBottom:".75rem"}}>💡 Better Ways to Import</div>
                 {[
                   {icon:"📧",title:"Email Parsing",desc:"Banks email monthly statements. Forward them to a dedicated inbox and parse attachments automatically. Works well for HDFC, ICICI, Axis."},
-                  {icon:"🔗",title:"Account Aggregator (AA) Framework",desc:"India's RBI-regulated AA network (Finvu, Perfios, Setu) lets apps fetch bank data with your one-time consent. Zero manual exports — most accurate. Best long-term solution."},
+                  {icon:"🔗",title:"Account Aggregator (AA) Framework",desc:"India's RBI-regulated AA network (Finvu, Perfios) lets apps fetch bank data with your one-time consent. Zero manual exports — most accurate. Best long-term solution."},
                   {icon:"💬",title:"SMS/WhatsApp Parsing",desc:"Banks send transaction SMSs. An SMS-reading app or webhook can parse and forward these in real time. Works for most Indian banks."},
                   {icon:"🔑",title:"Net Banking API / Scraping",desc:"Tools like Selenium or Playwright can log into net banking and download statements. High maintenance risk but works when AA is unavailable."},
                   {icon:"✍️",title:"Manual Quick Entry",desc:"A fast-entry form (date, amount, category, note) for cash transactions or when other methods aren't available."},
@@ -4310,22 +4311,20 @@ ${alertLines||"  None"}`;
           </div>
           <div style={{fontSize:"1.1rem",color:"rgba(167,139,250,.6)",flexShrink:0}}>→</div>
         </div>
-        {/* ── Featured: Setu Account Aggregator ── */}
-        <div onClick={()=>{setModal(null);setShowSetuAA(true);}}
-          style={{padding:"1.1rem 1.4rem",borderRadius:12,border:"1.5px solid rgba(76,175,154,.45)",
-            background:"linear-gradient(135deg,rgba(76,175,154,.10) 0%,rgba(201,168,76,.06) 100%)",
-            cursor:"pointer",marginBottom:"1rem",display:"flex",alignItems:"center",gap:"1.2rem",transition:"all .2s"}}
-          onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(76,175,154,.7)";}}
-          onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(76,175,154,.45)";}}>
+        {/* ── Account Aggregator (Coming Soon) ── */}
+        <div
+          style={{padding:"1.1rem 1.4rem",borderRadius:12,border:"1.5px solid rgba(76,175,154,.25)",
+            background:"linear-gradient(135deg,rgba(76,175,154,.06) 0%,rgba(201,168,76,.03) 100%)",
+            marginBottom:"1rem",display:"flex",alignItems:"center",gap:"1.2rem",opacity:.6,cursor:"default"}}>
           <div style={{fontSize:"1.8rem",flexShrink:0}}>🇮🇳</div>
           <div style={{flex:1}}>
             <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".25rem"}}>
               <span style={{fontSize:".92rem",color:"#ffffff",fontWeight:600}}>Account Aggregator</span>
-              <span style={{fontSize:".55rem",padding:".15rem .5rem",borderRadius:10,background:"rgba(76,175,154,.18)",color:"#4caf9a",fontWeight:600,letterSpacing:".04em",textTransform:"uppercase"}}>India</span>
+              <span style={{fontSize:".55rem",padding:".15rem .5rem",borderRadius:10,background:"rgba(201,168,76,.18)",color:"#c9a84c",fontWeight:600,letterSpacing:".04em",textTransform:"uppercase"}}>Coming Soon</span>
             </div>
-            <div style={{fontSize:".74rem",color:"rgba(255,255,255,.6)",lineHeight:1.5}}>Import stocks, MFs, FDs, EPF, PPF, bank accounts — via Setu's RBI-regulated consent flow</div>
+            <div style={{fontSize:".74rem",color:"rgba(255,255,255,.5)",lineHeight:1.5}}>Import stocks, MFs, FDs, EPF, PPF, bank accounts — via RBI-regulated consent flow</div>
           </div>
-          <div style={{fontSize:"1.1rem",color:"rgba(76,175,154,.6)",flexShrink:0}}>→</div>
+          <div style={{fontSize:"1.1rem",color:"rgba(76,175,154,.3)",flexShrink:0}}>→</div>
         </div>
         {/* ── Other options ── */}
         <div style={{fontSize:".6rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.35)",marginBottom:".5rem",paddingLeft:".1rem"}}>Other ways to add</div>
@@ -4358,11 +4357,7 @@ ${alertLines||"  None"}`;
         <SnapTradeImport onClose={async()=>{setShowSnapTrade(false);await reloadHoldings();}} members={members} />
       </Overlay>
     )}
-    {showSetuAA&&(
-      <Overlay onClose={()=>{setShowSetuAA(false);reloadHoldings();}} wide>
-        <SetuAAImport onClose={async()=>{setShowSetuAA(false);await reloadHoldings();}} onImported={reloadHoldings} members={members} api={api} />
-      </Overlay>
-    )}
+    {/* Setu AA overlay — disabled until integration is ready */}
     {modal==="import"&&(<ImportModal importState={importState} setImportState={setImportState} members={members} AT={AT} handleImportFile={handleImportFile} executeImport={executeImport} resetImport={resetImport} importFileRef={importFileRef} onClose={()=>{setModal(null);resetImport();}} fmt={fmt} submitCASPassword={submitCASPassword}/>)}
     {modal==="pdf"&&(<Overlay onClose={()=>setModal(null)}><div className="modtitle">Portfolio Report</div>{pdfState.loading?(<div style={{textAlign:"center",padding:"2.5rem 0"}}><div style={{width:34,height:34,border:"2px solid rgba(201,168,76,.2)",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 1rem"}}/><div style={{fontSize:".8rem",color:"rgba(255,255,255,.5)"}}>Generating AI commentary…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>):(<><div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".7rem"}}>AI Advisor Commentary</div><div style={{background:"rgba(201,168,76,.05)",border:"1px solid rgba(201,168,76,.14)",borderRadius:8,padding:"1rem 1.2rem",fontSize:".8rem",lineHeight:1.72,color:"rgba(255,255,255,.85)",maxHeight:260,overflowY:"auto",whiteSpace:"pre-wrap"}}>{pdfState.summary}</div></>)}<MA><button className="btnc" onClick={()=>setModal(null)}>Close</button></MA></Overlay>)}
     </>
