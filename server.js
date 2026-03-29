@@ -1674,6 +1674,282 @@ app.delete("/api/snaptrade/disconnect", auth, async (req, res) => {
 // ══════════════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════
+//  PLAID — US Bank Transaction Import
+//  Env: PLAID_CLIENT_ID, PLAID_SECRET, PLAID_ENV (sandbox|development|production)
+// ══════════════════════════════════════════════════════════════════
+
+const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID;
+const PLAID_SECRET    = process.env.PLAID_SECRET;
+const PLAID_ENV       = process.env.PLAID_ENV || "sandbox";
+const PLAID_ENABLED   = !!(PLAID_CLIENT_ID && PLAID_SECRET);
+
+let _plaidClient = null;
+async function getPlaidClient() {
+  if (_plaidClient) return _plaidClient;
+  if (!PLAID_ENABLED) throw new Error("Plaid not configured — set PLAID_CLIENT_ID and PLAID_SECRET");
+  const { Configuration, PlaidApi, PlaidEnvironments } = await import("plaid");
+  const envMap = { sandbox: PlaidEnvironments.sandbox, development: PlaidEnvironments.development, production: PlaidEnvironments.production };
+  const config = new Configuration({
+    basePath: envMap[PLAID_ENV] || PlaidEnvironments.sandbox,
+    baseOptions: { headers: { "PLAID-CLIENT-ID": PLAID_CLIENT_ID, "PLAID-SECRET": PLAID_SECRET } },
+  });
+  _plaidClient = new PlaidApi(config);
+  return _plaidClient;
+}
+
+// ── Plaid: Status ─────────────────────────────────────────────────
+app.get("/api/plaid/status", auth, async (req, res) => {
+  if (!PLAID_ENABLED) return res.json({ configured: false, env: PLAID_ENV });
+  // Get user's Plaid connections
+  const { data: connections } = await supabase
+    .from("plaid_connections").select("id, institution_name, accounts, last_synced, status, error_code")
+    .eq("user_id", req.user.id).order("created_at", { ascending: false });
+  res.json({ configured: true, env: PLAID_ENV, connections: connections || [] });
+});
+
+// ── Plaid: Create Link Token ──────────────────────────────────────
+app.post("/api/plaid/link-token", auth, async (req, res) => {
+  try {
+    const plaid = await getPlaidClient();
+    const response = await plaid.linkTokenCreate({
+      user: { client_user_id: req.user.id },
+      client_name: "WealthLens Hub",
+      products: ["transactions"],
+      country_codes: ["US"],
+      language: "en",
+      redirect_uri: undefined, // not needed for web
+    });
+    res.json({ link_token: response.data.link_token, expiration: response.data.expiration });
+  } catch (e) {
+    console.error("Plaid link-token error:", e?.response?.data || e.message);
+    res.status(500).json({ error: e?.response?.data?.error_message || e.message });
+  }
+});
+
+// ── Plaid: Exchange Public Token → Access Token ───────────────────
+app.post("/api/plaid/exchange", auth, async (req, res) => {
+  try {
+    const { public_token, metadata } = req.body;
+    if (!public_token) return res.status(400).json({ error: "public_token required" });
+
+    const plaid = await getPlaidClient();
+    const tokenResp = await plaid.itemPublicTokenExchange({ public_token });
+    const access_token = tokenResp.data.access_token;
+    const item_id = tokenResp.data.item_id;
+
+    // Get account details
+    const acctResp = await plaid.accountsGet({ access_token });
+    const accounts = (acctResp.data.accounts || []).map(a => ({
+      account_id: a.account_id,
+      name: a.name || a.official_name || "Account",
+      type: a.type,
+      subtype: a.subtype,
+      mask: a.mask,
+    }));
+
+    // Encrypt access token before storing
+    const encryptedToken = encrypt(access_token);
+
+    // Upsert connection
+    const connId = "plaid_" + Date.now().toString(36);
+    const institution_name = metadata?.institution?.name || "US Bank";
+    const institution_id = metadata?.institution?.institution_id || "";
+
+    await supabase.from("plaid_connections").upsert({
+      id: connId,
+      user_id: req.user.id,
+      item_id,
+      access_token: encryptedToken,
+      institution_id,
+      institution_name,
+      accounts,
+      status: "active",
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "id" });
+
+    res.json({
+      ok: true,
+      connection_id: connId,
+      institution_name,
+      accounts: accounts.map(a => ({ name: a.name, type: a.type, mask: a.mask })),
+    });
+  } catch (e) {
+    console.error("Plaid exchange error:", e?.response?.data || e.message);
+    res.status(500).json({ error: e?.response?.data?.error_message || e.message });
+  }
+});
+
+// ── Plaid: Sync Transactions ──────────────────────────────────────
+app.post("/api/plaid/sync/:connectionId", auth, async (req, res) => {
+  try {
+    const { data: conn } = await supabase
+      .from("plaid_connections").select("*").eq("id", req.params.connectionId).eq("user_id", req.user.id).single();
+    if (!conn) return res.status(404).json({ error: "Connection not found" });
+
+    const access_token = decrypt(conn.access_token);
+    const plaid = await getPlaidClient();
+
+    // Use transactions/sync with cursor-based pagination
+    let cursor = conn.cursor || "";
+    let added = [], modified = [], removed = [];
+    let hasMore = true;
+
+    while (hasMore) {
+      const syncResp = await plaid.transactionsSync({
+        access_token,
+        cursor: cursor || undefined,
+        count: 500,
+      });
+      const data = syncResp.data;
+      added = added.concat(data.added || []);
+      modified = modified.concat(data.modified || []);
+      removed = removed.concat(data.removed || []);
+      hasMore = data.has_more;
+      cursor = data.next_cursor;
+    }
+
+    // Create a budget statement for this sync
+    const stmtId = "plaid_stmt_" + Date.now().toString(36);
+    const now = new Date().toISOString();
+
+    if (added.length > 0) {
+      // Determine period range
+      const dates = added.map(t => t.date).filter(Boolean).sort();
+      const periodStart = dates[0] || now.slice(0, 10);
+      const periodEnd = dates[dates.length - 1] || now.slice(0, 10);
+
+      await supabase.from("budget_statements").insert({
+        id: stmtId,
+        user_id: req.user.id,
+        source: conn.institution_name || "Plaid",
+        statement_type: "BANK",
+        filename: `plaid_sync_${now.slice(0, 10)}`,
+        file_size: 0,
+        period_start: periodStart,
+        period_end: periodEnd,
+        txn_count: added.length,
+        notes: `Auto-synced via Plaid · ${added.length} new transactions`,
+      });
+
+      // Map Plaid transactions → budget_transactions
+      const txns = added.map(t => ({
+        id: "ptxn_" + t.transaction_id,
+        statement_id: stmtId,
+        user_id: req.user.id,
+        txn_date: t.date,
+        description: encrypt(t.name || t.merchant_name || "Transaction"),
+        amount: Math.abs(t.amount),
+        txn_type: t.amount > 0 ? "DEBIT" : "CREDIT", // Plaid: positive = debit
+        category: mapPlaidCategory(t.personal_finance_category),
+        raw_desc: encrypt(JSON.stringify({
+          merchant: t.merchant_name,
+          plaid_category: t.personal_finance_category,
+          payment_channel: t.payment_channel,
+          account_id: t.account_id,
+        })),
+        ref_number: t.transaction_id,
+      }));
+
+      // Batch insert
+      const batchSize = 100;
+      for (let i = 0; i < txns.length; i += batchSize) {
+        const { error } = await supabase.from("budget_transactions").insert(txns.slice(i, i + batchSize));
+        if (error) console.error("Plaid txn insert batch error:", error.message);
+      }
+    }
+
+    // Handle removed transactions
+    if (removed.length > 0) {
+      const removeIds = removed.map(r => "ptxn_" + r.transaction_id);
+      await supabase.from("budget_transactions").delete().in("id", removeIds);
+    }
+
+    // Update cursor + last_synced
+    await supabase.from("plaid_connections").update({
+      cursor, last_synced: now, status: "active", error_code: null, updated_at: now,
+    }).eq("id", conn.id);
+
+    res.json({
+      ok: true,
+      added: added.length,
+      modified: modified.length,
+      removed: removed.length,
+      total_synced: added.length,
+      period: added.length > 0 ? {
+        start: added.map(t => t.date).sort()[0],
+        end: added.map(t => t.date).sort().pop(),
+      } : null,
+    });
+  } catch (e) {
+    console.error("Plaid sync error:", e?.response?.data || e.message);
+    // Update connection status on error
+    await supabase.from("plaid_connections").update({
+      status: "error",
+      error_code: e?.response?.data?.error_code || e.message,
+      updated_at: new Date().toISOString(),
+    }).eq("id", req.params.connectionId).eq("user_id", req.user.id);
+    res.status(500).json({ error: e?.response?.data?.error_message || e.message });
+  }
+});
+
+// ── Plaid: Disconnect ─────────────────────────────────────────────
+app.delete("/api/plaid/connections/:connectionId", auth, async (req, res) => {
+  try {
+    const { data: conn } = await supabase
+      .from("plaid_connections").select("*").eq("id", req.params.connectionId).eq("user_id", req.user.id).single();
+    if (!conn) return res.status(404).json({ error: "Connection not found" });
+
+    // Remove Plaid Item
+    try {
+      const plaid = await getPlaidClient();
+      const access_token = decrypt(conn.access_token);
+      await plaid.itemRemove({ access_token });
+    } catch { /* best effort */ }
+
+    // Delete connection record
+    await supabase.from("plaid_connections").delete().eq("id", conn.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Plaid: Category mapping (Plaid PFC → WealthLens budget categories) ──
+function mapPlaidCategory(pfc) {
+  if (!pfc) return "Uncategorised";
+  const primary = (pfc.primary || "").toUpperCase();
+  const detailed = (pfc.detailed || "").toUpperCase();
+  const map = {
+    "FOOD_AND_DRINK": "Food & Dining",
+    "TRANSPORTATION": "Transport",
+    "SHOPPING": "Shopping",
+    "ENTERTAINMENT": "Entertainment",
+    "HEALTH_AND_FITNESS": "Health",
+    "PERSONAL_CARE": "Personal Care",
+    "RENT_AND_UTILITIES": "Housing & Bills",
+    "HOME_IMPROVEMENT": "Housing & Bills",
+    "TRAVEL": "Travel",
+    "EDUCATION": "Education",
+    "MEDICAL": "Health",
+    "GOVERNMENT_AND_NON_PROFIT": "Other",
+    "TRANSFER_IN": "Income",
+    "TRANSFER_OUT": "Transfer",
+    "INCOME": "Income",
+    "BANK_FEES": "Other",
+    "LOAN_PAYMENTS": "EMI / Loans",
+    "GENERAL_MERCHANDISE": "Shopping",
+    "GENERAL_SERVICES": "Other",
+  };
+  return map[primary] || map[detailed] || "Uncategorised";
+}
+
+if (PLAID_ENABLED) {
+  console.log(`🏦  Plaid: enabled (${PLAID_ENV})`);
+} else {
+  console.log("🏦  Plaid: disabled (set PLAID_CLIENT_ID and PLAID_SECRET to enable)");
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  SETU ACCOUNT AGGREGATOR — India Financial Data Import
 //  Hidden behind SETU_ENABLED=true env flag (not yet production-ready)
 // ══════════════════════════════════════════════════════════════════
@@ -1950,6 +2226,110 @@ function parseCSV(text) {
   const h = headerRow.map(c => (c||"").toLowerCase().trim());
   const dataRows = rows.slice(rows.indexOf(headerRow) + 1);
 
+  // ── US BANK PARSERS ──────────────────────────────────────────────
+
+  // Chase (checking/savings): Transaction Date, Post Date, Description, Category, Type, Amount
+  // Chase (credit card): Transaction Date, Post Date, Description, Category, Type, Amount, Memo
+  if (h.some(c => c.includes("post date")) && h.some(c => c.includes("category")) && h.some(c => c.includes("type"))) {
+    const di = h.findIndex(c => c.includes("transaction date") || c === "date");
+    const descI = h.findIndex(c => c.includes("description"));
+    const amtI = h.findIndex(c => c.includes("amount"));
+    const catI = h.findIndex(c => c === "category");
+    return dataRows.map(r => {
+      const amt = parseFloat(String(r[amtI]||"").replace(/[$,]/g, "")) || 0;
+      return { date: r[di], desc: r[descI], debit: amt < 0 ? Math.abs(amt).toString() : "", credit: amt > 0 ? amt.toString() : "", balance: "", ref: "", _usCat: r[catI] || "" };
+    }).filter(r => r.date && r.desc);
+  }
+
+  // Bank of America: Date, Description, Amount, Running Bal.
+  if (h.some(c => c.includes("running bal")) || (h.length <= 5 && h[0] === "date" && h.includes("amount") && h.includes("description"))) {
+    const di = h.findIndex(c => c === "date");
+    const descI = h.findIndex(c => c.includes("description"));
+    const amtI = h.findIndex(c => c === "amount");
+    const balI = h.findIndex(c => c.includes("bal"));
+    return dataRows.map(r => {
+      const amt = parseFloat(String(r[amtI]||"").replace(/[$,]/g, "")) || 0;
+      return { date: r[di], desc: r[descI], debit: amt < 0 ? Math.abs(amt).toString() : "", credit: amt > 0 ? amt.toString() : "", balance: r[balI] || "", ref: "" };
+    }).filter(r => r.date && r.desc);
+  }
+
+  // Capital One: Transaction Date, Posted Date, Card No., Description, Category, Debit, Credit
+  if (h.some(c => c.includes("card no")) || (h.some(c => c.includes("posted date")) && h.some(c => c.includes("debit")) && h.some(c => c.includes("credit")))) {
+    const di = h.findIndex(c => c.includes("transaction date") || c.includes("date"));
+    const descI = h.findIndex(c => c.includes("description") || c.includes("payee"));
+    const debI = h.findIndex(c => c === "debit" || c.includes("debit"));
+    const credI = h.findIndex(c => c === "credit" || c.includes("credit"));
+    const catI = h.findIndex(c => c === "category");
+    return dataRows.map(r => ({
+      date: r[di], desc: r[descI], debit: r[debI], credit: r[credI], balance: "", ref: "", _usCat: catI >= 0 ? r[catI] : ""
+    })).filter(r => r.date && r.desc);
+  }
+
+  // Citi: Status, Date, Description, Debit, Credit
+  if (h.includes("status") && h.includes("debit") && h.includes("credit")) {
+    const di = h.findIndex(c => c === "date");
+    const descI = h.findIndex(c => c.includes("description"));
+    const debI = h.findIndex(c => c === "debit");
+    const credI = h.findIndex(c => c === "credit");
+    return dataRows.map(r => ({
+      date: r[di], desc: r[descI], debit: r[debI], credit: r[credI], balance: "", ref: ""
+    })).filter(r => r.date && r.desc);
+  }
+
+  // Amex: Date, Description, Amount (or: Date, Reference, Description, Amount)
+  if (h[0] === "date" && h.includes("amount") && (h.includes("reference") || h.length <= 4) && !h.includes("balance")) {
+    const di = 0;
+    const descI = h.findIndex(c => c.includes("description"));
+    const amtI = h.findIndex(c => c === "amount");
+    const refI = h.findIndex(c => c.includes("reference"));
+    return dataRows.map(r => {
+      const amt = parseFloat(String(r[amtI]||"").replace(/[$,]/g, "")) || 0;
+      return { date: r[di], desc: r[descI >= 0 ? descI : 1], debit: amt > 0 ? amt.toString() : "", credit: amt < 0 ? Math.abs(amt).toString() : "", balance: "", ref: refI >= 0 ? r[refI] : "" };
+    }).filter(r => r.date && r.desc);
+  }
+
+  // Discover: Trans. Date, Post Date, Description, Amount, Category
+  if (h.some(c => c.includes("trans. date") || c.includes("trans date")) && h.includes("amount")) {
+    const di = h.findIndex(c => c.includes("trans"));
+    const descI = h.findIndex(c => c.includes("description"));
+    const amtI = h.findIndex(c => c === "amount");
+    const catI = h.findIndex(c => c === "category");
+    return dataRows.map(r => {
+      const amt = parseFloat(String(r[amtI]||"").replace(/[$,]/g, "")) || 0;
+      return { date: r[di], desc: r[descI], debit: amt > 0 ? amt.toString() : "", credit: amt < 0 ? Math.abs(amt).toString() : "", balance: "", ref: "", _usCat: catI >= 0 ? r[catI] : "" };
+    }).filter(r => r.date && r.desc);
+  }
+
+  // Wells Fargo (varies): common format is Date, Amount, *, *, Description
+  // Also: Date, Description, Amount, Balance — detected via "amount" without specific bank markers
+  if (h[0] === "date" && h.length >= 3 && h.length <= 6 && h.includes("amount") && !h.includes("narration")) {
+    const di = 0;
+    const amtI = h.findIndex(c => c === "amount");
+    const descI = h.findIndex(c => c.includes("description") || c.includes("memo") || c.includes("name"));
+    const balI = h.findIndex(c => c.includes("balance") || c.includes("bal"));
+    // If no desc column found, try the last text column
+    const actualDescI = descI >= 0 ? descI : (h.length > 2 ? h.length - 1 : 1);
+    return dataRows.map(r => {
+      const amt = parseFloat(String(r[amtI]||"").replace(/[$,]/g, "")) || 0;
+      return { date: r[di], desc: r[actualDescI], debit: amt < 0 ? Math.abs(amt).toString() : "", credit: amt > 0 ? amt.toString() : "", balance: balI >= 0 ? r[balI] : "", ref: "" };
+    }).filter(r => r.date && r.desc);
+  }
+
+  // US Bank: Date, Transaction, Name, Memo, Amount
+  if (h.some(c => c === "memo") && h.some(c => c === "name") && h.includes("amount")) {
+    const di = h.findIndex(c => c === "date");
+    const nameI = h.findIndex(c => c === "name");
+    const memoI = h.findIndex(c => c === "memo");
+    const amtI = h.findIndex(c => c === "amount");
+    return dataRows.map(r => {
+      const amt = parseFloat(String(r[amtI]||"").replace(/[$,]/g, "")) || 0;
+      const desc = [r[nameI], r[memoI]].filter(Boolean).join(" - ");
+      return { date: r[di], desc, debit: amt < 0 ? Math.abs(amt).toString() : "", credit: amt > 0 ? amt.toString() : "", balance: "", ref: "" };
+    }).filter(r => r.date && r.desc);
+  }
+
+  // ── INDIAN BANK PARSERS ─────────────────────────────────────────
+
   // HDFC Bank savings (Date, Narration, Chq/Ref, Value Date, Withdrawal, Deposit, Balance)
   if (h.includes("narration") && h.includes("withdrawal amt.") || h.includes("withdrawal amt")) {
     return dataRows.map(r => ({
@@ -2013,21 +2393,35 @@ function genericCSV(rows) {
 
 function parseAmount(val) {
   if (!val) return 0;
-  const n = parseFloat(String(val).replace(/[₹,\s]/g, "").trim());
-  return isNaN(n) ? 0 : n;
+  const n = parseFloat(String(val).replace(/[₹$,\s]/g, "").trim());
+  return isNaN(n) ? 0 : Math.abs(n);
 }
 
 function parseDate(val) {
   if (!val) return null;
   const s = String(val).trim();
-  // DD/MM/YYYY or DD-MM-YYYY
+  // YYYY-MM-DD (ISO)
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  // MM/DD/YYYY (US) or DD/MM/YYYY (Indian) — disambiguate by checking if first part > 12
   const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m1) {
+    const a = parseInt(m1[1]), b = parseInt(m1[2]);
     const y = m1[3].length === 2 ? "20" + m1[3] : m1[3];
-    return `${y}-${m1[2].padStart(2,"0")}-${m1[1].padStart(2,"0")}`;
+    // If first number > 12, it must be DD (Indian format DD/MM/YYYY)
+    // If second number > 12, it must be DD (US format MM/DD/YYYY)
+    // If both <= 12, try US format (MM/DD) since US banks are more common in this context
+    if (a > 12) {
+      // DD/MM/YYYY
+      return `${y}-${String(b).padStart(2,"0")}-${String(a).padStart(2,"0")}`;
+    } else if (b > 12) {
+      // MM/DD/YYYY
+      return `${y}-${String(a).padStart(2,"0")}-${String(b).padStart(2,"0")}`;
+    } else {
+      // Ambiguous — default to MM/DD/YYYY (US format) for budget imports
+      // Indian bank parsers typically use DD/MM/YYYY but those are handled above (a > 12 check)
+      return `${y}-${String(a).padStart(2,"0")}-${String(b).padStart(2,"0")}`;
+    }
   }
-  // YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   // DD MMM YYYY (01 Jan 2024)
   const months = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
   const m2 = s.match(/^(\d{1,2})\s+([a-z]{3})\s+(\d{4})$/i);
@@ -2035,7 +2429,105 @@ function parseDate(val) {
     const mo = months[m2[2].toLowerCase()];
     if (mo) return `${m2[3]}-${String(mo).padStart(2,"0")}-${m2[1].padStart(2,"0")}`;
   }
+  // MMM DD, YYYY (Jan 01, 2024) — common in US exports
+  const m3 = s.match(/^([a-z]{3})\s+(\d{1,2}),?\s+(\d{4})$/i);
+  if (m3) {
+    const mo = months[m3[1].toLowerCase()];
+    if (mo) return `${m3[3]}-${String(mo).padStart(2,"0")}-${m3[2].padStart(2,"0")}`;
+  }
   return null;
+}
+
+// ── PDF Bank Statement Parser ─────────────────────────────────────
+// Extracts transactions from bank statement PDFs (US and Indian banks)
+// Uses pattern matching on extracted text to find date + description + amount rows
+function parseBankStatementPDF(rawText) {
+  const rows = [];
+  const months = "jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec";
+
+  // Date patterns found in bank statement PDFs
+  const datePatterns = [
+    `\\d{1,2}/\\d{1,2}/\\d{2,4}`,
+    `\\d{1,2}-\\d{1,2}-\\d{2,4}`,
+    `\\d{1,2}\\s+(?:${months})\\s+\\d{2,4}`,
+    `(?:${months})\\s+\\d{1,2},?\\s+\\d{4}`,
+    `\\d{1,2}/\\d{1,2}`,
+  ];
+  const dateRegex = new RegExp(`(${datePatterns.join("|")})`, "gi");
+  const amtPat = `[-]?\\$?[\\d,]+\\.\\d{2}`;
+
+  // Find all date positions in the text
+  const dateMatches = [...rawText.matchAll(dateRegex)];
+
+  // Strategy A: line-based (if text has real newlines)
+  if (rawText.includes("\n")) {
+    const lines = rawText.split(/\n/);
+    for (const line of lines) {
+      const dateM = line.match(new RegExp(`^\\s*(${datePatterns.join("|")})`, "i"));
+      if (!dateM) continue;
+      const rest = line.substring(dateM.index + dateM[0].length).trim();
+      const amounts = [...rest.matchAll(new RegExp(amtPat, "g"))].map(m => ({
+        val: parseFloat(m[0].replace(/[$,]/g, "")), idx: m.index
+      }));
+      if (amounts.length === 0) continue;
+      const desc = rest.substring(0, amounts[0].idx).replace(/\s+/g, " ").trim();
+      if (!desc || desc.length < 3 || /^(page|total|balance|opening|closing|statement)/i.test(desc)) continue;
+
+      const primaryAmt = amounts[0].val;
+      const balance = amounts.length > 2 ? amounts[amounts.length - 1].val : null;
+      let debit = "", credit = "";
+      if (amounts.length >= 3) {
+        const a1 = amounts[0].val, a2 = amounts[1].val;
+        if (Math.abs(a1) > 0 && Math.abs(a2) < 0.01) debit = Math.abs(a1).toString();
+        else if (Math.abs(a2) > 0 && Math.abs(a1) < 0.01) credit = Math.abs(a2).toString();
+        else debit = Math.abs(a1).toString();
+      } else {
+        if (primaryAmt < 0) debit = Math.abs(primaryAmt).toString();
+        else debit = Math.abs(primaryAmt).toString();
+      }
+
+      rows.push({ date: dateM[1], desc: desc.substring(0, 120), debit, credit, balance: balance ? balance.toString() : "", ref: "" });
+    }
+    if (rows.length >= 3) {
+      return dedupeRows(rows);
+    }
+  }
+
+  // Strategy B: date-position segmentation (for concatenated PDF text)
+  for (let i = 0; i < dateMatches.length; i++) {
+    const dateStr = dateMatches[i][1];
+    const startPos = dateMatches[i].index + dateMatches[i][0].length;
+    const endPos = i + 1 < dateMatches.length ? dateMatches[i + 1].index : startPos + 300;
+    const block = rawText.substring(startPos, Math.min(endPos, startPos + 300)).trim();
+
+    const amounts = [...block.matchAll(new RegExp(amtPat, "g"))].map(m => ({
+      val: parseFloat(m[0].replace(/[$,]/g, "")), idx: m.index, raw: m[0],
+    }));
+    if (amounts.length === 0) continue;
+
+    const desc = block.substring(0, amounts[0].idx).replace(/\s+/g, " ").trim();
+    if (!desc || desc.length < 3 || /^(page|total|balance|opening|closing|statement|continued)/i.test(desc)) continue;
+
+    const primaryAmt = amounts[0].val;
+    let debit = "", credit = "";
+    if (primaryAmt < 0) debit = Math.abs(primaryAmt).toString();
+    else debit = Math.abs(primaryAmt).toString();
+
+    const balance = amounts.length > 1 ? amounts[amounts.length - 1].val : null;
+    rows.push({ date: dateStr, desc: desc.substring(0, 120), debit, credit, balance: balance ? balance.toString() : "", ref: "" });
+  }
+
+  return dedupeRows(rows);
+}
+
+function dedupeRows(rows) {
+  const seen = new Set();
+  return rows.filter(r => {
+    const key = `${r.date}|${r.desc?.substring(0,30)}|${r.debit||r.credit}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3742,8 +4234,29 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
       const ws = wb.Sheets[wb.SheetNames[0]];
       const csvText = XLSX.utils.sheet_to_csv(ws);
       rawRows = parseCSV(csvText);
+    } else if (ext === "pdf") {
+      // ── PDF Bank Statement Parser ──
+      try {
+        const loadingTask = pdfjsLib.getDocument({
+          data: new Uint8Array(req.file.buffer),
+          standardFontDataUrl: _pdfjsFontPath,
+          useSystemFonts: true,
+        });
+        const pdf = await loadingTask.promise;
+        const pageTexts = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          pageTexts.push(content.items.map(item => item.str).join(" "));
+        }
+        const rawText = pageTexts.join("\n");
+        rawRows = parseBankStatementPDF(rawText);
+        console.log(`📄 Budget PDF: extracted ${rawText.length} chars, ${rawRows.length} transactions`);
+      } catch (pdfErr) {
+        return res.status(400).json({ error: "PDF parse error: " + pdfErr.message });
+      }
     } else {
-      return res.status(400).json({ error: "Unsupported format. Use CSV, XLS, or XLSX." });
+      return res.status(400).json({ error: "Unsupported format. Use CSV, XLS, XLSX, or PDF." });
     }
   } catch (e) {
     return res.status(400).json({ error: "Parse error: " + e.message });
