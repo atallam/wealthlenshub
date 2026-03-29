@@ -1891,6 +1891,10 @@ const XLSX = _require("xlsx");
 const pdfjsLib = _require("pdfjs-dist/legacy/build/pdf.mjs");
 import crypto from "crypto";
 
+// ── pdfjs-dist: resolve standard font path for PDF text extraction ──
+import { dirname, join } from "path";
+const _pdfjsFontPath = join(dirname(_require.resolve("pdfjs-dist/package.json")), "standard_fonts") + "/";
+
 // ── Encryption helpers (AES-256-GCM) ─────────────────────────────
 const BUDGET_KEY = process.env.BUDGET_ENCRYPT_KEY
   ? Buffer.from(process.env.BUDGET_ENCRYPT_KEY, "hex")
@@ -3340,7 +3344,11 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
 
         let pdf;
         try {
-          const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(req.file.buffer) });
+          const loadingTask = pdfjsLib.getDocument({
+            data: new Uint8Array(req.file.buffer),
+            standardFontDataUrl: _pdfjsFontPath,
+            useSystemFonts: true,
+          });
           // Handle password-protected PDFs via callback
           let passwordAttempted = false;
           loadingTask.onPassword = (updateCallback, reason) => {
