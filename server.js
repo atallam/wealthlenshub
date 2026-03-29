@@ -3015,10 +3015,10 @@ function parseNSDLCASStatement(rawText) {
   const closingRe = /Closing\s*Unit\s*Balance\s*[:\s]*([\d,.]+)/gi;
   let cm;
   while ((cm = closingRe.exec(rawText)) !== null) {
-    const units = pNum(cm[1]);
-    if (units <= 0) continue;
+    const rawUnits = pNum(cm[1]);
+    if (rawUnits <= 0) continue;
 
-    const before = rawText.substring(Math.max(0, cm.index - 600), cm.index);
+    const before = rawText.substring(Math.max(0, cm.index - 800), cm.index);
 
     // Extract ISIN (mutual funds start with INF)
     const isinMatch = before.match(/\b(INF[A-Z0-9]{9})\b/);
@@ -3041,40 +3041,99 @@ function parseNSDLCASStatement(rawText) {
     if (!schemeName && isin) schemeName = "MF Scheme (" + isin + ")";
     if (!schemeName) continue;
 
-    // Look forward for NAV, Valuation, and Cost Value
-    const after = rawText.substring(cm.index + cm[0].length, cm.index + cm[0].length + 500);
-    const navMatch = after.match(/NAV\s*(?:on|as\s*on)?\s*[\d\w-]*\s*[:\s]*(?:INR|Rs\.?|`)\s*([\d,.]+)/i);
-    const valMatch = after.match(/Valuation\s*(?:on|as\s*on)?\s*[\d\w-]*\s*[:\s]*(?:INR|Rs\.?|`)\s*([\d,.]+)/i);
-    const costMatch = after.match(/Cost\s*(?:Value)?\s*[:\s]*(?:INR|Rs\.?|`)\s*([\d,.]+)/i);
+    // ── Extract key numbers from the region AFTER Closing Unit Balance ──
+    // CAS format:
+    //   NAV on DD-Mon-YYYY : INR 603.4420
+    //   Valuation on DD-Mon-YYYY : INR 3,64,31,873
+    //   Cost Value : INR 1,00,000
+    const after = rawText.substring(cm.index + cm[0].length, cm.index + cm[0].length + 600);
+
+    const navMatch = after.match(/NAV\s*(?:on|as\s*on)?\s*[^:]*?[:\s]\s*(?:INR|Rs\.?|`)?\s*([\d,.]+)/i);
+    const valMatch = after.match(/Valuation\s*(?:on|as\s*on)?\s*[^:]*?[:\s]\s*(?:INR|Rs\.?|`)?\s*([\d,.]+)/i);
+    const costMatch = after.match(/Cost\s*(?:Value)?\s*[:\s]\s*(?:INR|Rs\.?|`)?\s*([\d,.]+)/i);
+
     const nav = navMatch ? pNum(navMatch[1]) : 0;
-    const valuation = valMatch ? pNum(valMatch[1]) : (units * nav);
+    const valuation = valMatch ? pNum(valMatch[1]) : 0;
     const costValue = costMatch ? pNum(costMatch[1]) : 0;
 
-    // Also look in the region BEFORE (some CAS formats put cost above closing balance)
-    const costMatchBefore = !costValue ? before.match(/Cost\s*(?:Value)?\s*[:\s]*(?:INR|Rs\.?|`)\s*([\d,.]+)/i) : null;
+    // Also check BEFORE the closing balance for cost
+    const costMatchBefore = !costValue ? before.match(/Cost\s*(?:Value)?\s*[:\s]\s*(?:INR|Rs\.?|`)?\s*([\d,.]+)/i) : null;
     const totalCost = costValue || (costMatchBefore ? pNum(costMatchBefore[1]) : 0);
 
-    // Compute purchase NAV: if we have cost, derive avg buy price; else use current NAV
-    const purchaseNav = totalCost > 0 && units > 0 ? totalCost / units : nav;
-
-    // Also try to extract individual transactions for cost basis
-    // CAS format: "05-Jan-2023 Purchase - SIP  5000.00  25.123  199.02  50.014"
-    // Look for transaction lines between Opening and Closing balance
-    let txnCostSum = 0, txnUnitsSum = 0;
-    const txnRegion = rawText.substring(Math.max(0, cm.index - 2000), cm.index);
-    const txnRe = /(\d{2}-[A-Za-z]{3}-\d{4})\s+(Purchase|Redemption|Switch\s*In|Switch\s*Out|Systematic|SIP|SWP)[^\n]*?([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)/gi;
-    let txnM;
-    while ((txnM = txnRe.exec(txnRegion)) !== null) {
-      const txnType = txnM[2].toLowerCase();
-      const txnAmt = pNum(txnM[3]);
-      const txnUnits = pNum(txnM[4]);
-      if (txnType.includes("purchase") || txnType.includes("switch in") || txnType.includes("sip") || txnType.includes("systematic")) {
-        if (txnAmt > 0 && txnUnits > 0) { txnCostSum += txnAmt; txnUnitsSum += txnUnits; }
+    // ── Cross-validate units using NAV × units ≈ valuation ──
+    // The raw "Closing Unit Balance" number can be wrong if PDF text extraction
+    // concatenated adjacent numbers (e.g. picking 1,00,000 instead of 603.442)
+    let units = rawUnits;
+    if (nav > 0 && valuation > 0) {
+      const derivedUnits = valuation / nav;
+      const ratio = rawUnits / derivedUnits;
+      if (ratio > 5 || ratio < 0.2) {
+        // Raw units are way off — use Valuation / NAV instead
+        console.warn(`⚠️ CAS units corrected: ${schemeName}: raw=${rawUnits} → derived=${derivedUnits.toFixed(3)} (val=${valuation}/nav=${nav})`);
+        units = Math.round(derivedUnits * 10000) / 10000;
+      }
+    } else if (nav > 0 && totalCost > 0 && !valuation) {
+      // No valuation but have NAV and cost — sanity check units
+      const expectedVal = rawUnits * nav;
+      if (expectedVal > 0 && totalCost > expectedVal * 5) {
+        // Cost is much larger than units*nav — units is probably wrong
+        // This happens when the parser picks Amount instead of Units
+        console.warn(`⚠️ CAS units look like amount: ${schemeName}: raw=${rawUnits}, nav=${nav}, cost=${totalCost}`);
       }
     }
-    // If we found transactions, use their weighted avg as purchase NAV
-    const avgPurchaseNav = txnUnitsSum > 0 ? txnCostSum / txnUnitsSum : purchaseNav;
-    const investedValue = totalCost > 0 ? totalCost : (txnCostSum > 0 ? txnCostSum : valuation);
+    if (units <= 0) continue;
+
+    // ── Compute avg purchase NAV ──
+    // Priority: Cost Value / units > transaction-level calc > current NAV
+    const purchaseNavFromCost = totalCost > 0 && units > 0 ? totalCost / units : 0;
+
+    // Parse individual transactions for weighted avg cost
+    let txnCostSum = 0, txnUnitsSum = 0;
+    const txnRegion = rawText.substring(Math.max(0, cm.index - 3000), cm.index);
+    // CAS transactions: Date  Description  Amount(INR)  Units  NAV  CumulativeBalance
+    // Key insight: in each row, the 3 numbers follow Amount > Balance > Units > NAV ordering
+    // But we can identify them: Units * NAV ≈ Amount
+    const txnRe = /(\d{2}-[A-Za-z]{3}-\d{4})\s+([^\d\n]{3,60}?)\s+([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)/g;
+    let txnM;
+    while ((txnM = txnRe.exec(txnRegion)) !== null) {
+      const desc = txnM[2].toLowerCase();
+      const isBuy = desc.includes("purchase") || desc.includes("sip") || desc.includes("systematic")
+        || desc.includes("switch in") || desc.includes("switch-in");
+      if (!isBuy) continue;
+
+      const n1 = pNum(txnM[3]), n2 = pNum(txnM[4]), n3 = pNum(txnM[5]), n4 = pNum(txnM[6]);
+      // The 4 numbers are: Amount, Units, NAV, CumulativeBalance
+      // Amount is usually the largest, NAV is per-unit (small), Units is fractional
+      // Test all permutations of first 3 numbers to find Units*NAV≈Amount
+      const candidates = [
+        { amt: n1, u: n2, nav: n3 },
+        { amt: n1, u: n3, nav: n2 },
+        { amt: n2, u: n1, nav: n3 },
+        { amt: n2, u: n3, nav: n1 },
+        { amt: n3, u: n1, nav: n2 },
+        { amt: n3, u: n2, nav: n1 },
+      ];
+      let best = null;
+      for (const c of candidates) {
+        if (c.amt <= 0 || c.u <= 0 || c.nav <= 0) continue;
+        const err = Math.abs(c.u * c.nav - c.amt) / c.amt;
+        if (err < 0.02 && (!best || err < best.err)) best = { ...c, err }; // within 2%
+      }
+      if (best) {
+        txnCostSum += best.amt;
+        txnUnitsSum += best.u;
+      }
+    }
+    const purchaseNavFromTxns = txnUnitsSum > 0 ? txnCostSum / txnUnitsSum : 0;
+
+    // Final values
+    const avgPurchaseNav = purchaseNavFromCost > 0 ? purchaseNavFromCost
+      : purchaseNavFromTxns > 0 ? purchaseNavFromTxns
+      : nav;
+    const investedValue = totalCost > 0 ? totalCost
+      : txnCostSum > 0 ? txnCostSum
+      : valuation;
+    const currentValue = valuation > 0 ? valuation : units * nav;
 
     const key = (isin || schemeName.toLowerCase().slice(0, 30)) + "|" + units.toFixed(3);
     if (seen.has(key)) continue;
@@ -3084,7 +3143,7 @@ function parseNSDLCASStatement(rawText) {
       name: cleanCASName(schemeName), type: "MF", ticker: isin, scheme_code: "",
       units, purchase_nav: avgPurchaseNav, current_nav: nav,
       purchase_price: avgPurchaseNav, current_price: nav,
-      purchase_value: investedValue, current_value: valuation,
+      purchase_value: investedValue, current_value: currentValue,
       source: _source, brokerage_name: _brokerage, currency: "INR",
       _folio: folio,
     });
