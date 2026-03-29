@@ -124,16 +124,19 @@ function getXIRR(h){
   return { value: null, method: null };
 }
 
-// ── Currency formatting: native per-holding, ₹ for totals ───────
+// ── Currency formatting: $ primary, ₹ secondary ─────────────────
 const fmtINR = n => "₹" + Math.abs(n).toLocaleString("en-IN", {maximumFractionDigits:0});
 const fmtUSD = n => "$" + Math.abs(n).toLocaleString("en-US", {maximumFractionDigits:0});
 const fmtCrINR = n => { const a=Math.abs(n); return a>=1e7?`₹${(a/1e7).toFixed(2)}Cr`:a>=1e5?`₹${(a/1e5).toFixed(2)}L`:fmtINR(a); };
 const fmtCrUSD = n => { const a=Math.abs(n); return a>=1e6?`$${(a/1e6).toFixed(2)}M`:a>=1e3?`$${(a/1e3).toFixed(1)}K`:fmtUSD(a); };
 const fmtNative = (n, h) => isUSDHolding(h) ? fmtUSD(n) : fmtINR(n);
 const fmtCrNative = (n, h) => isUSDHolding(h) ? fmtCrUSD(n) : fmtCrINR(n);
-// Portfolio totals always in ₹ (primary) — these are used everywhere
-const fmt = n => fmtINR(n);
-const fmtCr = n => fmtCrINR(n);
+// Portfolio totals: $ primary (convert INR totals to USD for display)
+const fmt = n => fmtUSD(n / _liveUsdInr);
+const fmtCr = n => fmtCrUSD(n / _liveUsdInr);
+// Secondary line: ₹ equivalent
+const fmtSec = n => fmtINR(n);
+const fmtCrSec = n => fmtCrINR(n);
 const fmtPct=n=>`${n>=0?"+":""}${n.toFixed(2)}%`;
 const uid=()=>"x"+Date.now()+Math.random().toString(36).slice(2,6);
 const ago=d=>{if(!d)return"Never";const s=Math.floor((Date.now()-new Date(d))/1000);if(s<60)return`${s}s ago`;if(s<3600)return`${Math.floor(s/60)}m ago`;if(s<86400)return`${Math.floor(s/3600)}h ago`;return`${Math.floor(s/86400)}d ago`;};
@@ -1934,15 +1937,15 @@ ${alertLines||"  None"}`;
           )}
           <div className="mg">
             {[
-              {label:"Portfolio Value",val:fmtCr(totCur),sub2:fmtCrUSD(totCur/_liveUsdInr),sub:`${visH.length} holdings`},
-              {label:"Amount Invested",val:fmtCr(totInv),sub2:fmtCrUSD(totInv/_liveUsdInr)},
+              {label:"Portfolio Value",val:fmtCr(totCur),sub2:fmtCrINR(totCur),sub:`${visH.length} holdings`},
+              {label:"Amount Invested",val:fmtCr(totInv),sub2:fmtCrINR(totInv)},
               {label:"Total Gains",val:(totGain>=0?"+":"")+fmtCr(totGain),sub:fmtPct(totPct),c:totGain>=0?"gain":"loss"},
               {label:"Return",val:fmtPct(totPct),c:totPct>=0?"gain":"loss",sub:"P&L %"}
             ].map(m=>(
               <div key={m.label} className="mc">
                 <div className="mclbl">{m.label}</div>
                 <div className={`mcval${m.c?" "+m.c:""}`}>{m.val}</div>
-                {m.sub2&&<div style={{fontFamily:"'DM Mono',monospace",fontSize:".68rem",color:"rgba(90,156,224,.6)",marginTop:".2rem"}}>≈ {m.sub2}</div>}
+                {m.sub2&&<div style={{fontFamily:"'DM Mono',monospace",fontSize:".68rem",color:"rgba(201,168,76,.6)",marginTop:".2rem"}}>≈ {m.sub2}</div>}
                 {m.sub&&<div className={`mcsub${m.c?" "+m.c:""}`}>{m.sub}</div>}
               </div>
             ))}
@@ -2132,9 +2135,6 @@ ${alertLines||"  None"}`;
                       const grpInv = grp.items.reduce((s, h) => s + getInvINR(h), 0);
                       const grpG = grpCur - grpInv;
                       const grpP = grpInv > 0 ? (grpG / grpInv) * 100 : 0;
-                      const isUSGrp = grp.key === "us";
-                      // For US group, also show $ total
-                      const grpCurUSD = isUSGrp ? grp.items.reduce((s, h) => s + getVal(h), 0) : 0;
                       return [
                         // Section header row
                         <tr key={`hdr_${grp.key}`} style={{background:"rgba(255,255,255,.02)"}}>
@@ -2145,11 +2145,11 @@ ${alertLines||"  None"}`;
                             <span style={{fontSize:".62rem",color:"rgba(255,255,255,.35)",marginLeft:8}}>{grp.items.length} holding{grp.items.length!==1?"s":""}</span>
                           </td>
                           <td className="r" style={{padding:".55rem .65rem",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
-                            <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:grp.color,fontWeight:500}}>{fmt(grpCur)}</span>
-                            {isUSGrp&&<div style={{fontFamily:"'DM Mono',monospace",fontSize:".6rem",color:"rgba(90,156,224,.55)"}}>≈ {fmtCrUSD(grpCurUSD)}</div>}
+                            <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:grp.color,fontWeight:500}}>{fmtCr(grpCur)}</span>
+                            <div style={{fontFamily:"'DM Mono',monospace",fontSize:".6rem",color:"rgba(201,168,76,.55)"}}>≈ {fmtCrINR(grpCur)}</div>
                           </td>
                           <td className="r" style={{padding:".55rem .65rem",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
-                            <span className={`mono${grpG>=0?" gain":" loss"}`} style={{fontSize:".68rem"}}>{grpG>=0?"+":""}{fmt(grpG)} ({fmtPct(grpP)})</span>
+                            <span className={`mono${grpG>=0?" gain":" loss"}`} style={{fontSize:".68rem"}}>{grpG>=0?"+":""}{fmtCr(grpG)} ({fmtPct(grpP)})</span>
                           </td>
                           <td style={{borderBottom:"1px solid rgba(255,255,255,.08)"}}/>
                         </tr>,
@@ -2220,11 +2220,12 @@ ${alertLines||"  None"}`;
                           {isLive&&<div style={{fontSize:".52rem",color:"#4caf9a",marginTop:1}}>● {ago(h.price_fetched_at)}</div>}
                         </td>
                         <td className="r">
-                          <div style={{fontFamily:"'DM Mono',monospace",fontWeight:500,fontSize:".78rem"}}>{fmtH(cur)}</div>
-                          <div style={{fontFamily:"'DM Mono',monospace",fontSize:".65rem",color:"rgba(255,255,255,.4)",marginTop:1}}>inv. {fmtH(inv)}</div>
+                          <div style={{fontFamily:"'DM Mono',monospace",fontWeight:500,fontSize:".78rem"}}>{fmtCr(toINR(cur, h))}</div>
+                          <div style={{fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:"rgba(201,168,76,.55)",marginTop:1}}>{fmtNative(cur, h)}</div>
+                          <div style={{fontFamily:"'DM Mono',monospace",fontSize:".6rem",color:"rgba(255,255,255,.35)",marginTop:1}}>inv. {fmtCr(toINR(inv, h))}</div>
                         </td>
                         <td className="r">
-                          <div className={`mono${g>=0?" gain":" loss"}`} style={{fontSize:".78rem"}}>{g>=0?"+":""}{fmtH(g)}</div>
+                          <div className={`mono${g>=0?" gain":" loss"}`} style={{fontSize:".78rem"}}>{g>=0?"+":""}{fmtCr(toINR(g, h))}</div>
                           <div className={`mono${p>=0?" gain":" loss"}`} style={{fontSize:".65rem",marginTop:1}}>{fmtPct(p)}</div>
                         </td>
                         <td>
@@ -2259,12 +2260,12 @@ ${alertLines||"  None"}`;
                     <tr style={{borderTop:"2px solid rgba(201,168,76,.2)"}}>
                       <td colSpan={8} style={{padding:".75rem .65rem",fontSize:".7rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.42)",fontWeight:600}}>Total · {visH.length} holding{visH.length!==1?"s":""}</td>
                       <td className="r" style={{padding:".75rem .65rem"}}>
-                        <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,color:"#c9a84c",fontSize:".88rem"}}>{fmt(totC)}</div>
-                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:"rgba(90,156,224,.55)",marginTop:1}}>≈ {fmtCrUSD(totC/_liveUsdInr)}</div>
-                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:"rgba(255,255,255,.35)",marginTop:1}}>inv. {fmt(totI)}</div>
+                        <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,color:"#c9a84c",fontSize:".88rem"}}>{fmtCr(totC)}</div>
+                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:"rgba(201,168,76,.55)",marginTop:1}}>≈ {fmtCrINR(totC)}</div>
+                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:"rgba(255,255,255,.35)",marginTop:1}}>inv. {fmtCr(totI)}</div>
                       </td>
                       <td className="r" style={{padding:".75rem .65rem"}}>
-                        <div className={`mono${totG>=0?" gain":" loss"}`} style={{fontWeight:600,fontSize:".83rem"}}>{totG>=0?"+":""}{fmt(totG)}</div>
+                        <div className={`mono${totG>=0?" gain":" loss"}`} style={{fontWeight:600,fontSize:".83rem"}}>{totG>=0?"+":""}{fmtCr(totG)}</div>
                         <div className={`mono${totP>=0?" gain":" loss"}`} style={{fontSize:".65rem",marginTop:1}}>{fmtPct(totP)}</div>
                       </td>
                       <td style={{padding:".75rem .65rem"}}/>
@@ -4217,10 +4218,10 @@ ${alertLines||"  None"}`;
           <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".75rem"}}>Live Exchange Rate</div>
           <div style={{display:"flex",alignItems:"center",gap:"1rem",padding:".65rem .85rem",background:"rgba(90,156,224,.06)",border:"1px solid rgba(90,156,224,.15)",borderRadius:8}}>
             <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1rem",color:"#5a9ce0"}}>1 USD = ₹{_liveUsdInr.toFixed(2)}</div>
-            <div style={{fontSize:".65rem",color:"rgba(255,255,255,.4)"}}>Auto-fetched · used for portfolio ₹↔$ conversion</div>
+            <div style={{fontSize:".65rem",color:"rgba(255,255,255,.4)"}}>Auto-fetched · live rate</div>
           </div>
           <div style={{fontSize:".65rem",color:"rgba(255,255,255,.35)",marginTop:".5rem",lineHeight:1.5}}>
-            Indian assets display in ₹, US assets in $. Portfolio totals show both currencies.
+            All totals display in $ (primary) with ₹ equivalent. Per-holding prices show in native currency.
           </div>
         </div>
 
