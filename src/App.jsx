@@ -257,7 +257,7 @@ function LoginScreen({ error: initError }) {
     <div style={S.page}>
 
       {/* ═══ HERO + LOGIN ═══ */}
-      <div style={{...S.section,display:"grid",gridTemplateColumns:"1fr 420px",gap:"3rem",alignItems:"center",paddingTop:"2.5rem",paddingBottom:"1.5rem"}}>
+      <div style={{...S.section,display:"grid",gridTemplateColumns:"1fr 420px",gap:"3rem",alignItems:"start",paddingTop:"2.5rem",paddingBottom:".5rem"}}>
 
         {/* Left: Value proposition */}
         <div>
