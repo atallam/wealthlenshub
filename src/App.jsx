@@ -257,28 +257,28 @@ function LoginScreen({ error: initError }) {
     <div style={S.page}>
 
       {/* ═══ HERO + LOGIN ═══ */}
-      <div style={{...S.section,display:"grid",gridTemplateColumns:"1fr 420px",gap:"4rem",alignItems:"center",minHeight:"100vh",paddingTop:"3rem",paddingBottom:"2rem"}}>
+      <div style={{...S.section,display:"grid",gridTemplateColumns:"1fr 420px",gap:"3rem",alignItems:"center",paddingTop:"2.5rem",paddingBottom:"1.5rem"}}>
 
         {/* Left: Value proposition */}
         <div>
-          <div className="logo" style={{fontSize:"1.35rem",marginBottom:"2rem"}}>Wealth<span>Lens</span></div>
-          <div style={{fontSize:".65rem",letterSpacing:".2em",textTransform:"uppercase",color:"#c9a84c",marginBottom:"1.4rem",display:"flex",alignItems:"center",gap:".5rem"}}>
+          <div className="logo" style={{fontSize:"1.35rem",marginBottom:"1.2rem"}}>Wealth<span>Lens</span></div>
+          <div style={{fontSize:".65rem",letterSpacing:".2em",textTransform:"uppercase",color:"#c9a84c",marginBottom:"1rem",display:"flex",alignItems:"center",gap:".5rem"}}>
             <span style={{width:24,height:1,background:"#c9a84c",display:"inline-block"}}/>
             Portfolio Intelligence
           </div>
-          <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"3.2rem",fontWeight:400,lineHeight:1.15,letterSpacing:"-.02em",marginBottom:"1.4rem"}}>
-            See your entire net worth<br/>
+          <h1 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"2.8rem",fontWeight:400,lineHeight:1.15,letterSpacing:"-.02em",marginBottom:"1rem"}}>
+            Your family's net worth<br/>
             <span style={{color:"rgba(232,224,208,.35)"}}>across</span>{" "}
             <span style={{color:"#c9a84c"}}>India</span>{" "}
             <span style={{color:"rgba(232,224,208,.35)"}}>and the</span>{" "}
             <span style={{color:"#5a9ce0"}}>US</span>
           </h1>
-          <p style={{fontSize:"1.02rem",color:"rgba(232,224,208,.45)",lineHeight:1.85,maxWidth:520,marginBottom:"2.2rem"}}>
-            Stocks, mutual funds, ETFs, fixed deposits, crypto — consolidated with live prices and dual-currency display. Auto-import from 25+ brokerages. Free and private.
+          <p style={{fontSize:".95rem",color:"rgba(232,224,208,.45)",lineHeight:1.8,maxWidth:520,marginBottom:"1.5rem"}}>
+            Track individual and family portfolios in one place — stocks, mutual funds, ETFs, fixed deposits, crypto. Per-member breakdown, combined net worth, live prices, and dual-currency display. Auto-import from 25+ brokerages. Free and private.
           </p>
 
           {/* Compact stats */}
-          <div style={{display:"flex",gap:"2.5rem",marginBottom:"1rem"}}>
+          <div style={{display:"flex",gap:"2.5rem"}}>
             {[["25+","US brokerages"],["14","bank parsers"],["4-layer","security"]].map(([n,l])=>(
               <div key={l}>
                 <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.3rem",fontWeight:500,color:"#c9a84c"}}>{n}</div>
@@ -325,13 +325,13 @@ function LoginScreen({ error: initError }) {
       </div>
 
       {/* ═══ SECTION NAV ═══ */}
-      <div style={{...S.section,paddingTop:"3rem",paddingBottom:"3rem",display:"flex",justifyContent:"center",gap:"3rem",borderTop:"1px solid rgba(232,224,208,.04)",borderBottom:"1px solid rgba(232,224,208,.04)"}}>
+      <div style={{...S.section,paddingTop:"1.5rem",paddingBottom:"1.5rem",display:"flex",justifyContent:"center",gap:"2.5rem",borderTop:"1px solid rgba(232,224,208,.04)",borderBottom:"1px solid rgba(232,224,208,.04)"}}>
         {[
           {label:"Features",href:"#features",color:"#c9a84c",desc:"What you get"},
           {label:"Security",href:"#security",color:"#4caf9a",desc:"How we protect you"},
           {label:"Platforms",href:"#platforms",color:"#5a9ce0",desc:"Where it works"},
         ].map(item=>(
-          <a key={item.label} href={item.href} style={{textDecoration:"none",textAlign:"center",padding:"1rem 2rem",borderRadius:14,border:`1px solid ${item.color}15`,background:`${item.color}06`,transition:"all .3s",cursor:"pointer",minWidth:180}}
+          <a key={item.label} href={item.href} style={{textDecoration:"none",textAlign:"center",padding:".8rem 2rem",borderRadius:12,border:`1px solid ${item.color}15`,background:`${item.color}06`,transition:"all .3s",cursor:"pointer",minWidth:170}}
             onMouseOver={e=>{e.currentTarget.style.background=`${item.color}12`;e.currentTarget.style.borderColor=`${item.color}30`;e.currentTarget.style.transform="translateY(-2px)"}}
             onMouseOut={e=>{e.currentTarget.style.background=`${item.color}06`;e.currentTarget.style.borderColor=`${item.color}15`;e.currentTarget.style.transform="none"}}>
             <div style={{fontSize:"1.15rem",fontWeight:600,color:item.color,marginBottom:".25rem",letterSpacing:".01em"}}>{item.label}</div>
