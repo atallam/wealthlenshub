@@ -256,21 +256,12 @@ function LoginScreen({ error: initError }) {
   return(
     <div style={S.page}>
 
-      {/* ═══ NAV ═══ */}
-      <nav style={S.nav}>
-        <div className="logo" style={{fontSize:"1.35rem"}}>Wealth<span>Lens</span></div>
-        <div style={S.navLinks}>
-          <a href="#features" style={{color:"inherit",textDecoration:"none",transition:"color .2s"}}>Features</a>
-          <a href="#security" style={{color:"inherit",textDecoration:"none",transition:"color .2s"}}>Security</a>
-          <a href="#platforms" style={{color:"inherit",textDecoration:"none",transition:"color .2s"}}>Platforms</a>
-        </div>
-      </nav>
-
       {/* ═══ HERO + LOGIN ═══ */}
-      <div style={{...S.section,display:"grid",gridTemplateColumns:"1fr 420px",gap:"4rem",alignItems:"center",minHeight:"calc(100vh - 65px)",paddingTop:"2rem",paddingBottom:"2rem"}}>
+      <div style={{...S.section,display:"grid",gridTemplateColumns:"1fr 420px",gap:"4rem",alignItems:"center",minHeight:"100vh",paddingTop:"3rem",paddingBottom:"2rem"}}>
 
         {/* Left: Value proposition */}
         <div>
+          <div className="logo" style={{fontSize:"1.35rem",marginBottom:"2rem"}}>Wealth<span>Lens</span></div>
           <div style={{fontSize:".65rem",letterSpacing:".2em",textTransform:"uppercase",color:"#c9a84c",marginBottom:"1.4rem",display:"flex",alignItems:"center",gap:".5rem"}}>
             <span style={{width:24,height:1,background:"#c9a84c",display:"inline-block"}}/>
             Portfolio Intelligence
@@ -331,6 +322,22 @@ function LoginScreen({ error: initError }) {
             <span style={{marginLeft:"auto"}}>🔒 Encrypted & Private</span>
           </div>
         </div>
+      </div>
+
+      {/* ═══ SECTION NAV ═══ */}
+      <div style={{...S.section,paddingTop:"3rem",paddingBottom:"3rem",display:"flex",justifyContent:"center",gap:"3rem",borderTop:"1px solid rgba(232,224,208,.04)",borderBottom:"1px solid rgba(232,224,208,.04)"}}>
+        {[
+          {label:"Features",href:"#features",color:"#c9a84c",desc:"What you get"},
+          {label:"Security",href:"#security",color:"#4caf9a",desc:"How we protect you"},
+          {label:"Platforms",href:"#platforms",color:"#5a9ce0",desc:"Where it works"},
+        ].map(item=>(
+          <a key={item.label} href={item.href} style={{textDecoration:"none",textAlign:"center",padding:"1rem 2rem",borderRadius:14,border:`1px solid ${item.color}15`,background:`${item.color}06`,transition:"all .3s",cursor:"pointer",minWidth:180}}
+            onMouseOver={e=>{e.currentTarget.style.background=`${item.color}12`;e.currentTarget.style.borderColor=`${item.color}30`;e.currentTarget.style.transform="translateY(-2px)"}}
+            onMouseOut={e=>{e.currentTarget.style.background=`${item.color}06`;e.currentTarget.style.borderColor=`${item.color}15`;e.currentTarget.style.transform="none"}}>
+            <div style={{fontSize:"1.15rem",fontWeight:600,color:item.color,marginBottom:".25rem",letterSpacing:".01em"}}>{item.label}</div>
+            <div style={{fontSize:".72rem",color:"rgba(232,224,208,.35)"}}>{item.desc}</div>
+          </a>
+        ))}
       </div>
 
       {/* ═══ FEATURES ═══ */}
@@ -432,9 +439,9 @@ function LoginScreen({ error: initError }) {
       </div>
 
       {/* ═══ FOOTER ═══ */}
-      <div style={{borderTop:"1px solid rgba(232,224,208,.04)",padding:"2rem 4%",display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:".68rem",color:"rgba(232,224,208,.2)"}}>
-        <span>Built by Avinash Tallam · Dell Technologies · Hyderabad</span>
-        <span>React · Node.js · Supabase · Render</span>
+      <div style={{borderTop:"1px solid rgba(232,224,208,.04)",padding:"2rem 4%",display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:".72rem",color:"rgba(232,224,208,.25)"}}>
+        <span>© 2026 WealthLens Pro</span>
+        <span>Contact: <a href="mailto:support@wealthlens.pro" style={{color:"#c9a84c",textDecoration:"none"}}>support@wealthlens.pro</a></span>
       </div>
     </div>
   );
