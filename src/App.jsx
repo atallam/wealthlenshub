@@ -3180,20 +3180,28 @@ ${alertLines||"  None"}`;
                 {budgetUploadFile && budgetUploadFile.name.endsWith(".pdf") && (
                   <button className="btnc" style={{marginLeft:".5rem",fontSize:".7rem"}}
                     onClick={async()=>{
-                      setBudgetUploadMsg("Analyzing PDF...");
+                      setBudgetUploadMsg("Analyzing + importing PDF...");
                       try{
                         const fd=new FormData();
                         fd.append("file",budgetUploadFile);
+                        fd.append("import","true");
                         const data=await api("/api/budget/debug-pdf",{method:"POST",body:fd});
-                        const msg = `📄 ${data.pages} pages, ${data.totalLines} lines, ${data.totalChars} chars\n` +
-                          `US parser: ${data.usRowsParsed} rows | IN parser: ${data.inRowsParsed} rows\n` +
-                          `Sections found: ${data.sectionHeaders?.join(" | ") || "none"}\n` +
-                          `Date lines (first 5): ${data.dateLines?.slice(0,5).join(" | ") || "none"}\n` +
-                          `--- First 20 lines ---\n${data.first80Lines?.slice(0,20).join("\n")}`;
+                        let msg = `📄 ${data.pages} pages, ${data.totalLines} lines, ${data.totalChars} chars\n` +
+                          `US parser: ${data.usRowsParsed} rows | IN parser: ${data.inRowsParsed} rows\n`;
+                        if (data.imported > 0) {
+                          msg = `✓ Imported ${data.imported} transactions via debug endpoint\n` + msg;
+                          await loadBudget();
+                          setBudgetStatements(await api("/api/budget/statements") || []);
+                        } else {
+                          msg += `Import: ${data.imported} (${data.importError || "no rows to import"})\n`;
+                        }
+                        msg += `Sections: ${data.sectionHeaders?.join(" | ") || "none"}\n` +
+                          `Date lines: ${data.dateLines?.slice(0,5).join(" | ") || "none"}\n` +
+                          `--- First 15 lines ---\n${data.first80Lines?.slice(0,15).join("\n")}`;
                         setBudgetUploadMsg(msg);
                       }catch(e){setBudgetUploadMsg("⚠ Debug: "+e.message);}
                     }}>
-                    🔍 Debug PDF
+                    🔍 Debug + Import PDF
                   </button>
                 )}
               </div>

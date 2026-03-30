@@ -4371,7 +4371,7 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
   }
 });
 
-// ── BUDGET: PDF Debug — extract text + show parser results (TEMPORARY) ──
+// ── BUDGET: PDF Debug + Import (TEMPORARY) ──────────────────────
 app.post("/api/budget/debug-pdf", auth, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file" });
@@ -4380,21 +4380,72 @@ app.post("/api/budget/debug-pdf", auth, upload.single("file"), async (req, res) 
     const { text: rawText, pages } = await extractPDFText(req.file.buffer);
     const usRows = parseUSPDF(rawText);
     const inRows = parseIndianPDF(rawText);
-    // Show first 40 lines of extracted text
     const lines = rawText.split("\n");
     const sampleLines = lines.slice(0, 80);
-    // Detect sections
     const sectionHeaders = lines.filter(l => /deposits?\s+and|withdrawals?\s+and|checks?\s+paid|daily\s*balance|ending\s*balance|beginning\s*balance/i.test(l));
-    // Date-like lines
     const dateLines = lines.filter(l => /^\s*\d{1,2}\/\d{1,2}/.test(l)).slice(0, 20);
+
+    // ── Also attempt the full import if we have rows ──
+    const rawRows = usRows.length >= inRows.length ? usRows : inRows;
+    const region = usRows.length >= inRows.length ? "US" : "IN";
+    let imported = 0;
+    let importError = null;
+
+    if (rawRows.length > 0 && req.body && req.body !== "debug_only") {
+      try {
+        const id = "bst_" + Date.now() + Math.random().toString(36).slice(2,6);
+        const txns = [];
+        let periodStart = null, periodEnd = null;
+        let skippedNoDate = 0, skippedNoAmt = 0;
+
+        for (const row of rawRows) {
+          const date = parseDateForRegion(row.date, region);
+          if (!date) { skippedNoDate++; continue; }
+          const debit = Math.abs(parseAmtBudget(row.debit));
+          const credit = Math.abs(parseAmtBudget(row.credit));
+          if (debit === 0 && credit === 0) { skippedNoAmt++; continue; }
+          const amount = debit > 0 ? debit : credit;
+          const type = debit > 0 ? "DEBIT" : "CREDIT";
+          const desc = String(row.desc || "").trim();
+          if (!desc) continue;
+          const category = await autoCategorise(desc);
+          if (!periodStart || date < periodStart) periodStart = date;
+          if (!periodEnd || date > periodEnd) periodEnd = date;
+          txns.push({
+            id: "btx_" + Date.now() + Math.random().toString(36).slice(2,8),
+            statement_id: id, user_id: req.user.id, txn_date: date,
+            description: encrypt(desc), raw_desc: encrypt(desc),
+            amount, txn_type: type, category,
+            balance: row.balance ? encrypt(String(row.balance)) : null,
+            ref_number: (row.ref || "").slice(0, 50),
+          });
+        }
+
+        if (txns.length > 0) {
+          await supabase.from("budget_statements").delete().eq("user_id", req.user.id).lt("upload_date", new Date(Date.now() - 365*24*3600_000).toISOString());
+          await supabase.from("budget_statements").insert({ user_id: req.user.id,
+            id, source: "Bank of America (debug)", statement_type: "BANK",
+            filename: req.file.originalname, file_size: req.file.size,
+            period_start: periodStart, period_end: periodEnd,
+            txn_count: txns.length, notes: "Imported via debug endpoint",
+          });
+          for (let i = 0; i < txns.length; i += 100) {
+            const { error: txErr } = await supabase.from("budget_transactions").insert(txns.slice(i, i + 100));
+            if (txErr) importError = txErr.message;
+          }
+          imported = txns.length;
+        }
+      } catch (ie) { importError = ie.message; }
+    }
+
     res.json({
       pages, totalChars: rawText.length, totalLines: lines.length,
       usRowsParsed: usRows.length, inRowsParsed: inRows.length,
-      sectionHeaders,
-      dateLines,
+      sectionHeaders, dateLines,
       first80Lines: sampleLines,
       usRowsSample: usRows.slice(0, 5),
       inRowsSample: inRows.slice(0, 5),
+      imported, importError,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
