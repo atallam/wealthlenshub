@@ -2903,8 +2903,10 @@ ${alertLines||"  None"}`;
                   </div>
                 </div>
                 {(()=>{
-                  // Plaid status fetch on first render of import tab
-                  if(!plaidStatus) api("/api/plaid/status").then(setPlaidStatus).catch(()=>setPlaidStatus({configured:false}));
+                  // Plaid status fetch on first render of import tab (safe — errors set default state)
+                  if(!plaidStatus && plaidStatus !== false) {
+                    api("/api/plaid/status").then(setPlaidStatus).catch(()=>setPlaidStatus({configured:false, connections:[]}));
+                  }
 
                   async function connectPlaid() {
                     setPlaidLoading(true); setPlaidMsg("");

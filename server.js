@@ -1700,11 +1700,20 @@ async function getPlaidClient() {
 // ── Plaid: Status ─────────────────────────────────────────────────
 app.get("/api/plaid/status", auth, async (req, res) => {
   if (!PLAID_ENABLED) return res.json({ configured: false, env: PLAID_ENV });
-  // Get user's Plaid connections
-  const { data: connections } = await supabase
-    .from("plaid_connections").select("id, institution_name, accounts, last_synced, status, error_code")
-    .eq("user_id", req.user.id).order("created_at", { ascending: false });
-  res.json({ configured: true, env: PLAID_ENV, connections: connections || [] });
+  try {
+    const { data: connections, error } = await supabase
+      .from("plaid_connections").select("id, institution_name, accounts, last_synced, status, error_code")
+      .eq("user_id", req.user.id).order("created_at", { ascending: false });
+    if (error) {
+      console.error("Plaid status error:", error.message);
+      // Table may not exist yet — treat as not configured
+      return res.json({ configured: true, env: PLAID_ENV, connections: [], error: error.message });
+    }
+    res.json({ configured: true, env: PLAID_ENV, connections: connections || [] });
+  } catch (e) {
+    console.error("Plaid status error:", e.message);
+    res.json({ configured: false, env: PLAID_ENV, connections: [], error: e.message });
+  }
 });
 
 // ── Plaid: Create Link Token ──────────────────────────────────────
@@ -4218,6 +4227,7 @@ app.post("/api/transactions/import", auth, async (req, res) => {
 
 // ── BUDGET: Upload + Parse Statement ─────────────────────────────
 app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => {
+  try {
   if (!req.file) return res.status(400).json({ error: "No file" });
   const { source, statement_type, notes } = req.body;
 
@@ -4318,6 +4328,10 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
   }
 
   res.json({ ok: true, statement_id: id, txn_count: txns.length, period_start: periodStart, period_end: periodEnd });
+  } catch (e) {
+    console.error("Budget upload error:", e.message, e.stack);
+    res.status(500).json({ error: "Upload failed: " + e.message });
+  }
 });
 
 // ── BUDGET: List statements ───────────────────────────────────────
