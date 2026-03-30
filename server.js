@@ -4259,19 +4259,21 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
     } else if (ext === "pdf") {
       try {
         const { text: rawText, pages } = await extractPDFText(req.file.buffer);
-        // Route to region-specific PDF parser
-        if (region === "US" || (region === "AUTO" && /bank\s*of\s*america|chase|wells\s*fargo|citi|capital\s*one|amex|discover/i.test(rawText))) {
-          rawRows = parseUSPDF(rawText);
-          region = "US";
-        } else if (region === "IN" || (region === "AUTO" && /hdfc|icici|axis|sbi|kotak|neft|imps|upi|inr|₹/i.test(rawText))) {
-          rawRows = parseIndianPDF(rawText);
-          region = "IN";
+        // Use both parsers and pick the one with more results (same as working debug endpoint)
+        const usRows = parseUSPDF(rawText);
+        const inRows = parseIndianPDF(rawText);
+        console.log(`📄 Budget PDF upload: ${pages} pages, ${rawText.length} chars, US=${usRows.length}, IN=${inRows.length}, bank_key=${bank_key}, region=${region}`);
+        
+        if (region === "US") {
+          rawRows = usRows.length > 0 ? usRows : inRows;
+        } else if (region === "IN") {
+          rawRows = inRows.length > 0 ? inRows : usRows;
         } else {
-          rawRows = parseUSPDF(rawText);
-          if (rawRows.length === 0) rawRows = parseIndianPDF(rawText);
-          region = rawRows.length > 0 ? "US" : "AUTO";
+          // AUTO — pick whichever found more
+          rawRows = usRows.length >= inRows.length ? usRows : inRows;
+          region = usRows.length >= inRows.length ? "US" : "IN";
         }
-        console.log(`📄 Budget PDF: ${pages} pages, ${rawText.length} chars, region=${region}, rawRows=${rawRows.length}, bank_key=${bank_key}`);
+        
         if (rawRows.length > 0) console.log("📄 First raw row:", JSON.stringify(rawRows[0]));
         if (rawRows.length === 0) console.log("📄 PDF text sample:", rawText.substring(0, 1500));
       } catch (pdfErr) {
