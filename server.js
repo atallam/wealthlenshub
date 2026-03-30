@@ -2468,14 +2468,16 @@ function parseUSPDF(rawText) {
   const isNoise = d => !d || d.length < 3 || /^(page\b|total\b|balance\s*(forward|brought|carried)|opening|closing|statement|continued|beginning|ending|subtotal|daily\s*balance)/i.test(d);
 
   // Strategy 1: BofA section-based
-  const isBofA = /bank\s*of\s*america|bofa/i.test(rawText) || (/deposits?\s+and\s+other\s+credits/i.test(rawText) && /withdrawals?\s+and\s+other\s+debits/i.test(rawText));
+  const isBofA = /bank\s*of\s*america|bofa|bankofamerica/i.test(rawText)
+    || (/deposits?\s+and\s+other\s+(credits|additions)/i.test(rawText) && /withdrawals?\s+and\s+other\s+(debits|subtractions)/i.test(rawText));
   if (isBofA) {
     let section = null;
     for (const line of rawText.split(/\n/)) {
-      if (/deposits?\s+and\s+other\s+credits/i.test(line)) { section = "credit"; continue; }
-      if (/withdrawals?\s+and\s+other\s+debits/i.test(line)) { section = "debit"; continue; }
+      if (/deposits?\s+and\s+other\s+(credits|additions)/i.test(line)) { section = "credit"; continue; }
+      if (/withdrawals?\s+and\s+other\s+(debits|subtractions)/i.test(line)) { section = "debit"; continue; }
+      if (/ATM\s+and\s+debit\s+card\s+subtractions/i.test(line)) { section = "debit"; continue; }
       if (/checks?\s+(paid|cleared)/i.test(line)) { section = "debit"; continue; }
-      if (/daily\s*balance|ending\s*balance|total\s*(deposits|withdrawals)/i.test(line)) { section = null; continue; }
+      if (/daily\s*balance|ending\s*balance|total\s*(deposits|withdrawals|subtractions|additions)/i.test(line)) { section = null; continue; }
       if (!section) continue;
       const dateM = line.match(/^\s*(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s+(.+)/);
       if (!dateM) continue;
@@ -4294,17 +4296,18 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
   // ── Build transactions (use region-specific date parser) ──
   const txns = [];
   let periodStart = null, periodEnd = null;
+  let skippedNoDate = 0, skippedNoAmt = 0, skippedNoDesc = 0;
 
   for (const row of rawRows) {
     const date = parseDateForRegion(row.date, region);
-    if (!date) continue;
+    if (!date) { skippedNoDate++; continue; }
     const debit = Math.abs(parseAmtBudget(row.debit));
     const credit = Math.abs(parseAmtBudget(row.credit));
-    if (debit === 0 && credit === 0) continue;
+    if (debit === 0 && credit === 0) { skippedNoAmt++; continue; }
     const amount = debit > 0 ? debit : credit;
     const type = debit > 0 ? "DEBIT" : "CREDIT";
     const desc = String(row.desc || "").trim();
-    if (!desc) continue;
+    if (!desc) { skippedNoDesc++; continue; }
     const category = await autoCategorise(desc);
     if (!periodStart || date < periodStart) periodStart = date;
     if (!periodEnd || date > periodEnd) periodEnd = date;
@@ -4318,7 +4321,14 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
     });
   }
 
-  if (!txns.length) return res.status(400).json({ error: "Transactions parsed but none had valid dates/amounts." });
+  if (!txns.length) {
+    console.log(`📄 Budget build failed: rawRows=${rawRows.length}, skippedNoDate=${skippedNoDate}, skippedNoAmt=${skippedNoAmt}, skippedNoDesc=${skippedNoDesc}, region=${region}`);
+    if (rawRows.length > 0) console.log("📄 Sample raw row:", JSON.stringify(rawRows[0]));
+    return res.status(400).json({
+      error: `Parsed ${rawRows.length} rows but none converted to transactions. Skipped: ${skippedNoDate} bad dates, ${skippedNoAmt} zero amounts, ${skippedNoDesc} empty descriptions. Region: ${region}`,
+      rawSample: rawRows.length > 0 ? rawRows[0] : null
+    });
+  }
 
   // ── Purge statements older than 1 year ──
   await supabase.from("budget_statements").delete().eq("user_id", req.user.id).lt("upload_date", new Date(Date.now() - 365 * 24 * 3600_000).toISOString());
