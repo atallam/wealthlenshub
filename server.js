@@ -2437,33 +2437,114 @@ function parseBankStatementPDF(rawText) {
   const rows = [];
   const months = "jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec";
 
-  // Date patterns found in bank statement PDFs
-  const datePatterns = [
-    `\\d{1,2}/\\d{1,2}/\\d{2,4}`,
-    `\\d{1,2}-\\d{1,2}-\\d{2,4}`,
-    `\\d{1,2}\\s+(?:${months})\\s+\\d{2,4}`,
-    `(?:${months})\\s+\\d{1,2},?\\s+\\d{4}`,
-    `\\d{1,2}/\\d{1,2}`,
-  ];
-  const dateRegex = new RegExp(`(${datePatterns.join("|")})`, "gi");
+  // ── Detect statement year from text (BofA PDFs often use MM/DD without year) ──
+  const yearMatch = rawText.match(/(?:statement\s+(?:period|date|ending|for))[:\s]*.*?(20\d{2})/i)
+    || rawText.match(/(20\d{2})/);
+  const stmtYear = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
+
+  // ── Detect BofA section-based layout ──
+  // BofA PDFs have "Deposits and other credits" and "Withdrawals and other debits" sections
+  const isBofA = /bank\s*of\s*america|bofa/i.test(rawText)
+    || (/deposits?\s+and\s+other\s+credits/i.test(rawText) && /withdrawals?\s+and\s+other\s+debits/i.test(rawText));
+
+  // Amount pattern: $1,234.56 or 1,234.56 or -1234.56 or (1,234.56)
   const amtPat = `[-]?\\$?[\\d,]+\\.\\d{2}`;
+  const amtPatParen = `\\(?\\$?[\\d,]+\\.\\d{2}\\)?`;
 
-  // Find all date positions in the text
-  const dateMatches = [...rawText.matchAll(dateRegex)];
+  // Date patterns — ordered from most specific to least
+  const datePatterns = [
+    `\\d{1,2}/\\d{1,2}/\\d{2,4}`,           // MM/DD/YYYY or MM/DD/YY
+    `\\d{1,2}-\\d{1,2}-\\d{2,4}`,           // MM-DD-YYYY
+    `\\d{1,2}\\s+(?:${months})\\s+\\d{2,4}`, // DD Mon YYYY
+    `(?:${months})\\s+\\d{1,2},?\\s+\\d{4}`, // Mon DD, YYYY
+    `\\d{1,2}/\\d{1,2}`,                     // MM/DD (BofA, Chase short dates)
+  ];
 
-  // Strategy A: line-based (if text has real newlines)
+  // ── Normalize date: attach year if missing ──
+  function normalizeDate(d) {
+    const s = d.trim();
+    // Already has year (MM/DD/YYYY or MM/DD/YY)
+    if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) return s;
+    if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(s)) return s;
+    // MM/DD only — append statement year
+    if (/^\d{1,2}\/\d{1,2}$/.test(s)) return s + "/" + stmtYear;
+    return s;
+  }
+
+  // ── Skip-line filter ──
+  function isNoiseLine(desc) {
+    if (!desc || desc.length < 3) return true;
+    return /^(page\b|total\b|balance\s*(forward|brought|carried)|opening\s*balance|closing\s*balance|statement|continued|beginning\s*balance|ending\s*balance|subtotal|daily\s*balance)/i.test(desc);
+  }
+
+  // ── Strategy BofA: section-aware parsing ──
+  if (isBofA) {
+    console.log("📄 PDF parser: detected BofA format, using section-aware strategy");
+    const lines = rawText.split(/\n/);
+    let currentSection = null; // "deposit" or "withdrawal"
+
+    for (const line of lines) {
+      // Detect section headers
+      if (/deposits?\s+and\s+other\s+credits/i.test(line)) { currentSection = "deposit"; continue; }
+      if (/withdrawals?\s+and\s+other\s+debits/i.test(line)) { currentSection = "withdrawal"; continue; }
+      if (/checks?\s+(paid|cleared)/i.test(line)) { currentSection = "withdrawal"; continue; }
+      if (/daily\s*balance/i.test(line) || /ending\s*balance/i.test(line)) { currentSection = null; continue; }
+      if (!currentSection) continue;
+
+      // Match lines starting with a date
+      const dateM = line.match(/^\s*(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s+(.+)/);
+      if (!dateM) continue;
+
+      const dateStr = normalizeDate(dateM[1]);
+      const rest = dateM[2].trim();
+
+      // Find amounts in the rest of the line
+      const amounts = [...rest.matchAll(new RegExp(amtPatParen, "g"))].map(m => {
+        const raw = m[0].replace(/[()]/g, "");
+        return { val: parseFloat(raw.replace(/[$,]/g, "")), idx: m.index, raw: m[0] };
+      }).filter(a => a.val > 0 && a.val < 1_000_000_000);
+
+      if (amounts.length === 0) continue;
+
+      // Description is everything before the first amount
+      const desc = rest.substring(0, amounts[0].idx).replace(/\s+/g, " ").trim();
+      if (isNoiseLine(desc)) continue;
+
+      const amt = amounts[0].val;
+      let debit = "", credit = "";
+      if (currentSection === "withdrawal") debit = amt.toString();
+      else credit = amt.toString();
+
+      const balance = amounts.length > 1 ? amounts[amounts.length - 1].val : null;
+      rows.push({ date: dateStr, desc: desc.substring(0, 120), debit, credit, balance: balance ? balance.toString() : "", ref: "" });
+    }
+
+    if (rows.length >= 1) {
+      console.log(`📄 BofA parser: found ${rows.length} transactions`);
+      return dedupeRows(rows);
+    }
+    console.log("📄 BofA section parser found 0 rows, falling through to generic strategies");
+  }
+
+  // ── Strategy A: line-based (works for Chase, Wells Fargo, Citi, etc.) ──
+  const dateRegex = new RegExp(`(${datePatterns.join("|")})`, "gi");
   if (rawText.includes("\n")) {
     const lines = rawText.split(/\n/);
     for (const line of lines) {
+      // Date can be at start of line or after some whitespace
       const dateM = line.match(new RegExp(`^\\s*(${datePatterns.join("|")})`, "i"));
       if (!dateM) continue;
+      const dateStr = normalizeDate(dateM[1]);
       const rest = line.substring(dateM.index + dateM[0].length).trim();
-      const amounts = [...rest.matchAll(new RegExp(amtPat, "g"))].map(m => ({
-        val: parseFloat(m[0].replace(/[$,]/g, "")), idx: m.index
-      }));
+      const amounts = [...rest.matchAll(new RegExp(amtPatParen, "g"))].map(m => {
+        const raw = m[0].replace(/[()]/g, "");
+        const neg = m[0].startsWith("(") || m[0].startsWith("-");
+        return { val: parseFloat(raw.replace(/[$,]/g, "")) * (neg ? -1 : 1), idx: m.index };
+      }).filter(a => Math.abs(a.val) > 0 && Math.abs(a.val) < 1_000_000_000);
+
       if (amounts.length === 0) continue;
       const desc = rest.substring(0, amounts[0].idx).replace(/\s+/g, " ").trim();
-      if (!desc || desc.length < 3 || /^(page|total|balance|opening|closing|statement)/i.test(desc)) continue;
+      if (isNoiseLine(desc)) continue;
 
       const primaryAmt = amounts[0].val;
       const balance = amounts.length > 2 ? amounts[amounts.length - 1].val : null;
@@ -2478,27 +2559,29 @@ function parseBankStatementPDF(rawText) {
         else debit = Math.abs(primaryAmt).toString();
       }
 
-      rows.push({ date: dateM[1], desc: desc.substring(0, 120), debit, credit, balance: balance ? balance.toString() : "", ref: "" });
+      rows.push({ date: dateStr, desc: desc.substring(0, 120), debit, credit, balance: balance ? balance.toString() : "", ref: "" });
     }
-    if (rows.length >= 3) {
+    if (rows.length >= 2) {
+      console.log(`📄 PDF line parser: found ${rows.length} transactions`);
       return dedupeRows(rows);
     }
   }
 
-  // Strategy B: date-position segmentation (for concatenated PDF text)
+  // ── Strategy B: date-position segmentation (concatenated text, no reliable newlines) ──
+  const dateMatches = [...rawText.matchAll(dateRegex)];
   for (let i = 0; i < dateMatches.length; i++) {
-    const dateStr = dateMatches[i][1];
+    const dateStr = normalizeDate(dateMatches[i][1]);
     const startPos = dateMatches[i].index + dateMatches[i][0].length;
     const endPos = i + 1 < dateMatches.length ? dateMatches[i + 1].index : startPos + 300;
     const block = rawText.substring(startPos, Math.min(endPos, startPos + 300)).trim();
 
     const amounts = [...block.matchAll(new RegExp(amtPat, "g"))].map(m => ({
       val: parseFloat(m[0].replace(/[$,]/g, "")), idx: m.index, raw: m[0],
-    }));
+    })).filter(a => a.val > 0 && a.val < 1_000_000_000);
     if (amounts.length === 0) continue;
 
     const desc = block.substring(0, amounts[0].idx).replace(/\s+/g, " ").trim();
-    if (!desc || desc.length < 3 || /^(page|total|balance|opening|closing|statement|continued)/i.test(desc)) continue;
+    if (isNoiseLine(desc)) continue;
 
     const primaryAmt = amounts[0].val;
     let debit = "", credit = "";
@@ -2509,6 +2592,7 @@ function parseBankStatementPDF(rawText) {
     rows.push({ date: dateStr, desc: desc.substring(0, 120), debit, credit, balance: balance ? balance.toString() : "", ref: "" });
   }
 
+  console.log(`📄 PDF segment parser: found ${rows.length} transactions`);
   return dedupeRows(rows);
 }
 
@@ -4240,11 +4324,30 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const content = await page.getTextContent();
-          pageTexts.push(content.items.map(item => item.str).join(" "));
+          // Group text items by Y coordinate to preserve line structure
+          const lineMap = new Map();
+          for (const item of content.items) {
+            if (!item.str || !item.str.trim()) continue;
+            // Round Y to nearest integer to group items on same line
+            const y = Math.round(item.transform[5]);
+            if (!lineMap.has(y)) lineMap.set(y, []);
+            lineMap.get(y).push({ x: item.transform[4], text: item.str });
+          }
+          // Sort lines by Y (descending = top to bottom in PDF coords)
+          const sortedYs = [...lineMap.keys()].sort((a, b) => b - a);
+          const pageLines = sortedYs.map(y => {
+            const items = lineMap.get(y).sort((a, b) => a.x - b.x);
+            return items.map(i => i.text).join("  ");
+          });
+          pageTexts.push(pageLines.join("\n"));
         }
         const rawText = pageTexts.join("\n");
         rawRows = parseBankStatementPDF(rawText);
-        console.log(`📄 Budget PDF: extracted ${rawText.length} chars, ${rawRows.length} transactions`);
+        console.log(`📄 Budget PDF: ${pdf.numPages} pages, ${rawText.length} chars, ${rawRows.length} transactions`);
+        // Log first 500 chars for debugging (remove after confirming it works)
+        if (rawRows.length === 0) {
+          console.log("📄 PDF text sample (first 1000 chars):", rawText.substring(0, 1000));
+        }
       } catch (pdfErr) {
         return res.status(400).json({ error: "PDF parse error: " + pdfErr.message });
       }
