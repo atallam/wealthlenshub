@@ -4267,14 +4267,15 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
           rawRows = parseIndianPDF(rawText);
           region = "IN";
         } else {
-          // Try US first, fall back to Indian
           rawRows = parseUSPDF(rawText);
           if (rawRows.length === 0) rawRows = parseIndianPDF(rawText);
           region = rawRows.length > 0 ? "US" : "AUTO";
         }
-        console.log(`📄 Budget PDF: ${pages} pages, ${rawText.length} chars, region=${region}, ${rawRows.length} transactions`);
-        if (rawRows.length === 0) console.log("📄 PDF text sample:", rawText.substring(0, 1000));
+        console.log(`📄 Budget PDF: ${pages} pages, ${rawText.length} chars, region=${region}, rawRows=${rawRows.length}, bank_key=${bank_key}`);
+        if (rawRows.length > 0) console.log("📄 First raw row:", JSON.stringify(rawRows[0]));
+        if (rawRows.length === 0) console.log("📄 PDF text sample:", rawText.substring(0, 1500));
       } catch (pdfErr) {
+        console.error("📄 PDF extraction error:", pdfErr.message, pdfErr.stack);
         return res.status(400).json({ error: "PDF parse error: " + pdfErr.message });
       }
     } else {
@@ -4285,13 +4286,27 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
   }
 
   // ── Auto-detect failed: ask user to pick a bank ──
+  if (!rawRows.length && ext === "pdf") {
+    // PDF parsed 0 rows — return diagnostic
+    try {
+      const { text: rawText2 } = await extractPDFText(req.file.buffer);
+      const usTest = parseUSPDF(rawText2);
+      const inTest = parseIndianPDF(rawText2);
+      return res.status(400).json({
+        error: `PDF parsed 0 rows (ext=${ext}, bank=${bank_key}, region=${region}). Debug: US=${usTest.length}, IN=${inTest.length}. First 3 lines: ${rawText2.split("\n").slice(0,3).join(" | ")}`,
+        usRows: usTest.length, inRows: inTest.length,
+      });
+    } catch(dbgErr) {
+      return res.status(400).json({ error: `PDF 0 rows + debug failed: ${dbgErr.message}` });
+    }
+  }
   if (!rawRows.length && (!bank_key || bank_key === "auto")) {
     return res.status(400).json({
       error: "Could not auto-detect bank format. Please select your bank from the dropdown and try again.",
       code: "BANK_DETECT_FAILED"
     });
   }
-  if (!rawRows.length) return res.status(400).json({ error: "No transactions found. Check the file format matches the selected bank." });
+  if (!rawRows.length) return res.status(400).json({ error: `No transactions found (ext=${ext}, bank=${bank_key}, region=${region}). Check the file format matches the selected bank.` });
 
   // ── Build transactions (use region-specific date parser) ──
   const txns = [];
