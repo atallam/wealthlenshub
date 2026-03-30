@@ -3182,7 +3182,7 @@ ${alertLines||"  None"}`;
               <div className="card" style={{marginBottom:"1.2rem"}}>
                 <div className="ctitle">Import Bank Statement</div>
                 <div style={{fontSize:".77rem",color:"rgba(255,255,255,.55)",marginBottom:"1rem",lineHeight:1.7}}>
-                  Upload CSV or Excel statements from US banks (Chase, BofA, Wells Fargo, Citi, Capital One, Amex, Discover) and Indian banks (HDFC, ICICI, Axis, SBI, Kotak).
+                  Upload CSV, Excel, or PDF statements from US banks (Chase, BofA, Wells Fargo, Citi, Capital One, Amex, Discover) and Indian banks (HDFC, ICICI, Axis, SBI, Kotak).
                   Transactions are <span style={{color:"#4caf9a"}}>AES-256 encrypted</span> before storage. Statements older than 1 year are automatically purged.
                 </div>
                 <div className="frow">
@@ -3201,7 +3201,7 @@ ${alertLines||"  None"}`;
                     </select>
                   </FG>
                 </div>
-                <FG label="Statement File (CSV or XLSX)">
+                <FG label="Statement File (CSV, XLSX, or PDF)">
                   <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="fi"
                     onChange={e=>setBudgetUploadFile(e.target.files[0])}
                     style={{paddingTop:".4rem",color:"rgba(255,255,255,.85)"}}/>

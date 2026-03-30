@@ -2146,24 +2146,7 @@ function _setuDate(d) { if (!d) return null; if (/^\d{4}-\d{2}-\d{2}/.test(d)) r
   app.all("/api/setu/*", auth, (_req, res) => res.status(404).json({ error: "Account Aggregator not enabled. Set SETU_ENABLED=true to activate." }));
 }
 
-// ── Serve React app for all other routes ─────────────────────────
-app.get("*", (_, res) => {
-  const indexPath = path.join(process.cwd(), "dist", "index.html");
-  res.sendFile(indexPath, err => {
-    if (err) {
-      console.error("❌ Failed to serve index.html from:", indexPath, err.message);
-      res.status(404).send("Build error — dist/index.html not found.");
-    }
-  });
-});
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅  WealthLens Hub running on port ${PORT} (public multi-tenant)`);
-  console.log(`📊  Price sources: Twelve Data → Yahoo Finance | MF: MFAPI → AMFI | FX: exchangerate-api → Yahoo → ${FX_FALLBACK}`);
-  console.log(`🔐  Auth: Google OAuth + Email/Password via Supabase`);
-  console.log(`💾  Postgres DB + file storage via Supabase`);
-  console.log(`🔌  Setu AA: ${SETU_ENABLED ? "ENABLED" : "disabled (set SETU_ENABLED=true to activate)"}`);
-});
+// NOTE: catch-all and app.listen() moved to end of file (after all route registrations)
 
 // ══════════════════════════════════════════════════════════════════
 //  BUDGET MODULE
@@ -4478,4 +4461,38 @@ app.get("/api/benchmark", auth, async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  GLOBAL ERROR HANDLER + CATCH-ALL + LISTEN
+//  (must be AFTER all route registrations)
+// ══════════════════════════════════════════════════════════════════
+
+// ── Global error handler — API routes NEVER return HTML ──────────
+app.use((err, req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    console.error("🔴 Global API error:", req.method, req.path, err.message, err.stack);
+    if (res.headersSent) return next(err);
+    return res.status(err.status || 500).json({ error: err.message || "Internal server error" });
+  }
+  next(err);
+});
+
+// ── Serve React app for all other routes ─────────────────────────
+app.get("*", (_, res) => {
+  const indexPath = path.join(process.cwd(), "dist", "index.html");
+  res.sendFile(indexPath, err => {
+    if (err) {
+      console.error("❌ Failed to serve index.html from:", indexPath, err.message);
+      res.status(404).send("Build error — dist/index.html not found.");
+    }
+  });
+});
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅  WealthLens Hub running on port ${PORT} (public multi-tenant)`);
+  console.log(`📊  Price sources: Twelve Data → Yahoo Finance | MF: MFAPI → AMFI | FX: exchangerate-api → Yahoo → ${FX_FALLBACK}`);
+  console.log(`🔐  Auth: Google OAuth + Email/Password via Supabase`);
+  console.log(`💾  Postgres DB + file storage via Supabase`);
+  console.log(`🔌  Setu AA: ${SETU_ENABLED ? "ENABLED" : "disabled (set SETU_ENABLED=true to activate)"}`);
 });
