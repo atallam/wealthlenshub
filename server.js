@@ -2205,171 +2205,177 @@ async function autoCategorise(description) {
   return "Other";
 }
 
-// ── Parser: detect bank format and parse CSV rows ─────────────────
-function parseCSV(text) {
-  const result = Papa.parse(text.trim(), { header: false, skipEmptyLines: true });
-  const rows = result.data;
-  if (!rows.length) return [];
+// ═══════════════════════════════════════════════════════════════════
+//  BUDGET PARSERS — Region-separated (US / India)
+// ═══════════════════════════════════════════════════════════════════
 
-  // Detect format by header row
-  const headerRow = rows.find(r => r.some(c => /date|narration|description|particulars/i.test(c)));
-  if (!headerRow) return genericCSV(rows);
+// ── Supported banks registry ─────────────────────────────────────
+const BANK_REGISTRY = {
+  chase:       { region: "US", label: "Chase" },
+  bofa:        { region: "US", label: "Bank of America" },
+  wells_fargo: { region: "US", label: "Wells Fargo" },
+  citi:        { region: "US", label: "Citi" },
+  capital_one: { region: "US", label: "Capital One" },
+  amex:        { region: "US", label: "Amex" },
+  discover:    { region: "US", label: "Discover" },
+  us_bank:     { region: "US", label: "US Bank" },
+  other_us:    { region: "US", label: "Other US Bank" },
+  hdfc:        { region: "IN", label: "HDFC" },
+  icici:       { region: "IN", label: "ICICI" },
+  axis:        { region: "IN", label: "Axis" },
+  sbi:         { region: "IN", label: "SBI" },
+  kotak:       { region: "IN", label: "Kotak" },
+  other_in:    { region: "IN", label: "Other Indian Bank" },
+  auto:        { region: "AUTO", label: "Auto-detect" },
+};
 
-  const h = headerRow.map(c => (c||"").toLowerCase().trim());
-  const dataRows = rows.slice(rows.indexOf(headerRow) + 1);
+// ── Date parsers (region-specific) ───────────────────────────────
+const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
 
-  // ── US BANK PARSERS ──────────────────────────────────────────────
-
-  // Chase (checking/savings): Transaction Date, Post Date, Description, Category, Type, Amount
-  // Chase (credit card): Transaction Date, Post Date, Description, Category, Type, Amount, Memo
-  if (h.some(c => c.includes("post date")) && h.some(c => c.includes("category")) && h.some(c => c.includes("type"))) {
-    const di = h.findIndex(c => c.includes("transaction date") || c === "date");
-    const descI = h.findIndex(c => c.includes("description"));
-    const amtI = h.findIndex(c => c.includes("amount"));
-    const catI = h.findIndex(c => c === "category");
-    return dataRows.map(r => {
-      const amt = parseFloat(String(r[amtI]||"").replace(/[$,]/g, "")) || 0;
-      return { date: r[di], desc: r[descI], debit: amt < 0 ? Math.abs(amt).toString() : "", credit: amt > 0 ? amt.toString() : "", balance: "", ref: "", _usCat: r[catI] || "" };
-    }).filter(r => r.date && r.desc);
-  }
-
-  // Bank of America: Date, Description, Amount, Running Bal.
-  if (h.some(c => c.includes("running bal")) || (h.length <= 5 && h[0] === "date" && h.includes("amount") && h.includes("description"))) {
-    const di = h.findIndex(c => c === "date");
-    const descI = h.findIndex(c => c.includes("description"));
-    const amtI = h.findIndex(c => c === "amount");
-    const balI = h.findIndex(c => c.includes("bal"));
-    return dataRows.map(r => {
-      const amt = parseFloat(String(r[amtI]||"").replace(/[$,]/g, "")) || 0;
-      return { date: r[di], desc: r[descI], debit: amt < 0 ? Math.abs(amt).toString() : "", credit: amt > 0 ? amt.toString() : "", balance: r[balI] || "", ref: "" };
-    }).filter(r => r.date && r.desc);
-  }
-
-  // Capital One: Transaction Date, Posted Date, Card No., Description, Category, Debit, Credit
-  if (h.some(c => c.includes("card no")) || (h.some(c => c.includes("posted date")) && h.some(c => c.includes("debit")) && h.some(c => c.includes("credit")))) {
-    const di = h.findIndex(c => c.includes("transaction date") || c.includes("date"));
-    const descI = h.findIndex(c => c.includes("description") || c.includes("payee"));
-    const debI = h.findIndex(c => c === "debit" || c.includes("debit"));
-    const credI = h.findIndex(c => c === "credit" || c.includes("credit"));
-    const catI = h.findIndex(c => c === "category");
-    return dataRows.map(r => ({
-      date: r[di], desc: r[descI], debit: r[debI], credit: r[credI], balance: "", ref: "", _usCat: catI >= 0 ? r[catI] : ""
-    })).filter(r => r.date && r.desc);
-  }
-
-  // Citi: Status, Date, Description, Debit, Credit
-  if (h.includes("status") && h.includes("debit") && h.includes("credit")) {
-    const di = h.findIndex(c => c === "date");
-    const descI = h.findIndex(c => c.includes("description"));
-    const debI = h.findIndex(c => c === "debit");
-    const credI = h.findIndex(c => c === "credit");
-    return dataRows.map(r => ({
-      date: r[di], desc: r[descI], debit: r[debI], credit: r[credI], balance: "", ref: ""
-    })).filter(r => r.date && r.desc);
-  }
-
-  // Amex: Date, Description, Amount (or: Date, Reference, Description, Amount)
-  if (h[0] === "date" && h.includes("amount") && (h.includes("reference") || h.length <= 4) && !h.includes("balance")) {
-    const di = 0;
-    const descI = h.findIndex(c => c.includes("description"));
-    const amtI = h.findIndex(c => c === "amount");
-    const refI = h.findIndex(c => c.includes("reference"));
-    return dataRows.map(r => {
-      const amt = parseFloat(String(r[amtI]||"").replace(/[$,]/g, "")) || 0;
-      return { date: r[di], desc: r[descI >= 0 ? descI : 1], debit: amt > 0 ? amt.toString() : "", credit: amt < 0 ? Math.abs(amt).toString() : "", balance: "", ref: refI >= 0 ? r[refI] : "" };
-    }).filter(r => r.date && r.desc);
-  }
-
-  // Discover: Trans. Date, Post Date, Description, Amount, Category
-  if (h.some(c => c.includes("trans. date") || c.includes("trans date")) && h.includes("amount")) {
-    const di = h.findIndex(c => c.includes("trans"));
-    const descI = h.findIndex(c => c.includes("description"));
-    const amtI = h.findIndex(c => c === "amount");
-    const catI = h.findIndex(c => c === "category");
-    return dataRows.map(r => {
-      const amt = parseFloat(String(r[amtI]||"").replace(/[$,]/g, "")) || 0;
-      return { date: r[di], desc: r[descI], debit: amt > 0 ? amt.toString() : "", credit: amt < 0 ? Math.abs(amt).toString() : "", balance: "", ref: "", _usCat: catI >= 0 ? r[catI] : "" };
-    }).filter(r => r.date && r.desc);
-  }
-
-  // Wells Fargo (varies): common format is Date, Amount, *, *, Description
-  // Also: Date, Description, Amount, Balance — detected via "amount" without specific bank markers
-  if (h[0] === "date" && h.length >= 3 && h.length <= 6 && h.includes("amount") && !h.includes("narration")) {
-    const di = 0;
-    const amtI = h.findIndex(c => c === "amount");
-    const descI = h.findIndex(c => c.includes("description") || c.includes("memo") || c.includes("name"));
-    const balI = h.findIndex(c => c.includes("balance") || c.includes("bal"));
-    // If no desc column found, try the last text column
-    const actualDescI = descI >= 0 ? descI : (h.length > 2 ? h.length - 1 : 1);
-    return dataRows.map(r => {
-      const amt = parseFloat(String(r[amtI]||"").replace(/[$,]/g, "")) || 0;
-      return { date: r[di], desc: r[actualDescI], debit: amt < 0 ? Math.abs(amt).toString() : "", credit: amt > 0 ? amt.toString() : "", balance: balI >= 0 ? r[balI] : "", ref: "" };
-    }).filter(r => r.date && r.desc);
-  }
-
-  // US Bank: Date, Transaction, Name, Memo, Amount
-  if (h.some(c => c === "memo") && h.some(c => c === "name") && h.includes("amount")) {
-    const di = h.findIndex(c => c === "date");
-    const nameI = h.findIndex(c => c === "name");
-    const memoI = h.findIndex(c => c === "memo");
-    const amtI = h.findIndex(c => c === "amount");
-    return dataRows.map(r => {
-      const amt = parseFloat(String(r[amtI]||"").replace(/[$,]/g, "")) || 0;
-      const desc = [r[nameI], r[memoI]].filter(Boolean).join(" - ");
-      return { date: r[di], desc, debit: amt < 0 ? Math.abs(amt).toString() : "", credit: amt > 0 ? amt.toString() : "", balance: "", ref: "" };
-    }).filter(r => r.date && r.desc);
-  }
-
-  // ── INDIAN BANK PARSERS ─────────────────────────────────────────
-
-  // HDFC Bank savings (Date, Narration, Chq/Ref, Value Date, Withdrawal, Deposit, Balance)
-  if (h.includes("narration") && h.includes("withdrawal amt.") || h.includes("withdrawal amt")) {
-    return dataRows.map(r => ({
-      date: r[0], desc: r[1], debit: r[4], credit: r[5], balance: r[6], ref: r[2]
-    })).filter(r => r.date && r.desc);
-  }
-
-  // ICICI Bank (S No., Value Date, Transaction Date, Cheque Number, Transaction Remarks, Withdrawal Amount, Deposit Amount, Balance)
-  if (h.some(c => c.includes("transaction remarks"))) {
-    return dataRows.map(r => ({
-      date: r[2]||r[1], desc: r[4], debit: r[5], credit: r[6], balance: r[7], ref: r[3]
-    })).filter(r => r.date && r.desc);
-  }
-
-  // Axis Bank (Tran Date, CHQNO, Particulars, Debit, Credit, Balance, Dr/Cr)
-  if (h.some(c => c.includes("particulars"))) {
-    return dataRows.map(r => ({
-      date: r[0], desc: r[2], debit: r[3], credit: r[4], balance: r[5], ref: r[1]
-    })).filter(r => r.date && r.desc);
-  }
-
-  // SBI (Txn Date, Value Date, Description, Ref No./Cheque No., Debit, Credit, Balance)
-  if (h.some(c => c.includes("txn date")) || h.some(c => c.includes("value date"))) {
-    return dataRows.map(r => ({
-      date: r[0], desc: r[2], debit: r[4], credit: r[5], balance: r[6], ref: r[3]
-    })).filter(r => r.date && r.desc);
-  }
-
-  // Kotak (Transaction Date, Value Date, Description, Debit, Credit, Balance)
-  if (h.some(c => c.includes("transaction date"))) {
-    const di = h.findIndex(c => c.includes("transaction date")||c.includes("date"));
-    const descI = h.findIndex(c => c.includes("description")||c.includes("particular")||c.includes("narration"));
-    const debI = h.findIndex(c => c.includes("debit")||c.includes("withdrawal"));
-    const credI = h.findIndex(c => c.includes("credit")||c.includes("deposit"));
-    const balI = h.findIndex(c => c.includes("balance"));
-    return dataRows.map(r => ({
-      date: r[di], desc: r[descI], debit: r[debI], credit: r[credI], balance: r[balI]
-    })).filter(r => r.date && r.desc);
-  }
-
-  return genericCSV(rows);
+function parseDateUS(val) {
+  if (!val) return null;
+  const s = String(val).trim();
+  const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m1) { const y = m1[3].length === 2 ? "20"+m1[3] : m1[3]; return `${y}-${m1[1].padStart(2,"0")}-${m1[2].padStart(2,"0")}`; }
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const m2 = s.match(/^([a-z]{3})\s+(\d{1,2}),?\s+(\d{4})$/i);
+  if (m2) { const mo = MONTHS[m2[1].toLowerCase()]; if (mo) return `${m2[3]}-${String(mo).padStart(2,"0")}-${m2[2].padStart(2,"0")}`; }
+  const m3 = s.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (m3) return `${new Date().getFullYear()}-${m3[1].padStart(2,"0")}-${m3[2].padStart(2,"0")}`;
+  return null;
 }
 
+function parseDateIN(val) {
+  if (!val) return null;
+  const s = String(val).trim();
+  const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m1) { const y = m1[3].length === 2 ? "20"+m1[3] : m1[3]; return `${y}-${m1[2].padStart(2,"0")}-${m1[1].padStart(2,"0")}`; }
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const m2 = s.match(/^(\d{1,2})[\s\-]+([a-z]{3})[\s\-]+(\d{2,4})$/i);
+  if (m2) { const mo = MONTHS[m2[2].toLowerCase()]; const y = m2[3].length === 2 ? "20"+m2[3] : m2[3]; if (mo) return `${y}-${String(mo).padStart(2,"0")}-${m2[1].padStart(2,"0")}`; }
+  return null;
+}
+
+function parseAmtBudget(val) {
+  if (!val) return 0;
+  const s = String(val).trim();
+  const neg = s.startsWith("(") || s.startsWith("-");
+  const n = parseFloat(s.replace(/[₹$,()\s]/g, ""));
+  return isNaN(n) ? 0 : Math.abs(n) * (neg ? -1 : 1);
+}
+
+function parseDateForRegion(val, region) {
+  if (region === "US") return parseDateUS(val);
+  if (region === "IN") return parseDateIN(val);
+  return parseDateUS(val) || parseDateIN(val);
+}
+
+// ── US Bank CSV Parsers ──────────────────────────────────────────
+function parseChaseCSV(rows, h, dataRows) {
+  const di = h.findIndex(c => c.includes("transaction date") || c === "date");
+  const descI = h.findIndex(c => c.includes("description"));
+  const amtI = h.findIndex(c => c.includes("amount"));
+  return dataRows.map(r => {
+    const amt = parseAmtBudget(r[amtI]);
+    return { date: r[di], desc: r[descI], debit: amt < 0 ? Math.abs(amt).toString() : "", credit: amt > 0 ? amt.toString() : "", balance: "", ref: "" };
+  }).filter(r => r.date && r.desc);
+}
+
+function parseBofaCSV(rows, h, dataRows) {
+  const di = h.findIndex(c => c === "date");
+  const descI = h.findIndex(c => c.includes("description"));
+  const amtI = h.findIndex(c => c === "amount");
+  const balI = h.findIndex(c => c.includes("bal"));
+  return dataRows.map(r => {
+    const amt = parseAmtBudget(r[amtI]);
+    return { date: r[di], desc: r[descI], debit: amt < 0 ? Math.abs(amt).toString() : "", credit: amt > 0 ? amt.toString() : "", balance: balI >= 0 ? r[balI] : "", ref: "" };
+  }).filter(r => r.date && r.desc);
+}
+
+function parseWellsFargoCSV(rows, h, dataRows) {
+  const amtI = h.findIndex(c => c === "amount");
+  const descI = h.findIndex(c => c.includes("description") || c.includes("memo") || c.includes("name"));
+  const balI = h.findIndex(c => c.includes("balance"));
+  const actualDescI = descI >= 0 ? descI : (h.length > 2 ? h.length - 1 : 1);
+  return dataRows.map(r => {
+    const amt = parseAmtBudget(r[amtI]);
+    return { date: r[0], desc: r[actualDescI], debit: amt < 0 ? Math.abs(amt).toString() : "", credit: amt > 0 ? amt.toString() : "", balance: balI >= 0 ? r[balI] : "", ref: "" };
+  }).filter(r => r.date && r.desc);
+}
+
+function parseCitiCSV(rows, h, dataRows) {
+  const di = h.findIndex(c => c === "date");
+  const descI = h.findIndex(c => c.includes("description"));
+  const debI = h.findIndex(c => c === "debit");
+  const credI = h.findIndex(c => c === "credit");
+  return dataRows.map(r => ({ date: r[di], desc: r[descI], debit: r[debI], credit: r[credI], balance: "", ref: "" })).filter(r => r.date && r.desc);
+}
+
+function parseCapitalOneCSV(rows, h, dataRows) {
+  const di = h.findIndex(c => c.includes("transaction date") || c.includes("date"));
+  const descI = h.findIndex(c => c.includes("description") || c.includes("payee"));
+  const debI = h.findIndex(c => c.includes("debit"));
+  const credI = h.findIndex(c => c.includes("credit"));
+  return dataRows.map(r => ({ date: r[di], desc: r[descI], debit: r[debI], credit: r[credI], balance: "", ref: "" })).filter(r => r.date && r.desc);
+}
+
+function parseAmexCSV(rows, h, dataRows) {
+  const descI = h.findIndex(c => c.includes("description"));
+  const amtI = h.findIndex(c => c === "amount");
+  const refI = h.findIndex(c => c.includes("reference"));
+  return dataRows.map(r => {
+    const amt = parseAmtBudget(r[amtI]);
+    return { date: r[0], desc: r[descI >= 0 ? descI : 1], debit: amt > 0 ? amt.toString() : "", credit: amt < 0 ? Math.abs(amt).toString() : "", balance: "", ref: refI >= 0 ? r[refI] : "" };
+  }).filter(r => r.date && r.desc);
+}
+
+function parseDiscoverCSV(rows, h, dataRows) {
+  const di = h.findIndex(c => c.includes("trans"));
+  const descI = h.findIndex(c => c.includes("description"));
+  const amtI = h.findIndex(c => c === "amount");
+  return dataRows.map(r => {
+    const amt = parseAmtBudget(r[amtI]);
+    return { date: r[di], desc: r[descI], debit: amt > 0 ? amt.toString() : "", credit: amt < 0 ? Math.abs(amt).toString() : "", balance: "", ref: "" };
+  }).filter(r => r.date && r.desc);
+}
+
+function parseUSBankCSV(rows, h, dataRows) {
+  const di = h.findIndex(c => c === "date");
+  const nameI = h.findIndex(c => c === "name");
+  const memoI = h.findIndex(c => c === "memo");
+  const amtI = h.findIndex(c => c === "amount");
+  return dataRows.map(r => {
+    const amt = parseAmtBudget(r[amtI]);
+    return { date: r[di], desc: [r[nameI], r[memoI]].filter(Boolean).join(" - "), debit: amt < 0 ? Math.abs(amt).toString() : "", credit: amt > 0 ? amt.toString() : "", balance: "", ref: "" };
+  }).filter(r => r.date && r.desc);
+}
+
+// ── Indian Bank CSV Parsers ──────────────────────────────────────
+function parseHDFCCSV(rows, h, dataRows) {
+  return dataRows.map(r => ({ date: r[0], desc: r[1], debit: r[4], credit: r[5], balance: r[6], ref: r[2] })).filter(r => r.date && r.desc);
+}
+function parseICICICSV(rows, h, dataRows) {
+  return dataRows.map(r => ({ date: r[2]||r[1], desc: r[4], debit: r[5], credit: r[6], balance: r[7], ref: r[3] })).filter(r => r.date && r.desc);
+}
+function parseAxisCSV(rows, h, dataRows) {
+  return dataRows.map(r => ({ date: r[0], desc: r[2], debit: r[3], credit: r[4], balance: r[5], ref: r[1] })).filter(r => r.date && r.desc);
+}
+function parseSBICSV(rows, h, dataRows) {
+  return dataRows.map(r => ({ date: r[0], desc: r[2], debit: r[4], credit: r[5], balance: r[6], ref: r[3] })).filter(r => r.date && r.desc);
+}
+function parseKotakCSV(rows, h, dataRows) {
+  const di = h.findIndex(c => c.includes("transaction date")||c.includes("date"));
+  const descI = h.findIndex(c => c.includes("description")||c.includes("particular")||c.includes("narration"));
+  const debI = h.findIndex(c => c.includes("debit")||c.includes("withdrawal"));
+  const credI = h.findIndex(c => c.includes("credit")||c.includes("deposit"));
+  const balI = h.findIndex(c => c.includes("balance"));
+  return dataRows.map(r => ({ date: r[di], desc: r[descI], debit: r[debI], credit: r[credI], balance: balI >= 0 ? r[balI] : "" })).filter(r => r.date && r.desc);
+}
+
+// ── Generic CSV fallback ─────────────────────────────────────────
 function genericCSV(rows) {
-  // Best-effort: find date-like, desc-like, amount-like columns
-  const header = rows[0] || [];
-  const h = header.map(c => (c||"").toLowerCase());
-  const di  = h.findIndex(c => /date/i.test(c));
+  const h = (rows[0]||[]).map(c => (c||"").toLowerCase());
+  const di = h.findIndex(c => /date/i.test(c));
   const dsc = h.findIndex(c => /desc|narr|particular|remark/i.test(c));
   const deb = h.findIndex(c => /debit|withdrawal|dr/i.test(c));
   const crd = h.findIndex(c => /credit|deposit|cr/i.test(c));
@@ -2377,235 +2383,165 @@ function genericCSV(rows) {
   if (di < 0 || (dsc < 0 && amt < 0)) return [];
   return rows.slice(1).map(r => ({
     date: r[di], desc: dsc >= 0 ? r[dsc] : r[1],
-    debit: deb >= 0 ? r[deb] : (amt >= 0 ? r[amt] : ""),
-    credit: crd >= 0 ? r[crd] : "",
-    balance: "", ref: ""
+    debit: deb >= 0 ? r[deb] : (amt >= 0 ? r[amt] : ""), credit: crd >= 0 ? r[crd] : "", balance: "", ref: ""
   })).filter(r => r.date && r.desc);
 }
 
-function parseAmount(val) {
-  if (!val) return 0;
-  const n = parseFloat(String(val).replace(/[₹$,\s]/g, "").trim());
-  return isNaN(n) ? 0 : Math.abs(n);
-}
-
-function parseDate(val) {
-  if (!val) return null;
-  const s = String(val).trim();
-  // YYYY-MM-DD (ISO)
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  // MM/DD/YYYY (US) or DD/MM/YYYY (Indian) — disambiguate by checking if first part > 12
-  const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-  if (m1) {
-    const a = parseInt(m1[1]), b = parseInt(m1[2]);
-    const y = m1[3].length === 2 ? "20" + m1[3] : m1[3];
-    // If first number > 12, it must be DD (Indian format DD/MM/YYYY)
-    // If second number > 12, it must be DD (US format MM/DD/YYYY)
-    // If both <= 12, try US format (MM/DD) since US banks are more common in this context
-    if (a > 12) {
-      // DD/MM/YYYY
-      return `${y}-${String(b).padStart(2,"0")}-${String(a).padStart(2,"0")}`;
-    } else if (b > 12) {
-      // MM/DD/YYYY
-      return `${y}-${String(a).padStart(2,"0")}-${String(b).padStart(2,"0")}`;
-    } else {
-      // Ambiguous — default to MM/DD/YYYY (US format) for budget imports
-      // Indian bank parsers typically use DD/MM/YYYY but those are handled above (a > 12 check)
-      return `${y}-${String(a).padStart(2,"0")}-${String(b).padStart(2,"0")}`;
-    }
-  }
-  // DD MMM YYYY (01 Jan 2024)
-  const months = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
-  const m2 = s.match(/^(\d{1,2})\s+([a-z]{3})\s+(\d{4})$/i);
-  if (m2) {
-    const mo = months[m2[2].toLowerCase()];
-    if (mo) return `${m2[3]}-${String(mo).padStart(2,"0")}-${m2[1].padStart(2,"0")}`;
-  }
-  // MMM DD, YYYY (Jan 01, 2024) — common in US exports
-  const m3 = s.match(/^([a-z]{3})\s+(\d{1,2}),?\s+(\d{4})$/i);
-  if (m3) {
-    const mo = months[m3[1].toLowerCase()];
-    if (mo) return `${m3[3]}-${String(mo).padStart(2,"0")}-${m3[2].padStart(2,"0")}`;
-  }
+// ── Auto-detect bank from CSV headers ────────────────────────────
+function autoDetectBank(h) {
+  if (h.some(c => c.includes("post date")) && h.some(c => c.includes("category"))) return "chase";
+  if (h.some(c => c.includes("running bal")) || (h.length <= 5 && h[0] === "date" && h.includes("amount") && h.includes("description"))) return "bofa";
+  if (h.some(c => c.includes("card no")) || (h.some(c => c.includes("posted date")) && h.some(c => c.includes("debit")))) return "capital_one";
+  if (h.includes("status") && h.includes("debit") && h.includes("credit")) return "citi";
+  if (h[0] === "date" && h.includes("amount") && (h.includes("reference") || h.length <= 4) && !h.includes("balance") && !h.includes("narration")) return "amex";
+  if (h.some(c => c.includes("trans. date") || c.includes("trans date")) && h.includes("amount")) return "discover";
+  if (h.some(c => c === "memo") && h.some(c => c === "name") && h.includes("amount")) return "us_bank";
+  if (h.includes("narration") && (h.includes("withdrawal amt.") || h.includes("withdrawal amt"))) return "hdfc";
+  if (h.some(c => c.includes("transaction remarks"))) return "icici";
+  if (h.some(c => c.includes("particulars"))) return "axis";
+  if (h.some(c => c.includes("txn date"))) return "sbi";
+  if (h.some(c => c.includes("transaction date")) && (h.some(c => c.includes("narration")) || h.some(c => c.includes("description")))) return "kotak";
   return null;
 }
 
-// ── PDF Bank Statement Parser ─────────────────────────────────────
-// Extracts transactions from bank statement PDFs (US and Indian banks)
-// Uses pattern matching on extracted text to find date + description + amount rows
-function parseBankStatementPDF(rawText) {
+// ── CSV parser dispatch ──────────────────────────────────────────
+const CSV_PARSERS = {
+  chase: parseChaseCSV, bofa: parseBofaCSV, wells_fargo: parseWellsFargoCSV,
+  citi: parseCitiCSV, capital_one: parseCapitalOneCSV, amex: parseAmexCSV,
+  discover: parseDiscoverCSV, us_bank: parseUSBankCSV,
+  hdfc: parseHDFCCSV, icici: parseICICICSV, axis: parseAxisCSV, sbi: parseSBICSV, kotak: parseKotakCSV,
+};
+
+function parseCSV(text, bankKey) {
+  const result = Papa.parse(text.trim(), { header: false, skipEmptyLines: true });
+  const rows = result.data;
+  if (!rows.length) return { rows: [], detectedBank: null };
+
+  const headerRow = rows.find(r => r.some(c => /date|narration|description|particulars|transaction/i.test(c)));
+  if (!headerRow && !bankKey) return { rows: genericCSV(rows), detectedBank: null };
+
+  const h = headerRow ? headerRow.map(c => (c||"").toLowerCase().trim()) : [];
+  const dataRows = headerRow ? rows.slice(rows.indexOf(headerRow) + 1) : rows.slice(1);
+
+  // Direct dispatch if user selected a specific bank
+  if (bankKey && bankKey !== "auto" && bankKey !== "other_us" && bankKey !== "other_in" && CSV_PARSERS[bankKey]) {
+    return { rows: CSV_PARSERS[bankKey](rows, h, dataRows), detectedBank: bankKey };
+  }
+
+  // Auto-detect from headers
+  const detected = autoDetectBank(h);
+  if (detected && CSV_PARSERS[detected]) {
+    return { rows: CSV_PARSERS[detected](rows, h, dataRows), detectedBank: detected };
+  }
+
+  return { rows: genericCSV(rows), detectedBank: null };
+}
+
+// ── PDF Text Extraction (Y-coordinate grouped) ──────────────────
+async function extractPDFText(buffer) {
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer), standardFontDataUrl: _pdfjsFontPath, useSystemFonts: true });
+  const pdf = await loadingTask.promise;
+  const pageTexts = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const lineMap = new Map();
+    for (const item of content.items) {
+      if (!item.str || !item.str.trim()) continue;
+      const y = Math.round(item.transform[5]);
+      if (!lineMap.has(y)) lineMap.set(y, []);
+      lineMap.get(y).push({ x: item.transform[4], text: item.str });
+    }
+    const sortedYs = [...lineMap.keys()].sort((a, b) => b - a);
+    pageTexts.push(sortedYs.map(y => lineMap.get(y).sort((a, b) => a.x - b.x).map(i => i.text).join("  ")).join("\n"));
+  }
+  return { text: pageTexts.join("\n"), pages: pdf.numPages };
+}
+
+// ── US PDF Parser ────────────────────────────────────────────────
+function parseUSPDF(rawText) {
   const rows = [];
-  const months = "jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec";
-
-  // ── Detect statement year from text (BofA PDFs often use MM/DD without year) ──
-  const yearMatch = rawText.match(/(?:statement\s+(?:period|date|ending|for))[:\s]*.*?(20\d{2})/i)
-    || rawText.match(/(20\d{2})/);
+  const amtPat = /\(?-?\$?[\d,]+\.\d{2}\)?/g;
+  const yearMatch = rawText.match(/(?:statement|period|ending|through)[:\s]*.*?(20\d{2})/i) || rawText.match(/(20\d{2})/);
   const stmtYear = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
+  const normDate = d => { const s = d.trim(); return /^\d{1,2}\/\d{1,2}$/.test(s) ? s+"/"+stmtYear : s; };
+  const isNoise = d => !d || d.length < 3 || /^(page\b|total\b|balance\s*(forward|brought|carried)|opening|closing|statement|continued|beginning|ending|subtotal|daily\s*balance)/i.test(d);
 
-  // ── Detect BofA section-based layout ──
-  // BofA PDFs have "Deposits and other credits" and "Withdrawals and other debits" sections
-  const isBofA = /bank\s*of\s*america|bofa/i.test(rawText)
-    || (/deposits?\s+and\s+other\s+credits/i.test(rawText) && /withdrawals?\s+and\s+other\s+debits/i.test(rawText));
-
-  // Amount pattern: $1,234.56 or 1,234.56 or -1234.56 or (1,234.56)
-  const amtPat = `[-]?\\$?[\\d,]+\\.\\d{2}`;
-  const amtPatParen = `\\(?\\$?[\\d,]+\\.\\d{2}\\)?`;
-
-  // Date patterns — ordered from most specific to least
-  const datePatterns = [
-    `\\d{1,2}/\\d{1,2}/\\d{2,4}`,           // MM/DD/YYYY or MM/DD/YY
-    `\\d{1,2}-\\d{1,2}-\\d{2,4}`,           // MM-DD-YYYY
-    `\\d{1,2}\\s+(?:${months})\\s+\\d{2,4}`, // DD Mon YYYY
-    `(?:${months})\\s+\\d{1,2},?\\s+\\d{4}`, // Mon DD, YYYY
-    `\\d{1,2}/\\d{1,2}`,                     // MM/DD (BofA, Chase short dates)
-  ];
-
-  // ── Normalize date: attach year if missing ──
-  function normalizeDate(d) {
-    const s = d.trim();
-    // Already has year (MM/DD/YYYY or MM/DD/YY)
-    if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) return s;
-    if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(s)) return s;
-    // MM/DD only — append statement year
-    if (/^\d{1,2}\/\d{1,2}$/.test(s)) return s + "/" + stmtYear;
-    return s;
-  }
-
-  // ── Skip-line filter ──
-  function isNoiseLine(desc) {
-    if (!desc || desc.length < 3) return true;
-    return /^(page\b|total\b|balance\s*(forward|brought|carried)|opening\s*balance|closing\s*balance|statement|continued|beginning\s*balance|ending\s*balance|subtotal|daily\s*balance)/i.test(desc);
-  }
-
-  // ── Strategy BofA: section-aware parsing ──
+  // Strategy 1: BofA section-based
+  const isBofA = /bank\s*of\s*america|bofa/i.test(rawText) || (/deposits?\s+and\s+other\s+credits/i.test(rawText) && /withdrawals?\s+and\s+other\s+debits/i.test(rawText));
   if (isBofA) {
-    console.log("📄 PDF parser: detected BofA format, using section-aware strategy");
-    const lines = rawText.split(/\n/);
-    let currentSection = null; // "deposit" or "withdrawal"
-
-    for (const line of lines) {
-      // Detect section headers
-      if (/deposits?\s+and\s+other\s+credits/i.test(line)) { currentSection = "deposit"; continue; }
-      if (/withdrawals?\s+and\s+other\s+debits/i.test(line)) { currentSection = "withdrawal"; continue; }
-      if (/checks?\s+(paid|cleared)/i.test(line)) { currentSection = "withdrawal"; continue; }
-      if (/daily\s*balance/i.test(line) || /ending\s*balance/i.test(line)) { currentSection = null; continue; }
-      if (!currentSection) continue;
-
-      // Match lines starting with a date
+    let section = null;
+    for (const line of rawText.split(/\n/)) {
+      if (/deposits?\s+and\s+other\s+credits/i.test(line)) { section = "credit"; continue; }
+      if (/withdrawals?\s+and\s+other\s+debits/i.test(line)) { section = "debit"; continue; }
+      if (/checks?\s+(paid|cleared)/i.test(line)) { section = "debit"; continue; }
+      if (/daily\s*balance|ending\s*balance|total\s*(deposits|withdrawals)/i.test(line)) { section = null; continue; }
+      if (!section) continue;
       const dateM = line.match(/^\s*(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s+(.+)/);
       if (!dateM) continue;
-
-      const dateStr = normalizeDate(dateM[1]);
       const rest = dateM[2].trim();
-
-      // Find amounts in the rest of the line
-      const amounts = [...rest.matchAll(new RegExp(amtPatParen, "g"))].map(m => {
-        const raw = m[0].replace(/[()]/g, "");
-        return { val: parseFloat(raw.replace(/[$,]/g, "")), idx: m.index, raw: m[0] };
-      }).filter(a => a.val > 0 && a.val < 1_000_000_000);
-
-      if (amounts.length === 0) continue;
-
-      // Description is everything before the first amount
+      const amounts = [...rest.matchAll(amtPat)].map(m => ({ val: Math.abs(parseAmtBudget(m[0])), idx: m.index })).filter(a => a.val > 0 && a.val < 1e9);
+      if (!amounts.length) continue;
       const desc = rest.substring(0, amounts[0].idx).replace(/\s+/g, " ").trim();
-      if (isNoiseLine(desc)) continue;
-
-      const amt = amounts[0].val;
-      let debit = "", credit = "";
-      if (currentSection === "withdrawal") debit = amt.toString();
-      else credit = amt.toString();
-
-      const balance = amounts.length > 1 ? amounts[amounts.length - 1].val : null;
-      rows.push({ date: dateStr, desc: desc.substring(0, 120), debit, credit, balance: balance ? balance.toString() : "", ref: "" });
+      if (isNoise(desc)) continue;
+      rows.push({ date: normDate(dateM[1]), desc: desc.substring(0, 120),
+        debit: section === "debit" ? amounts[0].val.toString() : "",
+        credit: section === "credit" ? amounts[0].val.toString() : "",
+        balance: amounts.length > 1 ? amounts[amounts.length-1].val.toString() : "", ref: "" });
     }
-
-    if (rows.length >= 1) {
-      console.log(`📄 BofA parser: found ${rows.length} transactions`);
-      return dedupeRows(rows);
-    }
-    console.log("📄 BofA section parser found 0 rows, falling through to generic strategies");
+    if (rows.length >= 1) return dedupeRows(rows);
   }
 
-  // ── Strategy A: line-based (works for Chase, Wells Fargo, Citi, etc.) ──
-  const dateRegex = new RegExp(`(${datePatterns.join("|")})`, "gi");
-  if (rawText.includes("\n")) {
-    const lines = rawText.split(/\n/);
-    for (const line of lines) {
-      // Date can be at start of line or after some whitespace
-      const dateM = line.match(new RegExp(`^\\s*(${datePatterns.join("|")})`, "i"));
-      if (!dateM) continue;
-      const dateStr = normalizeDate(dateM[1]);
-      const rest = line.substring(dateM.index + dateM[0].length).trim();
-      const amounts = [...rest.matchAll(new RegExp(amtPatParen, "g"))].map(m => {
-        const raw = m[0].replace(/[()]/g, "");
-        const neg = m[0].startsWith("(") || m[0].startsWith("-");
-        return { val: parseFloat(raw.replace(/[$,]/g, "")) * (neg ? -1 : 1), idx: m.index };
-      }).filter(a => Math.abs(a.val) > 0 && Math.abs(a.val) < 1_000_000_000);
-
-      if (amounts.length === 0) continue;
-      const desc = rest.substring(0, amounts[0].idx).replace(/\s+/g, " ").trim();
-      if (isNoiseLine(desc)) continue;
-
-      const primaryAmt = amounts[0].val;
-      const balance = amounts.length > 2 ? amounts[amounts.length - 1].val : null;
-      let debit = "", credit = "";
-      if (amounts.length >= 3) {
-        const a1 = amounts[0].val, a2 = amounts[1].val;
-        if (Math.abs(a1) > 0 && Math.abs(a2) < 0.01) debit = Math.abs(a1).toString();
-        else if (Math.abs(a2) > 0 && Math.abs(a1) < 0.01) credit = Math.abs(a2).toString();
-        else debit = Math.abs(a1).toString();
-      } else {
-        if (primaryAmt < 0) debit = Math.abs(primaryAmt).toString();
-        else debit = Math.abs(primaryAmt).toString();
-      }
-
-      rows.push({ date: dateStr, desc: desc.substring(0, 120), debit, credit, balance: balance ? balance.toString() : "", ref: "" });
-    }
-    if (rows.length >= 2) {
-      console.log(`📄 PDF line parser: found ${rows.length} transactions`);
-      return dedupeRows(rows);
-    }
+  // Strategy 2: Generic US line-based
+  for (const line of rawText.split(/\n/)) {
+    const dateM = line.match(/^\s*(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s+(.+)/);
+    if (!dateM) continue;
+    const rest = dateM[2].trim();
+    const amounts = [...rest.matchAll(amtPat)].map(m => ({ val: parseAmtBudget(m[0]), idx: m.index })).filter(a => Math.abs(a.val) > 0 && Math.abs(a.val) < 1e9);
+    if (!amounts.length) continue;
+    const desc = rest.substring(0, amounts[0].idx).replace(/\s+/g, " ").trim();
+    if (isNoise(desc)) continue;
+    const amt = amounts[0].val;
+    rows.push({ date: normDate(dateM[1]), desc: desc.substring(0, 120),
+      debit: amt < 0 ? Math.abs(amt).toString() : (amounts.length >= 2 ? Math.abs(amt).toString() : ""),
+      credit: amt > 0 && amounts.length < 2 ? amt.toString() : "",
+      balance: amounts.length > 2 ? Math.abs(amounts[amounts.length-1].val).toString() : "", ref: "" });
   }
+  return dedupeRows(rows);
+}
 
-  // ── Strategy B: date-position segmentation (concatenated text, no reliable newlines) ──
-  const dateMatches = [...rawText.matchAll(dateRegex)];
-  for (let i = 0; i < dateMatches.length; i++) {
-    const dateStr = normalizeDate(dateMatches[i][1]);
-    const startPos = dateMatches[i].index + dateMatches[i][0].length;
-    const endPos = i + 1 < dateMatches.length ? dateMatches[i + 1].index : startPos + 300;
-    const block = rawText.substring(startPos, Math.min(endPos, startPos + 300)).trim();
+// ── Indian PDF Parser ────────────────────────────────────────────
+function parseIndianPDF(rawText) {
+  const rows = [];
+  const amtPat = /[\d,]+\.\d{2}/g;
+  const months = "jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec";
+  const inDatePat = new RegExp(`^\\s*(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4}|\\d{1,2}[\\s\\-]+(?:${months})[\\s\\-]+\\d{2,4})\\s+(.+)`, "i");
+  const isNoise = d => !d || d.length < 3 || /^(page|total|balance\s*(b\/f|c\/f|brought|carried)|opening|closing|statement|continued|subtotal)/i.test(d);
 
-    const amounts = [...block.matchAll(new RegExp(amtPat, "g"))].map(m => ({
-      val: parseFloat(m[0].replace(/[$,]/g, "")), idx: m.index, raw: m[0],
-    })).filter(a => a.val > 0 && a.val < 1_000_000_000);
-    if (amounts.length === 0) continue;
-
-    const desc = block.substring(0, amounts[0].idx).replace(/\s+/g, " ").trim();
-    if (isNoiseLine(desc)) continue;
-
-    const primaryAmt = amounts[0].val;
+  for (const line of rawText.split(/\n/)) {
+    const dateM = line.match(inDatePat);
+    if (!dateM) continue;
+    const rest = dateM[2].trim();
+    const amounts = [...rest.matchAll(amtPat)].map(m => ({ val: parseFloat(m[0].replace(/,/g, "")), idx: m.index })).filter(a => a.val > 0 && a.val < 1e12);
+    if (!amounts.length) continue;
+    const desc = rest.substring(0, amounts[0].idx).replace(/\s+/g, " ").trim();
+    if (isNoise(desc)) continue;
     let debit = "", credit = "";
-    if (primaryAmt < 0) debit = Math.abs(primaryAmt).toString();
-    else debit = Math.abs(primaryAmt).toString();
-
-    const balance = amounts.length > 1 ? amounts[amounts.length - 1].val : null;
-    rows.push({ date: dateStr, desc: desc.substring(0, 120), debit, credit, balance: balance ? balance.toString() : "", ref: "" });
+    if (amounts.length >= 3) {
+      if (amounts[0].val > 0 && amounts[1].val < 0.01) debit = amounts[0].val.toString();
+      else if (amounts[0].val < 0.01 && amounts[1].val > 0) credit = amounts[1].val.toString();
+      else debit = amounts[0].val.toString();
+    } else { debit = amounts[0].val.toString(); }
+    rows.push({ date: dateM[1], desc: desc.substring(0, 120), debit, credit,
+      balance: amounts.length > 1 ? amounts[amounts.length-1].val.toString() : "", ref: "" });
   }
-
-  console.log(`📄 PDF segment parser: found ${rows.length} transactions`);
   return dedupeRows(rows);
 }
 
 function dedupeRows(rows) {
   const seen = new Set();
-  return rows.filter(r => {
-    const key = `${r.date}|${r.desc?.substring(0,30)}|${r.debit||r.credit}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return rows.filter(r => { const k = `${r.date}|${r.desc?.substring(0,30)}|${r.debit||r.credit}`; if (seen.has(k)) return false; seen.add(k); return true; });
 }
-
 // ═══════════════════════════════════════════════════════════════════
 //  SMART PORTFOLIO & TRANSACTION IMPORT
 // ═══════════════════════════════════════════════════════════════════
@@ -4296,58 +4232,46 @@ app.post("/api/transactions/import", auth, async (req, res) => {
 app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => {
   try {
   if (!req.file) return res.status(400).json({ error: "No file" });
-  const { source, statement_type, notes } = req.body;
+  const { source, statement_type, notes, bank_key } = req.body;
 
   const id = "bst_" + Date.now() + Math.random().toString(36).slice(2,6);
   const ext = req.file.originalname.split(".").pop().toLowerCase();
+  const bankInfo = BANK_REGISTRY[bank_key] || BANK_REGISTRY.auto;
+  let region = bankInfo.region; // US, IN, or AUTO
 
   // ── Parse file ──
   let rawRows = [];
   try {
     if (ext === "csv" || ext === "txt") {
-      rawRows = parseCSV(req.file.buffer.toString("utf8"));
+      const { rows, detectedBank } = parseCSV(req.file.buffer.toString("utf8"), bank_key);
+      rawRows = rows;
+      if (detectedBank && BANK_REGISTRY[detectedBank]) region = BANK_REGISTRY[detectedBank].region;
+      console.log(`📄 Budget CSV: bank=${bank_key||"auto"}, detected=${detectedBank||"none"}, region=${region}, rows=${rawRows.length}`);
     } else if (ext === "xlsx" || ext === "xls") {
       const wb = XLSX.read(req.file.buffer, { type: "buffer" });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const csvText = XLSX.utils.sheet_to_csv(ws);
-      rawRows = parseCSV(csvText);
+      const { rows, detectedBank } = parseCSV(csvText, bank_key);
+      rawRows = rows;
+      if (detectedBank && BANK_REGISTRY[detectedBank]) region = BANK_REGISTRY[detectedBank].region;
     } else if (ext === "pdf") {
-      // ── PDF Bank Statement Parser ──
       try {
-        const loadingTask = pdfjsLib.getDocument({
-          data: new Uint8Array(req.file.buffer),
-          standardFontDataUrl: _pdfjsFontPath,
-          useSystemFonts: true,
-        });
-        const pdf = await loadingTask.promise;
-        const pageTexts = [];
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          // Group text items by Y coordinate to preserve line structure
-          const lineMap = new Map();
-          for (const item of content.items) {
-            if (!item.str || !item.str.trim()) continue;
-            // Round Y to nearest integer to group items on same line
-            const y = Math.round(item.transform[5]);
-            if (!lineMap.has(y)) lineMap.set(y, []);
-            lineMap.get(y).push({ x: item.transform[4], text: item.str });
-          }
-          // Sort lines by Y (descending = top to bottom in PDF coords)
-          const sortedYs = [...lineMap.keys()].sort((a, b) => b - a);
-          const pageLines = sortedYs.map(y => {
-            const items = lineMap.get(y).sort((a, b) => a.x - b.x);
-            return items.map(i => i.text).join("  ");
-          });
-          pageTexts.push(pageLines.join("\n"));
+        const { text: rawText, pages } = await extractPDFText(req.file.buffer);
+        // Route to region-specific PDF parser
+        if (region === "US" || (region === "AUTO" && /bank\s*of\s*america|chase|wells\s*fargo|citi|capital\s*one|amex|discover/i.test(rawText))) {
+          rawRows = parseUSPDF(rawText);
+          region = "US";
+        } else if (region === "IN" || (region === "AUTO" && /hdfc|icici|axis|sbi|kotak|neft|imps|upi|inr|₹/i.test(rawText))) {
+          rawRows = parseIndianPDF(rawText);
+          region = "IN";
+        } else {
+          // Try US first, fall back to Indian
+          rawRows = parseUSPDF(rawText);
+          if (rawRows.length === 0) rawRows = parseIndianPDF(rawText);
+          region = rawRows.length > 0 ? "US" : "AUTO";
         }
-        const rawText = pageTexts.join("\n");
-        rawRows = parseBankStatementPDF(rawText);
-        console.log(`📄 Budget PDF: ${pdf.numPages} pages, ${rawText.length} chars, ${rawRows.length} transactions`);
-        // Log first 500 chars for debugging (remove after confirming it works)
-        if (rawRows.length === 0) {
-          console.log("📄 PDF text sample (first 1000 chars):", rawText.substring(0, 1000));
-        }
+        console.log(`📄 Budget PDF: ${pages} pages, ${rawText.length} chars, region=${region}, ${rawRows.length} transactions`);
+        if (rawRows.length === 0) console.log("📄 PDF text sample:", rawText.substring(0, 1000));
       } catch (pdfErr) {
         return res.status(400).json({ error: "PDF parse error: " + pdfErr.message });
       }
@@ -4358,17 +4282,24 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
     return res.status(400).json({ error: "Parse error: " + e.message });
   }
 
-  if (!rawRows.length) return res.status(400).json({ error: "No transactions found. Check the file format." });
+  // ── Auto-detect failed: ask user to pick a bank ──
+  if (!rawRows.length && (!bank_key || bank_key === "auto")) {
+    return res.status(400).json({
+      error: "Could not auto-detect bank format. Please select your bank from the dropdown and try again.",
+      code: "BANK_DETECT_FAILED"
+    });
+  }
+  if (!rawRows.length) return res.status(400).json({ error: "No transactions found. Check the file format matches the selected bank." });
 
-  // ── Build transactions ──
+  // ── Build transactions (use region-specific date parser) ──
   const txns = [];
   let periodStart = null, periodEnd = null;
 
   for (const row of rawRows) {
-    const date = parseDate(row.date);
+    const date = parseDateForRegion(row.date, region);
     if (!date) continue;
-    const debit = parseAmount(row.debit);
-    const credit = parseAmount(row.credit);
+    const debit = Math.abs(parseAmtBudget(row.debit));
+    const credit = Math.abs(parseAmtBudget(row.credit));
     if (debit === 0 && credit === 0) continue;
     const amount = debit > 0 ? debit : credit;
     const type = debit > 0 ? "DEBIT" : "CREDIT";
@@ -4379,14 +4310,9 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
     if (!periodEnd || date > periodEnd) periodEnd = date;
     txns.push({
       id: "btx_" + Date.now() + Math.random().toString(36).slice(2,8),
-      statement_id: id,
-      user_id: req.user.id,
-      txn_date: date,
-      description: encrypt(desc),
-      raw_desc: encrypt(desc),
-      amount,
-      txn_type: type,
-      category,
+      statement_id: id, user_id: req.user.id, txn_date: date,
+      description: encrypt(desc), raw_desc: encrypt(desc),
+      amount, txn_type: type, category,
       balance: row.balance ? encrypt(String(row.balance)) : null,
       ref_number: (row.ref || "").slice(0, 50),
     });
@@ -4399,7 +4325,7 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
 
   // ── Save statement record ──
   const { error: stErr } = await supabase.from("budget_statements").insert({ user_id: req.user.id,
-    id, source: source || "Unknown", statement_type: statement_type || "BANK",
+    id, source: source || bankInfo.label || "Unknown", statement_type: statement_type || "BANK",
     filename: req.file.originalname, file_size: req.file.size,
     period_start: periodStart, period_end: periodEnd,
     txn_count: txns.length, notes: notes || "",
@@ -4413,7 +4339,7 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
     if (txErr) { console.error("Batch insert error:", txErr.message); }
   }
 
-  res.json({ ok: true, statement_id: id, txn_count: txns.length, period_start: periodStart, period_end: periodEnd });
+  res.json({ ok: true, statement_id: id, txn_count: txns.length, period_start: periodStart, period_end: periodEnd, region, bank: bank_key || "auto" });
   } catch (e) {
     console.error("Budget upload error:", e.message, e.stack);
     res.status(500).json({ error: "Upload failed: " + e.message });

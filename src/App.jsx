@@ -1058,7 +1058,7 @@ export default function App() {
   const [budgetSearch,      setBudgetSearch]      = useState("");
   const [budgetView,        setBudgetView]        = useState("overview"); // overview | transactions | categories | import
   const [budgetUploading,   setBudgetUploading]   = useState(false);
-  const [budgetUploadForm,  setBudgetUploadForm]  = useState({source:"", statement_type:"BANK", notes:""});
+  const [budgetUploadForm,  setBudgetUploadForm]  = useState({region:"", bank_key:"", statement_type:"BANK", notes:"", custom_label:""});
   const [budgetUploadFile,  setBudgetUploadFile]  = useState(null);
   const [budgetUploadMsg,   setBudgetUploadMsg]   = useState("");
   const [budgetEditCat,     setBudgetEditCat]     = useState(null);
@@ -3182,15 +3182,49 @@ ${alertLines||"  None"}`;
               <div className="card" style={{marginBottom:"1.2rem"}}>
                 <div className="ctitle">Import Bank Statement</div>
                 <div style={{fontSize:".77rem",color:"rgba(255,255,255,.55)",marginBottom:"1rem",lineHeight:1.7}}>
-                  Upload CSV, Excel, or PDF statements from US banks (Chase, BofA, Wells Fargo, Citi, Capital One, Amex, Discover) and Indian banks (HDFC, ICICI, Axis, SBI, Kotak).
+                  Upload CSV, Excel, or PDF statements from US banks (Chase, BofA, Wells Fargo, Citi, Capital One, Amex, Discover, US Bank) and Indian banks (HDFC, ICICI, Axis, SBI, Kotak).
                   Transactions are <span style={{color:"#4caf9a"}}>AES-256 encrypted</span> before storage. Statements older than 1 year are automatically purged.
                 </div>
                 <div className="frow">
-                  <FG label="Source / Bank Name">
-                    <input className="fi" placeholder="e.g. HDFC Savings, ICICI Credit Card"
-                      value={budgetUploadForm.source}
-                      onChange={e=>setBudgetUploadForm(p=>({...p,source:e.target.value}))}/>
+                  <FG label="Region">
+                    <select className="fi fs" value={budgetUploadForm.region}
+                      onChange={e=>{setBudgetUploadForm(p=>({...p,region:e.target.value,bank_key:""})); setBudgetUploadMsg("");}}>
+                      <option value="">Select region…</option>
+                      <option value="US">🇺🇸 US Bank</option>
+                      <option value="IN">🇮🇳 Indian Bank</option>
+                      <option value="AUTO">🔍 Auto-detect</option>
+                    </select>
                   </FG>
+                  <FG label="Bank">
+                    <select className="fi fs" value={budgetUploadForm.bank_key}
+                      disabled={!budgetUploadForm.region}
+                      onChange={e=>setBudgetUploadForm(p=>({...p,bank_key:e.target.value}))}>
+                      {budgetUploadForm.region==="US"?(<>
+                        <option value="">Select bank…</option>
+                        <option value="chase">Chase</option>
+                        <option value="bofa">Bank of America</option>
+                        <option value="wells_fargo">Wells Fargo</option>
+                        <option value="citi">Citi</option>
+                        <option value="capital_one">Capital One</option>
+                        <option value="amex">Amex</option>
+                        <option value="discover">Discover</option>
+                        <option value="us_bank">US Bank</option>
+                        <option value="other_us">Other US Bank</option>
+                      </>):budgetUploadForm.region==="IN"?(<>
+                        <option value="">Select bank…</option>
+                        <option value="hdfc">HDFC</option>
+                        <option value="icici">ICICI</option>
+                        <option value="axis">Axis</option>
+                        <option value="sbi">SBI</option>
+                        <option value="kotak">Kotak</option>
+                        <option value="other_in">Other Indian Bank</option>
+                      </>):budgetUploadForm.region==="AUTO"?(<>
+                        <option value="auto">Auto-detect from file</option>
+                      </>):(<option value="">Pick a region first</option>)}
+                    </select>
+                  </FG>
+                </div>
+                <div className="frow">
                   <FG label="Type">
                     <select className="fi fs" value={budgetUploadForm.statement_type}
                       onChange={e=>setBudgetUploadForm(p=>({...p,statement_type:e.target.value}))}>
@@ -3199,6 +3233,11 @@ ${alertLines||"  None"}`;
                       <option value="UPI">📲 UPI / GPay</option>
                       <option value="OTHER">📄 Other</option>
                     </select>
+                  </FG>
+                  <FG label="Custom Label (optional)">
+                    <input className="fi" placeholder="e.g. Joint Savings, Salary Account"
+                      value={budgetUploadForm.custom_label}
+                      onChange={e=>setBudgetUploadForm(p=>({...p,custom_label:e.target.value}))}/>
                   </FG>
                 </div>
                 <FG label="Statement File (CSV, XLSX, or PDF)">
@@ -3221,21 +3260,24 @@ ${alertLines||"  None"}`;
                   </div>
                 )}
 
-                <button className="btns" disabled={!budgetUploadFile||!budgetUploadForm.source||budgetUploading}
+                <button className="btns" disabled={!budgetUploadFile||!budgetUploadForm.region||budgetUploading}
                   onClick={async()=>{
-                    if(!budgetUploadFile||!budgetUploadForm.source) return;
+                    if(!budgetUploadFile||!budgetUploadForm.region) return;
+                    const bankKey = budgetUploadForm.bank_key || (budgetUploadForm.region==="AUTO"?"auto":"");
+                    if(!bankKey){setBudgetUploadMsg("⚠ Please select a bank"); return;}
                     setBudgetUploading(true); setBudgetUploadMsg("");
                     try{
                       const fd=new FormData();
                       fd.append("file",budgetUploadFile);
-                      fd.append("source",budgetUploadForm.source);
+                      fd.append("bank_key",bankKey);
+                      fd.append("source",budgetUploadForm.custom_label||budgetUploadForm.bank_key||"Auto");
                       fd.append("statement_type",budgetUploadForm.statement_type);
                       fd.append("notes",budgetUploadForm.notes||"");
                       const data=await api("/api/budget/upload",{method:"POST",body:fd});
                       if(data.ok){
                         setBudgetUploadMsg(`✓ Imported ${data.txn_count} transactions (${data.period_start} to ${data.period_end})`);
                         setBudgetUploadFile(null);
-                        setBudgetUploadForm({source:"",statement_type:"BANK",notes:""});
+                        setBudgetUploadForm({region:"",bank_key:"",statement_type:"BANK",notes:"",custom_label:""});
                         await loadBudget();
                         const stmts=await api("/api/budget/statements");
                         setBudgetStatements(stmts||[]);
