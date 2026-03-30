@@ -3141,9 +3141,11 @@ ${alertLines||"  None"}`;
 
                 {budgetUploadMsg&&(
                   <div style={{padding:".6rem .85rem",borderRadius:6,marginBottom:".75rem",fontSize:".78rem",
-                    background:budgetUploadMsg.startsWith("✓")?"rgba(76,175,154,.1)":"rgba(224,124,90,.1)",
-                    border:`1px solid ${budgetUploadMsg.startsWith("✓")?"rgba(76,175,154,.3)":"rgba(224,124,90,.3)"}`,
-                    color:budgetUploadMsg.startsWith("✓")?"#4caf9a":"#e07c5a"}}>
+                    whiteSpace:"pre-wrap",fontFamily:budgetUploadMsg.startsWith("📄")?"monospace":"inherit",
+                    maxHeight:budgetUploadMsg.startsWith("📄")?"400px":"none",overflow:"auto",
+                    background:budgetUploadMsg.startsWith("✓")?"rgba(76,175,154,.1)":budgetUploadMsg.startsWith("📄")?"rgba(90,156,224,.08)":"rgba(224,124,90,.1)",
+                    border:`1px solid ${budgetUploadMsg.startsWith("✓")?"rgba(76,175,154,.3)":budgetUploadMsg.startsWith("📄")?"rgba(90,156,224,.2)":"rgba(224,124,90,.3)"}`,
+                    color:budgetUploadMsg.startsWith("✓")?"#4caf9a":budgetUploadMsg.startsWith("📄")?"rgba(255,255,255,.7)":"#e07c5a"}}>
                     {budgetUploadMsg}
                   </div>
                 )}
@@ -3175,6 +3177,25 @@ ${alertLines||"  None"}`;
                   }}>
                   {budgetUploading?"Importing…":"Upload & Parse"}
                 </button>
+                {budgetUploadFile && budgetUploadFile.name.endsWith(".pdf") && (
+                  <button className="btnc" style={{marginLeft:".5rem",fontSize:".7rem"}}
+                    onClick={async()=>{
+                      setBudgetUploadMsg("Analyzing PDF...");
+                      try{
+                        const fd=new FormData();
+                        fd.append("file",budgetUploadFile);
+                        const data=await api("/api/budget/debug-pdf",{method:"POST",body:fd});
+                        const msg = `📄 ${data.pages} pages, ${data.totalLines} lines, ${data.totalChars} chars\n` +
+                          `US parser: ${data.usRowsParsed} rows | IN parser: ${data.inRowsParsed} rows\n` +
+                          `Sections found: ${data.sectionHeaders?.join(" | ") || "none"}\n` +
+                          `Date lines (first 5): ${data.dateLines?.slice(0,5).join(" | ") || "none"}\n` +
+                          `--- First 20 lines ---\n${data.first80Lines?.slice(0,20).join("\n")}`;
+                        setBudgetUploadMsg(msg);
+                      }catch(e){setBudgetUploadMsg("⚠ Debug: "+e.message);}
+                    }}>
+                    🔍 Debug PDF
+                  </button>
+                )}
               </div>
 
               {/* Statement history */}

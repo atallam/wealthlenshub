@@ -4346,6 +4346,36 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
   }
 });
 
+// ── BUDGET: PDF Debug — extract text + show parser results (TEMPORARY) ──
+app.post("/api/budget/debug-pdf", auth, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file" });
+    const ext = req.file.originalname.split(".").pop().toLowerCase();
+    if (ext !== "pdf") return res.status(400).json({ error: "PDF only" });
+    const { text: rawText, pages } = await extractPDFText(req.file.buffer);
+    const usRows = parseUSPDF(rawText);
+    const inRows = parseIndianPDF(rawText);
+    // Show first 40 lines of extracted text
+    const lines = rawText.split("\n");
+    const sampleLines = lines.slice(0, 80);
+    // Detect sections
+    const sectionHeaders = lines.filter(l => /deposits?\s+and|withdrawals?\s+and|checks?\s+paid|daily\s*balance|ending\s*balance|beginning\s*balance/i.test(l));
+    // Date-like lines
+    const dateLines = lines.filter(l => /^\s*\d{1,2}\/\d{1,2}/.test(l)).slice(0, 20);
+    res.json({
+      pages, totalChars: rawText.length, totalLines: lines.length,
+      usRowsParsed: usRows.length, inRowsParsed: inRows.length,
+      sectionHeaders,
+      dateLines,
+      first80Lines: sampleLines,
+      usRowsSample: usRows.slice(0, 5),
+      inRowsSample: inRows.slice(0, 5),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── BUDGET: List statements ───────────────────────────────────────
 app.get("/api/budget/statements", auth, async (req, res) => {
   const { data, error } = await supabase.from("budget_statements")
