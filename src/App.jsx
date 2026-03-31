@@ -2792,51 +2792,42 @@ ${alertLines||"  None"}`;
               <div style={{display:"flex",alignItems:"center",gap:".5rem"}}>
                 <input type="month" className="fi" style={{width:150,padding:".28rem .6rem",fontSize:".75rem"}}
                   value={budgetSelMonth}
-                  onChange={async e=>{
-                    setBudgetSelMonth(e.target.value);
-                    // Auto-reload based on active sub-view
+                  onChange={e=>{
                     const mo = e.target.value;
+                    setBudgetSelMonth(mo);
+                    // Reload everything with new month
+                    (async()=>{
+                      try {
+                        const [stmts,cats,analytics,txns] = await Promise.all([
+                          api("/api/budget/statements"),
+                          api("/api/budget/categories"),
+                          api(`/api/budget/analytics${mo?`?month=${mo}`:""}`),
+                          api(`/api/budget/transactions${mo?`?month=${mo}`:""}`)
+                        ]);
+                        setBudgetStatements(stmts||[]);
+                        setBudgetCategories(cats||[]);
+                        setBudgetAnalytics(analytics||null);
+                        setBudgetTxns(txns||[]);
+                      } catch(err) { console.error("Month change reload:", err); }
+                    })();
+                  }}
+                  placeholder="All time"/>
+                {budgetSelMonth&&<button onClick={()=>{
+                  setBudgetSelMonth("");
+                  (async()=>{
                     try {
-                      const [stmts,cats,analytics] = await Promise.all([
+                      const [stmts,cats,analytics,txns] = await Promise.all([
                         api("/api/budget/statements"),
                         api("/api/budget/categories"),
-                        api(`/api/budget/analytics${mo?`?month=${mo}`:""}`)
+                        api("/api/budget/analytics"),
+                        api("/api/budget/transactions")
                       ]);
                       setBudgetStatements(stmts||[]);
                       setBudgetCategories(cats||[]);
                       setBudgetAnalytics(analytics||null);
-                      if (budgetView === "transactions") {
-                        const params = new URLSearchParams();
-                        if (budgetSelStmt !== "all") params.set("statement_id", budgetSelStmt);
-                        if (budgetSelCat !== "All") params.set("category", budgetSelCat);
-                        if (mo) params.set("month", mo);
-                        if (budgetSearch) params.set("search", budgetSearch);
-                        const txns = await api(`/api/budget/transactions?${params}`);
-                        setBudgetTxns(txns || []);
-                      }
-                    } catch(e) { console.error(e); }
-                  }}
-                  placeholder="All time"/>
-                {budgetSelMonth&&<button onClick={async()=>{
-                  setBudgetSelMonth("");
-                  try {
-                    const [stmts,cats,analytics] = await Promise.all([
-                      api("/api/budget/statements"),
-                      api("/api/budget/categories"),
-                      api("/api/budget/analytics")
-                    ]);
-                    setBudgetStatements(stmts||[]);
-                    setBudgetCategories(cats||[]);
-                    setBudgetAnalytics(analytics||null);
-                    if (budgetView === "transactions") {
-                      const params = new URLSearchParams();
-                      if (budgetSelStmt !== "all") params.set("statement_id", budgetSelStmt);
-                      if (budgetSelCat !== "All") params.set("category", budgetSelCat);
-                      if (budgetSearch) params.set("search", budgetSearch);
-                      const txns = await api(`/api/budget/transactions?${params}`);
-                      setBudgetTxns(txns || []);
-                    }
-                  } catch(e) { console.error(e); }
+                      setBudgetTxns(txns||[]);
+                    } catch(err) { console.error("Month clear reload:", err); }
+                  })();
                 }} style={{background:"none",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:".9rem"}}>✕</button>}
               </div>
             </div>
