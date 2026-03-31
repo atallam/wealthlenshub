@@ -147,7 +147,7 @@ const ago=d=>{if(!d)return"Never";const s=Math.floor((Date.now()-new Date(d))/10
 const fmtSize=b=>b>1e6?`${(b/1e6).toFixed(1)}MB`:b>1e3?`${(b/1e3).toFixed(0)}KB`:`${b}B`;
 
 // Holding form — instrument details only, no transaction data
-const BF={member_id:"",type:"IN_STOCK",name:"",ticker:"",scheme_code:"",interest_rate:"",start_date:"",maturity_date:"",purchase_value:"",current_value:"",principal:"",usd_inr_rate:""};
+const BF={member_id:"",type:"US_STOCK",name:"",ticker:"",scheme_code:"",interest_rate:"",start_date:"",maturity_date:"",purchase_value:"",current_value:"",principal:"",usd_inr_rate:""};
 // Transaction form
 const BT={holding_id:"",txn_type:"BUY",units:"",price:"",price_usd:"",txn_date:new Date().toISOString().slice(0,10),notes:""};
 
@@ -2048,11 +2048,14 @@ ${alertLines||"  None"}`;
             const isBudget=t==="budget";
             const isAsk=t==="ask";
             const isActive=tab===t;
+            const lockedTabs=new Set(holdings.length===0&&!demoMode?["goals","alerts","members","calendar","rebalance","ask"]:[]);
+            const isLocked=lockedTabs.has(t);
             return(
             <div key={t}
-              className={`tab${isActive?" act":""}`}
-              onClick={()=>setTab(t)}
-              style={isBudget?{
+              className={`tab${isActive?" act":""}${isLocked?" dim":""}`}
+              onClick={()=>{if(!isLocked)setTab(t);}}
+              title={isLocked?"Add holdings to unlock this tab":undefined}
+              style={{...(isBudget?{
                 borderBottom:isActive?"2px solid #a084ca":undefined,
                 color:isActive?"#a084ca":tab==="budget"?"#a084ca":"rgba(160,132,202,.55)",
                 background:isActive?"rgba(160,132,202,.12)":"rgba(160,132,202,.04)",
@@ -2061,7 +2064,9 @@ ${alertLines||"  None"}`;
                 borderRight:"1px solid rgba(160,132,202,.1)",
                 borderRadius:"4px 4px 0 0",
                 marginRight:2,
-              }:{}}>
+              }:{}),
+              ...(isLocked?{opacity:.35,cursor:"default",pointerEvents:"none"}:{})
+              }}>
               {t==="alerts"&&trigAlerts.length>0
                 ?<span>{t} <span className="tbadge">{trigAlerts.length}</span></span>
                 :isAsk?<span style={{display:"flex",alignItems:"center",gap:".35rem"}}>✦ Advisor</span>
@@ -2096,20 +2101,71 @@ ${alertLines||"  None"}`;
               </button>
             </div>
           )}
-          {/* Empty state with demo button */}
-          {!demoMode&&holdings.length===0&&sharedHoldings.length===0&&(
-            <div style={{textAlign:"center",padding:"2.5rem 1rem",marginBottom:"1rem",background:"rgba(255,255,255,.02)",border:"1px dashed rgba(255,255,255,.1)",borderRadius:12}}>
-              <div style={{fontSize:"2rem",marginBottom:".7rem"}}>📂</div>
-              <div style={{fontSize:".9rem",color:"rgba(255,255,255,.85)",fontWeight:500,marginBottom:".3rem"}}>Your portfolio is empty</div>
-              <div style={{fontSize:".75rem",color:"rgba(255,255,255,.45)",marginBottom:"1.2rem",maxWidth:360,margin:"0 auto 1.2rem"}}>
-                Import a broker export or add holdings manually. Or try the demo to see how things look.
+          {/* Empty state — Welcome Card + Import Guide */}
+          {!demoMode&&holdings.length===0&&sharedHoldings.length===0&&(<>
+            <div style={{background:"rgba(201,168,76,.03)",border:"1px solid rgba(201,168,76,.18)",borderRadius:12,padding:"1.3rem 1.5rem",marginBottom:"1rem"}}>
+              <div style={{display:"flex",alignItems:"center",gap:".6rem",marginBottom:"1rem"}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(201,168,76,.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".85rem",color:"#c9a84c",fontWeight:600}}>W</div>
+                <div>
+                  <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.05rem",color:"#ffffff",fontWeight:500}}>Welcome to WealthLens Hub</div>
+                  <div style={{fontSize:".68rem",color:"rgba(255,255,255,.4)"}}>3 steps to see your complete portfolio</div>
+                </div>
               </div>
-              <div style={{display:"flex",gap:".7rem",justifyContent:"center",flexWrap:"wrap"}}>
-                <button className="btns" onClick={()=>setModal("add")}>+ Add to portfolio</button>
-                <button className="btn-o" onClick={loadDemoData}>Try sample data</button>
+              {/* Step 1: Done */}
+              <div style={{display:"flex",alignItems:"flex-start",gap:".75rem",padding:".65rem 0",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+                <div style={{width:22,height:22,borderRadius:"50%",background:"rgba(76,175,154,.15)",border:"1.5px solid #4caf9a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px",color:"#4caf9a",flexShrink:0,marginTop:2}}>✓</div>
+                <div>
+                  <div style={{fontSize:".82rem",color:"rgba(255,255,255,.45)",textDecoration:"line-through"}}>Create your account</div>
+                  <div style={{fontSize:".68rem",color:"rgba(255,255,255,.3)"}}>Signed in — you're all set</div>
+                </div>
+              </div>
+              {/* Step 2: Add holdings */}
+              <div style={{display:"flex",alignItems:"flex-start",gap:".75rem",padding:".65rem 0",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+                <div style={{width:22,height:22,borderRadius:"50%",border:"1.5px solid #c9a84c",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"11px",color:"#c9a84c",fontWeight:600,flexShrink:0,marginTop:2}}>2</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:".82rem",color:"#ffffff",fontWeight:500}}>Add your first holdings</div>
+                  <div style={{fontSize:".68rem",color:"rgba(255,255,255,.4)",marginBottom:".5rem",lineHeight:1.5}}>Import from your broker, connect a US brokerage, or add manually.</div>
+                  <div style={{display:"flex",gap:".35rem",flexWrap:"wrap"}}>
+                    <button className="btns" style={{fontSize:".7rem",padding:".32rem .7rem"}} onClick={()=>setModal("quickadd")}>Add your first investment</button>
+                    <button className="btn-o" style={{fontSize:".7rem",padding:".32rem .7rem"}} onClick={()=>setModal("add")}>Import CSV / Connect broker</button>
+                  </div>
+                </div>
+              </div>
+              {/* Step 3: Currency */}
+              <div style={{display:"flex",alignItems:"flex-start",gap:".75rem",padding:".65rem 0"}}>
+                <div style={{width:22,height:22,borderRadius:"50%",border:"1.5px solid rgba(255,255,255,.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"11px",color:"rgba(255,255,255,.25)",flexShrink:0,marginTop:2}}>3</div>
+                <div>
+                  <div style={{fontSize:".82rem",color:"rgba(255,255,255,.4)"}}>Set your base currency</div>
+                  <div style={{fontSize:".68rem",color:"rgba(255,255,255,.3)"}}>Open <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setShowSettings(true)}>⚙️ Settings</span> to choose USD, INR, or 8 other currencies.</div>
+                </div>
+              </div>
+              {/* Explore with demo */}
+              <div style={{borderTop:"1px solid rgba(255,255,255,.06)",marginTop:".4rem",paddingTop:".6rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{fontSize:".7rem",color:"rgba(255,255,255,.3)"}}>Want to explore first?</span>
+                <button className="btn-o" style={{fontSize:".68rem",padding:".3rem .65rem"}} onClick={loadDemoData}>Load sample portfolio</button>
               </div>
             </div>
-          )}
+            {/* Import guidance cards — US first */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:".55rem",marginBottom:"1rem"}}>
+              {[
+                {title:"US Brokerages",desc:"Connect Fidelity, Schwab, Robinhood, Vanguard + 22 more via SnapTrade OAuth.",badge:"Auto-sync",badgeBg:"rgba(90,156,224,.12)",badgeC:"#5a9ce0"},
+                {title:"US Broker CSV",desc:"Export from Fidelity, Schwab, E*TRADE, Merrill, Webull, SoFi etc. Drag & drop.",badge:"Supported",badgeBg:"rgba(76,175,154,.12)",badgeC:"#4caf9a"},
+                {title:"CDSL / NSDL CAS",desc:"One PDF covers ALL Indian brokers. Request at cdslIndia.com. Password = PAN.",badge:"Best for India",badgeBg:"rgba(201,168,76,.12)",badgeC:"#c9a84c"},
+                {title:"Indian Broker CSV",desc:"Zerodha Console, Groww, ICICI Direct, HDFC Sec, Upstox, Angel One exports.",badge:"Supported",badgeBg:"rgba(76,175,154,.12)",badgeC:"#4caf9a"},
+              ].map(c=>(
+                <div key={c.title} style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,padding:".75rem",cursor:"pointer",transition:"all .15s"}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(201,168,76,.25)"}
+                  onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,.06)"}
+                  onClick={()=>c.title.includes("US Brokerage")?setModal("add"):setModal("add")}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".3rem"}}>
+                    <span style={{fontSize:".8rem",color:"#ffffff",fontWeight:500}}>{c.title}</span>
+                    <span style={{fontSize:".55rem",padding:"2px 6px",borderRadius:3,background:c.badgeBg,color:c.badgeC}}>{c.badge}</span>
+                  </div>
+                  <div style={{fontSize:".68rem",color:"rgba(255,255,255,.4)",lineHeight:1.5}}>{c.desc}</div>
+                </div>
+              ))}
+            </div>
+          </>)}
           {/* User has no own holdings but has shared data */}
           {!demoMode&&holdings.length===0&&sharedHoldings.length>0&&(
             <div style={{textAlign:"center",padding:"1.5rem 1rem",marginBottom:"1rem",background:"rgba(167,139,250,.04)",border:"1px solid rgba(167,139,250,.15)",borderRadius:12}}>
@@ -2283,16 +2339,17 @@ ${alertLines||"  None"}`;
                     {key:"type",    label:"Type",        align:""},
                     {key:"member",  label:"Member",      align:""},
                     {key:"brokerage",label:"Source",     align:""},
-                    {key:"units",   label:"Units",       align:"r"},
-                    {key:"avg",     label:"Avg Price",   align:"r"},
-                    {key:"price",   label:"Cur. Price",  align:"r"},
-                    {key:"current", label:"Value",       align:"r"},
-                    {key:"gain",    label:"P&L",         align:"r"},
+                    {key:"units",   label:"Units",       align:"r", tip:"Net units held after all buys minus sells"},
+                    {key:"avg",     label:"Avg Price",   align:"r", tip:"Weighted average purchase price across all buy transactions"},
+                    {key:"price",   label:"Cur. Price",  align:"r", tip:"Latest market price — live-fetched or manually entered"},
+                    {key:"current", label:"Value",       align:"r", tip:"Current market value = units × current price"},
+                    {key:"gain",    label:"P&L",         align:"r", tip:"Profit & Loss = current value minus total invested (unrealized)"},
                   ].map(c=>(
                     <th key={c.key} className={c.align} title={c.title||undefined}
                       onClick={()=>toggleSort(c.key)}
                       style={{cursor:"pointer",userSelect:"none",whiteSpace:"nowrap"}}>
                       {c.label}
+                      {c.tip&&<span title={c.tip} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",border:"1px solid rgba(255,255,255,.15)",fontSize:"8px",color:"rgba(255,255,255,.3)",marginLeft:3,cursor:"help",verticalAlign:"middle",fontStyle:"normal",fontWeight:400}}>?</span>}
                       {sortCol===c.key
                         ? <span style={{marginLeft:3,fontSize:".55rem",opacity:.7}}>{sortDir==="asc"?"▲":"▼"}</span>
                         : <span style={{marginLeft:3,fontSize:".55rem",opacity:.25}}>⇅</span>}
@@ -4102,7 +4159,7 @@ ${alertLines||"  None"}`;
             <div style={{fontSize:".63rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.45)",marginBottom:".35rem"}}>Asset Type</div>
             <select className="fi fs" style={{marginBottom:0}} value={txnFilterType} onChange={e=>{setTxnFilterType(e.target.value);setTxnForm(p=>({...p,holding_id:"",price:"",price_usd:"",units:""}));setGlobalMfAmount("");setGlobalMfNav(null);setGlobalNavError("");}}>
               <option value="ALL">All Types</option>
-              {["IN_STOCK","IN_ETF","MF","US_STOCK","US_ETF","US_BOND","CRYPTO"].map(t=><option key={t} value={t}>{AT[t].icon} {AT[t].label}</option>)}
+              {["US_STOCK","US_ETF","US_BOND","CRYPTO","IN_STOCK","IN_ETF","MF"].map(t=><option key={t} value={t}>{AT[t].icon} {AT[t].label}</option>)}
             </select>
           </div>
         </div>
@@ -4589,6 +4646,165 @@ ${alertLines||"  None"}`;
 
     <GoalPlanModal open={modal==="goalplan"} onClose={()=>setModal(null)} goals={goals} members={members} holdings={holdings} allCur={allCur} allInv={allInv}/>
     {modal==="alert"&&(<Overlay onClose={()=>setModal(null)} narrow><div className="modtitle">New Alert Rule</div><FG label="Alert Type"><select className="fi fs" value={alertForm.type} onChange={e=>setAlertForm(p=>({...p,type:e.target.value}))}><option value="ALLOCATION_DRIFT">Over-weight</option><option value="CONCENTRATION">Under-weight</option><option value="RETURN_TARGET">Return below target</option></select></FG>{alertForm.type!=="RETURN_TARGET"&&<FG label="Asset Class"><select className="fi fs" value={alertForm.assetType} onChange={e=>setAlertForm(p=>({...p,assetType:e.target.value}))}>{Object.entries(AT).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}</select></FG>}<FG label={alertForm.type==="RETURN_TARGET"?"Target Return %":"Threshold %"}><input type="number" className="fi" value={alertForm.threshold} onChange={e=>setAlertForm(p=>({...p,threshold:e.target.value}))}/></FG><FG label="Description"><input className="fi" value={alertForm.label} onChange={e=>setAlertForm(p=>({...p,label:e.target.value}))}/></FG><MA><button className="btnc" onClick={()=>setModal(null)}>Cancel</button><button className="btns" onClick={addAlert} disabled={!alertForm.threshold||!alertForm.label}>Add Alert</button></MA></Overlay>)}
+    {/* ── Quick-Add Wizard (first-holding combined flow) ── */}
+    {modal==="quickadd"&&(()=>{
+      const qaTypes = [
+        {k:"US_STOCK",label:"US Stock",icon:"$",c:"#5a9ce0"},
+        {k:"US_ETF",label:"US ETF",icon:"🔵",c:"#4a8cd8"},
+        {k:"CRYPTO",label:"Crypto",icon:"₿",c:"#f7931a"},
+        {k:"IN_STOCK",label:"Indian Stock",icon:"📈",c:"#e07c5a"},
+        {k:"MF",label:"Mutual Fund",icon:"📊",c:"#a084ca"},
+        {k:"IN_ETF",label:"Indian ETF",icon:"🔷",c:"#f0a050"},
+      ];
+      const qaMore = [
+        {k:"FD",label:"Fixed Deposit"},{k:"PPF",label:"PPF"},{k:"EPF",label:"EPF"},
+        {k:"REAL_ESTATE",label:"Real Estate"},{k:"US_BOND",label:"US Bonds"},{k:"OTHER",label:"Other"},
+      ];
+      return (
+      <Overlay onClose={()=>setModal(null)}>
+        <div className="modtitle">Add your first investment</div>
+        <div style={{fontSize:".75rem",color:"rgba(255,255,255,.5)",marginBottom:"1rem",lineHeight:1.6}}>
+          One form — pick type, enter details, record your first buy. We'll create the holding and transaction together.
+        </div>
+
+        {/* Step indicator */}
+        <div style={{display:"flex",alignItems:"center",gap:".4rem",marginBottom:".8rem"}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:form.type?"#4caf9a":"#c9a84c",transition:"all .2s"}}/>
+          <div style={{flex:1,height:1,background:"rgba(255,255,255,.08)"}}/>
+          <div style={{width:8,height:8,borderRadius:"50%",background:form.name?"#4caf9a":"rgba(255,255,255,.12)",transition:"all .2s"}}/>
+          <div style={{flex:1,height:1,background:"rgba(255,255,255,.08)"}}/>
+          <div style={{width:8,height:8,borderRadius:"50%",background:"rgba(255,255,255,.12)"}}/>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:".6rem",color:"rgba(255,255,255,.3)",marginBottom:"1.1rem"}}>
+          <span style={{color:form.type?"#4caf9a":"#c9a84c"}}>Pick type</span>
+          <span style={{color:form.name?"#4caf9a":"rgba(255,255,255,.3)"}}>Enter details</span>
+          <span>Confirm</span>
+        </div>
+
+        {/* Type picker grid — US first */}
+        <div style={{fontSize:".63rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.35)",marginBottom:".4rem"}}>What are you investing in?</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:".4rem",marginBottom:".4rem"}}>
+          {qaTypes.map(t=>(
+            <div key={t.k} onClick={()=>{setForm(f=>({...f,type:t.k}));if(USD_TYPES.has(t.k))fetchUsdInr();}}
+              style={{padding:".5rem",textAlign:"center",borderRadius:8,cursor:"pointer",transition:"all .15s",
+                border:form.type===t.k?`1.5px solid ${t.c}`:"1px solid rgba(255,255,255,.08)",
+                background:form.type===t.k?`${t.c}11`:"rgba(255,255,255,.02)"}}>
+              <div style={{fontSize:".9rem"}}>{t.icon}</div>
+              <div style={{fontSize:".7rem",color:form.type===t.k?t.c:"rgba(255,255,255,.5)",fontWeight:form.type===t.k?500:400,marginTop:".15rem"}}>{t.label}</div>
+            </div>
+          ))}
+        </div>
+        <details style={{marginBottom:"1rem",fontSize:".7rem",color:"rgba(255,255,255,.35)"}}>
+          <summary style={{cursor:"pointer",listStyle:"none"}}>
+            <span style={{textDecoration:"underline"}}>+ FD, PPF, EPF, Real Estate, Bonds, Other</span>
+          </summary>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:".35rem",marginTop:".4rem"}}>
+            {qaMore.map(t=>(
+              <div key={t.k} onClick={()=>setForm(f=>({...f,type:t.k}))}
+                style={{padding:".4rem",textAlign:"center",borderRadius:6,cursor:"pointer",fontSize:".68rem",
+                  border:form.type===t.k?"1.5px solid #c9a84c":"1px solid rgba(255,255,255,.06)",
+                  background:form.type===t.k?"rgba(201,168,76,.08)":"transparent",
+                  color:form.type===t.k?"#c9a84c":"rgba(255,255,255,.4)"}}>
+                {AT[t.k]?.icon} {t.label}
+              </div>
+            ))}
+          </div>
+        </details>
+
+        {/* Name / Ticker + Member */}
+        <div className="frow">
+          <FG label="Name / Ticker"><input className="fi" placeholder={form.type==="MF"?"e.g. Mirae Asset Large Cap":"e.g. NVDA, Reliance"} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/></FG>
+          <FG label="Member"><select className="fi fs" value={form.member_id} onChange={e=>setForm(f=>({...f,member_id:e.target.value}))}><option value="">Select</option>{members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></FG>
+        </div>
+        {(form.type==="IN_STOCK"||form.type==="IN_ETF"||form.type==="US_STOCK"||form.type==="US_ETF"||form.type==="CRYPTO"||form.type==="US_BOND")&&(
+          <FG label="Ticker symbol"><input className="fi" placeholder={USD_TYPES.has(form.type)?"e.g. AAPL, VOO, BTC-USD":"e.g. RELIANCE, NIFTYBEES"} value={form.ticker} onChange={e=>setForm(f=>({...f,ticker:e.target.value.toUpperCase()}))}/></FG>
+        )}
+        {form.type==="MF"&&(
+          <FG label="AMFI Scheme Code"><input className="fi" placeholder="e.g. 118834 (optional — for live NAV)" value={form.scheme_code} onChange={e=>setForm(f=>({...f,scheme_code:e.target.value}))}/></FG>
+        )}
+
+        {/* Optional buy transaction section */}
+        {["IN_STOCK","IN_ETF","US_STOCK","US_ETF","CRYPTO","US_BOND","MF"].includes(form.type)&&(
+          <div style={{padding:".75rem .9rem",background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,marginBottom:".85rem",marginTop:".3rem"}}>
+            <div style={{fontSize:".7rem",fontWeight:500,color:"rgba(255,255,255,.55)",marginBottom:".55rem"}}>Record your first buy <span style={{fontWeight:400,color:"rgba(255,255,255,.3)"}}>(optional — you can add later)</span></div>
+            <div className="frow">
+              <FG label="Buy date"><input type="date" className="fi" value={txnForm.txn_date} onChange={e=>setTxnForm(p=>({...p,txn_date:e.target.value}))}/></FG>
+              <FG label={USD_TYPES.has(form.type)?"Price $ per unit":"Price ₹ per unit"}>
+                <input type="number" className="fi" placeholder={USD_TYPES.has(form.type)?"e.g. 129.50":"e.g. 2450"}
+                  value={USD_TYPES.has(form.type)?txnForm.price_usd:txnForm.price}
+                  onChange={e=>{
+                    if(USD_TYPES.has(form.type)){
+                      const u=e.target.value;
+                      setTxnForm(p=>({...p,price_usd:u,price:u?(+u*(_liveUsdInr)).toFixed(2):""}));
+                    } else {
+                      setTxnForm(p=>({...p,price:e.target.value}));
+                    }
+                  }}/>
+              </FG>
+              <FG label={form.type==="MF"?"Units (NAV÷amount)":"Units / Shares"}>
+                <input type="number" className="fi" placeholder="e.g. 10" value={txnForm.units} onChange={e=>setTxnForm(p=>({...p,units:e.target.value}))}/>
+              </FG>
+            </div>
+            {txnForm.units&&(USD_TYPES.has(form.type)?txnForm.price_usd:txnForm.price)&&(
+              <div style={{fontSize:".68rem",color:"rgba(201,168,76,.7)",fontFamily:"'DM Mono',monospace",marginTop:".3rem"}}>
+                Total: {USD_TYPES.has(form.type)
+                  ? `$${(+txnForm.units*(+txnForm.price_usd||0)).toLocaleString("en-US",{maximumFractionDigits:2})} ≈ ₹${(+txnForm.units*(+txnForm.price_usd||0)*_liveUsdInr).toLocaleString("en-IN",{maximumFractionDigits:0})}`
+                  : `₹${(+txnForm.units*(+txnForm.price||0)).toLocaleString("en-IN",{maximumFractionDigits:2})}`}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* FD / PPF / EPF / RE specific fields */}
+        {(form.type==="FD"||form.type==="PPF"||form.type==="EPF")&&(
+          <div className="frow">
+            <FG label="Principal ₹"><input type="number" className="fi" placeholder="e.g. 500000" value={form.principal} onChange={e=>setForm(f=>({...f,principal:e.target.value}))}/></FG>
+            {form.type==="FD"&&<FG label="Interest Rate %"><input type="number" className="fi" placeholder="e.g. 7.25" value={form.interest_rate} onChange={e=>setForm(f=>({...f,interest_rate:e.target.value}))}/></FG>}
+            <FG label="Start Date"><input type="date" className="fi" value={form.start_date} onChange={e=>setForm(f=>({...f,start_date:e.target.value}))}/></FG>
+            {form.type==="FD"&&<FG label="Maturity Date"><input type="date" className="fi" value={form.maturity_date} onChange={e=>setForm(f=>({...f,maturity_date:e.target.value}))}/></FG>}
+          </div>
+        )}
+        {form.type==="REAL_ESTATE"&&(
+          <div className="frow">
+            <FG label="Purchase Value ₹"><input type="number" className="fi" placeholder="e.g. 5000000" value={form.purchase_value} onChange={e=>setForm(f=>({...f,purchase_value:e.target.value}))}/></FG>
+            <FG label="Current Value ₹"><input type="number" className="fi" placeholder="e.g. 7500000" value={form.current_value} onChange={e=>setForm(f=>({...f,current_value:e.target.value}))}/></FG>
+          </div>
+        )}
+
+        <MA>
+          <button className="btnc" onClick={()=>{setModal(null);setForm(BF);setTxnForm(BT);}}>Cancel</button>
+          <button className="btn-o" onClick={async()=>{
+            // Save holding only (skip transaction)
+            if(!form.name||!form.member_id){alert("Enter a name and select a member");return;}
+            try{
+              const h={...form,id:uid(),principal:+form.principal||null,interest_rate:+form.interest_rate||null,purchase_value:+form.purchase_value||null,current_value:+form.current_value||null,usd_inr_rate:+form.usd_inr_rate||_liveUsdInr};
+              await api("/api/holdings",{method:"POST",body:JSON.stringify(h)});
+              const hlds=await api("/api/holdings"); setHoldings(hlds||[]);
+              setModal(null);setForm(BF);setTxnForm(BT);
+            }catch(e){alert("Save failed: "+e.message);}
+          }}>Skip transaction, save holding</button>
+          <button className="btns" onClick={async()=>{
+            if(!form.name||!form.member_id){alert("Enter a name and select a member");return;}
+            const hasTxn=txnForm.units&&(USD_TYPES.has(form.type)?txnForm.price_usd:txnForm.price);
+            try{
+              const hId=uid();
+              const h={...form,id:hId,principal:+form.principal||null,interest_rate:+form.interest_rate||null,purchase_value:+form.purchase_value||null,current_value:+form.current_value||null,usd_inr_rate:+form.usd_inr_rate||_liveUsdInr};
+              await api("/api/holdings",{method:"POST",body:JSON.stringify(h)});
+              if(hasTxn){
+                await api("/api/transactions",{method:"POST",body:JSON.stringify({
+                  holding_id:hId, txn_type:"BUY",
+                  units:+txnForm.units, price:+txnForm.price||+(+txnForm.price_usd*_liveUsdInr).toFixed(2),
+                  price_usd:txnForm.price_usd?+txnForm.price_usd:undefined,
+                  txn_date:txnForm.txn_date, notes:"First buy via quick-add",
+                })});
+              }
+              const hlds=await api("/api/holdings"); setHoldings(hlds||[]);
+              setModal(null);setForm(BF);setTxnForm(BT);
+            }catch(e){alert("Save failed: "+e.message);}
+          }} disabled={!form.name||!form.member_id}>{txnForm.units?"Save holding + transaction":"Save holding"}</button>
+        </MA>
+      </Overlay>);
+    })()}
     {/* ── Unified + Add Chooser ── */}
     {modal==="add"&&(
       <Overlay onClose={()=>setModal(null)}>
