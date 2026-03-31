@@ -2770,7 +2770,14 @@ ${alertLines||"  None"}`;
             .sort((a,b)=>a[0].localeCompare(b[0])).slice(-6):[];
           const maxMonthly=Math.max(...monthlyData.map(x=>x[1]),1);
 
-          const fmtAmt=n=>n>=1e7?`₹${(n/1e7).toFixed(2)}Cr`:n>=1e5?`₹${(n/1e5).toFixed(1)}L`:n>=1000?`₹${(n/1000).toFixed(1)}K`:`₹${Math.round(n).toLocaleString("en-IN")}`;
+          const fmtAmt=(n,cur)=>{
+            if(cur==="USD") return n>=1e6?`$${(n/1e6).toFixed(2)}M`:n>=1e3?`$${(n/1000).toFixed(1)}K`:`$${Math.round(n).toLocaleString("en-US")}`;
+            return n>=1e7?`₹${(n/1e7).toFixed(2)}Cr`:n>=1e5?`₹${(n/1e5).toFixed(1)}L`:n>=1000?`₹${(n/1000).toFixed(1)}K`:`₹${Math.round(n).toLocaleString("en-IN")}`;
+          };
+          // Detect dominant currency from statements (for analytics overview)
+          const usStmts = budgetStatements.filter(s=>s.region==="US").length;
+          const inStmts = budgetStatements.filter(s=>s.region==="IN").length;
+          const domCur = usStmts >= inStmts && usStmts > 0 ? "USD" : "INR";
           const TYPE_COLORS={"BANK":"#5a9ce0","CREDIT_CARD":"#e07c5a","UPI":"#4caf9a","OTHER":"#a084ca"};
           const TYPE_ICONS={"BANK":"🏦","CREDIT_CARD":"💳","UPI":"📲","OTHER":"📄"};
 
@@ -2851,7 +2858,7 @@ ${alertLines||"  None"}`;
                     <div key={k.label} className="card" style={{padding:".85rem 1rem"}}>
                       <div style={{fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.45)",marginBottom:".4rem"}}>{k.label}</div>
                       <div style={{fontFamily:"'DM Mono',monospace",fontSize:k.isCnt?"1.4rem":"1.1rem",color:k.color}}>
-                        {k.isCnt?k.val:fmtAmt(Math.abs(k.val))}
+                        {k.isCnt?k.val:fmtAmt(Math.abs(k.val),domCur)}
                       </div>
                     </div>
                   ))}
@@ -2879,7 +2886,7 @@ ${alertLines||"  None"}`;
                               return<path key={i} d={path} fill={d.color} opacity=".9"/>;
                             });
                           })()}
-                          <text x="90" y="86" textAnchor="middle" fill="#ffffff" fontSize="10" fontFamily="'DM Mono',monospace">{fmtAmt(totalSpend)}</text>
+                          <text x="90" y="86" textAnchor="middle" fill="#ffffff" fontSize="10" fontFamily="'DM Mono',monospace">{fmtAmt(totalSpend,domCur)}</text>
                           <text x="90" y="100" textAnchor="middle" fill="rgba(255,255,255,.5)" fontSize="8">spent</text>
                         </svg>
                         <div style={{flex:1,minWidth:120}}>
@@ -2905,7 +2912,7 @@ ${alertLines||"  None"}`;
                           const label=new Date(mo+"-01").toLocaleDateString("en-IN",{month:"short"});
                           return(
                           <div key={mo} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:".3rem"}}>
-                            <div style={{fontSize:".6rem",color:"rgba(255,255,255,.5)",fontFamily:"'DM Mono',monospace"}}>{fmtAmt(val)}</div>
+                            <div style={{fontSize:".6rem",color:"rgba(255,255,255,.5)",fontFamily:"'DM Mono',monospace"}}>{fmtAmt(val,domCur)}</div>
                             <div style={{width:"100%",background:"rgba(201,168,76,.12)",borderRadius:"3px 3px 0 0",height:100,display:"flex",alignItems:"flex-end"}}>
                               <div style={{width:"100%",background:"rgba(201,168,76,.7)",borderRadius:"3px 3px 0 0",height:`${pct}%`,transition:"height .6s ease"}}/>
                             </div>
@@ -2931,7 +2938,7 @@ ${alertLines||"  None"}`;
                         <div key={d.name} style={{padding:".75rem .9rem",background:"rgba(255,255,255,.03)",border:`1px solid rgba(255,255,255,.07)`,borderRadius:7}}>
                           <div style={{display:"flex",justifyContent:"space-between",marginBottom:".45rem"}}>
                             <span style={{fontSize:".8rem",color:"#ffffff"}}>{d.icon} {d.name}</span>
-                            <span style={{fontFamily:"'DM Mono',monospace",fontSize:".78rem",color:over?"#e07c5a":"#c9a84c"}}>{fmtAmt(d.value)}</span>
+                            <span style={{fontFamily:"'DM Mono',monospace",fontSize:".78rem",color:over?"#e07c5a":"#c9a84c"}}>{fmtAmt(d.value,domCur)}</span>
                           </div>
                           {limit>0&&(
                             <>
@@ -2939,8 +2946,8 @@ ${alertLines||"  None"}`;
                                 <div style={{height:"100%",width:`${pct}%`,background:over?"#e07c5a":d.color,borderRadius:2,transition:"width .6s"}}/>
                               </div>
                               <div style={{fontSize:".65rem",color:"rgba(255,255,255,.45)"}}>
-                                {over?<span style={{color:"#e07c5a"}}>Over by {fmtAmt(d.value-limit)}</span>:
-                                  <span>{fmtAmt(limit-d.value)} remaining of {fmtAmt(limit)}</span>}
+                                {over?<span style={{color:"#e07c5a"}}>Over by {fmtAmt(d.value-limit,domCur)}</span>:
+                                  <span>{fmtAmt(limit-d.value,domCur)} remaining of {fmtAmt(limit,domCur)}</span>}
                               </div>
                             </>
                           )}
@@ -3063,7 +3070,7 @@ ${alertLines||"  None"}`;
                             <td className="mono dim" style={{fontSize:".75rem"}}>{t.txn_date}</td>
                             <td style={{maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:".78rem",color:"rgba(255,255,255,.8)"}}>{t.description}</td>
                             <td className="r mono" style={{color:t.txn_type==="DEBIT"?"#e07c5a":"#4caf9a",fontSize:".82rem"}}>
-                              {t.txn_type==="DEBIT"?"-":"+"}{fmtAmt(t.amount)}
+                              {t.txn_type==="DEBIT"?"-":"+"}{fmtAmt(t.amount,t.currency)}
                             </td>
                             <td><span className="tbadge2" style={{background:t.txn_type==="DEBIT"?"rgba(224,124,90,.15)":"rgba(76,175,154,.15)",color:t.txn_type==="DEBIT"?"#e07c5a":"#4caf9a",fontSize:".65rem"}}>{t.txn_type}</span></td>
                             <td>

@@ -1857,6 +1857,7 @@ app.post("/api/plaid/sync/:connectionId", auth, async (req, res) => {
           account_id: t.account_id,
         })),
         ref_number: t.transaction_id,
+        currency: "USD",
       }));
 
       // Batch insert
@@ -4335,6 +4336,7 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
       amount, txn_type: type, category,
       balance: row.balance ? encrypt(String(row.balance)) : null,
       ref_number: (row.ref || "").slice(0, 50),
+      currency: region === "US" ? "USD" : region === "IN" ? "INR" : "USD",
     });
   }
 
@@ -4355,7 +4357,7 @@ app.post("/api/budget/upload", auth, upload.single("file"), async (req, res) => 
     id, source: source || bankInfo.label || "Unknown", statement_type: statement_type || "BANK",
     filename: req.file.originalname, file_size: req.file.size,
     period_start: periodStart, period_end: periodEnd,
-    txn_count: txns.length, notes: notes || "",
+    txn_count: txns.length, notes: notes || "", region: region || "AUTO",
   });
   if (stErr) return res.status(500).json({ error: stErr.message });
 
@@ -4420,6 +4422,7 @@ app.post("/api/budget/debug-pdf", auth, upload.single("file"), async (req, res) 
             amount, txn_type: type, category,
             balance: row.balance ? encrypt(String(row.balance)) : null,
             ref_number: (row.ref || "").slice(0, 50),
+            currency: "USD",
           });
         }
 
@@ -4429,7 +4432,7 @@ app.post("/api/budget/debug-pdf", auth, upload.single("file"), async (req, res) 
             id, source: "Bank of America (debug)", statement_type: "BANK",
             filename: req.file.originalname, file_size: req.file.size,
             period_start: periodStart, period_end: periodEnd,
-            txn_count: txns.length, notes: "Imported via debug endpoint",
+            txn_count: txns.length, notes: "Imported via debug endpoint", region: "US",
           });
           for (let i = 0; i < txns.length; i += 100) {
             const { error: txErr } = await supabase.from("budget_transactions").insert(txns.slice(i, i + 100));
