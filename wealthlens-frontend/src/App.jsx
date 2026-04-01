@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from "./supabase.js";
 import SnapTradeImport from "./SnapTradeImport";
+import PortfolioSync from './PortfolioSync';
 // SetuAAImport — disabled until Setu integration is ready
 // import SetuAAImport from "./SetuAAImport";
 
@@ -4870,6 +4871,43 @@ ${alertLines||"  None"}`;
         </MA>
       </Overlay>);
     })()}
+
+    const renderImportModal = () => (
+  <div className="ovl" onClick={() => setShowImport(false)}>
+    <div className="mod" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+      <div className="hdr">
+        <div className="ctitle">Add to portfolio</div>
+        <button className="btn-icon" onClick={() => setShowImport(false)}>✕</button>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}>
+        {/* US Market Option */}
+        <div className="import-card recommended">
+          <div className="card-icon">US</div>
+          <div className="card-text">
+            <strong>SnapTrade Import <span className="badge">RECOMMENDED</span></strong>
+            <p>Connect Robinhood, Schwab, Fidelity & more</p>
+          </div>
+          <SnapTradeImport onSync={() => { fetchAll(); setShowImport(false); }} />
+        </div>
+
+        {/* Indian Market Option */}
+        <div className="import-card" style={{ border: "1px solid rgba(201, 168, 76, 0.3)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "15px" }}>
+            <div className="card-icon" style={{ background: "#81b29a" }}>IN</div>
+            <div className="card-text">
+              <strong>Indian Mutual Funds <span className="badge" style={{ background: "#c9a84c", color: "#000" }}>NEW</span></strong>
+              <p>Sync via NSDL/CDSL CAS PDF</p>
+            </div>
+          </div>
+          <PortfolioSync onSyncComplete={() => { fetchAll(); setShowImport(false); }} />
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+
     {/* ── Unified + Add Chooser ── */}
     {modal==="add"&&(
       <Overlay onClose={()=>setModal(null)}>
