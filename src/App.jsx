@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from "./supabase.js";
 import SnapTradeImport from "./SnapTradeImport";
 // SetuAAImport — disabled until Setu integration is ready
@@ -1127,14 +1127,17 @@ export default function App() {
     return ()=>subscription.unsubscribe();
   },[]);
 
-  // ── Load data when signed in ──
+  // ── Load data when signed in (fully parallelized) ──
   useEffect(()=>{
     if(!user)return;
     (async()=>{
       try{
-        const [portfolio, hlds] = await Promise.all([
+        // Fire ALL 4 requests in parallel — saves ~200-400ms on Render cold starts
+        const [portfolio, hlds, prof, ats] = await Promise.all([
           api("/api/portfolio"),
           api("/api/holdings"),
+          api("/api/profile").catch(()=>null),
+          api("/api/asset-types").catch(()=>[]),
         ]);
         if(portfolio){
           setMembers(portfolio.members||[]);
@@ -1148,21 +1151,15 @@ export default function App() {
         }
         setHoldings(hlds||[]);
         // Compute last price refresh time from holdings
-        const fetched = hlds.filter(h=>h.price_fetched_at).map(h=>new Date(h.price_fetched_at));
+        const fetched = (hlds||[]).filter(h=>h.price_fetched_at).map(h=>new Date(h.price_fetched_at));
         if(fetched.length) setLastPriceRefresh(new Date(Math.max(...fetched)));
-      } catch(e){ console.error("Load error",e); }
-      setLoaded(true);
-      // Load Hub profile and asset types
-      try {
-        const [prof, ats] = await Promise.all([
-          api("/api/profile"),
-          api("/api/asset-types")
-        ]);
+        // Profile & asset types — already resolved from parallel call
         if(prof){ setProfile(prof); }
         // Fetch live FX rate on login
         try { const fxData = await api("/api/forex/usdinr"); if(fxData?.rate) _liveUsdInr = fxData.rate; } catch{}
         if(ats?.length) setAssetTypes(ats);
-      } catch(e){ console.warn("Profile load:", e.message); }
+      } catch(e){ console.error("Load error",e); }
+      setLoaded(true);
       // Load sharing info + sync missing shares
       try {
         // First sync: create shares for any members whose emails now have accounts
@@ -1586,21 +1583,21 @@ export default function App() {
     }catch{ setEtfInfo(null); }
   }
   function buildPortfolioContext(){
-    const allCurCtx  = holdings.reduce((s,h)=>s+getValINR(h),0);
-    const allInvCtx  = holdings.reduce((s,h)=>s+getInvINR(h),0);
+    const allCurCtx  = allCur;  // reuse memoized value
+    const allInvCtx  = allInv;  // reuse memoized value
     const allGainCtx = allCurCtx - allInvCtx;
     const allPctCtx  = allInvCtx>0 ? (allGainCtx/allInvCtx)*100 : 0;
 
     const memberLines = members.map(m=>{
       const hs = holdings.filter(h=>h.member_id===m.id);
-      const cur = hs.reduce((s,h)=>s+getValINR(h),0);
-      const inv = hs.reduce((s,h)=>s+getInvINR(h),0);
+      const cur = hs.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
+      const inv = hs.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);
       return `  ${m.name} (${m.relation}): current=${fmtCr(cur)}, invested=${fmtCr(inv)}, return=${inv>0?((cur-inv)/inv*100).toFixed(1):0}%`;
     }).join("\n");
 
     const holdingLines = holdings.map(h=>{
       const cur=getVal(h), inv=getInv(h), g=cur-inv;
-      const xr=getXIRR(h);
+      const xr=xirrCache.get(h.id) || { value: null, method: null };
       const mn=members.find(m=>m.id===h.member_id)?.name||"";
       const txns=h.transactions||[];
       const txnSummary = txns.length>0
@@ -1610,7 +1607,7 @@ export default function App() {
     }).join("\n");
 
     const allocationLines = Object.entries(AT).map(([t,a])=>{
-      const val=holdings.filter(h=>h.type===t).reduce((s,h)=>s+getValINR(h),0);
+      const val=holdings.filter(h=>h.type===t).reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
       if(val===0) return null;
       return `  ${a.label}: ${fmtCr(val)} (${allCurCtx>0?(val/allCurCtx*100).toFixed(1):0}%)`;
     }).filter(Boolean).join("\n");
@@ -1821,11 +1818,10 @@ ${alertLines||"  None"}`;
   // ── PDF report ──
   async function generatePDF(){
     setPdfState({loading:true,summary:""}); setModal("pdf");
-    const allInv=holdings.reduce((s,h)=>s+getInvINR(h),0);
-    const allCur=holdings.reduce((s,h)=>s+getValINR(h),0);
-    const byTA=Object.keys(AT).map(t=>{const v=holdings.filter(h=>h.type===t).reduce((s,h)=>s+getValINR(h),0);return{...AT[t],t,v,pct:allCur>0?(v/allCur)*100:0};}).filter(x=>x.v>0);
-    const mSum=members.map(m=>{const hs=holdings.filter(h=>h.member_id===m.id);const c=hs.reduce((s,h)=>s+getValINR(h),0),i=hs.reduce((s,h)=>s+getInvINR(h),0);return{...m,cur:c,inv:i,pct:i>0?((c-i)/i)*100:0};});
-    const ctx=`Portfolio: ${fmtCr(allCur)} | Invested: ${fmtCr(allInv)} | Gain: ${fmtCr(allCur-allInv)} (${allCur>0?((allCur-allInv)/allInv*100).toFixed(1):0}%)\nMembers: ${mSum.map(m=>`${m.name}: ${fmtCr(m.cur)} (${m.pct.toFixed(1)}%)`).join("; ")}\nAllocation: ${byTA.map(x=>`${x.label}: ${fmtCr(x.v)} (${x.pct.toFixed(1)}%)`).join(", ")}\nGoals: ${goals.map(g=>`${g.name}: target ${fmtCr(g.targetAmount)} by ${g.targetDate}`).join("; ")}`;
+    // Reuse memoized allCur/allInv from derived data block
+    const byTA=Object.keys(AT).map(t=>{const v=holdings.filter(h=>h.type===t).reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);return{...AT[t],t,v,pct:allCur>0?(v/allCur)*100:0};}).filter(x=>x.v>0);
+    const mSumPdf=members.map(m=>{const hs=holdings.filter(h=>h.member_id===m.id);const c=hs.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0),i=hs.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);return{...m,cur:c,inv:i,pct:i>0?((c-i)/i)*100:0};});
+    const ctx=`Portfolio: ${fmtCr(allCur)} | Invested: ${fmtCr(allInv)} | Gain: ${fmtCr(allCur-allInv)} (${allCur>0?((allCur-allInv)/allInv*100).toFixed(1):0}%)\nMembers: ${mSumPdf.map(m=>`${m.name}: ${fmtCr(m.cur)} (${m.pct.toFixed(1)}%)`).join("; ")}\nAllocation: ${byTA.map(x=>`${x.label}: ${fmtCr(x.v)} (${x.pct.toFixed(1)}%)`).join(", ")}\nGoals: ${goals.map(g=>`${g.name}: target ${fmtCr(g.targetAmount)} by ${g.targetDate}`).join("; ")}`;
     try{
       const data = await api("/api/ai/chat", {
         method: "POST",
@@ -1880,14 +1876,42 @@ ${alertLines||"  None"}`;
     setAlerts([]);
   }
 
-  // ── Derived data ──
+  // ── Derived data (memoized — recomputes only when deps change) ──
   // Combine own holdings with shared holdings for Family Portfolio view
-  const allHoldings = [...holdings, ...sharedHoldings];
-  const allMembers = [...members, ...sharedMembers];
+  const allHoldings = useMemo(() => [...holdings, ...sharedHoldings], [holdings, sharedHoldings]);
+  const allMembers = useMemo(() => [...members, ...sharedMembers], [members, sharedMembers]);
+
+  // ── Per-holding value caches: getValINR/getInvINR/getXIRR called ONCE per data change ──
+  const valINRCache = useMemo(() => {
+    const m = new Map();
+    for (const h of allHoldings) m.set(h.id, getValINR(h));
+    return m;
+  }, [allHoldings]);
+  const invINRCache = useMemo(() => {
+    const m = new Map();
+    for (const h of allHoldings) m.set(h.id, getInvINR(h));
+    return m;
+  }, [allHoldings]);
+  const xirrCache = useMemo(() => {
+    const m = new Map();
+    for (const h of allHoldings) m.set(h.id, getXIRR(h));
+    return m;
+  }, [allHoldings]);
+  // Native-currency caches (for per-row display in holdings table)
+  const valNativeCache = useMemo(() => {
+    const m = new Map();
+    for (const h of allHoldings) m.set(h.id, getVal(h));
+    return m;
+  }, [allHoldings]);
+  const invNativeCache = useMemo(() => {
+    const m = new Map();
+    for (const h of allHoldings) m.set(h.id, getInv(h));
+    return m;
+  }, [allHoldings]);
 
   // allCur/allInv represent the total across own + shared portfolios
-  const allCur=allHoldings.reduce((s,h)=>s+getValINR(h),0);
-  const allInv=allHoldings.reduce((s,h)=>s+getInvINR(h),0);
+  const allCur = useMemo(() => allHoldings.reduce((s,h) => s + (valINRCache.get(h.id)||0), 0), [allHoldings, valINRCache]);
+  const allInv = useMemo(() => allHoldings.reduce((s,h) => s + (invINRCache.get(h.id)||0), 0), [allHoldings, invINRCache]);
 
   // Sort toggle: click same col flips direction, click new col sorts asc
   function toggleSort(col) {
@@ -1895,7 +1919,7 @@ ${alertLines||"  None"}`;
     else { setSortCol(col); setSortDir("asc"); }
   }
 
-  // Sort comparator — extract value per column key
+  // Sort comparator — extract value per column key (uses caches)
   function _sortVal(h, col) {
     switch (col) {
       case "name":    return (h.name || "").toLowerCase();
@@ -1906,47 +1930,47 @@ ${alertLines||"  None"}`;
       case "units":   return Number(h.net_units ?? h.units ?? 0);
       case "avg":     return Number(h.avg_cost ?? h.purchase_price ?? h.purchase_nav ?? 0);
       case "price":   return Number(h.type === "MF" ? (h.current_nav || 0) : (h.current_price || 0));
-      case "invested": return getInvINR(h);
-      case "current":  return getValINR(h);
-      case "gain":     return getValINR(h) - getInvINR(h);
-      case "return":   { const inv = getInvINR(h); return inv > 0 ? ((getValINR(h) - inv) / inv) * 100 : 0; }
+      case "invested": return invINRCache.get(h.id)||0;
+      case "current":  return valINRCache.get(h.id)||0;
+      case "gain":     return (valINRCache.get(h.id)||0) - (invINRCache.get(h.id)||0);
+      case "return":   { const inv = invINRCache.get(h.id)||0; return inv > 0 ? (((valINRCache.get(h.id)||0) - inv) / inv) * 100 : 0; }
       default:         return 0;
     }
   }
 
   // Build member selector entries: own members + one entry per shared portfolio owner
-  const sharedOwnerChips = sharedWithMe.map(s => ({
+  const sharedOwnerChips = useMemo(() => sharedWithMe.map(s => ({
     id: `_owner_${s.owner_id}`,
     name: `${s.owner_name}'s`,
     _shared: true,
     _shared_owner_id: s.owner_id,
-  }));
+  })), [sharedWithMe]);
 
-  const filteredH = (selMember === "all"
+  const filteredH = useMemo(() => (selMember === "all"
     ? allHoldings
     : selMember.startsWith("_owner_")
       ? allHoldings.filter(h => h._shared_owner_id === selMember.replace("_owner_", ""))
       : allHoldings.filter(h => h.member_id === selMember)
-  ).filter(h => filterType === "ALL" || h.type === filterType);
+  ).filter(h => filterType === "ALL" || h.type === filterType), [allHoldings, selMember, filterType]);
 
-  const visH = sortCol
+  const visH = useMemo(() => sortCol
     ? [...filteredH].sort((a, b) => {
         const va = _sortVal(a, sortCol), vb = _sortVal(b, sortCol);
         const cmp = typeof va === "string" ? va.localeCompare(vb) : va - vb;
         return sortDir === "asc" ? cmp : -cmp;
       })
-    : filteredH;
-  const totCur=visH.reduce((s,h)=>s+getValINR(h),0);
-  const totInv=visH.reduce((s,h)=>s+getInvINR(h),0);
+    : filteredH, [filteredH, sortCol, sortDir, valINRCache, invINRCache]);
+  const totCur = useMemo(() => visH.reduce((s,h) => s + (valINRCache.get(h.id)||0), 0), [visH, valINRCache]);
+  const totInv = useMemo(() => visH.reduce((s,h) => s + (invINRCache.get(h.id)||0), 0), [visH, invINRCache]);
   const totGain=totCur-totInv, totPct=totInv>0?(totGain/totInv)*100:0;
-  const byType=Object.keys(AT).map(t=>{const hs=visH.filter(h=>h.type===t);const v=hs.reduce((s,h)=>s+getValINR(h),0),i=hs.reduce((s,h)=>s+getInvINR(h),0);return{t,v,i,count:hs.length,pct:totCur>0?(v/totCur)*100:0};}).filter(x=>x.v>0);
-  const mSum=allMembers.map(m=>{const hs=allHoldings.filter(h=>h.member_id===m.id);const c=hs.reduce((s,h)=>s+getValINR(h),0),i=hs.reduce((s,h)=>s+getInvINR(h),0);return{...m,cur:c,inv:i,gain:c-i,pct:i>0?((c-i)/i)*100:0};});
-  const trigAlerts=alerts.filter(a=>{
+  const byType = useMemo(() => Object.keys(AT).map(t=>{const hs=visH.filter(h=>h.type===t);const v=hs.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0),i=hs.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);return{t,v,i,count:hs.length,pct:totCur>0?(v/totCur)*100:0};}).filter(x=>x.v>0), [visH, valINRCache, invINRCache, totCur]);
+  const mSum = useMemo(() => allMembers.map(m=>{const hs=allHoldings.filter(h=>h.member_id===m.id);const c=hs.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0),i=hs.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);return{...m,cur:c,inv:i,gain:c-i,pct:i>0?((c-i)/i)*100:0};}), [allHoldings, allMembers, valINRCache, invINRCache]);
+  const trigAlerts = useMemo(() => alerts.filter(a=>{
     if(!a.active)return false;
-    if(a.type==="ALLOCATION_DRIFT"||a.type==="CONCENTRATION"){const v=allHoldings.filter(h=>h.type===a.assetType).reduce((s,h)=>s+getValINR(h),0);const p=allCur>0?(v/allCur)*100:0;return a.type==="CONCENTRATION"?p<a.threshold:p>a.threshold;}
+    if(a.type==="ALLOCATION_DRIFT"||a.type==="CONCENTRATION"){const v=allHoldings.filter(h=>h.type===a.assetType).reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);const p=allCur>0?(v/allCur)*100:0;return a.type==="CONCENTRATION"?p<a.threshold:p>a.threshold;}
     if(a.type==="RETURN_TARGET")return totPct<a.threshold;
     return false;
-  });
+  }), [alerts, allHoldings, valINRCache, allCur, totPct]);
 
   const syncColor=syncSt==="saved"?"#4caf9a":syncSt==="saving"?"#c9a84c":syncSt==="error"?"#e07c5a":"rgba(255,255,255,.4)";
 
@@ -2221,8 +2245,8 @@ ${alertLines||"  None"}`;
           {/* ── NET WORTH TIMELINE ── */}
           {(()=>{
             const nwHoldings = nwMember==="all" ? allHoldings : allHoldings.filter(h=>h.member_id===nwMember);
-            const nwCur = nwHoldings.reduce((s,h)=>s+getValINR(h),0);
-            const nwInv = nwHoldings.reduce((s,h)=>s+getInvINR(h),0);
+            const nwCur = nwHoldings.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
+            const nwInv = nwHoldings.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);
 
             // Build cumulative invested per month from transactions
             const monthlyInv = {};
@@ -2234,7 +2258,7 @@ ${alertLines||"  None"}`;
               }
               if(["FD","PPF","EPF","REAL_ESTATE"].includes(h.type)&&h.start_date){
                 const mo=h.start_date.slice(0,7);
-                monthlyInv[mo]=(monthlyInv[mo]||0)+getInvINR(h);
+                monthlyInv[mo]=(monthlyInv[mo]||0)+(invINRCache.get(h.id)||0);
               }
             }
             // Convert to cumulative
@@ -2372,8 +2396,8 @@ ${alertLines||"  None"}`;
                     const COL_COUNT = 11;
 
                     return groups.map(grp => {
-                      const grpCur = grp.items.reduce((s, h) => s + getValINR(h), 0);
-                      const grpInv = grp.items.reduce((s, h) => s + getInvINR(h), 0);
+                      const grpCur = grp.items.reduce((s, h) => s + (valINRCache.get(h.id)||0), 0);
+                      const grpInv = grp.items.reduce((s, h) => s + (invINRCache.get(h.id)||0), 0);
                       const grpG = grpCur - grpInv;
                       const grpP = grpInv > 0 ? (grpG / grpInv) * 100 : 0;
                       return [
@@ -2396,7 +2420,7 @@ ${alertLines||"  None"}`;
                         </tr>,
                         // Holdings rows within this group
                         ...grp.items.map(h => {
-                    const cur=getVal(h),inv=getInv(h),g=cur-inv,p=inv>0?(g/inv)*100:0;
+                    const cur=valNativeCache.get(h.id)||0,inv=invNativeCache.get(h.id)||0,g=cur-inv,p=inv>0?(g/inv)*100:0;
                     const a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
                     const mn=allMembers.find(m=>m.id===h.member_id)?.name||"";
                     const isSharedH = h._shared;
@@ -2490,8 +2514,8 @@ ${alertLines||"  None"}`;
                 </tbody>
                 {/* Totals footer row */}
                 {visH.length>0&&(()=>{
-                  const totI=visH.reduce((s,h)=>s+getInvINR(h),0);
-                  const totC=visH.reduce((s,h)=>s+getValINR(h),0);
+                  const totI=visH.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);
+                  const totC=visH.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
                   const totG=totC-totI;
                   const totP=totI>0?(totG/totI)*100:0;
                   return(
@@ -2530,9 +2554,9 @@ ${alertLines||"  None"}`;
             const memberH = lm.includes("all")||lm.length===0 ? allHoldings : allHoldings.filter(h=>lm.includes(h.member_id));
             if(lt.length>0){
               const typeSet=new Set(lt);
-              return memberH.filter(h=>typeSet.has(h.type)).reduce((s,h)=>s+getValINR(h),0);
+              return memberH.filter(h=>typeSet.has(h.type)).reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
             }
-            return memberH.reduce((s,h)=>s+getValINR(h),0);
+            return memberH.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
           }
 
           // Detect asset types allocated to multiple goals (double-counting)
@@ -2649,7 +2673,7 @@ ${alertLines||"  None"}`;
         {tab==="members"&&(<>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Family Members</div><button className="btn-sm" onClick={()=>openMemberModal(null)}>+ Add Member</button></div>
           {mSum.length===0&&(<div className="empty">No members yet. Add a family member to start tracking individual portfolios.</div>)}
-          {mSum.map(m=>{const hs=allHoldings.filter(h=>h.member_id===m.id);const byT=Object.keys(AT).map(t=>({t,v:hs.filter(h=>h.type===t).reduce((s,h)=>s+getValINR(h),0)})).filter(x=>x.v>0);const holdingCount=hs.length;return(<div key={m.id} className="card" style={{marginBottom:"1rem"}}>
+          {mSum.map(m=>{const hs=allHoldings.filter(h=>h.member_id===m.id);const byT=Object.keys(AT).map(t=>({t,v:hs.filter(h=>h.type===t).reduce((s,h)=>s+(valINRCache.get(h.id)||0),0)})).filter(x=>x.v>0);const holdingCount=hs.length;return(<div key={m.id} className="card" style={{marginBottom:"1rem"}}>
             <div style={{display:"flex",alignItems:"center",gap:".82rem",marginBottom:".95rem"}}>
               <div className="av" style={{width:42,height:42,fontSize:"1rem"}}>{m.name[0]}</div>
               <div style={{flex:1}}>
@@ -3533,14 +3557,14 @@ ${alertLines||"  None"}`;
         {/* ── ASSET ALLOCATION PLANNER ── */}
         {tab==="rebalance"&&(()=>{
           const rHoldings = rebalMember==="all" ? allHoldings : allHoldings.filter(h=>h.member_id===rebalMember);
-          const rTotal    = rHoldings.reduce((s,h)=>s+getValINR(h),0);
+          const rTotal    = rHoldings.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
           const cash      = +rebalCash||0;
           const totalWithCash = rTotal + cash;
 
           // Current allocation per type
           const curAlloc = {};
           for(const h of rHoldings){
-            curAlloc[h.type] = (curAlloc[h.type]||0) + getValINR(h);
+            curAlloc[h.type] = (curAlloc[h.type]||0) + (valINRCache.get(h.id)||0);
           }
 
           // Normalise targets (ensure they sum to 100)
@@ -4476,7 +4500,7 @@ ${alertLines||"  None"}`;
               const lm=goalForm.linkedMembers||["all"];
               const memberH = lm.includes("all") ? holdings : holdings.filter(h=>lm.includes(h.member_id));
               const typeCount=memberH.filter(h=>h.type===type).length;
-              const typeVal=memberH.filter(h=>h.type===type).reduce((s,h)=>s+getValINR(h),0);
+              const typeVal=memberH.filter(h=>h.type===type).reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
               return(
               <div key={type} onClick={()=>setGoalForm(p=>{
                 const cur=new Set(p.linkedTypes||[]);
@@ -4501,7 +4525,7 @@ ${alertLines||"  None"}`;
             const lm=goalForm.linkedMembers||["all"];
             const memberH = lm.includes("all") ? holdings : holdings.filter(h=>lm.includes(h.member_id));
             const typeSet=new Set(goalForm.linkedTypes);
-            const totalLinked=memberH.filter(h=>typeSet.has(h.type)).reduce((s,h)=>s+getValINR(h),0);
+            const totalLinked=memberH.filter(h=>typeSet.has(h.type)).reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
             const holdingCount=memberH.filter(h=>typeSet.has(h.type)).length;
             return(
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:".5rem",padding:".4rem .65rem",background:"rgba(201,168,76,.06)",borderRadius:5,border:"1px solid rgba(201,168,76,.15)"}}>
