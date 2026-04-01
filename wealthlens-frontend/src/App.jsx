@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from "./supabase.js";
-import SnapTradeImport from "./SnapTradeImport";
-import PortfolioSync from './PortfolioSync';
+import SnapTradeImport from "./SnapTradeImport.jsx";
+import PortfolioSync from './PortfolioSync.jsx';
 // SetuAAImport — disabled until Setu integration is ready
 // import SetuAAImport from "./SetuAAImport";
 
