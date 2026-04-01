@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+python-multipart
+casparser==0.4.4
+supabase
