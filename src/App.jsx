@@ -75,6 +75,7 @@ function getInv(h){
 // Convert native value → INR for unified portfolio totals
 function toINR(val, h) { return isUSDHolding(h) ? val * (h.usd_inr_rate || _liveUsdInr) : val; }
 function toUSD(val, h) { return isUSDHolding(h) ? val : val / _liveUsdInr; }
+function fxFor(h) { return isUSDHolding(h) ? (h.usd_inr_rate || _liveUsdInr) : 1; }
 function getValINR(h) { return toINR(getVal(h), h); }
 function getInvINR(h) { return toINR(getInv(h), h); }
 function xirr(cfs,dates){if(cfs.length<2)return null;const d0=dates[0],yrs=dates.map(d=>(d-d0)/(864e5*365.25));const npv=r=>cfs.reduce((s,c,i)=>s+c/Math.pow(1+r,yrs[i]),0);const dnpv=r=>cfs.reduce((s,c,i)=>s-yrs[i]*c/Math.pow(1+r,yrs[i]+1),0);let r=0.1;for(let i=0;i<100;i++){const f=npv(r),df=dnpv(r);if(Math.abs(df)<1e-12)break;const nr=r-f/df;if(Math.abs(nr-r)<1e-7){r=nr;break;}r=nr;if(r<-0.999)r=-0.999;}return isFinite(r)?r*100:null;}
