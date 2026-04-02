@@ -1239,8 +1239,24 @@ app.post("/api/snaptrade/register", auth, async (req, res) => {
     if (existing) return res.json({ snaptrade_user_id: existing.snaptrade_user_id, already_registered: true });
 
     const snapUserId = `wlh-${req.user.id}`;
-    const resp = await getSnapClient().authentication.registerSnapTradeUser({ userId: snapUserId });
-    const userSecret = resp.data.userSecret;
+    let userSecret;
+
+    try {
+      const resp = await getSnapClient().authentication.registerSnapTradeUser({ userId: snapUserId });
+      userSecret = resp.data.userSecret;
+    } catch (regErr) {
+      // 400 = user already registered on SnapTrade side but missing locally
+      // Reset their secret so we can store it and proceed
+      if (regErr.status === 400 || regErr.response?.status === 400) {
+        console.log("SnapTrade register: user already exists on SnapTrade, resetting secret...");
+        const resetResp = await getSnapClient().authentication.resetSnapTradeUserSecret({
+          userId: snapUserId, userSecret: "placeholder",   // SDK requires the field but SnapTrade ignores it for reset
+        });
+        userSecret = resetResp.data.userSecret;
+      } else {
+        throw regErr;
+      }
+    }
 
     await supabase.from("snaptrade_connections").insert({
       owner_id: req.user.id,
@@ -1251,7 +1267,9 @@ app.post("/api/snaptrade/register", auth, async (req, res) => {
     res.json({ snaptrade_user_id: snapUserId, registered: true });
   } catch (e) {
     console.error("SnapTrade register:", e.message);
-    res.status(500).json({ error: e.message });
+    const status = e.status || e.response?.status || 500;
+    const detail = e.response?.data || e.message;
+    res.status(status).json({ error: typeof detail === "string" ? detail : JSON.stringify(detail) });
   }
 });
 
