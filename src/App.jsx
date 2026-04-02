@@ -1111,6 +1111,8 @@ export default function App() {
   const [aiLoading,      setAiLoading]      = useState(false);
   const [showSnapTrade,  setShowSnapTrade]   = useState(false);
   // const [showSetuAA, setShowSetuAA] = useState(false); // Setu AA disabled
+  const [moreSheetOpen,  setMoreSheetOpen]  = useState(false);
+  const [expandedHolding,setExpandedHolding]= useState(null);
   const aiBottomRef = useRef();
 
   const importFileRef = useRef();
@@ -1274,6 +1276,7 @@ export default function App() {
 
   // Auto-load shared portfolio data when sharedWithMe list updates
   useEffect(()=>{ if(loaded && sharedWithMe.length > 0) loadAllSharedHoldings(); },[sharedWithMe,loaded]);
+  useEffect(()=>{ setMoreSheetOpen(false); setExpandedHolding(null); },[tab]);
 
   // ── Real-time price refresh ──
   async function refreshPrices(){
@@ -2354,8 +2357,8 @@ ${alertLines||"  None"}`;
             <div className={`fchip${filterType==="ALL"?" act":""}`} onClick={()=>setFilterType("ALL")}>All</div>
             {Object.entries(AT).map(([k,v])=>(<div key={k} className={`fchip${filterType===k?" act":""}`} onClick={()=>setFilterType(k)}>{v.icon} {v.label}</div>))}
           </div>
-          {visH.length===0?<div className="empty">{demoMode?"No holdings match the current filter":"No holdings yet"} — <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setModal("add")}>add to portfolio</span>{!demoMode&&<>{" or "}<span style={{color:"#a084ca",cursor:"pointer",textDecoration:"underline"}} onClick={loadDemoData}>try sample data</span></>}</div>:(
-            <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",margin:"0 -0.9rem",padding:"0 0.9rem"}}>
+          {visH.length===0?<div className="empty">{demoMode?"No holdings match the current filter":"No holdings yet"} — <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setModal("add")}>add to portfolio</span>{!demoMode&&<>{" or "}<span style={{color:"#a084ca",cursor:"pointer",textDecoration:"underline"}} onClick={loadDemoData}>try sample data</span></>}</div>:(<>
+            <div className="ht-desktop"><div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",margin:"0 -0.9rem",padding:"0 0.9rem"}}>
               <table className="ht">
                 <thead><tr>
                   {[
@@ -2537,8 +2540,103 @@ ${alertLines||"  None"}`;
                   </tfoot>);
                 })()}
               </table>
+            </div></div>{/* end ht-desktop */}
+            {/* ── Mobile holding cards ── */}
+            <div className="m-holdings-list">
+              {(()=>{
+                const US_T=new Set(["US_STOCK","US_ETF","US_BOND","CRYPTO"]);
+                const IN_T=new Set(["IN_STOCK","IN_ETF","MF"]);
+                const groups=[
+                  {key:"us",label:"US Assets",icon:"$",color:"#5a9ce0",items:visH.filter(h=>US_T.has(h.type))},
+                  {key:"in",label:"Indian Assets",icon:"₹",color:"#e07c5a",items:visH.filter(h=>IN_T.has(h.type))},
+                  {key:"other",label:"Other Assets",icon:"📦",color:"#c9a84c",items:visH.filter(h=>!US_T.has(h.type)&&!IN_T.has(h.type))},
+                ].filter(g=>g.items.length>0);
+                return groups.map(grp=>{
+                  const grpCur=grp.items.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
+                  const grpInv=grp.items.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);
+                  const grpG=grpCur-grpInv;
+                  const grpP=grpInv>0?(grpG/grpInv)*100:0;
+                  return(<div key={grp.key}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:".5rem 0",marginTop:".3rem",marginBottom:".25rem",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+                      <span style={{fontSize:".68rem",letterSpacing:".08em",textTransform:"uppercase",color:grp.color,fontWeight:600}}>{grp.icon} {grp.label} <span style={{color:"rgba(255,255,255,.3)",fontWeight:400}}>{grp.items.length}</span></span>
+                      <span style={{fontFamily:"'DM Mono',monospace",fontSize:".7rem",color:grp.color}}>{fmtCr(grpCur)} <span className={grpG>=0?"gain":"loss"} style={{fontSize:".62rem"}}>{grpG>=0?"+":""}{fmtPct(grpP)}</span></span>
+                    </div>
+                    {grp.items.map(h=>{
+                      const cur=valNativeCache.get(h.id)||0,inv=invNativeCache.get(h.id)||0,g=cur-inv,p=inv>0?(g/inv)*100:0;
+                      const a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
+                      const mn=allMembers.find(m=>m.id===h.member_id)?.name||"";
+                      const isSharedH=h._shared;
+                      const units=h.net_units??h.units??null;
+                      const isUS=isUSDHolding(h);
+                      const nativeSym=isUS?"$":"₹";
+                      const isExp=expandedHolding===h.id;
+                      const rawPrice=h.type==="MF"?(h.current_nav||h.purchase_nav||null):(h.current_price||h.purchase_price||null);
+                      return(<div key={h.id} className="m-hc" onClick={()=>setExpandedHolding(isExp?null:h.id)}>
+                        <div className="m-hc-top">
+                          <div style={{flex:1,minWidth:0}}>
+                            <div className="m-hc-name">{h.name}</div>
+                            <div className="m-hc-ticker">
+                              {h.ticker||h.scheme_code||""}{mn&&<span style={{opacity:.5}}> · {mn}</span>}
+                            </div>
+                          </div>
+                          <span className="tbadge2" style={{background:a.color+"22",color:a.color,flexShrink:0,marginLeft:8}}>{a.icon} {a.label}</span>
+                        </div>
+                        <div className="m-hc-grid">
+                          <div className="m-hc-cell">
+                            <span className="m-hc-lbl">Current Value</span>
+                            <span className="m-hc-val" style={{fontWeight:600,color:"#c9a84c"}}>{fmtCrNative(cur,h)}</span>
+                          </div>
+                          <div className="m-hc-cell" style={{textAlign:"right"}}>
+                            <span className="m-hc-lbl">P&L</span>
+                            <span className={`m-hc-val ${g>=0?"gain":"loss"}`} style={{fontWeight:600}}>
+                              {g>=0?"+":""}{fmtNative(Math.abs(g),h)} ({fmtPct(p)})
+                            </span>
+                          </div>
+                          {isExp&&<>
+                            <div className="m-hc-cell">
+                              <span className="m-hc-lbl">Units</span>
+                              <span className="m-hc-val">{units!=null?Number(units).toLocaleString(undefined,{maximumFractionDigits:4}):"—"}</span>
+                            </div>
+                            <div className="m-hc-cell" style={{textAlign:"right"}}>
+                              <span className="m-hc-lbl">Invested</span>
+                              <span className="m-hc-val">{fmtCrNative(inv,h)}</span>
+                            </div>
+                            <div className="m-hc-cell">
+                              <span className="m-hc-lbl">Cur. Price</span>
+                              <span className="m-hc-val">{rawPrice?`${nativeSym}${h.type==="MF"?Number(rawPrice).toFixed(4):Number(rawPrice).toLocaleString(isUS?"en-US":"en-IN",{maximumFractionDigits:2})}`:"—"}</span>
+                            </div>
+                            <div className="m-hc-cell" style={{textAlign:"right"}}>
+                              <span className="m-hc-lbl">Source</span>
+                              <span className="m-hc-val" style={{fontSize:".68rem"}}>{h.source==="snaptrade"?"SnapTrade":h.source==="csv"||h.source==="import"?"CSV":h.source==="cas"?"CAS":"Manual"}</span>
+                            </div>
+                          </>}
+                        </div>
+                        {!isExp&&<div style={{textAlign:"center",marginTop:".4rem",fontSize:".56rem",color:"rgba(255,255,255,.2)",letterSpacing:".08em",textTransform:"uppercase"}}>tap for details</div>}
+                        {isExp&&<div className="m-hc-actions" onClick={e=>e.stopPropagation()}>
+                          <button title="Transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transactions||[]).length>0?"#a084ca":"rgba(255,255,255,.3)"}}>📋{(h.transactions||[]).length>0?` ${(h.transactions||[]).length}`:""}</button>
+                          {!isSharedH&&<>
+                            <button title="Documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"rgba(255,255,255,.3)"}}>📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}</button>
+                            <button title="Edit" onClick={()=>editH(h)} style={{color:"rgba(90,156,224,.5)"}}>✎</button>
+                            <button title="Delete" onClick={()=>deleteHolding(h.id)} style={{color:"rgba(224,124,90,.4)"}}>✕</button>
+                          </>}
+                        </div>}
+                      </div>);
+                    })}
+                  </div>);
+                });
+              })()}
+              {/* Mobile totals */}
+              {visH.length>0&&(()=>{
+                const totI=visH.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);
+                const totC=visH.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
+                const totG=totC-totI;const totP=totI>0?(totG/totI)*100:0;
+                return(<div className="m-hc-totals">
+                  <div><div className="m-hc-lbl">{visH.length} holding{visH.length!==1?"s":""} · Invested</div><div className="m-hc-val" style={{color:"rgba(255,255,255,.6)",marginTop:".15rem"}}>{fmtCr(totI)}</div></div>
+                  <div style={{textAlign:"right"}}><div className="m-hc-lbl">Current · P&L</div><div className="m-hc-val" style={{color:"#c9a84c",marginTop:".15rem"}}>{fmtCr(totC)}</div><div className={`m-hc-val ${totG>=0?"gain":"loss"}`} style={{fontWeight:600,fontSize:".75rem"}}>{totG>=0?"+":""}{fmtCr(totG)} ({fmtPct(totP)})</div></div>
+                </div>);
+              })()}
             </div>
-          )}
+          </>)}
           <div style={{marginTop:"1rem",padding:".75rem 1rem",background:"rgba(255,255,255,.02)",borderRadius:8,fontSize:".72rem",color:"rgba(255,255,255,.45)",lineHeight:1.6}}>
             <strong style={{color:"rgba(255,255,255,.65)"}}>Live prices:</strong> Add NSE ticker (e.g. <code style={{color:"#c9a84c"}}>RELIANCE</code>) or AMFI scheme code (e.g. <code style={{color:"#c9a84c"}}>119551</code>) when adding a holding, then click <strong style={{color:"rgba(255,255,255,.65)"}}>⟳ Live Prices</strong> to auto-fetch. 📎 button attaches contract notes, statements, or receipts to any holding.
           </div>
@@ -4928,6 +5026,46 @@ ${alertLines||"  None"}`;
     {/* Setu AA overlay — disabled until integration is ready */}
     {modal==="import"&&(<ImportModal importState={importState} setImportState={setImportState} members={members} AT={AT} handleImportFile={handleImportFile} executeImport={executeImport} resetImport={resetImport} importFileRef={importFileRef} onClose={()=>{setModal(null);resetImport();}} fmt={fmt} submitCASPassword={submitCASPassword}/>)}
     {modal==="pdf"&&(<Overlay onClose={()=>setModal(null)}><div className="modtitle">Portfolio Report</div>{pdfState.loading?(<div style={{textAlign:"center",padding:"2.5rem 0"}}><div style={{width:34,height:34,border:"2px solid rgba(201,168,76,.2)",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 1rem"}}/><div style={{fontSize:".8rem",color:"rgba(255,255,255,.5)"}}>Generating AI commentary…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>):(<><div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".7rem"}}>AI Advisor Commentary</div><div style={{background:"rgba(201,168,76,.05)",border:"1px solid rgba(201,168,76,.14)",borderRadius:8,padding:"1rem 1.2rem",fontSize:".8rem",lineHeight:1.72,color:"rgba(255,255,255,.85)",maxHeight:260,overflowY:"auto",whiteSpace:"pre-wrap"}}>{pdfState.summary}</div></>)}<MA><button className="btnc" onClick={()=>setModal(null)}>Close</button></MA></Overlay>)}
+    {/* ── Bottom Nav (mobile only, hidden on desktop via CSS) ── */}
+    <div className="bottom-nav">
+      {[
+        {key:"overview",icon:"📊",label:"Overview"},
+        {key:"holdings",icon:"📈",label:"Holdings"},
+        {key:"budget",icon:"💰",label:"Budget",budget:true},
+        {key:"goals",icon:"🎯",label:"Goals"},
+        {key:"_more",icon:"⋯",label:"More"},
+      ].map(n=>{
+        const lockedTabs=new Set(holdings.length===0&&!demoMode?["goals","alerts","members","calendar","rebalance","ask"]:[]);
+        const isLocked=n.key!=="_more"&&lockedTabs.has(n.key);
+        return(<div key={n.key}
+          className={`bnav-item${tab===n.key?" act":""}${n.budget?" budget-tab":""}${n.key==="_more"&&moreSheetOpen?" act":""}`}
+          style={isLocked?{opacity:.35,pointerEvents:"none"}:{}}
+          onClick={()=>{if(n.key==="_more"){setMoreSheetOpen(p=>!p);}else{setTab(n.key);setMoreSheetOpen(false);}}}
+        ><span className="bnav-icon">{n.icon}</span><span className="bnav-label">{n.label}</span></div>);
+      })}
+    </div>
+    {/* More sheet overlay */}
+    {moreSheetOpen&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",zIndex:205}} onClick={()=>setMoreSheetOpen(false)}/>}
+    <div className={`more-sheet${moreSheetOpen?" open":""}`}>
+      <div className="more-sheet-handle"/>
+      <div className="more-sheet-grid">
+        {[
+          {key:"alerts",icon:"🔔",label:"Alerts",badge:trigAlerts.length||null},
+          {key:"members",icon:"👥",label:"Members"},
+          {key:"calendar",icon:"📅",label:"Calendar"},
+          {key:"rebalance",icon:"⚖️",label:"Allocation"},
+          {key:"ask",icon:"✦",label:"AI Advisor"},
+        ].map(n=>{
+          const lockedTabs=new Set(holdings.length===0&&!demoMode?["goals","alerts","members","calendar","rebalance","ask"]:[]);
+          const isLocked=lockedTabs.has(n.key);
+          return(<div key={n.key}
+            className={`more-sheet-item${tab===n.key?" act":""}`}
+            style={isLocked?{opacity:.35,pointerEvents:"none"}:{}}
+            onClick={()=>{if(!isLocked){setTab(n.key);setMoreSheetOpen(false);}}}
+          ><span className="msi-icon">{n.icon}{n.badge&&<span className="tbadge" style={{marginLeft:2,verticalAlign:"top"}}>{n.badge}</span>}</span><span className="msi-label">{n.label}</span></div>);
+        })}
+      </div>
+    </div>
     </>
   );
 }
@@ -5543,42 +5681,138 @@ body{background:#070d1a}
    RESPONSIVE BREAKPOINTS
 ════════════════════════════════ */
 
-/* Tablet — 768px */
+/* ── Bottom Nav (mobile) ── */
+.bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(7,13,26,.97);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid rgba(201,168,76,.15);z-index:180;padding:.2rem 0 calc(.2rem + env(safe-area-inset-bottom));justify-content:space-around;align-items:center}
+.bnav-item{display:flex;flex-direction:column;align-items:center;gap:.15rem;padding:.35rem .5rem;border-radius:8px;cursor:pointer;transition:all .2s;min-width:52px;-webkit-tap-highlight-color:transparent}
+.bnav-item .bnav-icon{font-size:1.15rem;line-height:1}
+.bnav-item .bnav-label{font-size:.58rem;letter-spacing:.04em;color:rgba(255,255,255,.35);transition:color .2s}
+.bnav-item.act .bnav-label{color:#c9a84c}.bnav-item.act{background:rgba(201,168,76,.1)}
+.bnav-item.budget-tab .bnav-label{color:rgba(160,132,202,.55)}.bnav-item.budget-tab.act .bnav-label{color:#a084ca}.bnav-item.budget-tab.act{background:rgba(160,132,202,.1)}
+
+/* ── More sheet ── */
+.more-sheet{position:fixed;bottom:0;left:0;right:0;background:#0c1526;border-top-left-radius:20px;border-top-right-radius:20px;border:1px solid rgba(201,168,76,.15);border-bottom:none;padding:1rem;padding-bottom:calc(1.2rem + env(safe-area-inset-bottom));z-index:210;transform:translateY(100%);transition:transform .3s ease}
+.more-sheet.open{transform:translateY(0)}
+.more-sheet-handle{width:36px;height:4px;background:rgba(255,255,255,.15);border-radius:2px;margin:0 auto 1rem}
+.more-sheet-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:.6rem}
+.more-sheet-item{display:flex;flex-direction:column;align-items:center;gap:.35rem;padding:.65rem .2rem;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.more-sheet-item:active{background:rgba(255,255,255,.07)}
+.more-sheet-item .msi-icon{font-size:1.15rem}.more-sheet-item .msi-label{font-size:.58rem;color:rgba(255,255,255,.5);text-align:center}
+.more-sheet-item.act{background:rgba(201,168,76,.1);border-color:rgba(201,168,76,.25)}.more-sheet-item.act .msi-label{color:#c9a84c}
+
+/* ── Mobile holding cards ── */
+.m-holdings-list{display:none}
+.m-hc{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:.9rem;margin-bottom:.55rem;-webkit-tap-highlight-color:transparent;cursor:pointer;transition:background .15s}
+.m-hc:active{background:rgba(255,255,255,.05)}
+.m-hc-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.55rem}
+.m-hc-name{font-size:.86rem;color:#ffffff;font-weight:500;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.m-hc-ticker{font-size:.66rem;color:rgba(255,255,255,.35);margin-top:.12rem;font-family:'DM Mono',monospace}
+.m-hc-grid{display:grid;grid-template-columns:1fr 1fr;gap:.4rem .8rem}
+.m-hc-cell{display:flex;flex-direction:column;gap:.08rem}
+.m-hc-lbl{font-size:.55rem;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.3)}
+.m-hc-val{font-size:.78rem;font-family:'DM Mono',monospace;color:rgba(255,255,255,.85)}
+.m-hc-actions{display:flex;justify-content:flex-end;gap:.35rem;margin-top:.65rem;padding-top:.55rem;border-top:1px solid rgba(255,255,255,.05)}
+.m-hc-actions button{min-width:42px;min-height:42px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);cursor:pointer;font-size:.82rem;-webkit-tap-highlight-color:transparent;transition:background .15s}
+.m-hc-actions button:active{background:rgba(255,255,255,.08)}
+.m-hc-totals{background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.15);border-radius:10px;padding:.85rem;margin-top:.55rem;display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+
+/* ── Tablet — 900px ── */
 @media(max-width:900px){
   .mg{grid-template-columns:repeat(2,1fr)}
   .sg{grid-template-columns:1fr}
 }
 
-/* Mobile — 600px */
+/* ── Mobile — 600px ── */
 @media(max-width:600px){
-  .main{padding:1rem .85rem;padding-bottom:5rem}
-  .hdr{padding:0 .9rem;height:52px}
-  .logo{font-size:1.2rem}
-  .mg{grid-template-columns:repeat(2,1fr);gap:.55rem}
-  .mc{padding:.85rem .9rem}
-  .mcval{font-size:1.3rem}
-  .card{padding:1rem .9rem}
-  .ctitle{font-size:.98rem;margin-bottom:.85rem}
-  .tab{padding:.5rem .75rem;font-size:.73rem}
+  /* Bottom nav visible, top tabs hidden */
+  .bottom-nav{display:flex}
+  .tabs{display:none}
+  .m-holdings-list{display:block}
+  .ht-desktop{display:none}
+
+  .main{padding:.75rem .75rem;padding-bottom:calc(4.5rem + env(safe-area-inset-bottom))}
+  .hdr{padding:0 .75rem;height:50px}
+  .logo{font-size:1.1rem}
+  .hdr-r{gap:.25rem}
+  .hdr-r .btn-o{font-size:.62rem;padding:.25rem .5rem;min-height:34px}
+
+  /* KPI grid */
+  .mg{grid-template-columns:repeat(2,1fr);gap:.5rem;margin-bottom:1rem}
+  .mc{padding:.85rem;border-radius:10px}
+  .mclbl{font-size:.6rem}
+  .mcval{font-size:1.35rem}
+  .mcsub{font-size:.7rem}
+
+  /* Cards */
+  .card{padding:.85rem .75rem;border-radius:10px}
+  .ctitle{font-size:.95rem;margin-bottom:.75rem}
+
+  /* Member chips: horizontally scrollable */
+  .mbar{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:.3rem;margin-bottom:.85rem;gap:.4rem}
+  .mbar::-webkit-scrollbar{display:none}
+
+  /* Filter chips: horizontally scrollable */
+  .tbar{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:.3rem}
+  .tbar::-webkit-scrollbar{display:none}
+
+  /* Overview split grid */
+  .sg{grid-template-columns:1fr;gap:.75rem}
+
+  /* Modals: bottom sheet */
   .ovl{align-items:flex-end;padding:0}
-  .mod{border-radius:18px 18px 0 0;padding:1.3rem 1rem;max-width:100%;padding-bottom:calc(1.3rem + env(safe-area-inset-bottom))}
-  .modtitle{font-size:1.2rem;margin-bottom:1rem}
+  .mod{border-radius:20px 20px 0 0;padding:1.5rem 1rem;max-width:100%;max-height:88vh;padding-bottom:calc(1.5rem + env(safe-area-inset-bottom));animation:slideUp .3s ease}
+  @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .modtitle{font-size:1.15rem;margin-bottom:.85rem}
   .frow{grid-template-columns:1fr}
-  .ma{flex-direction:column-reverse}
-  .btns,.btnc{width:100%;text-align:center;padding:.65rem}
+  .ma{flex-direction:column-reverse;gap:.5rem}
+  .btns,.btnc{width:100%;text-align:center;padding:.65rem;min-height:46px;font-size:.82rem}
+
+  /* Touch-friendly targets */
+  .delbtn{min-width:40px;min-height:40px;display:inline-flex;align-items:center;justify-content:center;font-size:.88rem}
+  .btn-o,.btn-g,.btn-p{min-height:42px;padding:.5rem .85rem;font-size:.74rem}
+  .btn-sm{min-height:42px;padding:.5rem .85rem}
+  .fchip{min-height:38px;padding:.4rem .75rem;font-size:.72rem;display:inline-flex;align-items:center;scroll-snap-align:start}
+  .mchip{min-height:38px;padding:.4rem .75rem;font-size:.72rem;display:inline-flex;align-items:center;scroll-snap-align:start}
+  .fi{min-height:44px;font-size:.9rem;padding:.6rem .8rem}
+  .fs{min-height:44px}
+  .google-btn{min-height:48px;font-size:.92rem}
+
+  /* Empty states, tabs, table fallback */
+  .empty{padding:2rem .75rem;font-size:.9rem}
+  .tab{padding:.5rem .75rem;font-size:.73rem}
   .ht th{font-size:.58rem;padding:0 .45rem .5rem}
   .ht td{padding:.65rem .45rem;font-size:.75rem}
-  .empty{padding:2rem .5rem}
-  .mbar{gap:.4rem;margin-bottom:1rem}
-  .mchip{font-size:.7rem;padding:.28rem .65rem}
+
+  /* Scroll snap for chips */
+  .tbar{scroll-snap-type:x proximity}
+  .mbar{scroll-snap-type:x proximity}
 }
 
-/* Very small — 400px */
+/* ── Very small — 400px ── */
 @media(max-width:400px){
-  .mg{grid-template-columns:1fr 1fr;gap:.45rem}
+  .mg{grid-template-columns:1fr;gap:.45rem}
+  .mcval{font-size:1.4rem}
   .mclbl{font-size:.58rem}
-  .mcval{font-size:1.2rem}
-  .tab{padding:.45rem .6rem;font-size:.7rem}
-  .hdr-r .btn-o{display:none}
+  .m-hc-grid{gap:.3rem .6rem}
+  .m-hc-name{font-size:.82rem}
+  .more-sheet-grid{grid-template-columns:repeat(3,1fr)}
+  .hdr-r .btn-o:not(:first-child){display:none}
+  .login-card{padding:2rem 1.2rem;max-width:100%}
+}
+
+/* ── Landscape phone ── */
+@media(max-height:500px) and (orientation:landscape){
+  .bottom-nav{padding:.1rem 0}
+  .bnav-item{padding:.2rem .5rem}
+  .bnav-item .bnav-icon{font-size:1rem}
+  .bnav-item .bnav-label{display:none}
+  .main{padding-bottom:3.5rem}
+  .mod{max-height:85vh}
+}
+
+/* Desktop: ensure mobile list hidden */
+@media(min-width:601px){
+  .m-holdings-list{display:none}
+  .ht-desktop{display:block}
+  .bottom-nav{display:none}
 }
 `;
