@@ -1027,6 +1027,7 @@ export default function App() {
   const [mergeCandidate,  setMergeCandidate]  = useState(null);
   const [memberAction,    setMemberAction]    = useState(null); // {type:"delete"|"merge", memberId, reassignTo:""}
   const [goalForm,       setGoalForm]       = useState(BG);
+  const [editGoalId,     setEditGoalId]     = useState(null);
   const [alertForm,      setAlertForm]      = useState(BA);
   const [importState, setImportState] = useState({
     mode: null, step: "upload", format: "", holdings: [], transactions: [],
@@ -1494,7 +1495,32 @@ export default function App() {
     const hlds = await api("/api/holdings");
     setHoldings(hlds || []);
   }
-  function addGoal(){setGoals(p=>{const nextPri=p.length>0?Math.max(...p.map(x=>x.priority||1))+1:1;return[...p,{id:uid(),...goalForm,targetAmount:+goalForm.targetAmount,priority:goalForm.priority||nextPri,linkedMembers:goalForm.linkedMembers||["all"],linkedTypes:goalForm.linkedTypes||[],monthlyContribution:+goalForm.monthlyContribution||0}];});setGoalForm(BG);setModal(null);}
+  // Check if any linkedType+member combo is already used by another goal
+  function goalDuplicateTypes(form, excludeId){
+    const lt=form.linkedTypes||[];
+    if(lt.length===0) return [];
+    const lm=form.linkedMembers||["all"];
+    const conflicts=[];
+    goals.forEach(g=>{
+      if(g.id===excludeId) return;
+      const glt=g.linkedTypes||[];
+      const glm=g.linkedMembers||["all"];
+      const memberOverlap=lm.includes("all")||glm.includes("all")||lm.some(m=>glm.includes(m));
+      if(!memberOverlap) return;
+      lt.forEach(t=>{if(glt.includes(t)) conflicts.push({type:t,goalName:g.name});});
+    });
+    return conflicts;
+  }
+  function addGoal(){
+    const conflicts=goalDuplicateTypes(goalForm,editGoalId);
+    if(conflicts.length>0) return; // blocked by UI
+    if(editGoalId){
+      setGoals(p=>p.map(g=>g.id===editGoalId?{...g,...goalForm,targetAmount:+goalForm.targetAmount,monthlyContribution:+goalForm.monthlyContribution||0}:g));
+    } else {
+      setGoals(p=>{const nextPri=p.length>0?Math.max(...p.map(x=>x.priority||1))+1:1;return[...p,{id:uid(),...goalForm,targetAmount:+goalForm.targetAmount,priority:goalForm.priority||nextPri,linkedMembers:goalForm.linkedMembers||["all"],linkedTypes:goalForm.linkedTypes||[],monthlyContribution:+goalForm.monthlyContribution||0}];});
+    }
+    setGoalForm(BG);setEditGoalId(null);setModal(null);
+  }
   function addAlert(){setAlerts(p=>[...p,{id:uid(),...alertForm,threshold:+alertForm.threshold}]);setAlertForm(BA);setModal(null);}
 
   // ── MF Search ────────────────────────────────────────────────────
@@ -2653,8 +2679,6 @@ ${alertLines||"  None"}`;
         {/* ── GOALS ── */}
         {tab==="goals"&&(()=>{
           const sortedGoals=[...goals].sort((a,b)=>(a.priority||99)-(b.priority||99));
-          // helper: compute current value relevant to a goal
-          // Priority: linkedTypes (asset classes) > linkedMembers (member-level) > all
           function goalCur(g){
             const lt=g.linkedTypes||[];
             const lm=g.linkedMembers||["all"];
@@ -2665,8 +2689,23 @@ ${alertLines||"  None"}`;
             }
             return memberH.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
           }
+          // Goal status: On Track / Behind / Needs Attention / Achieved / Overdue
+          function goalStatus(g, cur) {
+            const prog = g.targetAmount > 0 ? cur / g.targetAmount : 0;
+            if (prog >= 1) return { label: "Achieved", color: "#1d9e75" };
+            const msLeft = Math.max(0, new Date(g.targetDate) - new Date());
+            const yLeft = msLeft / (864e5 * 365.25);
+            if (yLeft <= 0) return { label: "Overdue", color: "#e07c5a" };
+            const monthly = g.monthlyContribution || 0;
+            const projectedSIP = monthly * yLeft * 12;
+            const r = 0.10;
+            const projGrowth = cur * Math.pow(1 + r, yLeft) + (monthly > 0 ? projectedSIP * (1 + r * yLeft / 2) : 0);
+            if (projGrowth >= g.targetAmount * 0.95) return { label: "On track", color: "#1d9e75" };
+            if (projGrowth >= g.targetAmount * 0.7) return { label: "Needs attention", color: "#d4a017" };
+            return { label: "Behind", color: "#e07c5a" };
+          }
 
-          // Detect asset types allocated to multiple goals (double-counting)
+          // Detect asset types allocated to multiple goals
           const typeGoalMap = {};
           goals.forEach(g=>(g.linkedTypes||[]).forEach(t=>{
             if(!typeGoalMap[t]) typeGoalMap[t]=[];
@@ -2679,9 +2718,29 @@ ${alertLines||"  None"}`;
             <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Financial Goals</div>
             <div style={{display:"flex",gap:".5rem"}}>
               {goals.length>0&&<button className="btn-o" onClick={()=>setModal("goalplan")}>✦ Fulfillment Plan</button>}
-              <button className="btn-sm" onClick={()=>{setGoalForm({...BG,priority:goals.length+1});setModal("goal");}}>+ New Goal</button>
+              <button className="btn-sm" onClick={()=>{setGoalForm({...BG,priority:goals.length+1});setEditGoalId(null);setModal("goal");}}>+ New Goal</button>
             </div>
           </div>
+
+          {/* Goal summary bar */}
+          {goals.length>0&&(()=>{
+            const statuses=sortedGoals.map(g=>goalStatus(g,goalCur(g)));
+            const onTrack=statuses.filter(s=>s.label==="On track"||s.label==="Achieved").length;
+            const behind=statuses.filter(s=>s.label==="Behind"||s.label==="Overdue").length;
+            const needsAttn=statuses.filter(s=>s.label==="Needs attention").length;
+            const totalTarget=goals.reduce((s,g)=>s+g.targetAmount,0);
+            const totalFunded=sortedGoals.reduce((s,g)=>s+goalCur(g),0);
+            const pct=totalTarget>0?(totalFunded/totalTarget*100).toFixed(0):0;
+            return(
+            <div style={{marginBottom:"1rem",padding:".55rem .85rem",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,display:"flex",gap:"1.5rem",flexWrap:"wrap",fontSize:".72rem",color:"rgba(255,255,255,.55)",alignItems:"center"}}>
+              <span>{goals.length} goal{goals.length!==1?"s":""}</span>
+              {onTrack>0&&<span style={{color:"#1d9e75"}}>{onTrack} on track</span>}
+              {needsAttn>0&&<span style={{color:"#d4a017"}}>{needsAttn} needs attention</span>}
+              {behind>0&&<span style={{color:"#e07c5a"}}>{behind} behind</span>}
+              <span style={{marginLeft:"auto"}}>Target: <span style={{color:"#fff",fontFamily:"'DM Mono',monospace"}}>{fmtCr(totalTarget)}</span></span>
+              <span>Funded: <span style={{color:"#c9a84c",fontFamily:"'DM Mono',monospace"}}>{pct}%</span></span>
+            </div>);
+          })()}
 
           {goals.length===0&&<div className="card empty">Set your first financial milestone</div>}
 
@@ -2701,50 +2760,47 @@ ${alertLines||"  None"}`;
               const lm=g.linkedMembers||["all"];
               const memberNames=lm.includes("all")?"All members":lm.map(id=>members.find(m=>m.id===id)?.name||"?").join(", ");
               const monthly=g.monthlyContribution||0;
+              const st=goalStatus(g,cur);
               return(
               <div key={g.id} className="card" style={{borderTop:`3px solid ${g.color}`,position:"relative"}}>
-                {/* Priority badge + controls */}
-                <div style={{position:"absolute",top:10,left:12,display:"flex",alignItems:"center",gap:".3rem"}}>
+                {/* Priority badge + status pill */}
+                <div style={{display:"flex",alignItems:"center",gap:".35rem",marginBottom:".55rem"}}>
                   <div style={{background:`${g.color}22`,border:`1px solid ${g.color}55`,borderRadius:3,padding:"1px 7px",fontSize:".6rem",letterSpacing:".08em",color:g.color,fontWeight:600}}>P{g.priority||idx+1}</div>
+                  <div style={{background:st.color+"18",border:`1px solid ${st.color}44`,borderRadius:10,padding:"1px 8px",fontSize:".58rem",color:st.color,fontWeight:500}}>{st.label}</div>
+                  <span style={{fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.28)",marginLeft:".15rem"}}>{g.category}</span>
                 </div>
+                {/* Controls — top right */}
                 <div style={{position:"absolute",top:8,right:8,display:"flex",gap:".2rem"}}>
-                  <button className="delbtn" title="Move up" onClick={()=>setGoals(p=>{const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===0)return p;const np=[...s];[np[i-1],np[i]]=[np[i],np[i-1]];return np.map((x,j)=>({...x,priority:j+1}));})}>↑</button>
-                  <button className="delbtn" title="Move down" onClick={()=>setGoals(p=>{const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===s.length-1)return p;const np=[...s];[np[i],np[i+1]]=[np[i+1],np[i]];return np.map((x,j)=>({...x,priority:j+1}));})}>↓</button>
-                  <button className="delbtn" onClick={()=>setGoals(p=>p.filter(x=>x.id!==g.id))}>✕</button>
-                </div>
-
-                {/* Category */}
-                <div style={{display:"flex",alignItems:"center",gap:".55rem",marginBottom:".9rem",marginTop:".25rem"}}>
-                  <div style={{width:8,height:8,borderRadius:"50%",background:g.color}}/>
-                  <span style={{fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.33)"}}>{g.category}</span>
+                  <button className="delbtn" title="Move up in priority" onClick={()=>setGoals(p=>{const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===0)return p;const np=[...s];[np[i-1],np[i]]=[np[i],np[i-1]];return np.map((x,j)=>({...x,priority:j+1}));})}>↑</button>
+                  <button className="delbtn" title="Move down in priority" onClick={()=>setGoals(p=>{const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===s.length-1)return p;const np=[...s];[np[i],np[i+1]]=[np[i+1],np[i]];return np.map((x,j)=>({...x,priority:j+1}));})}>↓</button>
+                  <button className="delbtn" title="Edit goal" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>{setGoalForm({name:g.name,targetAmount:g.targetAmount,targetDate:g.targetDate,linkedMembers:g.linkedMembers||["all"],linkedTypes:g.linkedTypes||[],category:g.category,color:g.color,notes:g.notes||"",priority:g.priority||idx+1,monthlyContribution:g.monthlyContribution||""});setEditGoalId(g.id);setModal("goal");}}>✎</button>
+                  <button className="delbtn" title="Delete goal" onClick={()=>setGoals(p=>p.filter(x=>x.id!==g.id))}>✕</button>
                 </div>
 
                 {/* Goal name */}
                 <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",color:"#ffffff",marginBottom:".2rem"}}>{g.name}</div>
                 {g.notes&&<div style={{fontSize:".72rem",color:"rgba(255,255,255,.4)",marginBottom:".6rem"}}>{g.notes}</div>}
 
-                {/* Linked members + asset types */}
+                {/* Funded by: members + asset types */}
+                <div style={{marginBottom:".5rem",fontSize:".62rem",color:"rgba(255,255,255,.35)",letterSpacing:".04em",textTransform:"uppercase",fontWeight:500}}>Funded by</div>
                 <div style={{marginBottom:".65rem",display:"flex",flexWrap:"wrap",gap:".35rem"}}>
                   <span style={{fontSize:".65rem",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,padding:"2px 9px",color:"rgba(255,255,255,.55)"}}>
                     👤 {memberNames}
                   </span>
+                  {(g.linkedTypes||[]).length>0?g.linkedTypes.map(t=>{
+                    const a=AT[t]||{icon:"📦",color:"#888",label:t};
+                    const isDouble=typeGoalMap[t]?.length>1;
+                    return(
+                    <span key={t} style={{fontSize:".6rem",background:a.color+"15",border:`1px solid ${a.color}${isDouble?"88":"44"}`,
+                      borderRadius:4,padding:"2px 7px",color:a.color,fontWeight:500}}>
+                      {a.icon} {a.label}{isDouble&&<span style={{color:"#e07c5a",marginLeft:3}} title={`Also in: ${typeGoalMap[t].filter(n=>n!==g.name).join(", ")}`}>⚠</span>}
+                    </span>);
+                  }):(
+                    <span style={{fontSize:".6rem",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:4,padding:"2px 7px",color:"rgba(255,255,255,.4)",display:"flex",alignItems:"center",gap:".25rem"}}>
+                      <span style={{fontSize:".7rem",opacity:.6}}>ℹ</span> Entire portfolio
+                    </span>
+                  )}
                 </div>
-                {(g.linkedTypes||[]).length>0&&(
-                  <div style={{marginBottom:".65rem",display:"flex",flexWrap:"wrap",gap:".3rem"}}>
-                    {g.linkedTypes.map(t=>{
-                      const a=AT[t]||{icon:"📦",color:"#888",label:t};
-                      const isDouble=typeGoalMap[t]?.length>1;
-                      return(
-                      <span key={t} style={{fontSize:".6rem",background:a.color+"15",border:`1px solid ${a.color}${isDouble?"88":"44"}`,
-                        borderRadius:4,padding:"2px 7px",color:a.color,fontWeight:500}}>
-                        {a.icon} {a.label}{isDouble&&<span style={{color:"#e07c5a",marginLeft:3}} title={`Also in: ${typeGoalMap[t].filter(n=>n!==g.name).join(", ")}`}>⚠</span>}
-                      </span>);
-                    })}
-                  </div>
-                )}
-                {(g.linkedTypes||[]).length===0&&(
-                  <div style={{fontSize:".62rem",color:"rgba(255,255,255,.3)",marginBottom:".65rem",fontStyle:"italic"}}>All asset types (no filter)</div>
-                )}
 
                 {/* Progress */}
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:".45rem"}}>
@@ -4551,8 +4607,8 @@ ${alertLines||"  None"}`;
       </MA>
     </Overlay>)}
     {modal==="goal"&&(
-      <Overlay onClose={()=>setModal(null)}>
-        <div className="modtitle">Add Financial Goal</div>
+      <Overlay onClose={()=>{setModal(null);setEditGoalId(null);}}>
+        <div className="modtitle">{editGoalId ? "Edit Financial Goal" : "Add Financial Goal"}</div>
         <FG label="Goal Name"><input className="fi" placeholder="e.g. Daughter's Education" value={goalForm.name} onChange={e=>setGoalForm(p=>({...p,name:e.target.value}))}/></FG>
         <div className="frow">
           <FG label="Target Amount ₹" style={{marginBottom:"1.5rem"}}><FmtInput placeholder="e.g. 5000000" value={goalForm.targetAmount} onChange={e=>setGoalForm(p=>({...p,targetAmount:e.target.value}))}/></FG>
@@ -4603,11 +4659,15 @@ ${alertLines||"  None"}`;
           <div style={{display:"flex",flexWrap:"wrap",gap:".4rem"}}>
             {Object.entries(AT).map(([type,a])=>{
               const sel=(goalForm.linkedTypes||[]).includes(type);
-              // Count holdings of this type for the selected members
               const lm=goalForm.linkedMembers||["all"];
               const memberH = lm.includes("all") ? holdings : holdings.filter(h=>lm.includes(h.member_id));
               const typeCount=memberH.filter(h=>h.type===type).length;
               const typeVal=memberH.filter(h=>h.type===type).reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
+              // Check if this type is already assigned to another goal
+              const conflictGoal=goals.find(g=>g.id!==editGoalId&&(g.linkedTypes||[]).includes(type)&&(()=>{
+                const glm=g.linkedMembers||["all"];
+                return lm.includes("all")||glm.includes("all")||lm.some(mid=>glm.includes(mid));
+              })());
               return(
               <div key={type} onClick={()=>setGoalForm(p=>{
                 const cur=new Set(p.linkedTypes||[]);
@@ -4615,15 +4675,16 @@ ${alertLines||"  None"}`;
                 return {...p,linkedTypes:[...cur]};
               })}
               style={{display:"flex",alignItems:"center",gap:".4rem",padding:".35rem .65rem",borderRadius:6,cursor:"pointer",
-                background:sel?a.color+"18":"rgba(255,255,255,.03)",
-                border:`1px solid ${sel?a.color+"55":"rgba(255,255,255,.08)"}`,
+                background:sel?(conflictGoal?"rgba(224,124,90,.1)":a.color+"18"):"rgba(255,255,255,.03)",
+                border:`1px solid ${sel?(conflictGoal?"rgba(224,124,90,.45)":a.color+"55"):"rgba(255,255,255,.08)"}`,
                 transition:"all .12s",opacity:typeCount===0&&!sel?.5:1}}
               onMouseEnter={e=>{if(!sel)e.currentTarget.style.borderColor="rgba(255,255,255,.2)";}}
-              onMouseLeave={e=>{if(!sel)e.currentTarget.style.borderColor=sel?a.color+"55":"rgba(255,255,255,.08)";}}>
+              onMouseLeave={e=>{if(!sel)e.currentTarget.style.borderColor=sel?(conflictGoal?"rgba(224,124,90,.45)":a.color+"55"):"rgba(255,255,255,.08)";}}>
                 <span style={{fontSize:".8rem"}}>{a.icon}</span>
                 <div>
-                  <div style={{fontSize:".72rem",color:sel?a.color:"rgba(255,255,255,.7)",fontWeight:sel?600:400}}>{a.label}</div>
+                  <div style={{fontSize:".72rem",color:sel?(conflictGoal?"#e07c5a":a.color):"rgba(255,255,255,.7)",fontWeight:sel?600:400}}>{a.label}</div>
                   {typeCount>0&&<div style={{fontSize:".58rem",color:"rgba(255,255,255,.35)"}}>{typeCount} holding{typeCount!==1?"s":""} · {fmtCr(typeVal)}</div>}
+                  {sel&&conflictGoal&&<div style={{fontSize:".55rem",color:"#e07c5a",marginTop:1}}>Already in: {conflictGoal.name}</div>}
                 </div>
               </div>);
             })}
@@ -4645,9 +4706,18 @@ ${alertLines||"  None"}`;
 
         <FG label="Monthly Contribution ₹ (optional)" style={{marginBottom:"1.5rem"}}><FmtInput placeholder="e.g. 10000" value={goalForm.monthlyContribution} onChange={e=>setGoalForm(p=>({...p,monthlyContribution:e.target.value}))}/></FG>
         <FG label="Notes"><input className="fi" placeholder="Optional description" value={goalForm.notes} onChange={e=>setGoalForm(p=>({...p,notes:e.target.value}))}/></FG>
+        {/* Duplicate asset-type conflict warning */}
+        {(()=>{
+          const conflicts=goalDuplicateTypes(goalForm,editGoalId);
+          if(conflicts.length===0) return null;
+          return(
+          <div style={{marginBottom:".8rem",padding:".5rem .75rem",background:"rgba(224,124,90,.08)",border:"1px solid rgba(224,124,90,.25)",borderRadius:6,fontSize:".7rem",color:"#e07c5a",lineHeight:1.6}}>
+            ⚠ Cannot save — {conflicts.map(c=>`${AT[c.type]?.icon||""} ${AT[c.type]?.label||c.type}`).join(", ")} already assigned to "{conflicts[0].goalName}". One asset type per member can only fund one goal.
+          </div>);
+        })()}
         <MA>
-          <button className="btnc" onClick={()=>setModal(null)}>Cancel</button>
-          <button className="btns" onClick={addGoal} disabled={!goalForm.name||!goalForm.targetAmount}>Add Goal</button>
+          <button className="btnc" onClick={()=>{setModal(null);setEditGoalId(null);}}>Cancel</button>
+          <button className="btns" onClick={addGoal} disabled={!goalForm.name||!goalForm.targetAmount||goalDuplicateTypes(goalForm,editGoalId).length>0}>{editGoalId?"Save Changes":"Add Goal"}</button>
         </MA>
       </Overlay>
     )}
@@ -5181,6 +5251,31 @@ Keep the response practical, specific to the numbers, and formatted clearly with
               P{g.priority||i+1} {g.name}
             </div>
           ))}
+        </div>
+
+        {/* Quick summary table */}
+        <div style={{marginBottom:"1rem",overflowX:"auto",border:"1px solid rgba(255,255,255,.06)",borderRadius:6}}>
+          <table style={{width:"100%",fontSize:".7rem",borderCollapse:"collapse"}}>
+            <thead><tr style={{borderBottom:"1px solid rgba(255,255,255,.1)"}}>
+              {["Goal","Status","Funded","Gap","Monthly Needed"].map(h=><th key={h} style={{padding:".4rem .55rem",textAlign:"left",color:"rgba(255,255,255,.4)",fontWeight:500,fontSize:".6rem",letterSpacing:".06em",textTransform:"uppercase"}}>{h}</th>)}
+            </tr></thead>
+            <tbody>{sorted.map((g,i)=>{
+              const cur=goalCurVal(g);
+              const rem=Math.max(0,g.targetAmount-cur);
+              const yLeft=Math.max(0.1,((new Date(g.targetDate)-new Date())/(864e5*365.25)));
+              const monthlyNeeded=rem/(yLeft*12);
+              const pct=g.targetAmount>0?(cur/g.targetAmount*100):0;
+              const status=pct>=100?"Achieved":yLeft<=0?"Overdue":pct>=40?"On track":"Behind";
+              const stColor=status==="Achieved"?"#1d9e75":status==="On track"?"#1d9e75":status==="Overdue"?"#e07c5a":"#e07c5a";
+              return <tr key={g.id} style={{borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+                <td style={{padding:".4rem .55rem",color:g.color,fontWeight:500}}>{g.name}</td>
+                <td style={{padding:".4rem .55rem"}}><span style={{color:stColor,fontSize:".62rem",background:stColor+"15",border:`1px solid ${stColor}33`,borderRadius:8,padding:"1px 7px"}}>{status}</span></td>
+                <td style={{padding:".4rem .55rem",fontFamily:"'DM Mono',monospace"}}>{pct.toFixed(0)}%</td>
+                <td style={{padding:".4rem .55rem",fontFamily:"'DM Mono',monospace"}}>{fmtCr(rem)}</td>
+                <td style={{padding:".4rem .55rem",fontFamily:"'DM Mono',monospace"}}>₹{Math.round(monthlyNeeded).toLocaleString("en-IN")}/mo</td>
+              </tr>;
+            })}</tbody>
+          </table>
         </div>
 
         {/* Plan content */}
