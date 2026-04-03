@@ -3583,7 +3583,8 @@ function parseNSDLCASStatement(rawText) {
   let infMatch;
   while ((infMatch = infRe.exec(rawText)) !== null) {
     const isin = infMatch[1];
-    if (seen.has(isin)) continue;
+    // Don't skip by ISIN alone — same ISIN can appear in multiple folios/holders
+    // Dedup happens later using isin + "|" + units key
 
     // Extract text from this ISIN to the next ISIN (or 800 chars, whichever comes first)
     const afterStart = infMatch.index + infMatch[0].length;
@@ -3592,13 +3593,18 @@ function parseNSDLCASStatement(rawText) {
     const block = rawText.substring(afterStart, Math.min(blockEnd, afterStart + 800));
 
     // Extract the name: text between ISIN and the first long number sequence
-    // Skip scheme code prefix (e.g. "MFRILC0135", "NOT AVAILABLE")
-    const nameMatch = block.match(/^[\s\S]*?([A-Z][A-Za-z\s&().'-]{5,120}(?:Fund|Growth|IDCW|Plan|Option|Savings|Dividend|Bonus|Direct|Regular|Flexi|Equity|Debt|Liquid|Hybrid|Balanced|Cap|Index|ETF|ELSS)[A-Za-z\s()'-]{0,40})/i);
-    if (!nameMatch) continue;
+    // Try specific MF keywords first, then fall back to any reasonable name
+    const nameMatch = block.match(/^[\s\S]*?([A-Z][A-Za-z\s&().'-]{5,120}(?:Fund|Growth|IDCW|Plan|Option|Savings|Dividend|Bonus|Direct|Regular|Flexi|Equity|Debt|Liquid|Hybrid|Balanced|Cap|Index|ETF|ELSS|Nifty|Sensex|Gilt|Arbitrage|Value|Contra|Multi|Large|Small|Mid|Bluechip|Focused|Dynamic|Overnight|Ultra|Corporate|Banking|Money\s*Market|Credit\s*Risk|Low\s*Duration|Medium|Long|Short)[A-Za-z\s()'-]{0,40})/i)
+      || block.match(/^[\s\S]*?([A-Z][A-Za-z\s&().'-]{5,120}?)(?=\s+\d)/i);  // Fallback: name before first number
+    if (!nameMatch) {
+      console.log(`   ⚠ CAS MF: No name found after ISIN ${isin}, skipping`);
+      continue;
+    }
     const rawName = nameMatch[1].replace(/\s+/g, " ").trim();
     const name = cleanCASName(rawName);
 
-    // Extract ALL numbers from the block after the name
+    // Extract ALL numbers from the block after the name match
+    // (Not from full block — ISIN digits and name-embedded numbers cause false matches)
     const numRegion = block.substring(nameMatch[0].length);
     const numRe = /-?[\d,]+\.?\d*/g;
     const allNums = [];
@@ -3606,6 +3612,17 @@ function parseNSDLCASStatement(rawText) {
     while ((nm = numRe.exec(numRegion)) !== null) {
       const val = pNum(nm[0]);
       if (!isNaN(val) && val !== 0) allNums.push(val);
+    }
+
+    // Also scan a wider region if we got too few numbers (pdfjs sometimes merges lines)
+    if (allNums.length < 3) {
+      const wideRegion = block;
+      const wideRe = /-?[\d,]+\.?\d*/g;
+      let wm;
+      while ((wm = wideRe.exec(wideRegion)) !== null) {
+        const val = pNum(wm[0]);
+        if (!isNaN(val) && val !== 0 && !allNums.includes(val)) allNums.push(val);
+      }
     }
 
     // Skip transaction detail headers (not summary rows)
@@ -3616,43 +3633,75 @@ function parseNSDLCASStatement(rawText) {
 
     console.log(`📋 CAS MF: ${name} (${isin}) — ${allNums.length} numbers: [${allNums.slice(0,10).join(", ")}]`);
 
-    if (allNums.length < 4) continue; // Need at least folio + nav + units + value
+    if (allNums.length < 3) continue; // Need at least units + nav + value
 
     // ── Identify columns by cross-validation: Units × NAV ≈ Value ──
-    // Find ALL valid triplets, then pick the one with the LARGEST value (= current value)
-    // This distinguishes current value from invested amount
+    // Find ALL valid triplets, then select current vs invested intelligently
     const matches = [];
 
-    for (let i = 0; i < Math.min(allNums.length, 8); i++) {
-      for (let j = i + 1; j < Math.min(allNums.length, 8); j++) {
+    for (let i = 0; i < Math.min(allNums.length, 10); i++) {
+      for (let j = i + 1; j < Math.min(allNums.length, 10); j++) {
         const product = allNums[i] * allNums[j];
-        for (let k = 0; k < Math.min(allNums.length, 10); k++) {
+        for (let k = 0; k < Math.min(allNums.length, 12); k++) {
           if (k === i || k === j) continue;
           if (allNums[k] <= 0) continue;
           const err = Math.abs(product - allNums[k]) / allNums[k];
-          if (err < 0.03) {
+          if (err < 0.05) {  // Relax tolerance from 3% to 5% for rounding
             const n1 = allNums[i], n2 = allNums[j], val = allNums[k];
-            // NAV is per-unit (typically larger per unit for most MFs)
-            // But we need to figure out which factor is NAV and which is units
-            // The value matched is the product; we'll resolve nav/units later
             matches.push({ a: n1, b: n2, val, err, indices: [i, j, k] });
           }
         }
       }
     }
 
-
     if (matches.length === 0) {
-      console.log(`   ⚠ No Units×NAV≈Value match found. Skipping.`);
+      console.log(`   ⚠ No Units×NAV≈Value match found for ${isin}. Numbers: [${allNums.slice(0,12).join(", ")}]`);
+      // Last resort: if we have at least 2 numbers, try Units + Value (no NAV cross-validation)
+      // This handles cases where CAS only shows units and value
+      if (allNums.length >= 2) {
+        // Find the largest number as value, smallest reasonable as units
+        const sorted = [...allNums].sort((a, b) => a - b);
+        const possibleValue = sorted[sorted.length - 1];
+        const possibleUnits = sorted.find(n => n > 0 && n < possibleValue);
+        if (possibleUnits && possibleValue > 100) {
+          const derivedNav = possibleValue / possibleUnits;
+          console.log(`   → Fallback: units=${possibleUnits}, value=${possibleValue}, derived nav=${derivedNav.toFixed(4)}`);
+          const key = isin + "|" + possibleUnits.toFixed(3);
+          if (!seen.has(key)) {
+            seen.add(key);
+            holdings.push({
+              name, type: "MF", ticker: isin, scheme_code: "",
+              units: possibleUnits, purchase_nav: derivedNav, current_nav: derivedNav,
+              purchase_price: derivedNav, current_price: derivedNav,
+              purchase_value: possibleValue, current_value: possibleValue,
+              source: _source, brokerage_name: _brokerage, currency: "INR",
+              _folio: "",
+            });
+          }
+        }
+      }
       continue;
     }
 
-    // CAS text column order: Units, PurchaseNAV, Invested, CurrentNAV, CurrentValue, Gain, Gain%
-    // The value appearing LATER in the number array = current value (not invested)
-    // Among valid triplets, pick the one whose value index (k) is HIGHEST = appears later in text
+    // ── Select best triplets for current value and invested amount ──
+    // CAS column order: Units, PurchaseNAV, Invested, CurrentNAV, CurrentValue, Gain, Gain%
+    // Strategy: Group triplets by shared factor (= units). The two values are invested and current.
+
+    // Log all triplets for debugging
+    for (const m of matches) {
+      console.log(`   triplet: ${m.a} × ${m.b} ≈ ${m.val} (err=${(m.err*100).toFixed(2)}%, indices=[${m.indices}])`);
+    }
+
+    // Sort by value index descending — later in text = more likely current value
     matches.sort((a, b) => b.indices[2] - a.indices[2]);
     const currentValueMatch = matches[0];
-    const investedMatch = matches.find(m => m.val !== currentValueMatch.val && m.indices[2] < currentValueMatch.indices[2]);
+
+    // Find invested: different value, earlier position, shares a factor with current triplet
+    const investedMatch = matches.find(m =>
+      m !== currentValueMatch &&
+      Math.abs(m.val - currentValueMatch.val) / Math.max(currentValueMatch.val, 1) > 0.005 &&  // Different value (>0.5% apart)
+      m.indices[2] < currentValueMatch.indices[2]  // Earlier in text
+    );
     
     // Determine units: common factor between currentValue and invested triplets
     let nav, units;
@@ -3660,21 +3709,36 @@ function parseNSDLCASStatement(rawText) {
     
     if (investedMatch) {
       const invFactors = [investedMatch.a, investedMatch.b];
-      const common = cvFactors.find(f => invFactors.some(o => Math.abs(f - o) / Math.max(f, 0.001) < 0.001));
+      // Find the number that appears in BOTH triplets (= units, since units is constant)
+      const common = cvFactors.find(f => invFactors.some(o => Math.abs(f - o) / Math.max(f, 0.001) < 0.01));
       if (common) {
         units = common;
-        nav = cvFactors.find(f => Math.abs(f - common) / Math.max(f, 0.001) > 0.001) ?? cvFactors[0];
+        nav = cvFactors.find(f => Math.abs(f - common) / Math.max(f, 0.001) > 0.01) ?? cvFactors[0];
       } else {
-        // No common — the factor at the earlier index position is units (CAS order: Units before NAV)
+        // No common factor — use positional heuristic
+        // In CAS order, Units appears before NAV, so the factor at the earlier index = units
         const [iA, iB] = [currentValueMatch.indices[0], currentValueMatch.indices[1]];
         if (iA < iB) { units = currentValueMatch.a; nav = currentValueMatch.b; }
         else { units = currentValueMatch.b; nav = currentValueMatch.a; }
       }
     } else {
-      // Single triplet — earlier factor = units
+      // Single triplet — determine units vs nav using heuristics:
+      // 1. NAV for Indian MFs is typically between 5 and 10000
+      // 2. Units is often fractional or a large number
+      const [f1, f2] = cvFactors;
       const [iA, iB] = [currentValueMatch.indices[0], currentValueMatch.indices[1]];
-      if (iA < iB) { units = currentValueMatch.a; nav = currentValueMatch.b; }
-      else { units = currentValueMatch.b; nav = currentValueMatch.a; }
+
+      // If one factor looks like a NAV (5-10000 range, often with 4 decimal places) and the other doesn't
+      const f1IsNav = f1 >= 5 && f1 <= 10000;
+      const f2IsNav = f2 >= 5 && f2 <= 10000;
+
+      if (f1IsNav && !f2IsNav) { nav = f1; units = f2; }
+      else if (f2IsNav && !f1IsNav) { nav = f2; units = f1; }
+      else {
+        // Both in NAV range — use positional: earlier = units (CAS standard order)
+        if (iA < iB) { units = currentValueMatch.a; nav = currentValueMatch.b; }
+        else { units = currentValueMatch.b; nav = currentValueMatch.a; }
+      }
     }
     const currentValue = currentValueMatch.val;
 
@@ -3686,21 +3750,56 @@ function parseNSDLCASStatement(rawText) {
     if (investedMatch) {
       invested = investedMatch.val;
       const invFactors = [investedMatch.a, investedMatch.b];
-      purchaseNav = invFactors.find(f => Math.abs(f - units) / Math.max(units, 0.001) > 0.001) || invFactors[0];
-      if (Math.abs(purchaseNav - units) / Math.max(units, 0.001) < 0.001) purchaseNav = invFactors[1] || 0;
+      // The factor that ISN'T units = purchaseNav
+      purchaseNav = invFactors.find(f => Math.abs(f - units) / Math.max(units, 0.001) > 0.01) || invFactors[0];
+      if (Math.abs(purchaseNav - units) / Math.max(units, 0.001) < 0.01) purchaseNav = invFactors[1] || 0;
       console.log(`   ✓ Invested=${invested}, PurchaseNAV=${purchaseNav}`);
     }
 
     if (!invested) {
-      // Fallback: look for a round number that could be invested amount
-      for (let i = 0; i < Math.min(allNums.length, 8); i++) {
+      // Fallback 1: Look for a value-sized number not used in the current triplet
+      // that could be invested amount (typically a round SIP amount or lumpsum)
+      for (let i = 0; i < Math.min(allNums.length, 10); i++) {
         if (currentValueMatch.indices.includes(i)) continue;
         const n = allNums[i];
-        if (n > 100 && n < currentValue * 3 && (n % 1000 === 0 || n % 500 === 0 || n % 100 === 0)) {
-          invested = n;
-          purchaseNav = units > 0 ? invested / units : nav;
-          console.log(`   ✓ Invested=${invested} (round number fallback), PurchaseNAV=${purchaseNav.toFixed(4)}`);
-          break;
+        // Invested is usually: > 100, < 5x current value, and either:
+        //   a) A round number (SIP/lumpsum amounts)
+        //   b) Close to currentValue (for new funds)
+        //   c) n / units gives a plausible NAV (5-10000)
+        if (n > 100 && n < currentValue * 5) {
+          const impliedNav = units > 0 ? n / units : 0;
+          if (impliedNav >= 3 && impliedNav <= 15000) {
+            invested = n;
+            purchaseNav = impliedNav;
+            console.log(`   ✓ Invested=${invested} (implied NAV=${purchaseNav.toFixed(4)} fallback)`);
+            break;
+          }
+          if (n % 500 === 0 || n % 1000 === 0 || n % 100 === 0) {
+            invested = n;
+            purchaseNav = units > 0 ? invested / units : nav;
+            console.log(`   ✓ Invested=${invested} (round number fallback), PurchaseNAV=${purchaseNav.toFixed(4)}`);
+            break;
+          }
+        }
+      }
+    }
+
+    // Fallback 2: Look for gain amount and derive invested = currentValue - gain
+    if (!invested) {
+      // CAS order: ...CurrentValue, Gain, Gain%
+      // Gain appears after currentValue in the number array
+      const cvIdx = currentValueMatch.indices[2];
+      for (let i = cvIdx + 1; i < Math.min(allNums.length, cvIdx + 3); i++) {
+        const gain = allNums[i];
+        // Gain should be much smaller than value (typically <50% of value)
+        if (Math.abs(gain) < currentValue * 0.8 && Math.abs(gain) > 0.01) {
+          const derivedInvested = currentValue - gain;
+          if (derivedInvested > 0) {
+            invested = derivedInvested;
+            purchaseNav = units > 0 ? invested / units : nav;
+            console.log(`   ✓ Invested=${invested.toFixed(2)} (derived from gain=${gain}), PurchaseNAV=${purchaseNav.toFixed(4)}`);
+            break;
+          }
         }
       }
     }
@@ -3708,6 +3807,7 @@ function parseNSDLCASStatement(rawText) {
     if (!invested) {
       invested = currentValue;
       purchaseNav = nav;
+      console.log(`   ⚠ No invested amount found — defaulting invested=currentValue`);
     }
 
     // Also look for Closing Balance pattern in region before this ISIN for transaction-detail CAS
@@ -3749,48 +3849,112 @@ function parseNSDLCASStatement(rawText) {
     const isin = ineMatch[1];
     if (seen.has(isin)) continue;
 
-    const after = rawText.substring(ineMatch.index, ineMatch.index + 300);
-    const rowMatch = after.match(/^[A-Z0-9]+\s+(.{3,80}?)\s+([\d,.]+)\s/);
+    const after = rawText.substring(ineMatch.index, ineMatch.index + 500);
+    const before = rawText.substring(Math.max(0, ineMatch.index - 300), ineMatch.index);
+
     let rawName = "", qty = 0;
+
+    // Strategy 3a: ISIN on same line as name + quantity
+    //   e.g. "INE0W2G01015 SAGILITY LIMITED # EQUITY SHARES  250  Free: 250"
+    const rowMatch = after.match(/^[A-Z0-9]+\s+(.{3,80}?)\s+([\d,.]+)\s/);
     if (rowMatch) {
       rawName = rowMatch[1].replace(/\s+/g, " ").trim();
       qty = pNum(rowMatch[2]);
     }
 
+    // Strategy 3b: Name is BEFORE the ISIN (CDSL format)
+    //   e.g. "SAGILITY LIMITED # EQUITY SHARES\nINE0W2G01015  250"
     if (!rawName || qty <= 0) {
-      const before = rawText.substring(Math.max(0, ineMatch.index - 200), ineMatch.index);
-      const backName = before.match(/([A-Z][A-Za-z\s&().'-]{3,60})\s*$/);
-      if (backName) rawName = backName[1].trim();
-      const qtyMatch = after.match(/(?:Free|Total|Net|Closing)?\s*(?:Balance|Quantity|Qty)[:\s]*([\d,.]+)/i)
-        || after.match(/\b([\d,]+)\s*$/m);
-      if (qtyMatch) qty = pNum(qtyMatch[1]);
+      // Look for company name in lines before ISIN
+      const beforeLines = before.split(/\n/).filter(l => l.trim());
+      for (let i = beforeLines.length - 1; i >= Math.max(0, beforeLines.length - 3); i--) {
+        const line = beforeLines[i].trim();
+        // Company name: starts with uppercase, 3+ chars, not a header/page line
+        if (/^[A-Z][A-Za-z\s&().'-]{2,80}/.test(line) && !/total|sub.?total|header|page|folio|isin|depository|securities\s*limited/i.test(line)) {
+          rawName = line.replace(/\s+/g, " ").trim();
+          break;
+        }
+      }
+    }
+
+    // Strategy 3c: Extract quantity — multiple patterns
+    if (qty <= 0) {
+      // Try labeled patterns first
+      const qtyPatterns = [
+        /(?:Free|Total|Net|Closing)?\s*(?:Balance|Quantity|Qty|Holding)[:\s]*([\d,.]+)/i,
+        /(?:Free|Available)\s*[:\s]*([\d,.]+)/i,
+        // CDSL format: just a number after the ISIN on same/next line
+        /^INE[A-Z0-9]+\s+(?:[A-Z].*?)?\s+(\d[\d,.]*)\s/,
+      ];
+      for (const pat of qtyPatterns) {
+        const qm = after.match(pat);
+        if (qm) { qty = pNum(qm[1]); if (qty > 0) break; }
+      }
+    }
+
+    // Strategy 3d: Extract quantity from all numbers after ISIN, take the first integer-like number
+    if (qty <= 0) {
+      const afterNums = [];
+      const anRe = /\b([\d,]+(?:\.\d+)?)\b/g;
+      let anm;
+      while ((anm = anRe.exec(after)) !== null) {
+        const v = pNum(anm[1]);
+        if (v > 0 && v < 1e7 && v === Math.floor(v)) { qty = v; break; }
+      }
     }
 
     // Also check the text BEFORE the ISIN for "TICKER.NSE COMPANY NAME" pattern
-    const beforeIsin = rawText.substring(Math.max(0, ineMatch.index - 300), ineMatch.index);
-    const exchangeTicker = extractExchangeTicker(rawName) || extractExchangeTicker(beforeIsin.split(/\n/).pop() || "");
+    const exchangeTicker = extractExchangeTicker(rawName) || extractExchangeTicker(before.split(/\n/).pop() || "");
     const name = cleanCASName(rawName);
 
-    if (!name || qty <= 0 || /total|sub.?total|header|page/i.test(name)) continue;
+    // Clean up: remove "# EQUITY SHARES" / "EQUITY SHARES" suffix
+    const cleanedName = name.replace(/\s*#?\s*EQUITY\s*SHARES?\s*$/i, "").trim();
+
+    if (!cleanedName || qty <= 0 || /total|sub.?total|header|page/i.test(cleanedName)) continue;
     seen.add(isin);
 
     let type = "IN_STOCK";
-    if (/sovereign\s*gold|sgb/i.test(name)) type = "IN_ETF";
-    else if (/etf|bees|nifty.*etf|gold.*etf|liquid.*etf/i.test(name)) type = "IN_ETF";
-    else if (/bond|debenture|ncd/i.test(name)) type = "FD";
+    if (/sovereign\s*gold|sgb/i.test(cleanedName)) type = "IN_ETF";
+    else if (/etf|bees|nifty.*etf|gold.*etf|liquid.*etf/i.test(cleanedName)) type = "IN_ETF";
+    else if (/bond|debenture|ncd/i.test(cleanedName)) type = "FD";
 
-    const afterWide = rawText.substring(ineMatch.index, ineMatch.index + 500);
-    const valMatch = afterWide.match(/(?:Value|Valuation|Market\s*Value)[:\s]*(?:INR|Rs\.?|`)?\s*([\d,.]+)/i);
-    const costValMatch = afterWide.match(/(?:Cost|Cost\s*Value|Acquisition\s*Cost)[:\s]*(?:INR|Rs\.?|`)?\s*([\d,.]+)/i);
-    const val = valMatch ? pNum(valMatch[1]) : 0;
-    const costVal = costValMatch ? pNum(costValMatch[1]) : 0;
+    // ── Extract value/cost — multiple strategies ──
+    const afterWide = rawText.substring(ineMatch.index, ineMatch.index + 600);
+    // Strategy A: Labeled values
+    const valMatch = afterWide.match(/(?:Value|Valuation|Market\s*Value|Current\s*Value)[:\s]*(?:INR|Rs\.?|₹)?\s*([\d,.]+)/i);
+    const costValMatch = afterWide.match(/(?:Cost|Cost\s*Value|Acquisition\s*Cost|Purchase\s*Value|Investment\s*Value)[:\s]*(?:INR|Rs\.?|₹)?\s*([\d,.]+)/i);
+    let val = valMatch ? pNum(valMatch[1]) : 0;
+    let costVal = costValMatch ? pNum(costValMatch[1]) : 0;
+
+    // Strategy B: If no labeled values, extract all numbers after qty and look for value-sized numbers
+    if (!val) {
+      const afterQty = after.substring(after.indexOf(String(qty)) + String(qty).length);
+      const nums = [];
+      const vnRe = /([\d,]+\.?\d*)/g;
+      let vm;
+      while ((vm = vnRe.exec(afterQty)) !== null) {
+        const v = pNum(vm[1]);
+        // Value should be larger than qty (price × qty)
+        if (v > qty && v > 100) { nums.push(v); }
+      }
+      if (nums.length >= 2) {
+        // Smaller = cost value, Larger = current value (or vice versa)
+        nums.sort((a, b) => a - b);
+        costVal = nums[0];
+        val = nums[nums.length - 1];
+      } else if (nums.length === 1) {
+        val = nums[0];
+      }
+    }
 
     // Derive per-unit prices
     const currentPricePerUnit = val && qty ? val / qty : 0;
     const purchasePricePerUnit = costVal && qty ? costVal / qty : 0;
 
+    console.log(`📋 CAS Demat: ${cleanedName} (${isin}) qty=${qty} val=${val} cost=${costVal} price=${currentPricePerUnit.toFixed(2)}`);
+
     holdings.push({
-      name, type,
+      name: cleanedName, type,
       ticker: exchangeTicker || isin,   // prefer NSE/BSE ticker over ISIN
       scheme_code: isin,                // store ISIN in scheme_code for reference
       units: qty,
@@ -3802,8 +3966,22 @@ function parseNSDLCASStatement(rawText) {
 
   const mfCount = holdings.filter(h => h.type === "MF").length;
   const dematCount = holdings.filter(h => h.type !== "MF").length;
+
+  // ── Diagnostic: count all ISINs in raw text vs parsed ──
+  const allINF = [...rawText.matchAll(/\b(INF[A-Z0-9]{9})\b/g)].map(m => m[1]);
+  const allINE = [...rawText.matchAll(/\b(INE[A-Z0-9]{9})\b/g)].map(m => m[1]);
+  const uniqueINF = [...new Set(allINF)];
+  const uniqueINE = [...new Set(allINE)];
+  const parsedISINs = new Set(holdings.map(h => h.ticker).concat(holdings.map(h => h.scheme_code)));
+  const missedINF = uniqueINF.filter(i => !parsedISINs.has(i));
+  const missedINE = uniqueINE.filter(i => !parsedISINs.has(i));
+  console.log(`📋 CAS Summary: ${uniqueINF.length} unique INF ISINs in text, ${mfCount} MFs parsed. Missed INF: [${missedINF.join(", ")}]`);
+  console.log(`📋 CAS Summary: ${uniqueINE.length} unique INE ISINs in text, ${dematCount} demat parsed. Missed INE: [${missedINE.join(", ")}]`);
+
   if (mfCount) warnings.push("Found " + mfCount + " mutual fund(s)");
   if (dematCount) warnings.push("Found " + dematCount + " demat holding(s)");
+  if (missedINF.length) warnings.push(`${missedINF.length} MF ISIN(s) detected but not parsed: ${missedINF.join(", ")}`);
+  if (missedINE.length) warnings.push(`${missedINE.length} demat ISIN(s) detected but not parsed: ${missedINE.join(", ")}`);
   if (!mfCount && !dematCount) warnings.push("No holdings detected - CAS format may differ from expected layout");
 
   return {
