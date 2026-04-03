@@ -3860,76 +3860,136 @@ function parseNSDLCASStatement(rawText) {
   }
 
   // ── Strategy 3: Demat holdings — ISIN (INE...) + quantity ──
+  // Actual CDSL CAS format from PDF extraction:
+  //   INE022Q01020   INDIAN ENERGY EXCHANGE LIMITED#NEW EQUITY SHARES FACE VALUE RE. 1/- AFTER SUB DIVISION 750.000 750.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 125.15   93,862.50
+  //   INE0W2G01015   SAGILITY LIMITED # EQUITY SHARES 250.000 250.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 121.10   14,532.00
+  // Pattern: ISIN   NAME#DESCRIPTION   QTY.000 QTY.000 [zeros...] MARKET_PRICE   TOTAL_VALUE
   const ineRe = /\b(INE[A-Z0-9]{9})\b/g;
   let ineMatch;
   while ((ineMatch = ineRe.exec(rawText)) !== null) {
     const isin = ineMatch[1];
     if (seen.has(isin)) continue;
 
-    const after = rawText.substring(ineMatch.index, ineMatch.index + 500);
+    const after = rawText.substring(ineMatch.index, ineMatch.index + 600);
     const before = rawText.substring(Math.max(0, ineMatch.index - 300), ineMatch.index);
 
-    let rawName = "", qty = 0;
+    let rawName = "", qty = 0, marketPrice = 0, totalValue = 0;
 
-    // Strategy 3a: ISIN on same line as name + quantity
-    //   e.g. "INE0W2G01015 SAGILITY LIMITED # EQUITY SHARES  250  Free: 250"
-    const rowMatch = after.match(/^[A-Z0-9]+\s+(.{3,80}?)\s+([\d,.]+)\s/);
-    if (rowMatch) {
-      rawName = rowMatch[1].replace(/\s+/g, " ").trim();
-      qty = pNum(rowMatch[2]);
+    // ── Strategy A: CDSL format — ISIN followed by NAME#DESC then numbers ──
+    // Match: ISIN + spaces + NAME (up to 200 chars, until first decimal number)
+    const cdslMatch = after.match(/^INE[A-Z0-9]{9}\s{2,}(.+?)(?=\s+\d+\.\d{3}\s)/);
+    if (cdslMatch) {
+      rawName = cdslMatch[1].replace(/\s+/g, " ").trim();
+
+      // Extract all decimal numbers after the name, stopping at section boundaries
+      // Truncate numPart at "Sub Total", "Consolidated", next "INE" ISIN, or "Closing"
+      let numPartRaw = after.substring(cdslMatch.index + cdslMatch[0].length);
+      const boundaryMatch = numPartRaw.match(/\s+(?:Sub\s*Total|Consolidated|INE[A-Z0-9]{9}|Closing|Page\s+\d)/i);
+      if (boundaryMatch) numPartRaw = numPartRaw.substring(0, boundaryMatch.index);
+
+      const decNums = [];
+      const dnRe = /([\d,]+\.\d+)/g;
+      let dn;
+      while ((dn = dnRe.exec(numPartRaw)) !== null) {
+        decNums.push(pNum(dn[1]));
+      }
+
+      // CDSL column order: Free Bal, Total Bal, [various zero columns], Market Price, Total Value
+      // First decimal is the quantity (Free Balance)
+      if (decNums.length >= 2) {
+        qty = decNums[0];
+      }
+
+      // Last two non-zero numbers = Market Price, Total Value
+      const bigNums = decNums.filter(n => n > 0);
+      if (bigNums.length >= 2) {
+        totalValue = bigNums[bigNums.length - 1];
+        marketPrice = bigNums[bigNums.length - 2];
+
+        // Cross-validate: qty × marketPrice ≈ totalValue (within 5%)
+        if (qty > 0 && marketPrice > 0) {
+          const expected = qty * marketPrice;
+          const err = Math.abs(expected - totalValue) / Math.max(totalValue, 1);
+          if (err > 0.05) {
+            // Price/value mismatch — try swapping or recalculating
+            // Maybe totalValue is actually a sub-total from another section
+            // Use cross-validation: find the pair where factor × qty ≈ product
+            let found = false;
+            for (let vi = bigNums.length - 1; vi >= 1; vi--) {
+              for (let pi = vi - 1; pi >= 0; pi--) {
+                const vCandidate = bigNums[vi];
+                const pCandidate = bigNums[pi];
+                if (pCandidate > 0 && qty > 0) {
+                  const checkErr = Math.abs(qty * pCandidate - vCandidate) / Math.max(vCandidate, 1);
+                  if (checkErr < 0.05) {
+                    marketPrice = pCandidate;
+                    totalValue = vCandidate;
+                    found = true;
+                    break;
+                  }
+                }
+              }
+              if (found) break;
+            }
+          }
+        }
+      } else if (bigNums.length === 1) {
+        if (bigNums[0] > qty * 2) {
+          totalValue = bigNums[0];
+          marketPrice = qty > 0 ? totalValue / qty : 0;
+        } else {
+          marketPrice = bigNums[0];
+          totalValue = qty * marketPrice;
+        }
+      }
+
+      console.log(`📋 CAS Demat (CDSL): ${isin} name="${rawName.substring(0,60)}" qty=${qty} price=${marketPrice} val=${totalValue} (${decNums.length} decimals found)`);
     }
 
-    // Strategy 3b: Name is BEFORE the ISIN (CDSL format)
-    //   e.g. "SAGILITY LIMITED # EQUITY SHARES\nINE0W2G01015  250"
+    // ── Strategy B: Generic fallback — older format or different layout ──
     if (!rawName || qty <= 0) {
-      // Look for company name in lines before ISIN
+      const rowMatch = after.match(/^[A-Z0-9]+\s+(.{3,200}?)\s+([\d,.]+)\s/);
+      if (rowMatch) {
+        rawName = rowMatch[1].replace(/\s+/g, " ").trim();
+        qty = pNum(rowMatch[2]);
+      }
+    }
+
+    // Strategy C: Name is BEFORE the ISIN
+    if (!rawName || qty <= 0) {
       const beforeLines = before.split(/\n/).filter(l => l.trim());
       for (let i = beforeLines.length - 1; i >= Math.max(0, beforeLines.length - 3); i--) {
         const line = beforeLines[i].trim();
-        // Company name: starts with uppercase, 3+ chars, not a header/page line
         if (/^[A-Z][A-Za-z\s&().'-]{2,80}/.test(line) && !/total|sub.?total|header|page|folio|isin|depository|securities\s*limited/i.test(line)) {
           rawName = line.replace(/\s+/g, " ").trim();
           break;
         }
       }
-    }
-
-    // Strategy 3c: Extract quantity — multiple patterns
-    if (qty <= 0) {
-      // Try labeled patterns first
-      const qtyPatterns = [
-        /(?:Free|Total|Net|Closing)?\s*(?:Balance|Quantity|Qty|Holding)[:\s]*([\d,.]+)/i,
-        /(?:Free|Available)\s*[:\s]*([\d,.]+)/i,
-        // CDSL format: just a number after the ISIN on same/next line
-        /^INE[A-Z0-9]+\s+(?:[A-Z].*?)?\s+(\d[\d,.]*)\s/,
-      ];
-      for (const pat of qtyPatterns) {
-        const qm = after.match(pat);
-        if (qm) { qty = pNum(qm[1]); if (qty > 0) break; }
-      }
-    }
-
-    // Strategy 3d: Extract quantity from all numbers after ISIN, take the first integer-like number
-    if (qty <= 0) {
-      const afterNums = [];
-      const anRe = /\b([\d,]+(?:\.\d+)?)\b/g;
-      let anm;
-      while ((anm = anRe.exec(after)) !== null) {
-        const v = pNum(anm[1]);
-        if (v > 0 && v < 1e7 && v === Math.floor(v)) { qty = v; break; }
+      // Extract qty from labeled patterns
+      if (qty <= 0) {
+        const qtyPatterns = [
+          /(?:Free|Total|Net|Closing)?\s*(?:Balance|Quantity|Qty|Holding)[:\s]*([\d,.]+)/i,
+          /(?:Free|Available)\s*[:\s]*([\d,.]+)/i,
+        ];
+        for (const pat of qtyPatterns) {
+          const qm = after.match(pat);
+          if (qm) { qty = pNum(qm[1]); if (qty > 0) break; }
+        }
       }
     }
 
     // Also check the text BEFORE the ISIN for "TICKER.NSE COMPANY NAME" pattern
     const exchangeTicker = extractExchangeTicker(rawName) || extractExchangeTicker(before.split(/\n/).pop() || "");
-    const name = cleanCASName(rawName);
 
-    // Clean up: remove "# EQUITY SHARES" / "EQUITY SHARES" suffix
-    const cleanedName = name.replace(/\s*#?\s*EQUITY\s*SHARES?\s*$/i, "").trim();
+    // ── Clean the name ──
+    let name = cleanCASName(rawName);
+    // Remove "#..." description suffix: "INDIAN ENERGY EXCHANGE LIMITED#NEW EQUITY SHARES..."
+    name = name.replace(/#.*$/i, "").trim();
+    // Remove trailing "EQUITY SHARES" / "LIMITED" cruft
+    name = name.replace(/\s*#?\s*(?:NEW\s+)?EQUITY\s*SHARES?.*$/i, "").trim();
 
-    if (!cleanedName || qty <= 0 || /total|sub.?total|header|page/i.test(cleanedName)) {
-      console.log(`📋 CAS Demat SKIP: ${isin} name="${cleanedName}" qty=${qty} (${!cleanedName ? "no name" : qty <= 0 ? "no quantity" : "filtered"})`);
-      // Log surrounding text for debugging
+    if (!name || qty <= 0 || /total|sub.?total|header|page/i.test(name)) {
+      console.log(`📋 CAS Demat SKIP: ${isin} name="${name}" qty=${qty} (${!name ? "no name" : qty <= 0 ? "no quantity" : "filtered"})`);
       console.log(`   before(last 100): "${before.slice(-100).replace(/\n/g,"\\n")}"`);
       console.log(`   after(first 200): "${after.substring(0,200).replace(/\n/g,"\\n")}"`);
       continue;
@@ -3937,53 +3997,34 @@ function parseNSDLCASStatement(rawText) {
     seen.add(isin);
 
     let type = "IN_STOCK";
-    if (/sovereign\s*gold|sgb/i.test(cleanedName)) type = "IN_ETF";
-    else if (/etf|bees|nifty.*etf|gold.*etf|liquid.*etf/i.test(cleanedName)) type = "IN_ETF";
-    else if (/bond|debenture|ncd/i.test(cleanedName)) type = "FD";
+    if (/sovereign\s*gold|sgb/i.test(name)) type = "IN_ETF";
+    else if (/etf|bees|nifty.*etf|gold.*etf|liquid.*etf/i.test(name)) type = "IN_ETF";
+    else if (/bond|debenture|ncd/i.test(name)) type = "FD";
 
-    // ── Extract value/cost — multiple strategies ──
-    const afterWide = rawText.substring(ineMatch.index, ineMatch.index + 600);
-    // Strategy A: Labeled values
-    const valMatch = afterWide.match(/(?:Value|Valuation|Market\s*Value|Current\s*Value)[:\s]*(?:INR|Rs\.?|₹)?\s*([\d,.]+)/i);
-    const costValMatch = afterWide.match(/(?:Cost|Cost\s*Value|Acquisition\s*Cost|Purchase\s*Value|Investment\s*Value)[:\s]*(?:INR|Rs\.?|₹)?\s*([\d,.]+)/i);
-    let val = valMatch ? pNum(valMatch[1]) : 0;
-    let costVal = costValMatch ? pNum(costValMatch[1]) : 0;
-
-    // Strategy B: If no labeled values, look for numbers that are plausibly value-sized
-    // Value = qty × price_per_share. For demat holdings, value should be > qty typically.
-    if (!val && qty > 0) {
-      // Extract all numbers from the text around this ISIN
-      const regionNums = [];
-      const vnRe = /([\d,]+\.?\d*)/g;
-      let vm;
-      const searchRegion = after.substring(isin.length); // skip the ISIN itself
-      while ((vm = vnRe.exec(searchRegion)) !== null) {
-        const v = pNum(vm[1]);
-        // Must be reasonable: larger than qty (price × qty > qty if price > 1), and not a date/ref
-        if (v > qty && v > 100 && v < 1e8) regionNums.push(v);
-      }
-      if (regionNums.length >= 2) {
-        regionNums.sort((a, b) => a - b);
-        costVal = regionNums[0];
-        val = regionNums[regionNums.length - 1];
-      } else if (regionNums.length === 1) {
-        val = regionNums[0];
-      }
+    // ── Use values from CDSL format if available, else try labeled extraction ──
+    if (!totalValue) {
+      const afterWide = rawText.substring(ineMatch.index, ineMatch.index + 600);
+      const valMatch = afterWide.match(/(?:Value|Valuation|Market\s*Value|Current\s*Value)[:\s]*(?:INR|Rs\.?|₹)?\s*([\d,.]+)/i);
+      const costValMatch = afterWide.match(/(?:Cost|Cost\s*Value|Acquisition\s*Cost|Purchase\s*Value|Investment\s*Value)[:\s]*(?:INR|Rs\.?|₹)?\s*([\d,.]+)/i);
+      totalValue = valMatch ? pNum(valMatch[1]) : 0;
+      const costVal = costValMatch ? pNum(costValMatch[1]) : 0;
+      if (!marketPrice && totalValue && qty) marketPrice = totalValue / qty;
     }
 
     // Derive per-unit prices
-    const currentPricePerUnit = val && qty ? val / qty : 0;
+    const currentPricePerUnit = marketPrice || (totalValue && qty ? totalValue / qty : 0);
+    const costVal = 0; // CDSL CAS doesn't typically include cost basis for demat
     const purchasePricePerUnit = costVal && qty ? costVal / qty : 0;
 
-    console.log(`📋 CAS Demat: ${cleanedName} (${isin}) qty=${qty} val=${val} cost=${costVal} price=${currentPricePerUnit.toFixed(2)}`);
+    console.log(`📋 CAS Demat: ${name} (${isin}) qty=${qty} price=${currentPricePerUnit.toFixed(2)} val=${totalValue} type=${type}`);
 
     holdings.push({
-      name: cleanedName, type,
-      ticker: exchangeTicker || isin,   // prefer NSE/BSE ticker over ISIN
-      scheme_code: isin,                // store ISIN in scheme_code for reference
+      name, type,
+      ticker: exchangeTicker || isin,
+      scheme_code: isin,
       units: qty,
       purchase_price: purchasePricePerUnit, current_price: currentPricePerUnit,
-      purchase_value: costVal || val, current_value: val,
+      purchase_value: costVal || totalValue, current_value: totalValue,
       source: _source, brokerage_name: _brokerage, currency: "INR",
     });
   }
