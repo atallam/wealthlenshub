@@ -63,6 +63,27 @@ app.get("/api/portfolio", auth, async (req, res) => {
   const { data, error } = await supabase
     .from("portfolio").select("*").eq("user_id", req.user.id).single();
   if (error && error.code !== "PGRST116") return res.status(500).json({ error: error.message });
+
+  // Auto-provision portfolio with a default "Self" member on first access
+  if (!data) {
+    try {
+      // Get display name from profile or auth metadata
+      const { data: profile } = await supabase.from("profiles").select("display_name").eq("id", req.user.id).single();
+      const displayName = profile?.display_name || req.user.email?.split("@")[0] || "Me";
+      const defaultMember = { id: "m_" + Date.now().toString(36), name: displayName, relation: "Self" };
+      const newPortfolio = {
+        id: req.user.id, user_id: req.user.id,
+        members: [defaultMember], goals: [], alerts: [],
+        updated_at: new Date().toISOString(),
+      };
+      const { error: insertErr } = await supabase.from("portfolio").upsert(newPortfolio);
+      if (!insertErr) {
+        console.log(`📋 Auto-provisioned portfolio for ${req.user.email} with member "${displayName}"`);
+        return res.json(newPortfolio);
+      }
+    } catch {}
+  }
+
   res.json(data || null);
 });
 
@@ -3948,11 +3969,17 @@ function parseNSDLCASStatement(rawText) {
     const after = rawText.substring(ineMatch.index, ineMatch.index + 600);
     const before = rawText.substring(Math.max(0, ineMatch.index - 300), ineMatch.index);
 
+    // ── DIAGNOSTIC: dump raw text around each INE ISIN ──
+    console.log(`\n📋 ═══ INE RAW DUMP: ${isin} ═══`);
+    console.log(`   BEFORE(150): "${before.slice(-150).replace(/\n/g,"\\n")}"`);
+    console.log(`   AFTER(300):  "${after.substring(0,300).replace(/\n/g,"\\n")}"`);
+
     let rawName = "", qty = 0, marketPrice = 0, totalValue = 0;
 
     // ── Strategy A: CDSL format — ISIN followed by NAME#DESC then numbers ──
     // Match: ISIN + spaces + NAME (up to 200 chars, until first decimal number)
     const cdslMatch = after.match(/^INE[A-Z0-9]{9}\s{2,}(.+?)(?=\s+\d+\.\d{3}\s)/);
+    console.log(`📋 CAS Demat Strategy A (CDSL): ${isin} → ${cdslMatch ? "MATCHED" : "no match"}`);
     if (cdslMatch) {
       rawName = cdslMatch[1].replace(/\s+/g, " ").trim();
 
@@ -4067,30 +4094,45 @@ function parseNSDLCASStatement(rawText) {
       }
     }
 
-    // Strategy Q2: For NSDL — extract face value and all numbers, pick qty intelligently
+    // Strategy Q2: For NSDL — face value is typically first small number, qty is second
     if (qty <= 0) {
       const afterNums = after.substring(0, 500);
-      // Detect face value
-      const fvMatch = afterNums.match(/(?:Face\s*Value|FV|Fv)[:\s]*(?:Rs\.?|₹|INR)?\s*(\d[\d,.]*)/i);
+      // Detect face value (often labeled, or just the first small integer like 1, 2, 5, 10)
+      const fvMatch = afterNums.match(/(?:Face\s*Value|FV|Fv|F\.V\.?)[:\s]*(?:Rs\.?|₹|INR|RE\.?)?\s*(\d[\d,.]*)/i);
       const faceValue = fvMatch ? pNum(fvMatch[1]) : 0;
 
-      // Extract all numbers from the text after ISIN+name
-      const nameEnd = rawName ? after.indexOf(rawName) + rawName.length : 12;
-      const numText = after.substring(nameEnd, nameEnd + 300);
+      // In NSDL CAS, typical pattern after ISIN + company name:
+      // "... LIMITED  2  10 ..." where 2=FV, 10=qty
+      // Or: "... LIMITED  Face Value: Rs 2/-  10.000 10.000 0.000 ..."
+      // Strategy: collect all numbers, skip the face value, pick the first plausible qty
+      const nameEnd = rawName ? (after.indexOf(rawName) >= 0 ? after.indexOf(rawName) + rawName.length : 12) : 12;
+      const numText = after.substring(nameEnd, nameEnd + 400);
       const allNums = [...numText.matchAll(/([\d,]+\.?\d*)/g)].map(m => pNum(m[1])).filter(n => n > 0);
 
+      console.log(`📋 CAS Demat Q2: ${isin} fv=${faceValue} allNums=[${allNums.slice(0,10).join(",")}] numText="${numText.substring(0,120).replace(/\n/g,"\\n")}"`);
+
       if (allNums.length > 0) {
-        // Filter out face value and pick the first number that's likely a quantity
-        // Face value is typically small (1, 2, 5, 10) and quantity is an integer >= face value
-        const candidates = faceValue > 0
-          ? allNums.filter(n => n !== faceValue && n >= faceValue)
-          : allNums;
-        
+        // Common NSDL face values: 1, 2, 5, 10 (in Rs)
+        const commonFV = new Set([1, 2, 5, 10]);
+        const detectedFV = faceValue || (commonFV.has(allNums[0]) ? allNums[0] : 0);
+
+        // Skip face value and related numbers (like "2/-" producing [2])
+        // The actual qty is usually the next integer or .000 number
+        const candidates = detectedFV > 0
+          ? allNums.filter((n, idx) => {
+              // Skip the first occurrence that matches face value
+              if (idx === 0 && n === detectedFV) return false;
+              // Skip very small numbers that look like face values or percentages
+              if (n <= detectedFV && n < 100) return false;
+              return true;
+            })
+          : allNums.slice(1); // No face value detected — skip first number as likely FV
+
         if (candidates.length > 0) {
-          // Prefer whole numbers (quantities are usually integers or end in .000)
-          const wholeQty = candidates.find(n => Number.isInteger(n) || n % 1 < 0.001);
+          // Prefer whole numbers or .000 numbers (NSDL qty format)
+          const wholeQty = candidates.find(n => Number.isInteger(n) || Math.abs(n - Math.round(n)) < 0.001);
           qty = wholeQty || candidates[0];
-          console.log(`📋 CAS Demat qty (positional): ${isin} qty=${qty} fv=${faceValue} allNums=[${allNums.slice(0,6).join(",")}]`);
+          console.log(`📋 CAS Demat qty (Q2): ${isin} qty=${qty} detectedFV=${detectedFV} candidates=[${candidates.slice(0,5).join(",")}]`);
         }
       }
     }
@@ -4407,8 +4449,8 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
                     const resolved = match.symbol.replace(/\.(NS|BO)$/, "");
                     console.log(`📋 ISIN→Ticker: ${h.scheme_code} → ${resolved} (${match.symbol})`);
                     h.ticker = resolved;
-                    // Small delay to avoid Yahoo rate-limiting
-                    await new Promise(r => setTimeout(r, 300));
+                    // Delay to avoid Yahoo rate-limiting
+                    await new Promise(r => setTimeout(r, 1000));
                     // Fetch live price
                     try {
                       const price = await yahooPrice(match.symbol);
@@ -4428,8 +4470,8 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
                 } catch (e) {
                   console.log(`📋 ISIN→Ticker: ${h.scheme_code} — search error: ${e.message}`);
                 }
-                // Rate-limit: 500ms between each holding
-                await new Promise(r => setTimeout(r, 500));
+                // Rate-limit: 1500ms between each holding
+                await new Promise(r => setTimeout(r, 1500));
             }
             result.holdings.forEach((h,i) => console.log(`   [${i}] ${h.name} | units=${h.units} | nav=${h.current_nav||h.current_price} | val=${h.current_value} | cost=${h.purchase_value} | type=${h.type} | ticker=${h.ticker}`));
             const { data: existing } = await supabase.from("holdings")
