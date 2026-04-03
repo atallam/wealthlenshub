@@ -3581,10 +3581,11 @@ function parseNSDLCASStatement(rawText) {
 
   const infRe = /\b(INF[A-Z0-9]{9})\b/g;
   let infMatch;
+  // Track best match per ISIN — first valid triplet match wins (usually summary section)
+  const bestByIsin = new Map();
+
   while ((infMatch = infRe.exec(rawText)) !== null) {
     const isin = infMatch[1];
-    // Don't skip by ISIN alone — same ISIN can appear in multiple folios/holders
-    // Dedup happens later using isin + "|" + units key
 
     // Extract text from this ISIN to the next ISIN (or 800 chars, whichever comes first)
     const afterStart = infMatch.index + infMatch[0].length;
@@ -3631,7 +3632,18 @@ function parseNSDLCASStatement(rawText) {
       continue;
     }
 
-    console.log(`📋 CAS MF: ${name} (${isin}) — ${allNums.length} numbers: [${allNums.slice(0,10).join(", ")}]`);
+    // ── Detect transaction detail section (dates, reference numbers, not summary) ──
+    // Transaction sections have numbers like dates (2026, 1211232026021) and small amounts
+    // Key signal: presence of date-like numbers (-2026, 2025, 2026) or very large ref numbers (>1e9)
+    const hasDateNums = allNums.some(n => Math.abs(n) >= 2020 && Math.abs(n) <= 2030);
+    const hasHugeRef = allNums.some(n => n > 1e9);
+    const isTxnDetail = hasDateNums && hasHugeRef;
+    if (isTxnDetail) {
+      console.log(`   → Skipping ${isin} occurrence (transaction detail section: has date-nums + huge refs)`);
+      continue;
+    }
+
+    console.log(`📋 CAS MF: ${name} (${isin}) — ${allNums.length} numbers: [${allNums.slice(0,14).join(", ")}]`);
 
     if (allNums.length < 3) continue; // Need at least units + nav + value
 
@@ -3656,30 +3668,6 @@ function parseNSDLCASStatement(rawText) {
 
     if (matches.length === 0) {
       console.log(`   ⚠ No Units×NAV≈Value match found for ${isin}. Numbers: [${allNums.slice(0,12).join(", ")}]`);
-      // Last resort: if we have at least 2 numbers, try Units + Value (no NAV cross-validation)
-      // This handles cases where CAS only shows units and value
-      if (allNums.length >= 2) {
-        // Find the largest number as value, smallest reasonable as units
-        const sorted = [...allNums].sort((a, b) => a - b);
-        const possibleValue = sorted[sorted.length - 1];
-        const possibleUnits = sorted.find(n => n > 0 && n < possibleValue);
-        if (possibleUnits && possibleValue > 100) {
-          const derivedNav = possibleValue / possibleUnits;
-          console.log(`   → Fallback: units=${possibleUnits}, value=${possibleValue}, derived nav=${derivedNav.toFixed(4)}`);
-          const key = isin + "|" + possibleUnits.toFixed(3);
-          if (!seen.has(key)) {
-            seen.add(key);
-            holdings.push({
-              name, type: "MF", ticker: isin, scheme_code: "",
-              units: possibleUnits, purchase_nav: derivedNav, current_nav: derivedNav,
-              purchase_price: derivedNav, current_price: derivedNav,
-              purchase_value: possibleValue, current_value: possibleValue,
-              source: _source, brokerage_name: _brokerage, currency: "INR",
-              _folio: "",
-            });
-          }
-        }
-      }
       continue;
     }
 
@@ -3742,10 +3730,24 @@ function parseNSDLCASStatement(rawText) {
     }
     const currentValue = currentValueMatch.val;
 
+    // ── Sanity check: value should be reasonable (> ₹10 for MFs, < ₹100Cr) ──
+    if (currentValue < 10 || currentValue > 1e9) {
+      console.log(`   ⚠ Skipping ${isin}: value=${currentValue} outside reasonable range`);
+      continue;
+    }
+    // NAV sanity: Indian MF NAVs are typically between 5 and 50000
+    if (nav < 1 || nav > 50000) {
+      console.log(`   ⚠ Skipping ${isin}: nav=${nav} outside reasonable range (1-50000)`);
+      continue;
+    }
+
     console.log(`   ✓ Matched: units=${units}, nav=${nav}, value=${currentValue} (err=${(currentValueMatch.err*100).toFixed(1)}%, ${matches.length} triplets)`);
 
     // ── Find invested amount and purchase NAV ──
     let invested = 0, purchaseNav = 0;
+
+    // Numbers already used in the current value triplet — don't reuse as invested
+    const usedIndices = new Set(currentValueMatch.indices);
 
     if (investedMatch) {
       invested = investedMatch.val;
@@ -3758,41 +3760,35 @@ function parseNSDLCASStatement(rawText) {
 
     if (!invested) {
       // Fallback 1: Look for a value-sized number not used in the current triplet
-      // that could be invested amount (typically a round SIP amount or lumpsum)
-      for (let i = 0; i < Math.min(allNums.length, 10); i++) {
-        if (currentValueMatch.indices.includes(i)) continue;
+      for (let i = 0; i < Math.min(allNums.length, 12); i++) {
+        if (usedIndices.has(i)) continue;
         const n = allNums[i];
-        // Invested is usually: > 100, < 5x current value, and either:
-        //   a) A round number (SIP/lumpsum amounts)
-        //   b) Close to currentValue (for new funds)
-        //   c) n / units gives a plausible NAV (5-10000)
-        if (n > 100 && n < currentValue * 5) {
+        // Skip if this number equals units or nav (already used)
+        if (Math.abs(n - units) / Math.max(units, 0.001) < 0.01) continue;
+        if (Math.abs(n - nav) / Math.max(nav, 0.001) < 0.01) continue;
+        if (Math.abs(n - currentValue) / Math.max(currentValue, 0.001) < 0.01) continue;
+
+        if (n > 100 && n < currentValue * 3) {
           const impliedNav = units > 0 ? n / units : 0;
-          if (impliedNav >= 3 && impliedNav <= 15000) {
+          // impliedNav must be in reasonable MF NAV range
+          if (impliedNav >= 3 && impliedNav <= 50000) {
             invested = n;
             purchaseNav = impliedNav;
             console.log(`   ✓ Invested=${invested} (implied NAV=${purchaseNav.toFixed(4)} fallback)`);
-            break;
-          }
-          if (n % 500 === 0 || n % 1000 === 0 || n % 100 === 0) {
-            invested = n;
-            purchaseNav = units > 0 ? invested / units : nav;
-            console.log(`   ✓ Invested=${invested} (round number fallback), PurchaseNAV=${purchaseNav.toFixed(4)}`);
             break;
           }
         }
       }
     }
 
-    // Fallback 2: Look for gain amount and derive invested = currentValue - gain
+    // Fallback 2: Look for gain amount AFTER the value in the number array
+    // CAS order: ...CurrentValue, Gain, Gain%
     if (!invested) {
-      // CAS order: ...CurrentValue, Gain, Gain%
-      // Gain appears after currentValue in the number array
       const cvIdx = currentValueMatch.indices[2];
       for (let i = cvIdx + 1; i < Math.min(allNums.length, cvIdx + 3); i++) {
         const gain = allNums[i];
-        // Gain should be much smaller than value (typically <50% of value)
-        if (Math.abs(gain) < currentValue * 0.8 && Math.abs(gain) > 0.01) {
+        // Gain should be smaller than value, and reasonable
+        if (Math.abs(gain) < currentValue * 0.8 && Math.abs(gain) > 0.5) {
           const derivedInvested = currentValue - gain;
           if (derivedInvested > 0) {
             invested = derivedInvested;
@@ -3825,21 +3821,42 @@ function parseNSDLCASStatement(rawText) {
       }
     }
 
-    const key = isin + "|" + units.toFixed(3);
-    if (seen.has(key)) continue;
-    seen.add(key);
+    // Extract folio (first very large number, likely >6 digits, no decimal, not used in triplet)
+    const folio = allNums.find((n, idx) => n > 100000 && n < 1e12 && n === Math.floor(n) && !usedIndices.has(idx))?.toString() || "";
 
-    // Extract folio (first very large number, likely >6 digits, no decimal)
-    const folio = allNums.find(n => n > 100000 && n === Math.floor(n) && !currentValueMatch.indices.includes(allNums.indexOf(n)))?.toString() || "";
-
-    holdings.push({
+    const holding = {
       name, type: "MF", ticker: isin, scheme_code: "",
       units, purchase_nav: purchaseNav, current_nav: nav,
       purchase_price: purchaseNav, current_price: nav,
       purchase_value: invested, current_value: currentValue,
       source: _source, brokerage_name: _brokerage, currency: "INR",
       _folio: folio,
-    });
+    };
+
+    // Keep first valid match per ISIN (summary section comes before transaction details)
+    // If same ISIN appears with different units (multiple folios), keep all
+    const existingForIsin = bestByIsin.get(isin);
+    if (!existingForIsin) {
+      bestByIsin.set(isin, [holding]);
+    } else {
+      // Check if this is a genuinely different folio (different unit count)
+      const isDuplicate = existingForIsin.some(h =>
+        Math.abs(h.units - units) / Math.max(h.units, 0.001) < 0.01
+      );
+      if (!isDuplicate) {
+        existingForIsin.push(holding);
+      } else {
+        console.log(`   → Skipping duplicate ${isin} with units=${units} (already have match)`);
+      }
+    }
+  }
+
+  // Push all best MF matches to holdings
+  for (const [isin, hList] of bestByIsin) {
+    for (const h of hList) {
+      seen.add(isin);  // Mark for demat dedup
+      holdings.push(h);
+    }
   }
 
   // ── Strategy 3: Demat holdings — ISIN (INE...) + quantity ──
@@ -3910,7 +3927,13 @@ function parseNSDLCASStatement(rawText) {
     // Clean up: remove "# EQUITY SHARES" / "EQUITY SHARES" suffix
     const cleanedName = name.replace(/\s*#?\s*EQUITY\s*SHARES?\s*$/i, "").trim();
 
-    if (!cleanedName || qty <= 0 || /total|sub.?total|header|page/i.test(cleanedName)) continue;
+    if (!cleanedName || qty <= 0 || /total|sub.?total|header|page/i.test(cleanedName)) {
+      console.log(`📋 CAS Demat SKIP: ${isin} name="${cleanedName}" qty=${qty} (${!cleanedName ? "no name" : qty <= 0 ? "no quantity" : "filtered"})`);
+      // Log surrounding text for debugging
+      console.log(`   before(last 100): "${before.slice(-100).replace(/\n/g,"\\n")}"`);
+      console.log(`   after(first 200): "${after.substring(0,200).replace(/\n/g,"\\n")}"`);
+      continue;
+    }
     seen.add(isin);
 
     let type = "IN_STOCK";
@@ -3926,24 +3949,25 @@ function parseNSDLCASStatement(rawText) {
     let val = valMatch ? pNum(valMatch[1]) : 0;
     let costVal = costValMatch ? pNum(costValMatch[1]) : 0;
 
-    // Strategy B: If no labeled values, extract all numbers after qty and look for value-sized numbers
-    if (!val) {
-      const afterQty = after.substring(after.indexOf(String(qty)) + String(qty).length);
-      const nums = [];
+    // Strategy B: If no labeled values, look for numbers that are plausibly value-sized
+    // Value = qty × price_per_share. For demat holdings, value should be > qty typically.
+    if (!val && qty > 0) {
+      // Extract all numbers from the text around this ISIN
+      const regionNums = [];
       const vnRe = /([\d,]+\.?\d*)/g;
       let vm;
-      while ((vm = vnRe.exec(afterQty)) !== null) {
+      const searchRegion = after.substring(isin.length); // skip the ISIN itself
+      while ((vm = vnRe.exec(searchRegion)) !== null) {
         const v = pNum(vm[1]);
-        // Value should be larger than qty (price × qty)
-        if (v > qty && v > 100) { nums.push(v); }
+        // Must be reasonable: larger than qty (price × qty > qty if price > 1), and not a date/ref
+        if (v > qty && v > 100 && v < 1e8) regionNums.push(v);
       }
-      if (nums.length >= 2) {
-        // Smaller = cost value, Larger = current value (or vice versa)
-        nums.sort((a, b) => a - b);
-        costVal = nums[0];
-        val = nums[nums.length - 1];
-      } else if (nums.length === 1) {
-        val = nums[0];
+      if (regionNums.length >= 2) {
+        regionNums.sort((a, b) => a - b);
+        costVal = regionNums[0];
+        val = regionNums[regionNums.length - 1];
+      } else if (regionNums.length === 1) {
+        val = regionNums[0];
       }
     }
 
