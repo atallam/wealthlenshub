@@ -4026,12 +4026,13 @@ function parseNSDLCASStatement(rawText) {
       const rowMatch = after.match(/^[A-Z0-9]+\s+(.{3,200}?)\s+([\d,.]+)\s/);
       if (rowMatch) {
         rawName = rowMatch[1].replace(/\s+/g, " ").trim();
-        qty = pNum(rowMatch[2]);
+        // Don't assign qty yet from positional — it might be face value
+        // We'll try labeled patterns first below
       }
     }
 
     // Strategy C: Name is BEFORE the ISIN
-    if (!rawName || qty <= 0) {
+    if (!rawName || rawName.length < 3) {
       const beforeLines = before.split(/\n/).filter(l => l.trim());
       for (let i = beforeLines.length - 1; i >= Math.max(0, beforeLines.length - 3); i--) {
         const line = beforeLines[i].trim();
@@ -4040,17 +4041,64 @@ function parseNSDLCASStatement(rawText) {
           break;
         }
       }
-      // Extract qty from labeled patterns
-      if (qty <= 0) {
-        const qtyPatterns = [
-          /(?:Free|Total|Net|Closing)?\s*(?:Balance|Quantity|Qty|Holding)[:\s]*([\d,.]+)/i,
-          /(?:Free|Available)\s*[:\s]*([\d,.]+)/i,
-        ];
-        for (const pat of qtyPatterns) {
-          const qm = after.match(pat);
-          if (qm) { qty = pNum(qm[1]); if (qty > 0) break; }
+    }
+
+    // ── Qty extraction: prefer labeled patterns over positional ──
+    // NSDL format typically has: "Face Value: 2  Closing Balance: 10.000" or similar
+    if (qty <= 0) {
+      // Strategy Q1: Labeled quantity patterns (most reliable)
+      const afterWide = rawText.substring(ineMatch.index, ineMatch.index + 800);
+      const qtyLabelPatterns = [
+        /(?:Closing|Free|Available|Total)\s*(?:Bal(?:ance)?|Holding|Qty|Quantity)[:\s]*(\d[\d,.]*)/i,
+        /(?:Balance|Holding|Qty|Quantity)\s*[:\s]\s*(\d[\d,.]*)/i,
+        // NSDL tabular: look for numbers after "Free" column header
+        /Free\s*(\d[\d,.]*)/i,
+      ];
+      for (const pat of qtyLabelPatterns) {
+        const qm = afterWide.match(pat);
+        if (qm) {
+          const candidate = pNum(qm[1]);
+          if (candidate > 0) {
+            qty = candidate;
+            console.log(`📋 CAS Demat qty (labeled): ${isin} qty=${qty} from "${qm[0].substring(0,50)}"`);
+            break;
+          }
         }
       }
+    }
+
+    // Strategy Q2: For NSDL — extract face value and all numbers, pick qty intelligently
+    if (qty <= 0) {
+      const afterNums = after.substring(0, 500);
+      // Detect face value
+      const fvMatch = afterNums.match(/(?:Face\s*Value|FV|Fv)[:\s]*(?:Rs\.?|₹|INR)?\s*(\d[\d,.]*)/i);
+      const faceValue = fvMatch ? pNum(fvMatch[1]) : 0;
+
+      // Extract all numbers from the text after ISIN+name
+      const nameEnd = rawName ? after.indexOf(rawName) + rawName.length : 12;
+      const numText = after.substring(nameEnd, nameEnd + 300);
+      const allNums = [...numText.matchAll(/([\d,]+\.?\d*)/g)].map(m => pNum(m[1])).filter(n => n > 0);
+
+      if (allNums.length > 0) {
+        // Filter out face value and pick the first number that's likely a quantity
+        // Face value is typically small (1, 2, 5, 10) and quantity is an integer >= face value
+        const candidates = faceValue > 0
+          ? allNums.filter(n => n !== faceValue && n >= faceValue)
+          : allNums;
+        
+        if (candidates.length > 0) {
+          // Prefer whole numbers (quantities are usually integers or end in .000)
+          const wholeQty = candidates.find(n => Number.isInteger(n) || n % 1 < 0.001);
+          qty = wholeQty || candidates[0];
+          console.log(`📋 CAS Demat qty (positional): ${isin} qty=${qty} fv=${faceValue} allNums=[${allNums.slice(0,6).join(",")}]`);
+        }
+      }
+    }
+
+    // Strategy Q3: Last resort — use the first number from Strategy B regex
+    if (qty <= 0) {
+      const rowMatch = after.match(/^[A-Z0-9]+\s+.{3,200}?\s+([\d,.]+)\s/);
+      if (rowMatch) qty = pNum(rowMatch[1]);
     }
 
     // Also check the text BEFORE the ISIN for "TICKER.NSE COMPANY NAME" pattern
@@ -4092,6 +4140,7 @@ function parseNSDLCASStatement(rawText) {
     const purchasePricePerUnit = costVal && qty ? costVal / qty : 0;
 
     console.log(`📋 CAS Demat: ${name} (${isin}) qty=${qty} price=${currentPricePerUnit.toFixed(2)} val=${totalValue} type=${type}${!totalValue ? " [NO PRICE - NSDL format, needs live fetch]" : ""}`);
+    console.log(`   raw after(200): "${after.substring(0,200).replace(/\n/g,"\\n")}"`);
 
     holdings.push({
       name, type,
@@ -4338,15 +4387,18 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
           console.log(`📋 CAS: parser returned ${result.holdings.length} holdings, ${result.warnings.length} warnings`);
           if (result.holdings.length > 0) {
             // ── Resolve ISIN→NSE/BSE ticker + fetch live price for demat holdings ──
-            for (const h of result.holdings) {
-              if (h.type !== "MF" && h.ticker === h.scheme_code && h.scheme_code?.startsWith("INE")) {
+            const dematHoldings = result.holdings.filter(h => h.type !== "MF" && h.ticker === h.scheme_code && h.scheme_code?.startsWith("INE"));
+            console.log(`📋 ISIN resolve: ${dematHoldings.length} demat holdings need ticker resolution`);
+            for (const h of dematHoldings) {
                 try {
                   // Try Yahoo search with ISIN first, then company name
                   let quotes = await yahooSearch(h.scheme_code);
+                  console.log(`📋 ISIN search "${h.scheme_code}": ${quotes.length} results`);
                   if (!quotes.length && h.name) {
                     // ISIN search failed — try first 2 words of company name
                     const nameQuery = h.name.split(/\s+/).slice(0, 2).join(" ");
                     quotes = await yahooSearch(nameQuery);
+                    console.log(`📋 Name search "${nameQuery}": ${quotes.length} results`);
                   }
                   const nse = quotes.find(q => q.symbol?.endsWith(".NS"));
                   const bse = quotes.find(q => q.symbol?.endsWith(".BO"));
@@ -4355,23 +4407,29 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
                     const resolved = match.symbol.replace(/\.(NS|BO)$/, "");
                     console.log(`📋 ISIN→Ticker: ${h.scheme_code} → ${resolved} (${match.symbol})`);
                     h.ticker = resolved;
+                    // Small delay to avoid Yahoo rate-limiting
+                    await new Promise(r => setTimeout(r, 300));
                     // Fetch live price
                     try {
                       const price = await yahooPrice(match.symbol);
+                      console.log(`📋 Price fetch ${match.symbol}: ${price}`);
                       if (price && price > 0) {
                         h.current_price = price;
                         h.current_value = h.units * price;
                         h._needs_price = false;
                         console.log(`📋 Live price: ${resolved} = ₹${price} → val=${h.current_value.toFixed(2)}`);
                       }
-                    } catch {}
+                    } catch (pe) {
+                      console.log(`📋 Price fetch error for ${match.symbol}: ${pe.message}`);
+                    }
                   } else {
-                    console.log(`📋 ISIN→Ticker: ${h.scheme_code} — no Yahoo match found`);
+                    console.log(`📋 ISIN→Ticker: ${h.scheme_code} — no Yahoo match found. Top results: ${quotes.slice(0,3).map(q=>q.symbol).join(", ")}`);
                   }
                 } catch (e) {
                   console.log(`📋 ISIN→Ticker: ${h.scheme_code} — search error: ${e.message}`);
                 }
-              }
+                // Rate-limit: 500ms between each holding
+                await new Promise(r => setTimeout(r, 500));
             }
             result.holdings.forEach((h,i) => console.log(`   [${i}] ${h.name} | units=${h.units} | nav=${h.current_nav||h.current_price} | val=${h.current_value} | cost=${h.purchase_value} | type=${h.type} | ticker=${h.ticker}`));
             const { data: existing } = await supabase.from("holdings")
