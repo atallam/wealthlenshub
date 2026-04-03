@@ -1088,6 +1088,7 @@ export default function App() {
   const [casDupAction,     setCasDupAction]     = useState({});       // per-holding: "update" | "skip"
   const [casPendingFile,   setCasPendingFile]   = useState(null);     // file awaiting PAN password
   const [casPanInput,      setCasPanInput]      = useState("");       // PAN entered by user for CAS decryption
+  const [casQuickMemberName, setCasQuickMemberName] = useState("");  // inline new member name in CAS modal
   const [casSavePan,       setCasSavePan]       = useState(false);    // remember PAN checkbox
 
   // ── Net Worth Timeline + Calendar ─────────────────────────────
@@ -1635,6 +1636,7 @@ export default function App() {
     setCasPendingFile(null);
     setCasPanInput("");
     setCasSavePan(false);
+    setCasQuickMemberName("");
   }
 
   function openMemberModal(memberId) {
@@ -5525,6 +5527,40 @@ ${alertLines||"  None"}`;
           {casFormat&&<span style={{background:"rgba(160,132,202,.12)",color:"#a084ca",padding:".15rem .5rem",borderRadius:4,fontSize:".65rem",marginRight:".5rem"}}>{casFormat}</span>}
           {casHoldings.length} holding{casHoldings.length!==1?"s":""} found
         </div>
+
+        {/* Quick-add member if none exist */}
+        {members.length===0&&(
+          <div style={{marginBottom:"1rem",padding:".8rem 1rem",background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.15)",borderRadius:8}}>
+            <div style={{fontSize:".72rem",color:"rgba(201,168,76,.85)",marginBottom:".5rem",fontWeight:500}}>No members yet — add yourself to continue</div>
+            <div style={{display:"flex",gap:".5rem",alignItems:"center"}}>
+              <input className="fi" placeholder="Your name" value={casQuickMemberName}
+                onChange={e=>setCasQuickMemberName(e.target.value)}
+                onKeyDown={e=>{if(e.key==="Enter"&&casQuickMemberName.trim())document.getElementById("cas-quick-add-btn")?.click();}}
+                style={{marginBottom:0,flex:1}}/>
+              <button id="cas-quick-add-btn" className="btns" style={{whiteSpace:"nowrap",padding:".4rem .8rem"}} disabled={!casQuickMemberName.trim()}
+                onClick={async()=>{
+                  const id=uid();
+                  const nm=casQuickMemberName.trim();
+                  const updated=[...members,{id,name:nm,relation:"Self"}];
+                  setMembers(updated);
+                  try{
+                    const {data:port}=await supabase.from("portfolio").select("members").eq("user_id",session.user.id).single();
+                    if(port)await supabase.from("portfolio").update({members:updated}).eq("user_id",session.user.id);
+                    else await supabase.from("portfolio").insert({user_id:session.user.id,members:updated});
+                  }catch{}
+                  // Auto-select this member for all holders
+                  if(casHolderNames.length>0){
+                    const map={};
+                    casHolderNames.forEach(n=>{map[n]=id;});
+                    setCasHolderMap(map);
+                  }else{
+                    setCasHolderMap({"_all":id});
+                  }
+                  setCasQuickMemberName("");
+                }}>+ Add</button>
+            </div>
+          </div>
+        )}
 
         {/* Holder → Member mapping */}
         {casHolderNames.length>0&&(

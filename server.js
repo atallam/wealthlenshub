@@ -4337,7 +4337,43 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
           const result = parseNSDLCASStatement(rawPdfText);
           console.log(`📋 CAS: parser returned ${result.holdings.length} holdings, ${result.warnings.length} warnings`);
           if (result.holdings.length > 0) {
-            result.holdings.forEach((h,i) => console.log(`   [${i}] ${h.name} | units=${h.units} | nav=${h.current_nav||h.current_price} | val=${h.current_value} | cost=${h.purchase_value} | type=${h.type}`));
+            // ── Resolve ISIN→NSE/BSE ticker + fetch live price for demat holdings ──
+            for (const h of result.holdings) {
+              if (h.type !== "MF" && h.ticker === h.scheme_code && h.scheme_code?.startsWith("INE")) {
+                try {
+                  // Try Yahoo search with ISIN first, then company name
+                  let quotes = await yahooSearch(h.scheme_code);
+                  if (!quotes.length && h.name) {
+                    // ISIN search failed — try first 2 words of company name
+                    const nameQuery = h.name.split(/\s+/).slice(0, 2).join(" ");
+                    quotes = await yahooSearch(nameQuery);
+                  }
+                  const nse = quotes.find(q => q.symbol?.endsWith(".NS"));
+                  const bse = quotes.find(q => q.symbol?.endsWith(".BO"));
+                  const match = nse || bse;
+                  if (match) {
+                    const resolved = match.symbol.replace(/\.(NS|BO)$/, "");
+                    console.log(`📋 ISIN→Ticker: ${h.scheme_code} → ${resolved} (${match.symbol})`);
+                    h.ticker = resolved;
+                    // Fetch live price
+                    try {
+                      const price = await yahooPrice(match.symbol);
+                      if (price && price > 0) {
+                        h.current_price = price;
+                        h.current_value = h.units * price;
+                        h._needs_price = false;
+                        console.log(`📋 Live price: ${resolved} = ₹${price} → val=${h.current_value.toFixed(2)}`);
+                      }
+                    } catch {}
+                  } else {
+                    console.log(`📋 ISIN→Ticker: ${h.scheme_code} — no Yahoo match found`);
+                  }
+                } catch (e) {
+                  console.log(`📋 ISIN→Ticker: ${h.scheme_code} — search error: ${e.message}`);
+                }
+              }
+            }
+            result.holdings.forEach((h,i) => console.log(`   [${i}] ${h.name} | units=${h.units} | nav=${h.current_nav||h.current_price} | val=${h.current_value} | cost=${h.purchase_value} | type=${h.type} | ticker=${h.ticker}`));
             const { data: existing } = await supabase.from("holdings")
               .select("name, ticker, scheme_code, type").eq("user_id", req.user.id);
             const existingSet = new Set(
