@@ -3517,6 +3517,37 @@ function parseNSDLCASStatement(rawText) {
 
   const seen = new Set();
 
+  // ── Extract PAN holder names from CAS text ─────────────────────
+  // CAS PDFs contain lines like:
+  //   "Statement for : AVINASH TALLAM"
+  //   "First Holder : PRIYA TALLAM"
+  //   "Holder Name    AVINASH TALLAM  PAN : ABCDE1234F"
+  //   "Name of the First Holder AVINASH TALLAM"
+  const holderNames = [];
+  const holderPANs = [];
+  const namePatterns = [
+    /(?:Statement\s+for|First\s+Holder|Holder\s+Name|Name\s+of\s+(?:the\s+)?(?:First\s+)?Holder|Account\s+Holder)\s*[:\-]?\s*([A-Z][A-Z\s.'-]{2,60}?)(?:\s{2,}|\s*PAN|\s*$)/gim,
+    /(?:^|\n)\s*(?:Name|Investor)\s*[:\-]\s*([A-Z][A-Z\s.'-]{2,60}?)(?:\s{2,}|\s*PAN|\s*$)/gim,
+  ];
+  for (const pat of namePatterns) {
+    let hm;
+    while ((hm = pat.exec(rawText)) !== null) {
+      const name = hm[1].replace(/\s+/g, " ").trim();
+      if (name.length >= 3 && !/consolidated|statement|account|depository|securities/i.test(name)) {
+        if (!holderNames.includes(name)) holderNames.push(name);
+      }
+    }
+  }
+  // Extract PANs associated with holder sections
+  const panRe = /PAN\s*[:\-]?\s*([A-Z]{5}\d{4}[A-Z])/gi;
+  let panM;
+  while ((panM = panRe.exec(rawText)) !== null) {
+    const pan = panM[1].toUpperCase();
+    if (!holderPANs.includes(pan)) holderPANs.push(pan);
+  }
+  if (holderNames.length > 0) console.log(`📋 CAS: extracted holder names: [${holderNames.join(", ")}]`);
+  if (holderPANs.length > 0) console.log(`📋 CAS: extracted PANs: [${holderPANs.join(", ")}]`);
+
   // ── Helper: clean CAS holding names ────────────────────────────
   // CAS PDFs often have names like:
   //   "KIMS.NSE KRISHNA INSTITUTE OF MEDICAL SCIENCES LIMITED"
@@ -3779,6 +3810,8 @@ function parseNSDLCASStatement(rawText) {
     format: "NSDL/CDSL CAS (PDF)",
     holdings, warnings,
     accounts: [],
+    holder_names: holderNames,
+    holder_pans: holderPANs,
   };
 }
 
@@ -3994,7 +4027,7 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
             }));
             const dupCount = result.holdings.filter(h => h._duplicate).length;
             if (dupCount > 0) result.warnings.push(`${dupCount} holding(s) already exist (marked as duplicates)`);
-            return res.json({ ...result, detected_type: "holdings", accounts: result.accounts || [] });
+            return res.json({ ...result, detected_type: "holdings", accounts: result.accounts || [], holder_names: result.holder_names || [], holder_pans: result.holder_pans || [] });
           }
         }
 

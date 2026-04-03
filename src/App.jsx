@@ -1074,6 +1074,19 @@ export default function App() {
   const [plaidMsg,      setPlaidMsg]      = useState("");
   const [plaidSyncing,  setPlaidSyncing]  = useState("");
 
+  // ── CAS Downloader state ──────────────────────────────────────
+  const [casModal,         setCasModal]         = useState(false);    // show CAS downloader modal
+  const [casStep,          setCasStep]          = useState("intro");  // "intro" | "upload" | "matching" | "importing" | "done"
+  const [casHoldings,      setCasHoldings]      = useState([]);       // parsed holdings from CAS
+  const [casHolderNames,   setCasHolderNames]   = useState([]);       // extracted holder names from CAS PDF
+  const [casHolderPans,    setCasHolderPans]    = useState([]);       // extracted PANs
+  const [casHolderMap,     setCasHolderMap]     = useState({});       // { holderName: memberId }
+  const [casWarnings,      setCasWarnings]      = useState([]);
+  const [casFormat,        setCasFormat]        = useState("");
+  const [casUploading,     setCasUploading]     = useState(false);
+  const [casResult,        setCasResult]        = useState(null);
+  const [casDupAction,     setCasDupAction]     = useState({});       // per-holding: "update" | "skip"
+
   // ── Net Worth Timeline + Calendar ─────────────────────────────
   const [nwMember,          setNwMember]          = useState("all");
   const [calMonth,          setCalMonth]          = useState(()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;});
@@ -1405,6 +1418,157 @@ export default function App() {
       if (overlap.length > 0 && (overlap.length >= words.length * 0.5 || overlap.length >= mWords.length * 0.5)) return m;
     }
     return null;
+  }
+
+  // ── CAS holder → member matching (PAN-first, then fuzzy name) ──
+  function matchCASHolderToMember(holderName, holderPans) {
+    // Priority 1: PAN match — if we have stored PAN for any member's profile, check against CAS PANs
+    // (PAN is stored on the profile level, not per-member, so this matches the logged-in user)
+    // Priority 2: Fuzzy name match via existing fuzzyMemberMatch
+    const match = fuzzyMemberMatch(holderName);
+    if (match) return match;
+    return null;
+  }
+
+  function autoMapCASHolders(holderNames, holderPans) {
+    const map = {};
+    for (const name of holderNames) {
+      const match = matchCASHolderToMember(name, holderPans);
+      if (match) map[name] = match.id;
+    }
+    return map;
+  }
+
+  // ── CAS Downloader: upload + parse CAS PDF ──
+  async function handleCASUpload(file) {
+    setCasUploading(true);
+    setCasWarnings([]);
+    setCasHoldings([]);
+    setCasHolderNames([]);
+    setCasHolderPans([]);
+    setCasStep("upload");
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
+
+      // Check if user has stored PAN for auto-decryption
+      let password = "";
+      try {
+        const creds = await api("/api/profile/cas-credentials");
+        if (creds.has_credentials && creds._pan) password = creds._pan;
+      } catch {}
+
+      const fd = new FormData();
+      fd.append("file", file);
+      if (password) fd.append("password", password);
+
+      const res = await fetch("/api/import/detect", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+
+      if (data.error === "password_required" || data.error === "password_incorrect") {
+        // Fall back to existing CAS password flow
+        setImportState(s => ({ ...s,
+          step: "cas_password", needsPassword: true, pendingFile: file,
+          warnings: data.error === "password_incorrect" ? ["Incorrect password — re-enter your PAN"] : [],
+        }));
+        setCasModal(false);
+        setModal("import");
+        setCasUploading(false);
+        return;
+      }
+
+      if (data.error) {
+        setCasWarnings([data.error]);
+        setCasStep("intro");
+        setCasUploading(false);
+        return;
+      }
+
+      // Store parsed results
+      const holdings = data.holdings || [];
+      const holderNames = data.holder_names || [];
+      const holderPans = data.holder_pans || [];
+      const warnings = data.warnings || [];
+      const format = data.format || "";
+
+      setCasHoldings(holdings);
+      setCasHolderNames(holderNames);
+      setCasHolderPans(holderPans);
+      setCasWarnings(warnings);
+      setCasFormat(format);
+
+      // Auto-map holders to members
+      const autoMap = autoMapCASHolders(holderNames, holderPans);
+      // If there are no holder names, pre-map all holdings to first member
+      if (holderNames.length === 0 && members.length > 0) {
+        // No holder names extracted — will use single-member assignment
+      }
+      setCasHolderMap(autoMap);
+      setCasStep("matching");
+    } catch (e) {
+      setCasWarnings([`Upload failed: ${e.message}`]);
+      setCasStep("intro");
+    }
+    setCasUploading(false);
+  }
+
+  // ── CAS Downloader: execute import ──
+  async function executeCASImport() {
+    setCasStep("importing");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
+
+      // Build account_map from holder→member mapping
+      // Each holding gets the member_id of its matched holder
+      const enriched = casHoldings.map(h => ({
+        ...h,
+        _dupAction: h._duplicate ? (casDupAction[h.name] || "update") : undefined,
+      }));
+
+      // Determine member_id: if single holder, use that mapping; otherwise use fallback
+      const singleMember = casHolderNames.length <= 1 && members.length > 0
+        ? (casHolderMap[casHolderNames[0]] || members[0]?.id)
+        : members[0]?.id;
+
+      const res = await fetch("/api/holdings/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({
+          holdings: enriched,
+          member_id: singleMember || "",
+          account_map: Object.keys(casHolderMap).length > 0 ? casHolderMap : undefined,
+        }),
+      });
+      const result = await res.json();
+      setCasResult(result);
+      setCasStep("done");
+      // Reload holdings
+      const hlds = await api("/api/holdings");
+      setHoldings(hlds || []);
+    } catch (e) {
+      setCasWarnings([`Import failed: ${e.message}`]);
+      setCasStep("matching");
+    }
+  }
+
+  function resetCASDownloader() {
+    setCasModal(false);
+    setCasStep("intro");
+    setCasHoldings([]);
+    setCasHolderNames([]);
+    setCasHolderPans([]);
+    setCasHolderMap({});
+    setCasWarnings([]);
+    setCasFormat("");
+    setCasResult(null);
+    setCasDupAction({});
+    setCasUploading(false);
   }
 
   function openMemberModal(memberId) {
@@ -5161,21 +5325,23 @@ ${alertLines||"  None"}`;
         </div>
         {/* ── Other options ── */}
         <div style={{fontSize:".6rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.35)",marginBottom:".5rem",paddingLeft:".1rem"}}>Other ways to add</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:".65rem",marginBottom:"1rem"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:".65rem",marginBottom:"1rem"}}>
           {[
             {key:"import",icon:"📂",title:"Import file",desc:"CSV or Excel from any broker",tag:"most used",tagColor:"#4caf9a"},
+            {key:"cas",icon:"📥",title:"CAS Downloader",desc:"Import NSDL/CDSL CAS PDF",tag:"Indian MF + demat",tagColor:"#a084ca"},
             {key:"holding",icon:"✏️",title:"Add holding",desc:"Manually add a single instrument",tag:null},
             {key:"txn",icon:"📋",title:"Log transaction",desc:"Record a buy/sell on existing holding",tag:null},
           ].map(opt=>(
             <div key={opt.key} onClick={()=>{
               setModal(null);
               if(opt.key==="import") openImportModal();
+              else if(opt.key==="cas"){resetCASDownloader();setCasModal(true);}
               else if(opt.key==="holding"){setForm(BF);setEditHolding(null);setModal("holding");}
               else {setTxnForm(BT);setGlobalTxnModal(true);}
-            }} style={{padding:"1rem",borderRadius:10,border:`1px solid ${opt.key==="import"?"rgba(201,168,76,.35)":"rgba(255,255,255,.08)"}`,
-              background:opt.key==="import"?"rgba(201,168,76,.06)":"rgba(255,255,255,.03)",cursor:"pointer",textAlign:"center",transition:"all .15s"}}
-              onMouseEnter={e=>e.currentTarget.style.borderColor=opt.key==="import"?"rgba(201,168,76,.5)":"rgba(255,255,255,.18)"}
-              onMouseLeave={e=>e.currentTarget.style.borderColor=opt.key==="import"?"rgba(201,168,76,.35)":"rgba(255,255,255,.08)"}>
+            }} style={{padding:"1rem",borderRadius:10,border:`1px solid ${opt.key==="import"?"rgba(201,168,76,.35)":opt.key==="cas"?"rgba(160,132,202,.35)":"rgba(255,255,255,.08)"}`,
+              background:opt.key==="import"?"rgba(201,168,76,.06)":opt.key==="cas"?"rgba(160,132,202,.06)":"rgba(255,255,255,.03)",cursor:"pointer",textAlign:"center",transition:"all .15s"}}
+              onMouseEnter={e=>e.currentTarget.style.borderColor=opt.key==="import"?"rgba(201,168,76,.5)":opt.key==="cas"?"rgba(160,132,202,.5)":"rgba(255,255,255,.18)"}
+              onMouseLeave={e=>e.currentTarget.style.borderColor=opt.key==="import"?"rgba(201,168,76,.35)":opt.key==="cas"?"rgba(160,132,202,.35)":"rgba(255,255,255,.08)"}>
               <div style={{fontSize:"1.3rem",marginBottom:".5rem"}}>{opt.icon}</div>
               <div style={{fontSize:".82rem",color:"#ffffff",fontWeight:500,marginBottom:".3rem"}}>{opt.title}</div>
               <div style={{fontSize:".68rem",color:"rgba(255,255,255,.5)",lineHeight:1.5}}>{opt.desc}</div>
@@ -5192,6 +5358,163 @@ ${alertLines||"  None"}`;
     )}
     {/* Setu AA overlay — disabled until integration is ready */}
     {modal==="import"&&(<ImportModal importState={importState} setImportState={setImportState} members={members} AT={AT} handleImportFile={handleImportFile} executeImport={executeImport} resetImport={resetImport} importFileRef={importFileRef} onClose={()=>{setModal(null);resetImport();}} fmt={fmt} submitCASPassword={submitCASPassword}/>)}
+
+    {/* ── CAS Downloader modal ── */}
+    {casModal&&(<Overlay onClose={resetCASDownloader}>
+      <div className="modtitle">📥 CAS Downloader</div>
+
+      {/* Step: intro */}
+      {casStep==="intro"&&(<>
+        <div style={{fontSize:".8rem",lineHeight:1.7,color:"rgba(255,255,255,.75)",marginBottom:"1.2rem"}}>
+          Import your NSDL/CDSL Consolidated Account Statement (CAS) PDF to automatically pull in all mutual funds, equities, bonds, and G-Secs.
+        </div>
+        <div style={{background:"rgba(160,132,202,.06)",border:"1px solid rgba(160,132,202,.18)",borderRadius:8,padding:".9rem 1rem",marginBottom:"1rem"}}>
+          <div style={{fontSize:".72rem",fontWeight:500,color:"#a084ca",marginBottom:".5rem"}}>How to get your CAS PDF</div>
+          <div style={{fontSize:".72rem",lineHeight:1.7,color:"rgba(255,255,255,.6)"}}>
+            1. Visit <span style={{color:"#a084ca"}}>cdslindia.com/cas</span> or <span style={{color:"#a084ca"}}>nsdl.co.in/nsdlcas</span><br/>
+            2. Enter your PAN and email → you'll receive a CAS PDF via email<br/>
+            3. The PDF password is your <span style={{color:"#c9a84c"}}>PAN number</span> (uppercase, e.g. ABCDE1234F)<br/>
+            4. Upload that PDF below
+          </div>
+        </div>
+
+        {/* Tip about setting up auto-forward */}
+        <div style={{background:"rgba(76,175,154,.06)",border:"1px solid rgba(76,175,154,.18)",borderRadius:8,padding:".75rem 1rem",marginBottom:"1rem"}}>
+          <div style={{fontSize:".68rem",fontWeight:500,color:"#4caf9a",marginBottom:".35rem"}}>💡 Pro tip: Auto-forward for hands-free import</div>
+          <div style={{fontSize:".68rem",lineHeight:1.6,color:"rgba(255,255,255,.55)"}}>
+            Set up a Gmail filter for emails from <code style={{fontSize:".65rem",background:"rgba(255,255,255,.06)",padding:".1rem .35rem",borderRadius:3}}>donotreply@camsonline.com</code> or <code style={{fontSize:".65rem",background:"rgba(255,255,255,.06)",padding:".1rem .35rem",borderRadius:3}}>nsdlcas@nsdl.co.in</code> to auto-label them, then upload the latest CAS here each month.
+          </div>
+        </div>
+
+        {/* Member matching info */}
+        <div style={{background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.18)",borderRadius:8,padding:".75rem 1rem",marginBottom:"1.2rem"}}>
+          <div style={{fontSize:".68rem",fontWeight:500,color:"#c9a84c",marginBottom:".35rem"}}>👥 Smart member matching</div>
+          <div style={{fontSize:".68rem",lineHeight:1.6,color:"rgba(255,255,255,.55)"}}>
+            We extract the PAN holder name from your CAS and match it to your family members. Works even if your member name is shorter (e.g. "Avinash" matches "AVINASH TALLAM" in CAS).
+          </div>
+        </div>
+
+        {casWarnings.length>0&&(
+          <div style={{marginBottom:".8rem"}}>
+            {casWarnings.map((w,i)=><div key={i} style={{fontSize:".72rem",color:"rgba(224,124,90,.8)",padding:".4rem .7rem",background:"rgba(224,124,90,.06)",borderRadius:5,marginBottom:".3rem"}}>⚠ {w}</div>)}
+          </div>
+        )}
+
+        <div style={{display:"flex",justifyContent:"center"}}>
+          <label style={{display:"inline-flex",alignItems:"center",gap:".5rem",padding:".6rem 1.5rem",background:"rgba(160,132,202,.12)",border:"1px solid rgba(160,132,202,.3)",borderRadius:8,cursor:"pointer",color:"#a084ca",fontSize:".82rem",fontWeight:500,fontFamily:"'DM Sans',sans-serif",transition:"all .15s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(160,132,202,.2)";}} onMouseLeave={e=>{e.currentTarget.style.background="rgba(160,132,202,.12)";}}>
+            {casUploading?"Parsing…":"📄 Upload CAS PDF"}
+            <input type="file" accept=".pdf" style={{display:"none"}} disabled={casUploading}
+              onChange={e=>{if(e.target.files[0]){handleCASUpload(e.target.files[0]);e.target.value="";}}}/>
+          </label>
+        </div>
+        <MA><button className="btnc" onClick={resetCASDownloader}>Cancel</button></MA>
+      </>)}
+
+      {/* Step: matching — show extracted holders + matched members */}
+      {casStep==="matching"&&(<>
+        <div style={{fontSize:".72rem",color:"rgba(255,255,255,.5)",marginBottom:".6rem"}}>
+          {casFormat&&<span style={{background:"rgba(160,132,202,.12)",color:"#a084ca",padding:".15rem .5rem",borderRadius:4,fontSize:".65rem",marginRight:".5rem"}}>{casFormat}</span>}
+          {casHoldings.length} holding{casHoldings.length!==1?"s":""} found
+        </div>
+
+        {/* Holder → Member mapping */}
+        {casHolderNames.length>0&&(
+          <div style={{marginBottom:"1rem"}}>
+            <div style={{fontSize:".63rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".5rem"}}>CAS holder → member mapping</div>
+            {casHolderNames.map(name=>{
+              const matchedId = casHolderMap[name];
+              const matchedMember = members.find(m=>m.id===matchedId);
+              return (
+                <div key={name} style={{display:"flex",alignItems:"center",gap:".6rem",padding:".55rem .8rem",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:7,marginBottom:".4rem"}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:".75rem",color:"rgba(255,255,255,.85)",fontWeight:500}}>{name}</div>
+                    {casHolderPans.length>0&&<div style={{fontSize:".62rem",color:"rgba(255,255,255,.35)",marginTop:".15rem"}}>PAN: {casHolderPans[0]?.slice(0,4)}****{casHolderPans[0]?.slice(-1)}</div>}
+                  </div>
+                  <div style={{fontSize:".72rem",color:"rgba(255,255,255,.4)",flexShrink:0}}>→</div>
+                  <select className="fi fs" style={{marginBottom:0,maxWidth:180}}
+                    value={matchedId||""}
+                    onChange={e=>setCasHolderMap(p=>({...p,[name]:e.target.value}))}>
+                    <option value="">Select member…</option>
+                    {members.map(m=><option key={m.id} value={m.id}>{m.name}{m.relation?` (${m.relation})`:""}</option>)}
+                  </select>
+                  {matchedMember&&<div style={{fontSize:".62rem",color:"#4caf9a",flexShrink:0}}>✓</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* If no holder names extracted, show single member selector */}
+        {casHolderNames.length===0&&(
+          <div style={{marginBottom:"1rem"}}>
+            <FG label="Assign all holdings to member">
+              <select className="fi fs" value={casHolderMap["_all"]||""} onChange={e=>setCasHolderMap({"_all":e.target.value})}>
+                <option value="">Select member…</option>
+                {members.map(m=><option key={m.id} value={m.id}>{m.name}{m.relation?` (${m.relation})`:""}</option>)}
+              </select>
+            </FG>
+          </div>
+        )}
+
+        {casWarnings.length>0&&(
+          <div style={{marginBottom:".6rem"}}>
+            {casWarnings.map((w,i)=><div key={i} style={{fontSize:".68rem",color:"rgba(201,168,76,.7)",marginBottom:".2rem"}}>ℹ {w}</div>)}
+          </div>
+        )}
+
+        {/* Holdings preview */}
+        <div style={{fontSize:".63rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".4rem"}}>Holdings preview</div>
+        <div style={{maxHeight:220,overflowY:"auto",marginBottom:".8rem"}}>
+          {casHoldings.map((h,i)=>{
+            const a=AT[h.type]||{label:h.type,color:"#888",icon:"📦"};
+            return (
+              <div key={i} style={{display:"flex",alignItems:"center",gap:".5rem",padding:".4rem .65rem",background:h._duplicate?"rgba(224,124,90,.05)":"rgba(255,255,255,.02)",border:`1px solid ${h._duplicate?"rgba(224,124,90,.15)":"rgba(255,255,255,.05)"}`,borderRadius:5,marginBottom:".3rem",fontSize:".72rem"}}>
+                <span style={{flexShrink:0}}>{a.icon}</span>
+                <span style={{flex:1,color:"rgba(255,255,255,.8)"}}>{h.name}</span>
+                <span style={{color:"rgba(255,255,255,.4)",fontFamily:"'DM Mono',monospace",fontSize:".68rem"}}>
+                  {h.current_value?`₹${Number(h.current_value).toLocaleString("en-IN",{maximumFractionDigits:0})}`:""}
+                </span>
+                {h._duplicate&&<span style={{fontSize:".58rem",background:"rgba(224,124,90,.12)",color:"rgba(224,124,90,.8)",padding:".1rem .35rem",borderRadius:3}}>dup</span>}
+              </div>
+            );
+          })}
+        </div>
+
+        <MA>
+          <button className="btnc" onClick={resetCASDownloader}>Cancel</button>
+          <button className="btns" onClick={executeCASImport}
+            disabled={casHoldings.length===0||(casHolderNames.length>0&&Object.values(casHolderMap).filter(Boolean).length===0)}>
+            Import {casHoldings.length} holding{casHoldings.length!==1?"s":""}
+          </button>
+        </MA>
+      </>)}
+
+      {/* Step: importing */}
+      {casStep==="importing"&&(
+        <div style={{textAlign:"center",padding:"2.5rem 0"}}>
+          <div style={{width:34,height:34,border:"2px solid rgba(160,132,202,.2)",borderTopColor:"#a084ca",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 1rem"}}/>
+          <div style={{fontSize:".8rem",color:"rgba(255,255,255,.5)"}}>Importing holdings…</div>
+        </div>
+      )}
+
+      {/* Step: done */}
+      {casStep==="done"&&(<>
+        <div style={{textAlign:"center",padding:"1.5rem 0"}}>
+          <div style={{fontSize:"2rem",marginBottom:".6rem"}}>✓</div>
+          <div style={{fontSize:".9rem",color:"#4caf9a",fontWeight:500,marginBottom:".5rem"}}>CAS Import Complete</div>
+          {casResult&&(
+            <div style={{fontSize:".75rem",color:"rgba(255,255,255,.6)",lineHeight:1.7}}>
+              {casResult.inserted_count>0&&<div>{casResult.inserted_count} new holding{casResult.inserted_count!==1?"s":""} added</div>}
+              {casResult.updated_count>0&&<div>{casResult.updated_count} holding{casResult.updated_count!==1?"s":""} updated</div>}
+              {casResult.skipped_count>0&&<div>{casResult.skipped_count} skipped</div>}
+              {casResult.error_count>0&&<div style={{color:"rgba(224,124,90,.8)"}}>{casResult.error_count} error{casResult.error_count!==1?"s":""}</div>}
+            </div>
+          )}
+        </div>
+        <MA><button className="btns" onClick={resetCASDownloader}>Done</button></MA>
+      </>)}
+    </Overlay>)}
     {modal==="pdf"&&(<Overlay onClose={()=>setModal(null)}><div className="modtitle">Portfolio Report</div>{pdfState.loading?(<div style={{textAlign:"center",padding:"2.5rem 0"}}><div style={{width:34,height:34,border:"2px solid rgba(201,168,76,.2)",borderTopColor:"#c9a84c",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 1rem"}}/><div style={{fontSize:".8rem",color:"rgba(255,255,255,.5)"}}>Generating AI commentary…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>):(<><div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".7rem"}}>AI Advisor Commentary</div><div style={{background:"rgba(201,168,76,.05)",border:"1px solid rgba(201,168,76,.14)",borderRadius:8,padding:"1rem 1.2rem",fontSize:".8rem",lineHeight:1.72,color:"rgba(255,255,255,.85)",maxHeight:260,overflowY:"auto",whiteSpace:"pre-wrap"}}>{pdfState.summary}</div></>)}<MA><button className="btnc" onClick={()=>setModal(null)}>Close</button></MA></Overlay>)}
     {/* ── Bottom Nav (mobile only, hidden on desktop via CSS) ── */}
     <div className="bottom-nav">
