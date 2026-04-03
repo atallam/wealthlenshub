@@ -2401,28 +2401,30 @@ ${alertLines||"  None"}`;
                     // Total column count: 10 data columns + 1 action = 11
                     const COL_COUNT = 11;
 
-                    return groups.map(grp => {
+                    return groups.map((grp, gi) => {
                       const grpCur = grp.items.reduce((s, h) => s + (valINRCache.get(h.id)||0), 0);
                       const grpInv = grp.items.reduce((s, h) => s + (invINRCache.get(h.id)||0), 0);
                       const grpG = grpCur - grpInv;
                       const grpP = grpInv > 0 ? (grpG / grpInv) * 100 : 0;
                       return [
+                        // Spacer row between groups (skip for first)
+                        gi > 0 && <tr key={`spc_${grp.key}`}><td colSpan={11} style={{padding:0,height:"18px",background:"transparent",border:"none"}}/></tr>,
                         // Section header row
-                        <tr key={`hdr_${grp.key}`} style={{background:"rgba(255,255,255,.02)"}}>
-                          <td colSpan={8} style={{padding:".55rem .65rem",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
-                            <span style={{fontSize:".68rem",letterSpacing:".08em",textTransform:"uppercase",color:grp.color,fontWeight:600}}>
+                        <tr key={`hdr_${grp.key}`} style={{background:`${grp.color}0D`}}>
+                          <td colSpan={8} style={{padding:".7rem .65rem",borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`}}>
+                            <span style={{fontSize:".78rem",letterSpacing:".1em",textTransform:"uppercase",color:grp.color,fontWeight:700}}>
                               {grp.icon} {grp.label}
                             </span>
-                            <span style={{fontSize:".62rem",color:"rgba(255,255,255,.35)",marginLeft:8}}>{grp.items.length} holding{grp.items.length!==1?"s":""}</span>
+                            <span style={{fontSize:".62rem",color:"rgba(255,255,255,.35)",marginLeft:10}}>{grp.items.length} holding{grp.items.length!==1?"s":""}</span>
                           </td>
-                          <td className="r" style={{padding:".55rem .65rem",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
-                            <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:grp.color,fontWeight:500}}>{fmtCr(grpCur)}</span>
+                          <td className="r" style={{padding:".7rem .65rem",borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`}}>
+                            <span style={{fontFamily:"'DM Mono',monospace",fontSize:".76rem",color:grp.color,fontWeight:600}}>{fmtCr(grpCur)}</span>
                             <div style={{fontFamily:"'DM Mono',monospace",fontSize:".6rem",color:"rgba(201,168,76,.55)"}}>≈ {fmtCrINR(grpCur)}</div>
                           </td>
-                          <td className="r" style={{padding:".55rem .65rem",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
-                            <span className={`mono${grpG>=0?" gain":" loss"}`} style={{fontSize:".68rem"}}>{grpG>=0?"+":""}{fmtCr(grpG)} ({fmtPct(grpP)})</span>
+                          <td className="r" style={{padding:".7rem .65rem",borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`}}>
+                            <span className={`mono${grpG>=0?" gain":" loss"}`} style={{fontSize:".72rem",fontWeight:600}}>{grpG>=0?"+":""}{fmtCr(grpG)} ({fmtPct(grpP)})</span>
                           </td>
-                          <td style={{borderBottom:"1px solid rgba(255,255,255,.08)"}}/>
+                          <td style={{borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`}}/>
                         </tr>,
                         // Holdings rows within this group
                         ...grp.items.map(h => {
@@ -2556,15 +2558,15 @@ ${alertLines||"  None"}`;
                   {key:"in",label:"Indian Assets",icon:"₹",color:"#e07c5a",items:visH.filter(h=>IN_T.has(h.type)||isINCash(h))},
                   {key:"other",label:"Other Assets",icon:"📦",color:"#c9a84c",items:visH.filter(h=>!US_T.has(h.type)&&!IN_T.has(h.type)&&h.type!=="CASH")},
                 ].filter(g=>g.items.length>0);
-                return groups.map(grp=>{
+                return groups.map((grp,gi)=>{
                   const grpCur=grp.items.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
                   const grpInv=grp.items.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);
                   const grpG=grpCur-grpInv;
                   const grpP=grpInv>0?(grpG/grpInv)*100:0;
-                  return(<div key={grp.key}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:".5rem 0",marginTop:".3rem",marginBottom:".25rem",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
-                      <span style={{fontSize:".68rem",letterSpacing:".08em",textTransform:"uppercase",color:grp.color,fontWeight:600}}>{grp.icon} {grp.label} <span style={{color:"rgba(255,255,255,.3)",fontWeight:400}}>{grp.items.length}</span></span>
-                      <span style={{fontFamily:"'DM Mono',monospace",fontSize:".7rem",color:grp.color}}>{fmtCr(grpCur)} <span className={grpG>=0?"gain":"loss"} style={{fontSize:".62rem"}}>{grpG>=0?"+":""}{fmtPct(grpP)}</span></span>
+                  return(<div key={grp.key} style={gi>0?{marginTop:"1rem"}:{}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:".6rem .5rem",marginBottom:".35rem",borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`,background:`${grp.color}0D`,borderRadius:"4px 4px 0 0"}}>
+                      <span style={{fontSize:".76rem",letterSpacing:".1em",textTransform:"uppercase",color:grp.color,fontWeight:700}}>{grp.icon} {grp.label} <span style={{color:"rgba(255,255,255,.3)",fontWeight:400}}>{grp.items.length}</span></span>
+                      <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:grp.color,fontWeight:600}}>{fmtCr(grpCur)} <span className={grpG>=0?"gain":"loss"} style={{fontSize:".62rem"}}>{grpG>=0?"+":""}{fmtPct(grpP)}</span></span>
                     </div>
                     {grp.items.map(h=>{
                       const cur=valNativeCache.get(h.id)||0,inv=invNativeCache.get(h.id)||0,g=cur-inv,p=inv>0?(g/inv)*100:0;
