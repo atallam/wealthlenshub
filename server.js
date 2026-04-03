@@ -3673,57 +3673,132 @@ function parseNSDLCASStatement(rawText) {
 
     // ── Select best triplets for current value and invested amount ──
     // CAS column order: Units, PurchaseNAV, Invested, CurrentNAV, CurrentValue, Gain, Gain%
-    // Strategy: Group triplets by shared factor (= units). The two values are invested and current.
+    // Key insight: CurrentValue > Invested > Gain in magnitude
+    // So we pick triplets by VALUE SIZE, not text position
 
     // Log all triplets for debugging
     for (const m of matches) {
       console.log(`   triplet: ${m.a} × ${m.b} ≈ ${m.val} (err=${(m.err*100).toFixed(2)}%, indices=[${m.indices}])`);
     }
 
-    // Sort by value index descending — later in text = more likely current value
-    matches.sort((a, b) => b.indices[2] - a.indices[2]);
-    const currentValueMatch = matches[0];
+    // Group triplets that share a common factor (= units)
+    // Units is constant across invested and current value triplets
+    // Step 1: Find the most common factor across all triplets — that's units
+    const factorCounts = new Map();
+    for (const m of matches) {
+      for (const f of [m.a, m.b]) {
+        const key = f.toFixed(4);
+        factorCounts.set(key, (factorCounts.get(key) || 0) + 1);
+      }
+    }
+    // Most frequent factor = units (appears in both invested and current value triplets)
+    let bestFactor = null, bestCount = 0;
+    for (const [key, count] of factorCounts) {
+      if (count > bestCount) { bestCount = count; bestFactor = parseFloat(key); }
+    }
 
-    // Find invested: different value, earlier position, shares a factor with current triplet
-    const investedMatch = matches.find(m =>
-      m !== currentValueMatch &&
-      Math.abs(m.val - currentValueMatch.val) / Math.max(currentValueMatch.val, 1) > 0.005 &&  // Different value (>0.5% apart)
-      m.indices[2] < currentValueMatch.indices[2]  // Earlier in text
-    );
+    // Step 2: Filter triplets that contain this common factor
+    const unitsTriplets = bestFactor !== null
+      ? matches.filter(m => Math.abs(m.a - bestFactor) / Math.max(bestFactor, 0.001) < 0.01 || Math.abs(m.b - bestFactor) / Math.max(bestFactor, 0.001) < 0.01)
+      : matches;
+
+    // Step 3: Sort by value descending, then by error ascending
+    // But we need to handle negative returns where invested > currentValue
+    unitsTriplets.sort((a, b) => b.val - a.val || a.err - b.err);
+
+    // Step 4: Determine current value vs invested
+    // Key insight: CAS column order is always Units, PurchaseNAV, Invested, CurrentNAV, CurrentValue
+    // So current value appears LATER in text than invested
+    // When two triplets share the same units factor, the one whose VALUE INDEX is later = current value
     
-    // Determine units: common factor between currentValue and invested triplets
+    // First: find all distinct value groups
+    const distinctValues = [];
+    for (const t of unitsTriplets) {
+      if (!distinctValues.some(dv => Math.abs(dv.val - t.val) / Math.max(t.val, 1) < 0.005)) {
+        // For each distinct value, pick the lowest-error triplet
+        const best = unitsTriplets
+          .filter(m => Math.abs(m.val - t.val) / Math.max(t.val, 1) < 0.005)
+          .sort((a, b) => a.err - b.err)[0];
+        distinctValues.push(best);
+      }
+    }
+
+    let currentValueMatch, investedMatch;
+    if (distinctValues.length >= 3) {
+      // 3+ distinct values: one is likely the gain amount (= currentValue - invested)
+      // When |val_i - val_j| ≈ val_k, val_k is a gain candidate
+      // The SMALLEST gain candidate is the actual gain (gain < invested and gain < currentValue)
+      const gainCandidates = [];
+      for (let i = 0; i < distinctValues.length; i++) {
+        for (let j = i + 1; j < distinctValues.length; j++) {
+          const diff = Math.abs(distinctValues[i].val - distinctValues[j].val);
+          for (let k = 0; k < distinctValues.length; k++) {
+            if (k === i || k === j) continue;
+            if (diff > 0 && Math.abs(diff - distinctValues[k].val) / Math.max(distinctValues[k].val, 1) < 0.05) {
+              gainCandidates.push(k);
+            }
+          }
+        }
+      }
+
+      // Pick the smallest-valued gain candidate
+      let gainIdx = -1;
+      if (gainCandidates.length > 0) {
+        gainIdx = gainCandidates.reduce((best, idx) =>
+          distinctValues[idx].val < distinctValues[best].val ? idx : best
+        , gainCandidates[0]);
+        console.log(`   → Excluded gain triplet: val=${distinctValues[gainIdx].val} (indices=[${distinctValues[gainIdx].indices}])`);
+      }
+
+      const candidates = gainIdx >= 0
+        ? distinctValues.filter((_, idx) => idx !== gainIdx)
+        : distinctValues.slice(0, 2);
+
+      // Among remaining: sort by value-index — later in text = current value
+      candidates.sort((a, b) => b.indices[2] - a.indices[2]);
+      currentValueMatch = candidates[0];
+      investedMatch = candidates[1] || null;
+    } else if (distinctValues.length === 2) {
+      // Two distinct values — use POSITION to determine which is current vs invested
+      // CAS order: Invested appears before CurrentValue in text
+      distinctValues.sort((a, b) => b.indices[2] - a.indices[2]);
+      currentValueMatch = distinctValues[0];
+      investedMatch = distinctValues[1];
+    } else {
+      // Only one distinct value — no invested data available
+      currentValueMatch = distinctValues[0] || unitsTriplets[0];
+      investedMatch = null;
+    }
+    
+    // Determine units and nav
     let nav, units;
     const cvFactors = [currentValueMatch.a, currentValueMatch.b];
     
-    if (investedMatch) {
+    // If we identified a common factor (units), use it directly
+    if (bestFactor !== null && bestCount >= 2) {
+      units = bestFactor;
+      // nav = the OTHER factor in the current value triplet
+      nav = cvFactors.find(f => Math.abs(f - bestFactor) / Math.max(bestFactor, 0.001) > 0.01) ?? cvFactors[0];
+    } else if (investedMatch) {
       const invFactors = [investedMatch.a, investedMatch.b];
-      // Find the number that appears in BOTH triplets (= units, since units is constant)
       const common = cvFactors.find(f => invFactors.some(o => Math.abs(f - o) / Math.max(f, 0.001) < 0.01));
       if (common) {
         units = common;
         nav = cvFactors.find(f => Math.abs(f - common) / Math.max(f, 0.001) > 0.01) ?? cvFactors[0];
       } else {
-        // No common factor — use positional heuristic
-        // In CAS order, Units appears before NAV, so the factor at the earlier index = units
         const [iA, iB] = [currentValueMatch.indices[0], currentValueMatch.indices[1]];
         if (iA < iB) { units = currentValueMatch.a; nav = currentValueMatch.b; }
         else { units = currentValueMatch.b; nav = currentValueMatch.a; }
       }
     } else {
-      // Single triplet — determine units vs nav using heuristics:
-      // 1. NAV for Indian MFs is typically between 5 and 10000
-      // 2. Units is often fractional or a large number
+      // Single triplet — determine units vs nav using heuristics
       const [f1, f2] = cvFactors;
       const [iA, iB] = [currentValueMatch.indices[0], currentValueMatch.indices[1]];
-
-      // If one factor looks like a NAV (5-10000 range, often with 4 decimal places) and the other doesn't
       const f1IsNav = f1 >= 5 && f1 <= 10000;
       const f2IsNav = f2 >= 5 && f2 <= 10000;
-
       if (f1IsNav && !f2IsNav) { nav = f1; units = f2; }
       else if (f2IsNav && !f1IsNav) { nav = f2; units = f1; }
       else {
-        // Both in NAV range — use positional: earlier = units (CAS standard order)
         if (iA < iB) { units = currentValueMatch.a; nav = currentValueMatch.b; }
         else { units = currentValueMatch.b; nav = currentValueMatch.a; }
       }
@@ -4016,7 +4091,7 @@ function parseNSDLCASStatement(rawText) {
     const costVal = 0; // CDSL CAS doesn't typically include cost basis for demat
     const purchasePricePerUnit = costVal && qty ? costVal / qty : 0;
 
-    console.log(`📋 CAS Demat: ${name} (${isin}) qty=${qty} price=${currentPricePerUnit.toFixed(2)} val=${totalValue} type=${type}`);
+    console.log(`📋 CAS Demat: ${name} (${isin}) qty=${qty} price=${currentPricePerUnit.toFixed(2)} val=${totalValue} type=${type}${!totalValue ? " [NO PRICE - NSDL format, needs live fetch]" : ""}`);
 
     holdings.push({
       name, type,
@@ -4026,6 +4101,7 @@ function parseNSDLCASStatement(rawText) {
       purchase_price: purchasePricePerUnit, current_price: currentPricePerUnit,
       purchase_value: costVal || totalValue, current_value: totalValue,
       source: _source, brokerage_name: _brokerage, currency: "INR",
+      _needs_price: !totalValue,  // Flag for frontend to trigger live price fetch
     });
   }
 
@@ -4045,6 +4121,8 @@ function parseNSDLCASStatement(rawText) {
 
   if (mfCount) warnings.push("Found " + mfCount + " mutual fund(s)");
   if (dematCount) warnings.push("Found " + dematCount + " demat holding(s)");
+  const noPriceCount = holdings.filter(h => h._needs_price).length;
+  if (noPriceCount) warnings.push(`${noPriceCount} demat holding(s) imported without price data — use "Refresh Prices" to fetch live prices`);
   if (missedINF.length) warnings.push(`${missedINF.length} MF ISIN(s) detected but not parsed: ${missedINF.join(", ")}`);
   if (missedINE.length) warnings.push(`${missedINE.length} demat ISIN(s) detected but not parsed: ${missedINE.join(", ")}`);
   if (!mfCount && !dematCount) warnings.push("No holdings detected - CAS format may differ from expected layout");
