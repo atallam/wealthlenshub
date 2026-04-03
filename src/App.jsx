@@ -1086,6 +1086,9 @@ export default function App() {
   const [casUploading,     setCasUploading]     = useState(false);
   const [casResult,        setCasResult]        = useState(null);
   const [casDupAction,     setCasDupAction]     = useState({});       // per-holding: "update" | "skip"
+  const [casPendingFile,   setCasPendingFile]   = useState(null);     // file awaiting PAN password
+  const [casPanInput,      setCasPanInput]      = useState("");       // PAN entered by user for CAS decryption
+  const [casSavePan,       setCasSavePan]       = useState(false);    // remember PAN checkbox
 
   // ── Net Worth Timeline + Calendar ─────────────────────────────
   const [nwMember,          setNwMember]          = useState("all");
@@ -1446,7 +1449,7 @@ export default function App() {
     setCasHoldings([]);
     setCasHolderNames([]);
     setCasHolderPans([]);
-    setCasStep("upload");
+    setCasStep("uploading");
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1471,14 +1474,14 @@ export default function App() {
       const data = await res.json();
 
       if (data.error === "password_required" || data.error === "password_incorrect") {
-        // Fall back to existing CAS password flow
-        setImportState(s => ({ ...s,
-          step: "cas_password", needsPassword: true, pendingFile: file,
-          warnings: data.error === "password_incorrect" ? ["Incorrect password — re-enter your PAN"] : [],
-        }));
-        setCasModal(false);
-        setModal("import");
+        // Show PAN entry inside the CAS modal itself
+        setCasWarnings(data.error === "password_incorrect"
+          ? ["Incorrect password — check your PAN (uppercase, 10 chars)"]
+          : ["This CAS PDF is password-protected. Enter your PAN to unlock."]);
+        setCasStep("password");
         setCasUploading(false);
+        // Store the file for retry
+        setCasPendingFile(file);
         return;
       }
 
@@ -1557,6 +1560,66 @@ export default function App() {
     }
   }
 
+  // ── CAS Downloader: retry with user-entered PAN ──
+  async function retryCASWithPassword() {
+    if (!casPendingFile || !casPanInput.trim()) return;
+    const pan = casPanInput.trim().toUpperCase();
+    setCasStep("uploading");
+    setCasWarnings([]);
+    setCasUploading(true);
+
+    // Optionally save PAN to profile
+    if (casSavePan) {
+      api("/api/profile", { method: "PUT", body: JSON.stringify({ pan }) }).catch(() => {});
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
+
+      const fd = new FormData();
+      fd.append("file", casPendingFile);
+      fd.append("password", pan);
+
+      const res = await fetch("/api/import/detect", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+
+      if (data.error === "password_incorrect") {
+        setCasWarnings(["Incorrect password — check your PAN is correct (uppercase, e.g. ABCDE1234F)"]);
+        setCasStep("password");
+        setCasUploading(false);
+        return;
+      }
+
+      if (data.error) {
+        setCasWarnings([data.error]);
+        setCasStep("password");
+        setCasUploading(false);
+        return;
+      }
+
+      // Success — store parsed results
+      const holdings = data.holdings || [];
+      setCasHoldings(holdings);
+      setCasHolderNames(data.holder_names || []);
+      setCasHolderPans(data.holder_pans || []);
+      setCasWarnings(data.warnings || []);
+      setCasFormat(data.format || "");
+      const autoMap = autoMapCASHolders(data.holder_names || [], data.holder_pans || []);
+      setCasHolderMap(autoMap);
+      setCasStep("matching");
+      setCasPendingFile(null);
+    } catch (e) {
+      setCasWarnings([`Upload failed: ${e.message}`]);
+      setCasStep("password");
+    }
+    setCasUploading(false);
+  }
+
   function resetCASDownloader() {
     setCasModal(false);
     setCasStep("intro");
@@ -1569,6 +1632,9 @@ export default function App() {
     setCasResult(null);
     setCasDupAction({});
     setCasUploading(false);
+    setCasPendingFile(null);
+    setCasPanInput("");
+    setCasSavePan(false);
   }
 
   function openMemberModal(memberId) {
@@ -5412,6 +5478,48 @@ ${alertLines||"  None"}`;
       </>)}
 
       {/* Step: matching — show extracted holders + matched members */}
+      {casStep==="uploading"&&(
+        <div style={{textAlign:"center",padding:"2.5rem 0"}}>
+          <div style={{width:34,height:34,border:"2px solid rgba(160,132,202,.2)",borderTopColor:"#a084ca",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 1rem"}}/>
+          <div style={{fontSize:".8rem",color:"rgba(255,255,255,.5)"}}>Parsing CAS PDF…</div>
+          <div style={{fontSize:".68rem",color:"rgba(255,255,255,.3)",marginTop:".4rem"}}>Extracting holdings, NAVs, and holder info</div>
+        </div>
+      )}
+
+      {/* Step: password — CAS PDF is encrypted, need PAN */}
+      {casStep==="password"&&(<>
+        <div style={{fontSize:".8rem",lineHeight:1.7,color:"rgba(255,255,255,.7)",marginBottom:"1rem"}}>
+          This CAS PDF is password-protected. The password is your <span style={{color:"#c9a84c",fontWeight:500}}>PAN number</span> in uppercase (e.g. ABCDE1234F).
+        </div>
+
+        {casWarnings.length>0&&(
+          <div style={{marginBottom:".8rem"}}>
+            {casWarnings.map((w,i)=><div key={i} style={{fontSize:".72rem",color:"rgba(224,124,90,.8)",padding:".4rem .7rem",background:"rgba(224,124,90,.06)",borderRadius:5,marginBottom:".3rem"}}>⚠ {w}</div>)}
+          </div>
+        )}
+
+        <FG label="PAN Number">
+          <input className="fi" placeholder="e.g. ABCDE1234F" value={casPanInput}
+            style={{textTransform:"uppercase",letterSpacing:".08em",fontFamily:"'DM Mono',monospace"}}
+            onChange={e=>setCasPanInput(e.target.value.toUpperCase())}
+            onKeyDown={e=>{if(e.key==="Enter"&&casPanInput.trim().length>=10)retryCASWithPassword();}}/>
+        </FG>
+
+        <label style={{display:"flex",alignItems:"center",gap:".5rem",fontSize:".72rem",color:"rgba(255,255,255,.5)",cursor:"pointer",marginBottom:"1rem",marginTop:".2rem"}}>
+          <input type="checkbox" checked={casSavePan} onChange={e=>setCasSavePan(e.target.checked)}
+            style={{accentColor:"#a084ca"}}/>
+          Remember PAN (encrypted, for future CAS imports)
+        </label>
+
+        <MA>
+          <button className="btnc" onClick={resetCASDownloader}>Cancel</button>
+          <button className="btns" onClick={retryCASWithPassword}
+            disabled={casPanInput.trim().length<10||casUploading}>
+            {casUploading?"Unlocking…":"🔓 Unlock & Parse"}
+          </button>
+        </MA>
+      </>)}
+
       {casStep==="matching"&&(<>
         <div style={{fontSize:".72rem",color:"rgba(255,255,255,.5)",marginBottom:".6rem"}}>
           {casFormat&&<span style={{background:"rgba(160,132,202,.12)",color:"#a084ca",padding:".15rem .5rem",borderRadius:4,fontSize:".65rem",marginRight:".5rem"}}>{casFormat}</span>}
