@@ -2387,13 +2387,15 @@ ${alertLines||"  None"}`;
                 </tr></thead>
                 <tbody>
                   {(()=>{
-                    // Group holdings into 3 categories
+                    // Group holdings into 3 categories — CASH split by currency
                     const US_TYPES = new Set(["US_STOCK","US_ETF","US_BOND","CRYPTO"]);
                     const IN_TYPES = new Set(["IN_STOCK","IN_ETF","MF"]);
+                    const isUSCash = h => h.type === "CASH" && isUSDHolding(h);
+                    const isINCash = h => h.type === "CASH" && !isUSDHolding(h);
                     const groups = [
-                      { key: "us", label: "US Assets", icon: "$", color: "#5a9ce0", items: visH.filter(h => US_TYPES.has(h.type)) },
-                      { key: "in", label: "Indian Assets", icon: "₹", color: "#e07c5a", items: visH.filter(h => IN_TYPES.has(h.type)) },
-                      { key: "other", label: "Other Assets", icon: "📦", color: "#c9a84c", items: visH.filter(h => !US_TYPES.has(h.type) && !IN_TYPES.has(h.type)) },
+                      { key: "us", label: "US Assets", icon: "$", color: "#5a9ce0", items: visH.filter(h => US_TYPES.has(h.type) || isUSCash(h)) },
+                      { key: "in", label: "Indian Assets", icon: "₹", color: "#e07c5a", items: visH.filter(h => IN_TYPES.has(h.type) || isINCash(h)) },
+                      { key: "other", label: "Other Assets", icon: "📦", color: "#c9a84c", items: visH.filter(h => !US_TYPES.has(h.type) && !IN_TYPES.has(h.type) && h.type !== "CASH") },
                     ].filter(g => g.items.length > 0);
 
                     // Total column count: 10 data columns + 1 action = 11
@@ -2425,7 +2427,8 @@ ${alertLines||"  None"}`;
                         // Holdings rows within this group
                         ...grp.items.map(h => {
                     const cur=valNativeCache.get(h.id)||0,inv=invNativeCache.get(h.id)||0,g=cur-inv,p=inv>0?(g/inv)*100:0;
-                    const a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
+                    const _a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
+                    const a = h.type==="CASH" ? {..._a, label: isUSDHolding(h)?"Cash USD":"Cash INR", icon: isUSDHolding(h)?"💵":"₹"} : _a;
                     const mn=allMembers.find(m=>m.id===h.member_id)?.name||"";
                     const isSharedH = h._shared;
                     const sharedOwnerLabel = isSharedH ? h._shared_owner : "";
@@ -2504,8 +2507,8 @@ ${alertLines||"  None"}`;
                               <button className="delbtn" title="Attach documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"rgba(255,255,255,.38)"}}>
                                 📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}
                               </button>
-                              <button className="delbtn" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>editH(h)}>✎</button>
-                              <button className="delbtn" onClick={()=>deleteHolding(h.id)}>✕</button>
+                              <button className="delbtn" title="Modify holding" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>editH(h)}>✎</button>
+                              <button className="delbtn" title="Delete holding" onClick={()=>deleteHolding(h.id)}>✕</button>
                             </>}
                           </div>
                         </td>
@@ -2546,10 +2549,12 @@ ${alertLines||"  None"}`;
               {(()=>{
                 const US_T=new Set(["US_STOCK","US_ETF","US_BOND","CRYPTO"]);
                 const IN_T=new Set(["IN_STOCK","IN_ETF","MF"]);
+                const isUSCash=h=>h.type==="CASH"&&isUSDHolding(h);
+                const isINCash=h=>h.type==="CASH"&&!isUSDHolding(h);
                 const groups=[
-                  {key:"us",label:"US Assets",icon:"$",color:"#5a9ce0",items:visH.filter(h=>US_T.has(h.type))},
-                  {key:"in",label:"Indian Assets",icon:"₹",color:"#e07c5a",items:visH.filter(h=>IN_T.has(h.type))},
-                  {key:"other",label:"Other Assets",icon:"📦",color:"#c9a84c",items:visH.filter(h=>!US_T.has(h.type)&&!IN_T.has(h.type))},
+                  {key:"us",label:"US Assets",icon:"$",color:"#5a9ce0",items:visH.filter(h=>US_T.has(h.type)||isUSCash(h))},
+                  {key:"in",label:"Indian Assets",icon:"₹",color:"#e07c5a",items:visH.filter(h=>IN_T.has(h.type)||isINCash(h))},
+                  {key:"other",label:"Other Assets",icon:"📦",color:"#c9a84c",items:visH.filter(h=>!US_T.has(h.type)&&!IN_T.has(h.type)&&h.type!=="CASH")},
                 ].filter(g=>g.items.length>0);
                 return groups.map(grp=>{
                   const grpCur=grp.items.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
@@ -2563,7 +2568,8 @@ ${alertLines||"  None"}`;
                     </div>
                     {grp.items.map(h=>{
                       const cur=valNativeCache.get(h.id)||0,inv=invNativeCache.get(h.id)||0,g=cur-inv,p=inv>0?(g/inv)*100:0;
-                      const a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
+                      const _a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
+                      const a=h.type==="CASH"?{..._a,label:isUSDHolding(h)?"Cash USD":"Cash INR",icon:isUSDHolding(h)?"💵":"₹"}:_a;
                       const mn=allMembers.find(m=>m.id===h.member_id)?.name||"";
                       const isSharedH=h._shared;
                       const units=h.net_units??h.units??null;
