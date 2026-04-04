@@ -893,6 +893,12 @@ app.post("/api/prices/refresh", auth, async (req, res) => {
           const cv = (h.units || 0) * q.price;
           patch = { current_price: q.price, current_value: cv, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
         }
+
+      } else if (h.type === "CASH") {
+        // CASH doesn't need price fetch, but update FX rate so INR↔USD round-trips stay consistent
+        if (h.usd_inr_rate && Math.abs(h.usd_inr_rate - usdInr) > 0.01) {
+          patch = { usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
+        }
       }
     } catch { /* skip failed holding */ }
 
