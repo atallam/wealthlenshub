@@ -258,10 +258,10 @@ function LoginScreen({ error: initError }) {
     <div style={S.page}>
 
       {/* ═══ HERO + LOGIN ═══ */}
-      <div style={{...S.section,display:"grid",gridTemplateColumns:"1fr 420px",gap:"3rem",alignItems:"start",paddingTop:"2.5rem",paddingBottom:".5rem"}}>
+      <div style={{...S.section,display:"flex",flexWrap:"wrap",gap:"2rem",alignItems:"start",paddingTop:"2.5rem",paddingBottom:".5rem"}}>
 
         {/* Left: Value proposition */}
-        <div>
+        <div style={{flex:"1 1 340px",minWidth:0}}>
           <div className="logo" style={{fontSize:"1.35rem",marginBottom:"1.2rem"}}>Wealth<span>Lens</span></div>
           <div style={{fontSize:".65rem",letterSpacing:".2em",textTransform:"uppercase",color:"#c9a84c",marginBottom:"1rem",display:"flex",alignItems:"center",gap:".5rem"}}>
             <span style={{width:24,height:1,background:"#c9a84c",display:"inline-block"}}/>
@@ -279,7 +279,7 @@ function LoginScreen({ error: initError }) {
           </p>
 
           {/* Compact stats */}
-          <div style={{display:"flex",gap:"2.5rem"}}>
+          <div style={{display:"flex",gap:"2.5rem",flexWrap:"wrap"}}>
             {[["25+","US brokerages"],["14","bank parsers"],["4-layer","security"]].map(([n,l])=>(
               <div key={l}>
                 <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.3rem",fontWeight:500,color:"#c9a84c"}}>{n}</div>
@@ -290,7 +290,7 @@ function LoginScreen({ error: initError }) {
         </div>
 
         {/* Right: Login — blended into the page */}
-        <div style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(232,224,208,.06)",borderRadius:20,padding:"2.2rem 2rem"}}>
+        <div style={{flex:"0 1 420px",width:"100%",background:"rgba(255,255,255,.02)",border:"1px solid rgba(232,224,208,.06)",borderRadius:20,padding:"2.2rem 2rem"}}>
           <div style={{fontSize:"1.15rem",fontWeight:500,marginBottom:".2rem",textAlign:"center"}}>Get started</div>
           <div style={{fontSize:".78rem",color:"rgba(232,224,208,.35)",marginBottom:"1.4rem",textAlign:"center"}}>Free account — no credit card required</div>
 
@@ -330,13 +330,13 @@ function LoginScreen({ error: initError }) {
       </div>
 
       {/* ═══ SECTION NAV ═══ */}
-      <div style={{...S.section,paddingTop:"1.5rem",paddingBottom:"1.5rem",display:"flex",justifyContent:"center",gap:"2.5rem",borderTop:"1px solid rgba(232,224,208,.04)",borderBottom:"1px solid rgba(232,224,208,.04)"}}>
+      <div style={{...S.section,paddingTop:"1.5rem",paddingBottom:"1.5rem",display:"flex",justifyContent:"center",gap:"1rem",flexWrap:"wrap",borderTop:"1px solid rgba(232,224,208,.04)",borderBottom:"1px solid rgba(232,224,208,.04)"}}>
         {[
           {label:"Features",href:"#features",color:"#c9a84c",desc:"What you get"},
           {label:"Security",href:"#security",color:"#4caf9a",desc:"How we protect you"},
           {label:"Platforms",href:"#platforms",color:"#5a9ce0",desc:"Where it works"},
         ].map(item=>(
-          <a key={item.label} href={item.href} style={{textDecoration:"none",textAlign:"center",padding:".8rem 2rem",borderRadius:12,border:`1px solid ${item.color}15`,background:`${item.color}06`,transition:"all .3s",cursor:"pointer",minWidth:170}}
+          <a key={item.label} href={item.href} style={{textDecoration:"none",textAlign:"center",padding:".8rem 1.5rem",borderRadius:12,border:`1px solid ${item.color}15`,background:`${item.color}06`,transition:"all .3s",cursor:"pointer",flex:"1 1 auto",minWidth:0,maxWidth:200}}
             onMouseOver={e=>{e.currentTarget.style.background=`${item.color}12`;e.currentTarget.style.borderColor=`${item.color}30`;e.currentTarget.style.transform="translateY(-2px)"}}
             onMouseOut={e=>{e.currentTarget.style.background=`${item.color}06`;e.currentTarget.style.borderColor=`${item.color}15`;e.currentTarget.style.transform="none"}}>
             <div style={{fontSize:"1.15rem",fontWeight:600,color:item.color,marginBottom:".25rem",letterSpacing:".01em"}}>{item.label}</div>
@@ -347,21 +347,17 @@ function LoginScreen({ error: initError }) {
 
       {/* ═══ FEATURES ═══ */}
       <div id="features" style={{...S.section,paddingTop:"5rem",paddingBottom:"5rem",borderTop:"1px solid rgba(232,224,208,.04)"}}>
-        <div style={{display:"grid",gridTemplateColumns:"280px 1fr",gap:"4rem",alignItems:"start"}}>
-          {/* Left label */}
-          <div style={{position:"sticky",top:"2rem"}}>
-            <div style={{fontSize:".62rem",letterSpacing:".2em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".8rem",display:"flex",alignItems:"center",gap:".5rem"}}>
-              <span style={{width:20,height:1,background:"#c9a84c",display:"inline-block"}}/>
-              Features
-            </div>
-            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.9rem",lineHeight:1.2,marginBottom:".8rem"}}>
-              Everything your portfolio needs.
-            </div>
-            <p style={{fontSize:".82rem",color:"rgba(232,224,208,.35)",lineHeight:1.7}}>From auto-import to AI-powered goal planning — built for investors who hold assets across borders.</p>
+        <div style={{marginBottom:"2.5rem",maxWidth:520}}>
+          <div style={{fontSize:".62rem",letterSpacing:".2em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".8rem",display:"flex",alignItems:"center",gap:".5rem"}}>
+            <span style={{width:20,height:1,background:"#c9a84c",display:"inline-block"}}/>
+            Features
           </div>
-
-          {/* Right: feature grid */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1rem"}}>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.9rem",lineHeight:1.2,marginBottom:".8rem"}}>
+            Everything your portfolio needs.
+          </div>
+          <p style={{fontSize:".82rem",color:"rgba(232,224,208,.35)",lineHeight:1.7}}>From auto-import to AI-powered goal planning — built for investors who hold assets across borders.</p>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(280px,100%),1fr))",gap:"1rem"}}>
             {[
               {icon:"🔗",t:"US Brokerage Sync",d:"Fidelity, Schwab, Robinhood, Vanguard, E*TRADE and 20+ more. One OAuth flow, holdings sync automatically.",tag:"SnapTrade",c:"#5a9ce0"},
               {icon:"🇮🇳",t:"Indian MF & Stock Import",d:"Upload your NSDL/CDSL CAS statement. Extracts all mutual funds and demat stocks with NAV, units, cost basis.",tag:"CAS Auto-Parse",c:"#c9a84c"},
@@ -377,25 +373,22 @@ function LoginScreen({ error: initError }) {
                 <span style={{fontSize:".58rem",letterSpacing:".08em",textTransform:"uppercase",color:f.c,opacity:.7}}>{f.tag}</span>
               </div>
             ))}
-          </div>
         </div>
       </div>
 
       {/* ═══ SECURITY ═══ */}
       <div id="security" style={{...S.section,paddingTop:"5rem",paddingBottom:"5rem",borderTop:"1px solid rgba(232,224,208,.04)"}}>
-        <div style={{display:"grid",gridTemplateColumns:"280px 1fr",gap:"4rem",alignItems:"start"}}>
-          <div style={{position:"sticky",top:"2rem"}}>
-            <div style={{fontSize:".62rem",letterSpacing:".2em",textTransform:"uppercase",color:"#4caf9a",marginBottom:".8rem",display:"flex",alignItems:"center",gap:".5rem"}}>
-              <span style={{width:20,height:1,background:"#4caf9a",display:"inline-block"}}/>
-              Security
-            </div>
-            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.9rem",lineHeight:1.2,marginBottom:".8rem"}}>
-              Your data stays yours.
-            </div>
-            <p style={{fontSize:".82rem",color:"rgba(232,224,208,.35)",lineHeight:1.7}}>Four layers of protection. Even if one fails, the others hold. We built this so you can trust it with real money.</p>
+        <div style={{marginBottom:"2.5rem",maxWidth:520}}>
+          <div style={{fontSize:".62rem",letterSpacing:".2em",textTransform:"uppercase",color:"#4caf9a",marginBottom:".8rem",display:"flex",alignItems:"center",gap:".5rem"}}>
+            <span style={{width:20,height:1,background:"#4caf9a",display:"inline-block"}}/>
+            Security
           </div>
-
-          <div style={{display:"flex",flexDirection:"column",gap:".8rem"}}>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.9rem",lineHeight:1.2,marginBottom:".8rem"}}>
+            Your data stays yours.
+          </div>
+          <p style={{fontSize:".82rem",color:"rgba(232,224,208,.35)",lineHeight:1.7}}>Four layers of protection. Even if one fails, the others hold. We built this so you can trust it with real money.</p>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:".8rem"}}>
             {[
               {n:"01",t:"You control access",d:"Sign in with Google or email. Every request carries a secure token that's verified server-side. Without a valid login, nothing loads — no exceptions, no guest mode.",icon:"🔐"},
               {n:"02",t:"The database guards your data",d:"Each table has its own security policy: only show rows that belong to the logged-in user. This is enforced by the database engine itself — even a bug in our code can't leak your data to someone else. Think of it like a bank vault with your name on the lock.",icon:"🏛️"},
@@ -414,7 +407,6 @@ function LoginScreen({ error: initError }) {
               </div>
             ))}
           </div>
-        </div>
       </div>
 
       {/* ═══ PLATFORMS ═══ */}
@@ -423,7 +415,7 @@ function LoginScreen({ error: initError }) {
           <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.6rem",marginBottom:".5rem"}}>Works with your accounts</div>
           <p style={{fontSize:".82rem",color:"rgba(232,224,208,.3)"}}>Auto-import from brokerages and bank statement parsers across both markets.</p>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2rem",maxWidth:900,margin:"0 auto"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(280px,100%),1fr))",gap:"2rem",maxWidth:900,margin:"0 auto"}}>
           <div>
             <div style={{fontSize:".68rem",fontWeight:600,color:"#5a9ce0",letterSpacing:".08em",marginBottom:".7rem"}}>🇺🇸 United States</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:".3rem"}}>
@@ -444,7 +436,7 @@ function LoginScreen({ error: initError }) {
       </div>
 
       {/* ═══ FOOTER ═══ */}
-      <div style={{borderTop:"1px solid rgba(232,224,208,.04)",padding:"2rem 4%",display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:".72rem",color:"rgba(232,224,208,.25)"}}>
+      <div style={{borderTop:"1px solid rgba(232,224,208,.04)",padding:"2rem 4%",display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"center",gap:".5rem",fontSize:".72rem",color:"rgba(232,224,208,.25)"}}>
         <span>© 2026 WealthLens Pro</span>
         <span>Contact: <a href="mailto:support@wealthlens.pro" style={{color:"#c9a84c",textDecoration:"none"}}>support@wealthlens.pro</a></span>
       </div>
@@ -3793,7 +3785,7 @@ ${alertLines||"  None"}`;
                 {catData.length>0&&(
                   <div className="card">
                     <div className="ctitle">Budget Buckets</div>
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:".75rem"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(260px,100%),1fr))",gap:".75rem"}}>
                       {catData.map(d=>{
                         const cat=budgetCategories.find(c=>c.name===d.name);
                         const limit=cat?.monthly_limit||0;
@@ -3933,7 +3925,7 @@ ${alertLines||"  None"}`;
                             <td><input type="checkbox" checked={selectedTxnIds.has(t.id)}
                               onChange={e=>{const s=new Set(selectedTxnIds);e.target.checked?s.add(t.id):s.delete(t.id);setSelectedTxnIds(s);}}/></td>
                             <td className="mono dim" style={{fontSize:".75rem"}}>{t.txn_date}</td>
-                            <td style={{maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:".78rem",color:"rgba(255,255,255,.8)"}}>{t.description}</td>
+                            <td style={{maxWidth:"30vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:".78rem",color:"rgba(255,255,255,.8)"}}>{t.description}</td>
                             <td className="r mono" style={{color:t.txn_type==="DEBIT"?"#e07c5a":"#4caf9a",fontSize:".82rem"}}>
                               {t.txn_type==="DEBIT"?"-":"+"}{fmtAmt(t.amount,t.currency)}
                             </td>
@@ -3963,7 +3955,7 @@ ${alertLines||"  None"}`;
                 <div className="ctitle" style={{margin:0}}>Spending Categories</div>
                 <button className="btn-sm" onClick={()=>setBudgetEditCat("new")}>+ New Category</button>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:".75rem"}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(280px,100%),1fr))",gap:".75rem"}}>
                 {budgetCategories.map(cat=>(
                   <div key={cat.id} className="card" style={{borderLeft:`3px solid ${cat.color}`,padding:".85rem 1rem"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -4304,7 +4296,7 @@ ${alertLines||"  None"}`;
           const nextMo=()=>{let m=calMo+1,y=calY;if(m>12){m=1;y++;}setCalMonth(`${y}-${String(m).padStart(2,"0")}`);};
 
           return(<>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:"1rem",alignItems:"start"}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(280px,100%),1fr))",gap:"1rem",alignItems:"start"}}>
 
               {/* Calendar grid */}
               <div className="card" style={{padding:"1rem"}}>
@@ -6406,6 +6398,7 @@ function MA({children}){return<div className="ma">{children}</div>;}
 
 const CSS=`
 *{box-sizing:border-box;margin:0;padding:0}
+html,body{overflow-x:hidden;width:100%}
 body{background:#070d1a}
 .app{min-height:100vh;background:#070d1a;background-image:radial-gradient(ellipse at 20% 10%,rgba(201,168,76,.06) 0%,transparent 50%),radial-gradient(ellipse at 80% 80%,rgba(90,156,224,.05) 0%,transparent 50%);font-family:'DM Sans',sans-serif;color:#ffffff}
 
@@ -6544,7 +6537,7 @@ body{background:#070d1a}
   .mcsub{font-size:.7rem}
 
   /* Cards */
-  .card{padding:.85rem .75rem;border-radius:10px}
+  .card{padding:.85rem .75rem;border-radius:10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
   .ctitle{font-size:.95rem;margin-bottom:.75rem}
 
   /* Member chips: horizontally scrollable */
