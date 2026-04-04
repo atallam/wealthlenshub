@@ -2572,6 +2572,50 @@ ${alertLines||"  None"}`;
           </div>
           <div className="card"><div className="ctitle">Category Distribution</div><DonutChart data={byType} total={totCur}/></div>
 
+          {/* ── DATA FRESHNESS CARD ── */}
+          {(()=>{
+            const srcMap = {};
+            for (const h of allHoldings) {
+              const src = h.source === "cas" ? "CAS" : h.source === "snaptrade" ? "SnapTrade" : h.source === "csv" ? "CSV" : "Manual";
+              const mem = members.find(m => m.id === h.member_id)?.name || "Unassigned";
+              const key = `${src}|${mem}`;
+              if (!srcMap[key]) srcMap[key] = { src, member: mem, date: h.source_date || null, count: 0, hasLive: src === "SnapTrade", lastRefresh: null };
+              srcMap[key].count++;
+              if (h.source_date && (!srcMap[key].date || h.source_date > srcMap[key].date)) srcMap[key].date = h.source_date;
+              if (h.price_fetched_at && (!srcMap[key].lastRefresh || h.price_fetched_at > srcMap[key].lastRefresh)) srcMap[key].lastRefresh = h.price_fetched_at;
+            }
+            const rows = Object.values(srcMap);
+            if (rows.length === 0) return null;
+            return (
+              <div className="card">
+                <div className="ctitle">Data Freshness</div>
+                <div style={{display:"grid",gap:".4rem"}}>
+                  {rows.map((r,i) => (
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:".6rem",padding:".45rem .65rem",background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",borderRadius:6}}>
+                      <div style={{fontSize:".95rem",width:22,textAlign:"center"}}>{r.src==="CAS"?"📥":r.src==="SnapTrade"?"🔗":r.src==="CSV"?"📄":"✍️"}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:".75rem",color:"rgba(255,255,255,.8)",fontWeight:500}}>{r.member}</div>
+                        <div style={{fontSize:".62rem",color:"rgba(255,255,255,.35)"}}>{r.src} · {r.count} holding{r.count!==1?"s":""}</div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        {r.hasLive ? (
+                          <div style={{fontSize:".72rem",color:"#4caf9a",fontWeight:500}}>Live</div>
+                        ) : r.date ? (
+                          <div style={{fontSize:".72rem",color:"#c9a84c",fontWeight:500}}>{new Date(r.date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>
+                        ) : (
+                          <div style={{fontSize:".72rem",color:"rgba(255,255,255,.3)"}}>—</div>
+                        )}
+                        {r.lastRefresh && (
+                          <div style={{fontSize:".58rem",color:"rgba(255,255,255,.25)"}}>Price: {new Date(r.lastRefresh).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* ── NET WORTH TIMELINE ── */}
           {(()=>{
             const nwHoldings = nwMember==="all" ? allHoldings : allHoldings.filter(h=>h.member_id===nwMember);
@@ -2737,6 +2781,46 @@ ${alertLines||"  None"}`;
 
         {/* ── HOLDINGS ── */}
         {tab==="holdings"&&(<div className="card">
+          {/* ── Data Freshness Banner ── */}
+          {(()=>{
+            const srcDates = {};
+            for (const h of visH) {
+              if (!h.source_date) continue;
+              const src = h.source === "cas" ? (h.brokerage_name || "CAS") : (h.source || "manual");
+              const mem = members.find(m => m.id === h.member_id);
+              const key = `${src}|${mem?.name || "Unassigned"}`;
+              if (!srcDates[key] || h.source_date > srcDates[key].date) {
+                srcDates[key] = { date: h.source_date, src, member: mem?.name || "Unassigned" };
+              }
+            }
+            const entries = Object.values(srcDates);
+            if (entries.length === 0) return null;
+            const allSame = entries.every(e => e.date === entries[0].date);
+            return (
+              <div style={{background:"linear-gradient(135deg,rgba(76,175,154,.08),rgba(160,132,202,.06))",border:"1px solid rgba(76,175,154,.18)",borderRadius:8,padding:".55rem .85rem",marginBottom:".65rem",display:"flex",alignItems:"center",gap:".65rem"}}>
+                <div style={{fontSize:"1.15rem",lineHeight:1}}>📅</div>
+                <div style={{flex:1}}>
+                  {allSame ? (
+                    <div style={{fontSize:".75rem",color:"#4caf9a",fontWeight:500}}>
+                      Data as on {new Date(entries[0].date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}
+                      <span style={{color:"rgba(255,255,255,.35)",fontWeight:400,marginLeft:".5rem"}}>{entries.length} source{entries.length>1?"s":""}</span>
+                    </div>
+                  ) : (
+                    <div style={{display:"flex",flexWrap:"wrap",gap:".25rem .8rem"}}>
+                      {entries.map((e,i) => (
+                        <div key={i} style={{fontSize:".72rem"}}>
+                          <span style={{color:"rgba(255,255,255,.5)"}}>{e.member}:</span>{" "}
+                          <span style={{color:"#4caf9a",fontWeight:500}}>{new Date(e.date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</span>
+                          <span style={{color:"rgba(255,255,255,.25)",marginLeft:".3rem",fontSize:".62rem"}}>{e.src}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{fontSize:".6rem",color:"rgba(255,255,255,.3)",marginTop:".15rem"}}>NAVs & prices reflect the CAS statement date, not live market</div>
+                </div>
+              </div>
+            );
+          })()}
           <div className="tbar">
             <div className={`fchip${filterType==="ALL"?" act":""}`} onClick={()=>setFilterType("ALL")}>All</div>
             {Object.entries(AT).map(([k,v])=>(<div key={k} className={`fchip${filterType===k?" act":""}`} onClick={()=>setFilterType(k)}>{v.icon} {v.label}</div>))}

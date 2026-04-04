@@ -4996,6 +4996,7 @@ app.post("/api/holdings/import", auth, async (req, res) => {
       ...(h.source ? { source: h.source } : {}),
       ...(h.brokerage_name ? { brokerage_name: h.brokerage_name } : {}),
       ...(h.currency ? { currency: h.currency } : {}),
+      ...(req.body.cas_statement_date ? { source_date: req.body.cas_statement_date } : {}),
     });
 
     if (existingId) {
