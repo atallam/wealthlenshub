@@ -64,12 +64,16 @@ app.get("/api/portfolio", auth, async (req, res) => {
     .from("portfolio").select("*").eq("user_id", req.user.id).single();
   if (error && error.code !== "PGRST116") return res.status(500).json({ error: error.message });
 
+  // Get display name for auto-provision
+  const getDisplayName = async () => {
+    const { data: profile } = await supabase.from("profiles").select("display_name").eq("id", req.user.id).single();
+    return profile?.display_name || req.user.email?.split("@")[0] || "Me";
+  };
+
   // Auto-provision portfolio with a default "Self" member on first access
   if (!data) {
     try {
-      // Get display name from profile or auth metadata
-      const { data: profile } = await supabase.from("profiles").select("display_name").eq("id", req.user.id).single();
-      const displayName = profile?.display_name || req.user.email?.split("@")[0] || "Me";
+      const displayName = await getDisplayName();
       const defaultMember = { id: "m_" + Date.now().toString(36), name: displayName, relation: "Self", email: req.user.email || "" };
       const newPortfolio = {
         id: req.user.id, user_id: req.user.id,
@@ -77,14 +81,39 @@ app.get("/api/portfolio", auth, async (req, res) => {
         updated_at: new Date().toISOString(),
       };
       const { error: insertErr } = await supabase.from("portfolio").upsert(newPortfolio);
-      if (!insertErr) {
+      if (insertErr) {
+        console.error(`❌ Auto-provision failed for ${req.user.email}:`, insertErr.message);
+      } else {
         console.log(`📋 Auto-provisioned portfolio for ${req.user.email} with member "${displayName}"`);
-        return res.json(newPortfolio);
       }
-    } catch {}
+      return res.json(newPortfolio);
+    } catch (e) {
+      console.error(`❌ Auto-provision exception for ${req.user.email}:`, e.message);
+      // Return a valid portfolio structure even on error so frontend doesn't get null
+      const displayName = req.user.email?.split("@")[0] || "Me";
+      return res.json({
+        id: req.user.id, user_id: req.user.id,
+        members: [{ id: "m_" + Date.now().toString(36), name: displayName, relation: "Self", email: req.user.email || "" }],
+        goals: [], alerts: [],
+      });
+    }
   }
 
-  res.json(data || null);
+  // Portfolio exists but has no members — repair it by adding SELF
+  if (data && (!data.members || data.members.length === 0 || !data.members.find(m => m.relation === "Self"))) {
+    try {
+      const displayName = await getDisplayName();
+      const selfMember = { id: "m_" + Date.now().toString(36), name: displayName, relation: "Self", email: req.user.email || "" };
+      const repairedMembers = [...(data.members || []), selfMember];
+      await supabase.from("portfolio").update({ members: repairedMembers, updated_at: new Date().toISOString() }).eq("user_id", req.user.id);
+      console.log(`🔧 Repaired missing Self member for ${req.user.email}`);
+      data.members = repairedMembers;
+    } catch (e) {
+      console.error(`❌ Self-repair failed for ${req.user.email}:`, e.message);
+    }
+  }
+
+  res.json(data);
 });
 
 app.post("/api/portfolio", auth, async (req, res) => {

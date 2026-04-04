@@ -1137,6 +1137,7 @@ export default function App() {
 
   const importFileRef = useRef();
   const saveTimer = useRef(null);
+  const initialLoadDone = useRef(false);
   const txnSaving = useRef(false);
 
   // ── Auth listener ──
@@ -1309,7 +1310,12 @@ export default function App() {
     },1000);
   },[]);
 
-  useEffect(()=>{ if(loaded&&user) savePortfolio(members,goals,alerts); },[members,goals,alerts,loaded,user,savePortfolio]);
+  useEffect(()=>{
+    if(loaded&&user) {
+      if(!initialLoadDone.current) { initialLoadDone.current = true; return; }
+      savePortfolio(members,goals,alerts);
+    }
+  },[members,goals,alerts,loaded,user,savePortfolio]);
 
   // Auto-load shared portfolio data when sharedWithMe list updates
   useEffect(()=>{ if(loaded && sharedWithMe.length > 0) loadAllSharedHoldings(); },[sharedWithMe,loaded]);
