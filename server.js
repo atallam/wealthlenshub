@@ -905,6 +905,15 @@ app.post("/api/prices/refresh", auth, async (req, res) => {
     if (fetchIdx < holdings.length) await new Promise(r => setTimeout(r, 800));
   }
   res.json({ updated: updates.length, usdInr, fxSource, results: updates });
+
+  // ── Auto-capture snapshot after price refresh ──
+  try {
+    fetch(`${req.protocol}://${req.get("host")}/api/snapshots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": req.headers.authorization },
+      body: JSON.stringify({ source: "price_refresh" }),
+    }).catch(e => console.error("Auto-snapshot on refresh failed:", e.message));
+  } catch {}
 });
 
 // ── ARTIFACTS ────────────────────────────────────────────────────
@@ -3687,6 +3696,48 @@ function parseNSDLCASStatement(rawText) {
   if (holderNames.length > 0) console.log(`📋 CAS: extracted holder names: [${holderNames.join(", ")}]`);
   if (holderPANs.length > 0) console.log(`📋 CAS: extracted PANs: [${holderPANs.join(", ")}]`);
 
+  // ── Extract CAS statement date / period ────────────────────────
+  // NSDL: "Statement Period : 01-Apr-2024 to 31-Mar-2025"
+  // CDSL: "Statement as on 31-Mar-2025"  /  "Valuation Date : 31-Mar-2025"
+  // Both: "Period : From 01/04/2024 To 31/03/2025"
+  let statementDate = null, periodStart = null, periodEnd = null;
+  const _rangeDatePats = [
+    /Statement\s*Period\s*[:\-]?\s*(\d{1,2}[\-\/]\w{3,9}[\-\/]\d{2,4})\s*(?:to|[-–])\s*(\d{1,2}[\-\/]\w{3,9}[\-\/]\d{2,4})/i,
+    /Period\s*[:\-]?\s*(?:From\s+)?(\d{1,2}[\-\/]\d{1,2}[\-\/]\d{2,4})\s*(?:to|[-–])\s*(\d{1,2}[\-\/]\d{1,2}[\-\/]\d{2,4})/i,
+    /Period\s*[:\-]?\s*(\d{1,2}[\-\/]\w{3,9}[\-\/]\d{2,4})\s*(?:to|[-–])\s*(\d{1,2}[\-\/]\w{3,9}[\-\/]\d{2,4})/i,
+  ];
+  const _singleDatePats = [
+    /Statement\s*(?:as\s*on|dated?)\s*[:\-]?\s*(\d{1,2}[\-\/]\w{3,9}[\-\/]\d{2,4})/i,
+    /Valuation\s*(?:Date|as\s*on)\s*[:\-]?\s*(\d{1,2}[\-\/]\w{3,9}[\-\/]\d{2,4})/i,
+    /as\s*on\s*[:\-]?\s*(\d{1,2}[\-\/]\w{3,9}[\-\/]\d{2,4})/i,
+    /Statement\s*Date\s*[:\-]?\s*(\d{1,2}[\-\/]\d{1,2}[\-\/]\d{2,4})/i,
+  ];
+  function _parseCASDate(ds) {
+    if (!ds) return null;
+    const d = ds.replace(/[\-\/]/g, "-");
+    const mm = d.match(/^(\d{1,2})-([A-Za-z]{3,9})-(\d{2,4})$/);
+    if (mm) {
+      const mos = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+      const mi = mos[mm[2].toLowerCase().slice(0,3)];
+      if (mi !== undefined) { let y=parseInt(mm[3]); if(y<100)y+=2000; return new Date(y,mi,parseInt(mm[1])).toISOString().slice(0,10); }
+    }
+    const nm = d.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+    if (nm) { let y=parseInt(nm[3]); if(y<100)y+=2000; return new Date(y,parseInt(nm[2])-1,parseInt(nm[1])).toISOString().slice(0,10); }
+    return null;
+  }
+  for (const pat of _rangeDatePats) {
+    const m = rawText.match(pat);
+    if (m) { periodStart = _parseCASDate(m[1]); periodEnd = _parseCASDate(m[2]); statementDate = periodEnd; break; }
+  }
+  if (!statementDate) {
+    for (const pat of _singleDatePats) {
+      const m = rawText.match(pat);
+      if (m) { statementDate = _parseCASDate(m[1]); periodEnd = statementDate; break; }
+    }
+  }
+  if (statementDate) console.log(`📋 CAS: Statement date=${statementDate}, period=${periodStart||"?"} → ${periodEnd||"?"}`);
+  else console.log(`📋 CAS: No statement date found in text`);
+
   // ── Helper: clean CAS holding names ────────────────────────────
   // CAS PDFs often have names like:
   //   "KIMS.NSE KRISHNA INSTITUTE OF MEDICAL SCIENCES LIMITED"
@@ -4423,6 +4474,10 @@ function parseNSDLCASStatement(rawText) {
     accounts: [],
     holder_names: holderNames,
     holder_pans: holderPANs,
+    statement_date: statementDate,
+    period_start: periodStart,
+    period_end: periodEnd,
+    depository,
   };
 }
 
@@ -4745,7 +4800,7 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
             }));
             const dupCount = result.holdings.filter(h => h._duplicate).length;
             if (dupCount > 0) result.warnings.push(`${dupCount} holding(s) already exist (marked as duplicates)`);
-            return res.json({ ...result, detected_type: "holdings", accounts: result.accounts || [], holder_names: result.holder_names || [], holder_pans: result.holder_pans || [] });
+            return res.json({ ...result, detected_type: "holdings", accounts: result.accounts || [], holder_names: result.holder_names || [], holder_pans: result.holder_pans || [], statement_date: result.statement_date || null, period_start: result.period_start || null, period_end: result.period_end || null, depository: result.depository || "" });
           }
         }
 
@@ -4964,6 +5019,16 @@ app.post("/api/holdings/import", auth, async (req, res) => {
   res.json({ ok: true, inserted_count: inserted.length, updated_count: updated.length,
     skipped_count: skipped.length, error_count: errors.length, inserted, updated, skipped, errors,
     needs_price_refresh: inserted.length > 0 || updated.length > 0 });
+
+  // ── Auto-capture net worth snapshot after import ──
+  try {
+    const casDate = req.body.cas_statement_date || null;
+    fetch(`${req.protocol}://${req.get("host")}/api/snapshots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": req.headers.authorization },
+      body: JSON.stringify({ source: "cas_import", cas_statement_date: casDate }),
+    }).catch(e => console.error("Auto-snapshot failed:", e.message));
+  } catch {}
 
   // ── Background: auto-fetch prices for zero-price holdings just imported ──
   // (non-blocking — runs after response is sent)
@@ -5406,6 +5471,71 @@ app.get("/api/benchmark", auth, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════
+// ── NET WORTH SNAPSHOTS ───────────────────────────────────────────
+app.post("/api/snapshots", auth, async (req, res) => {
+  try {
+    const { source = "manual", cas_statement_date = null } = req.body;
+    let snapshotMonth;
+    if (cas_statement_date) {
+      snapshotMonth = cas_statement_date.slice(0, 7);
+    } else {
+      const now = new Date();
+      snapshotMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    }
+    const { data: holdings } = await supabase.from("holdings")
+      .select("id, member_id, type, name, units, purchase_price, current_price, purchase_value, current_value, currency")
+      .eq("user_id", req.user.id);
+    if (!holdings?.length) return res.json({ snapshot: null, message: "No holdings to snapshot" });
+    let usdInr = 84;
+    try { const fxResp = await fetch("https://api.exchangerate-api.com/v4/latest/USD"); const fxData = await fxResp.json(); usdInr = fxData?.rates?.INR || 84; } catch {}
+    const toINR = (h) => { const val = h.current_value || (h.units * h.current_price) || 0; return (h.currency === "USD") ? val * usdInr : val; };
+    const invINR = (h) => { const val = h.purchase_value || (h.units * h.purchase_price) || 0; return (h.currency === "USD") ? val * usdInr : val; };
+    let totalInvested = 0, totalCurrent = 0;
+    const memberBreakdown = {}, typeBreakdown = {};
+    for (const h of holdings) {
+      const cur = toINR(h), inv = invINR(h);
+      totalInvested += inv; totalCurrent += cur;
+      const mid = h.member_id || "unassigned";
+      if (!memberBreakdown[mid]) memberBreakdown[mid] = { invested: 0, current: 0 };
+      memberBreakdown[mid].invested += inv; memberBreakdown[mid].current += cur;
+      const t = h.type || "OTHER";
+      if (!typeBreakdown[t]) typeBreakdown[t] = { invested: 0, current: 0 };
+      typeBreakdown[t].invested += inv; typeBreakdown[t].current += cur;
+    }
+    const { data: snap, error } = await supabase.from("net_worth_snapshots")
+      .upsert({
+        user_id: req.user.id, snapshot_month: snapshotMonth,
+        total_invested: Math.round(totalInvested), total_current: Math.round(totalCurrent),
+        currency: "INR", member_breakdown: memberBreakdown, type_breakdown: typeBreakdown,
+        source, cas_statement_date: cas_statement_date || null,
+      }, { onConflict: "user_id,snapshot_month,currency" })
+      .select().single();
+    if (error) throw error;
+    res.json({ snapshot: snap });
+  } catch (e) { console.error("Snapshot error:", e); res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/snapshots", auth, async (req, res) => {
+  try {
+    const { months = 24 } = req.query;
+    const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - parseInt(months));
+    const cutoffMonth = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}`;
+    const { data, error } = await supabase.from("net_worth_snapshots")
+      .select("*").eq("user_id", req.user.id).gte("snapshot_month", cutoffMonth)
+      .order("snapshot_month", { ascending: true });
+    if (error) throw error;
+    res.json({ snapshots: data || [] });
+  } catch (e) { console.error("Snapshots fetch error:", e); res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/api/snapshots/:id", auth, async (req, res) => {
+  try {
+    const { error } = await supabase.from("net_worth_snapshots").delete().eq("id", req.params.id).eq("user_id", req.user.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 //  GLOBAL ERROR HANDLER + CATCH-ALL + LISTEN
 //  (must be AFTER all route registrations)
 // ══════════════════════════════════════════════════════════════════

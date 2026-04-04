@@ -1091,6 +1091,12 @@ export default function App() {
   const [casPanInput,      setCasPanInput]      = useState("");       // PAN entered by user for CAS decryption
   const [casQuickMemberName, setCasQuickMemberName] = useState("");  // inline new member name in CAS modal
   const [casSavePan,       setCasSavePan]       = useState(false);    // remember PAN checkbox
+  const [casStatementDate, setCasStatementDate] = useState(null);     // "2025-03-31" from CAS
+  const [casPeriodStart,   setCasPeriodStart]   = useState(null);     // "2024-04-01"
+  const [casPeriodEnd,     setCasPeriodEnd]     = useState(null);     // "2025-03-31"
+  const [casDepository,    setCasDepository]    = useState("");       // "NSDL" | "CDSL"
+  const [wealthSnapshots,  setWealthSnapshots]  = useState([]);       // monthly snapshots
+  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
 
   // ── Net Worth Timeline + Calendar ─────────────────────────────
   const [nwMember,          setNwMember]          = useState("all");
@@ -1197,6 +1203,8 @@ export default function App() {
         setSharedWithMe(receivedShares.shared_with_me || []);
         console.log("📤 Shares granted:", myShares.shares?.length || 0, "📥 Shared with me:", receivedShares.shared_with_me?.length || 0);
       } catch(e) { console.warn("Shares load:", e.message); }
+      // Load wealth snapshots
+      api("/api/snapshots?months=24").then(d => setWealthSnapshots(d?.snapshots || [])).catch(() => {});
     })();
   },[user]);
 
@@ -1543,6 +1551,10 @@ export default function App() {
       setCasHolderPans(holderPans);
       setCasWarnings(warnings);
       setCasFormat(format);
+      setCasStatementDate(data.statement_date || null);
+      setCasPeriodStart(data.period_start || null);
+      setCasPeriodEnd(data.period_end || null);
+      setCasDepository(data.depository || "");
 
       // Auto-map holders to members
       const autoMap = autoMapCASHolders(holderNames, holderPans);
@@ -1585,6 +1597,7 @@ export default function App() {
           holdings: enriched,
           member_id: singleMember || "",
           account_map: Object.keys(casHolderMap).length > 0 ? casHolderMap : undefined,
+          cas_statement_date: casStatementDate,
         }),
       });
       const result = await res.json();
@@ -1593,6 +1606,8 @@ export default function App() {
       // Reload holdings
       const hlds = await api("/api/holdings");
       setHoldings(hlds || []);
+      // Reload wealth snapshots
+      api("/api/snapshots?months=24").then(d => setWealthSnapshots(d?.snapshots || [])).catch(() => {});
       // Auto-trigger price refresh for newly imported holdings that may lack prices
       if ((result.inserted_count || 0) + (result.updated_count || 0) > 0) {
         setTimeout(() => {
@@ -1683,6 +1698,10 @@ export default function App() {
     setCasPanInput("");
     setCasSavePan(false);
     setCasQuickMemberName("");
+    setCasStatementDate(null);
+    setCasPeriodStart(null);
+    setCasPeriodEnd(null);
+    setCasDepository("");
   }
 
   function openMemberModal(memberId) {
@@ -2662,6 +2681,64 @@ ${alertLines||"  None"}`;
                 <div><span style={{color:"rgba(255,255,255,.45)"}}>Current: </span><span style={{fontFamily:"'DM Mono',monospace",color:"#ffffff"}}>{fmtCr(nwCur)}</span></div>
                 <div><span style={{color:"rgba(255,255,255,.45)"}}>Gain: </span><span style={{fontFamily:"'DM Mono',monospace",color:nwCur>=nwInv?"#4caf9a":"#e07c5a"}}>{fmtCr(nwCur-nwInv)} ({fmtPct(nwInv>0?(nwCur-nwInv)/nwInv*100:0)})</span></div>
               </div>
+            </div>);
+          })()}
+
+          {/* ── WEALTH PROGRESSION (from monthly snapshots) ── */}
+          {wealthSnapshots.length>=2&&(()=>{
+            const snaps=wealthSnapshots.slice(-24);
+            const maxV=Math.max(...snaps.map(s=>Math.max(s.total_current,s.total_invested)))*1.08;
+            const W=580,H=220,pad={l:62,r:16,t:14,b:36};
+            const iW=W-pad.l-pad.r,iH=H-pad.t-pad.b;
+            const xP=(i)=>pad.l+i*(iW/Math.max(snaps.length-1,1));
+            const yP=(v)=>pad.t+iH-((v/maxV)*iH);
+            const curPts=snaps.map((s,i)=>`${xP(i)},${yP(s.total_current)}`).join(" ");
+            const invPts=snaps.map((s,i)=>`${xP(i)},${yP(s.total_invested)}`).join(" ");
+            const fillPts=`${xP(0)},${yP(0)} ${curPts} ${xP(snaps.length-1)},${yP(0)}`;
+            const latestSnap=snaps[snaps.length-1];
+            const totalGain=latestSnap.total_current-latestSnap.total_invested;
+            const totalPct=latestSnap.total_invested>0?((totalGain/latestSnap.total_invested)*100).toFixed(1):"0";
+            const monthGrowth=snaps.length>=2?latestSnap.total_current-snaps[snaps.length-2].total_current:0;
+            const step=snaps.length>12?4:snaps.length>6?3:2;
+            const showLabel=(i)=>i===0||i===snaps.length-1||(i%step===0);
+            return(
+            <div className="card" style={{marginTop:"1rem"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:".8rem",flexWrap:"wrap",gap:".5rem"}}>
+                <div className="ctitle" style={{margin:0}}>📈 Wealth Progression</div>
+                <div style={{display:"flex",gap:"1rem",fontSize:".68rem"}}>
+                  <span style={{color:"rgba(255,255,255,.5)"}}>{snaps.length} months tracked</span>
+                  <span style={{color:totalGain>=0?"#4caf9a":"#e07c5a"}}>{totalGain>=0?"+":""}{fmtCr(totalGain)} ({totalPct}%)</span>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:"1rem",marginBottom:".8rem",flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:120,padding:".5rem .7rem",borderRadius:8,background:"rgba(76,175,154,.06)",border:"1px solid rgba(76,175,154,.15)"}}>
+                  <div style={{fontSize:".62rem",color:"rgba(255,255,255,.45)",textTransform:"uppercase",letterSpacing:".05em"}}>Current Value</div>
+                  <div style={{fontSize:".9rem",fontWeight:600,color:"#4caf9a",fontFamily:"'DM Mono',monospace"}}>{fmtCr(latestSnap.total_current)}</div>
+                </div>
+                <div style={{flex:1,minWidth:120,padding:".5rem .7rem",borderRadius:8,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.15)"}}>
+                  <div style={{fontSize:".62rem",color:"rgba(255,255,255,.45)",textTransform:"uppercase",letterSpacing:".05em"}}>Total Invested</div>
+                  <div style={{fontSize:".9rem",fontWeight:600,color:"#c9a84c",fontFamily:"'DM Mono',monospace"}}>{fmtCr(latestSnap.total_invested)}</div>
+                </div>
+                <div style={{flex:1,minWidth:120,padding:".5rem .7rem",borderRadius:8,background:monthGrowth>=0?"rgba(76,175,154,.06)":"rgba(224,124,90,.06)",border:`1px solid ${monthGrowth>=0?"rgba(76,175,154,.15)":"rgba(224,124,90,.15)"}`}}>
+                  <div style={{fontSize:".62rem",color:"rgba(255,255,255,.45)",textTransform:"uppercase",letterSpacing:".05em"}}>Month Change</div>
+                  <div style={{fontSize:".9rem",fontWeight:600,color:monthGrowth>=0?"#4caf9a":"#e07c5a",fontFamily:"'DM Mono',monospace"}}>{monthGrowth>=0?"+":""}{fmtCr(monthGrowth)}</div>
+                </div>
+              </div>
+              <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",maxWidth:W,display:"block"}}>
+                {[0,0.25,0.5,0.75,1].map(f=>{const y=pad.t+iH*(1-f);const val=maxV*f;return<g key={f}><line x1={pad.l} y1={y} x2={W-pad.r} y2={y} stroke="rgba(255,255,255,.06)" strokeWidth={0.5}/><text x={pad.l-6} y={y+3} fill="rgba(255,255,255,.3)" fontSize={8} textAnchor="end" fontFamily="DM Mono,monospace">{val>=10000000?(val/10000000).toFixed(1)+"Cr":val>=100000?(val/100000).toFixed(0)+"L":Math.round(val).toLocaleString("en-IN")}</text></g>;})}
+                <polygon points={fillPts} fill="rgba(76,175,154,.08)"/>
+                <polyline points={invPts} fill="none" stroke="#c9a84c" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.6}/>
+                <polyline points={curPts} fill="none" stroke="#4caf9a" strokeWidth={2}/>
+                {snaps.map((s,i)=>(<g key={i}><circle cx={xP(i)} cy={yP(s.total_current)} r={snaps.length>15?2:3} fill="#4caf9a"/>{showLabel(i)&&(<text x={xP(i)} y={H-pad.b+14} fill="rgba(255,255,255,.4)" fontSize={7.5} textAnchor={i===0?"start":i===snaps.length-1?"end":"middle"} fontFamily="DM Mono,monospace">{(()=>{const[y,m]=s.snapshot_month.split("-");return["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1]+"'"+y.slice(2);})()}</text>)}{s.source==="cas_import"&&<circle cx={xP(i)} cy={yP(s.total_current)-8} r={2} fill="#a084ca" opacity={0.7}/>}</g>))}
+                <g transform={`translate(${pad.l},${H-6})`}><line x1={0} y1={0} x2={14} y2={0} stroke="#4caf9a" strokeWidth={2}/><text x={18} y={3} fill="rgba(255,255,255,.4)" fontSize={7}>Current</text><line x1={60} y1={0} x2={74} y2={0} stroke="#c9a84c" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.6}/><text x={78} y={3} fill="rgba(255,255,255,.4)" fontSize={7}>Invested</text><circle cx={125} cy={0} r={2} fill="#a084ca" opacity={0.7}/><text x={130} y={3} fill="rgba(255,255,255,.4)" fontSize={7}>CAS import</text></g>
+              </svg>
+              <details style={{marginTop:".6rem"}}>
+                <summary style={{fontSize:".68rem",color:"rgba(255,255,255,.45)",cursor:"pointer",userSelect:"none"}}>View monthly data ({snaps.length} snapshots)</summary>
+                <div style={{overflowX:"auto",marginTop:".4rem"}}>
+                  <table className="ht" style={{fontSize:".7rem"}}><thead><tr><th>Month</th><th className="r">Invested</th><th className="r">Current</th><th className="r">Gain</th><th className="r">Return</th><th>Source</th></tr></thead>
+                  <tbody>{[...snaps].reverse().map(s=>{const gain=s.total_current-s.total_invested;const pct=s.total_invested>0?((gain/s.total_invested)*100).toFixed(1):"0";const[y,m]=s.snapshot_month.split("-");const mon=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1];return<tr key={s.snapshot_month}><td style={{whiteSpace:"nowrap"}}>{mon} {y}</td><td className="r mono">{fmtCr(s.total_invested)}</td><td className="r mono">{fmtCr(s.total_current)}</td><td className={`r mono ${gain>=0?"gain":"loss"}`}>{gain>=0?"+":""}{fmtCr(gain)}</td><td className={`r ${gain>=0?"gain":"loss"}`}>{pct}%</td><td style={{fontSize:".62rem",color:"rgba(255,255,255,.35)"}}>{s.source==="cas_import"?"📥 CAS":s.source==="price_refresh"?"🔄 Refresh":"📝 Manual"}{s.cas_statement_date?` (${s.cas_statement_date})`:""}</td></tr>;})}</tbody></table>
+                </div>
+              </details>
             </div>);
           })()}
         </>)}
@@ -5587,9 +5664,11 @@ ${alertLines||"  None"}`;
       </>)}
 
       {casStep==="matching"&&(<>
-        <div style={{fontSize:".72rem",color:"rgba(255,255,255,.5)",marginBottom:".6rem"}}>
-          {casFormat&&<span style={{background:"rgba(160,132,202,.12)",color:"#a084ca",padding:".15rem .5rem",borderRadius:4,fontSize:".65rem",marginRight:".5rem"}}>{casFormat}</span>}
-          {casHoldings.length} holding{casHoldings.length!==1?"s":""} found
+        <div style={{fontSize:".72rem",color:"rgba(255,255,255,.5)",marginBottom:".6rem",display:"flex",alignItems:"center",flexWrap:"wrap",gap:".4rem"}}>
+          {casFormat&&<span style={{background:"rgba(160,132,202,.12)",color:"#a084ca",padding:".15rem .5rem",borderRadius:4,fontSize:".65rem"}}>{casFormat}</span>}
+          {casStatementDate&&<span style={{background:"rgba(76,175,154,.12)",color:"#4caf9a",padding:".15rem .5rem",borderRadius:4,fontSize:".65rem",border:"1px solid rgba(76,175,154,.18)"}}>📅 {casPeriodStart&&casPeriodEnd?`${new Date(casPeriodStart).toLocaleDateString("en-IN",{month:"short",year:"numeric"})} → ${new Date(casPeriodEnd).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}`:`as on ${new Date(casStatementDate).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}`}</span>}
+          {casDepository&&<span style={{background:"rgba(160,132,202,.08)",color:"#a084ca",padding:".15rem .5rem",borderRadius:4,fontSize:".65rem",border:"1px solid rgba(160,132,202,.15)"}}>🏛 {casDepository}</span>}
+          <span>{casHoldings.length} holding{casHoldings.length!==1?"s":""} found</span>
         </div>
 
         {/* Quick-add member if none exist */}
