@@ -831,9 +831,12 @@ async function mfNav(schemeCode) {
 // ── PRICES REFRESH — Twelve Data → Yahoo (.NS + .BO) + MFAPI + FX ─
 app.post("/api/prices/refresh", auth, async (req, res) => {
   const { data: holdings } = await supabase
-    .from("holdings").select("id, type, ticker, scheme_code, usd_inr_rate").eq("user_id", req.user.id);
+    .from("holdings").select("id, type, ticker, scheme_code, units, usd_inr_rate").eq("user_id", req.user.id);
 
   if (!holdings?.length) return res.json({ updated: 0 });
+
+  console.log(`⟳ refreshPrices: ${holdings.length} holdings for user ${req.user.id}`);
+  console.log(`⟳ IN_STOCK/IN_ETF holdings: ${holdings.filter(h => (h.type === "IN_STOCK" || h.type === "IN_ETF") && h.ticker).map(h => h.ticker).join(", ")}`);
 
   // FX rate with full fallback chain
   const { rate: usdInr, source: fxSource } = await fetchUsdInr();
@@ -852,8 +855,10 @@ app.post("/api/prices/refresh", auth, async (req, res) => {
 
       } else if ((h.type === "IN_STOCK" || h.type === "IN_ETF") && h.ticker) {
         // Twelve Data → Yahoo .NS → Yahoo .BO
+        console.log(`⟳ Fetching price for ${h.ticker}.NS ...`);
         const q = await stockPrice(`${h.ticker.toUpperCase()}.NS`, "NSE");
         const price = q?.price ?? await yahooPrice(`${h.ticker.toUpperCase()}.BO`);
+        console.log(`⟳ ${h.ticker}: stockPrice=${q?.price} yahooFallback=${!q?.price ? price : 'n/a'} → final=${price}`);
         if (price) {
           const cv = (h.units || 0) * price;
           patch = { current_price: price, current_value: cv, price_fetched_at: new Date().toISOString() };
@@ -4471,13 +4476,38 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
           throw pdfOpenErr;
         }
 
-        // Extract text from all pages in parallel for speed
+        // Extract text from all pages with Y-coordinate grouping to preserve columnar layout
+        // Naive .join(" ") collapses multi-column PDFs and causes wrong number extraction
         const pagePromises = [];
         for (let i = 1; i <= pdf.numPages; i++) {
           pagePromises.push(
-            pdf.getPage(i).then(page => page.getTextContent()).then(content =>
-              content.items.map(item => item.str).join(" ")
-            )
+            pdf.getPage(i).then(page => page.getTextContent()).then(content => {
+              if (!content.items.length) return "";
+              // Group text items by Y coordinate (same row), sort by X within each row
+              const rows = new Map();
+              for (const item of content.items) {
+                const y = Math.round((item.transform?.[5] ?? 0) * 2) / 2; // round to 0.5pt for grouping
+                if (!rows.has(y)) rows.set(y, []);
+                rows.get(y).push({ x: item.transform?.[4] ?? 0, str: item.str });
+              }
+              // Sort rows by Y descending (PDF Y=0 is bottom), items within row by X ascending
+              const sortedRows = [...rows.entries()]
+                .sort((a, b) => b[0] - a[0])
+                .map(([, items]) => {
+                  items.sort((a, b) => a.x - b.x);
+                  // Join items within a row: insert tab if gap > 15pt, else space
+                  let line = "";
+                  for (let j = 0; j < items.length; j++) {
+                    if (j > 0) {
+                      const gap = items[j].x - items[j-1].x - (items[j-1].str.length * 5);
+                      line += gap > 15 ? "\t" : " ";
+                    }
+                    line += items[j].str;
+                  }
+                  return line;
+                });
+              return sortedRows.join("\n");
+            })
           );
         }
         const pages = await Promise.all(pagePromises);
@@ -4500,14 +4530,20 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
 
         // Debug mode: return raw PDF text for troubleshooting
         if (req.query.debug === "1" || req.body?.debug === "1") {
+          // Extract context around each INE ISIN for demat diagnosis
+          const ineContexts = [...rawPdfText.matchAll(/\b(INE[A-Z0-9]{9})\b/g)].map(m => ({
+            isin: m[1],
+            position: m.index,
+            before100: rawPdfText.substring(Math.max(0, m.index - 100), m.index).replace(/\n/g, "\\n"),
+            after400: rawPdfText.substring(m.index, m.index + 400).replace(/\n/g, "\\n"),
+          }));
           return res.json({
             debug: true,
             totalLength: rawPdfText.length,
             pageCount: pages.length,
             pageLengths: pages.map((p,i) => ({ page: i+1, chars: p.length })),
-            // First 8000 chars of raw text
-            rawText: rawPdfText.substring(0, 8000),
-            // Search for key anchors
+            rawText: rawPdfText.substring(0, 12000),
+            ineContexts,
             anchors: {
               closingUnitBalance: [...rawPdfText.matchAll(/Closing\s*Unit\s*Balance\s*[:\s]*([\d,.]+)/gi)].map(m => ({
                 position: m.index,
