@@ -2335,7 +2335,7 @@ ${alertLines||"  None"}`;
             const isBudget=t==="budget";
             const isAsk=t==="ask";
             const isActive=tab===t;
-            const lockedTabs=new Set(holdings.length===0&&!demoMode?["goals","strategy","members","calendar","ask"]:[]);
+            const lockedTabs=new Set(loaded&&holdings.length===0&&!demoMode?["goals","strategy","members","calendar","ask"]:[]);
             const isLocked=lockedTabs.has(t);
             return(
             <div key={t}
@@ -2388,7 +2388,7 @@ ${alertLines||"  None"}`;
             </div>
           )}
           {/* Empty state — Welcome Card + Import Guide */}
-          {!demoMode&&holdings.length===0&&sharedHoldings.length===0&&(<>
+          {loaded&&!demoMode&&holdings.length===0&&sharedHoldings.length===0&&(<>
             <div style={{background:"rgba(201,168,76,.03)",border:"1px solid rgba(201,168,76,.18)",borderRadius:12,padding:"1.3rem 1.5rem",marginBottom:"1rem"}}>
               <div style={{display:"flex",alignItems:"center",gap:".6rem",marginBottom:"1rem"}}>
                 <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(201,168,76,.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".85rem",color:"#c9a84c",fontWeight:600}}>W</div>
@@ -2453,7 +2453,7 @@ ${alertLines||"  None"}`;
             </div>
           </>)}
           {/* User has no own holdings but has shared data */}
-          {!demoMode&&holdings.length===0&&sharedHoldings.length>0&&(
+          {loaded&&!demoMode&&holdings.length===0&&sharedHoldings.length>0&&(
             <div style={{textAlign:"center",padding:"1.5rem 1rem",marginBottom:"1rem",background:"rgba(167,139,250,.04)",border:"1px solid rgba(167,139,250,.15)",borderRadius:12}}>
               <div style={{fontSize:".85rem",color:"rgba(167,139,250,.8)",marginBottom:".3rem"}}>You're viewing shared portfolios</div>
               <div style={{fontSize:".72rem",color:"rgba(255,255,255,.45)"}}>
@@ -5669,7 +5669,7 @@ ${alertLines||"  None"}`;
         {key:"goals",icon:"🎯",label:"Goals"},
         {key:"_more",icon:"⋯",label:"More"},
       ].map(n=>{
-        const lockedTabs=new Set(holdings.length===0&&!demoMode?["goals","strategy","members","calendar","ask"]:[]);
+        const lockedTabs=new Set(loaded&&holdings.length===0&&!demoMode?["goals","strategy","members","calendar","ask"]:[]);
         const isLocked=n.key!=="_more"&&lockedTabs.has(n.key);
         return(<div key={n.key}
           className={`bnav-item${tab===n.key?" act":""}${n.budget?" budget-tab":""}${n.key==="_more"&&moreSheetOpen?" act":""}`}
@@ -5689,7 +5689,7 @@ ${alertLines||"  None"}`;
           {key:"calendar",icon:"📅",label:"Calendar"},
           {key:"ask",icon:"✦",label:"AI Advisor"},
         ].map(n=>{
-          const lockedTabs=new Set(holdings.length===0&&!demoMode?["goals","strategy","members","calendar","ask"]:[]);
+          const lockedTabs=new Set(loaded&&holdings.length===0&&!demoMode?["goals","strategy","members","calendar","ask"]:[]);
           const isLocked=lockedTabs.has(n.key);
           return(<div key={n.key}
             className={`more-sheet-item${tab===n.key?" act":""}`}
