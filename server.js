@@ -1007,6 +1007,7 @@ app.get("/api/shares/received", auth, async (req, res) => {
 
 // ── Sync shares: ensure all members with emails have active shares ──
 // Called on login to catch cases where auto-share failed (user didn't exist yet)
+// Also creates reverse shares: if someone shared with me, I share back (bidirectional family)
 app.post("/api/shares/sync", auth, async (req, res) => {
   try {
     // Get this user's portfolio to find members with emails
@@ -1016,31 +1017,49 @@ app.post("/api/shares/sync", auth, async (req, res) => {
     const memberEmails = members
       .filter(m => m.email && m.email.trim())
       .map(m => m.email.trim().toLowerCase());
-    if (memberEmails.length === 0) return res.json({ synced: 0 });
 
     // Get existing shares I've granted
     const { data: existingShares } = await supabase
       .from("portfolio_shares").select("shared_with").eq("owner_id", req.user.id);
     const alreadySharedWith = new Set((existingShares || []).map(s => s.shared_with));
 
+    // Get shares others have granted TO me
+    const { data: receivedShares } = await supabase
+      .from("portfolio_shares").select("owner_id").eq("shared_with", req.user.id);
+
     // Look up all users to find matching emails
     const { data: { users } } = await supabase.auth.admin.listUsers();
     let synced = 0;
 
+    // Forward sync: share with members whose emails have accounts
     for (const email of memberEmails) {
-      if (email === req.user.email?.toLowerCase()) continue; // skip self
+      if (email === req.user.email?.toLowerCase()) continue;
       const target = users.find(u => u.email?.toLowerCase() === email);
-      if (!target) continue; // user hasn't signed up yet
-      if (alreadySharedWith.has(target.id)) continue; // already shared
+      if (!target) continue;
+      if (alreadySharedWith.has(target.id)) continue;
 
-      // Create the share
       const { error } = await supabase.from("portfolio_shares").upsert({
         owner_id: req.user.id,
         shared_with: target.id,
         role: "viewer",
         created_at: new Date().toISOString(),
       }, { onConflict: "owner_id,shared_with" });
-      if (!error) synced++;
+      if (!error) { synced++; alreadySharedWith.add(target.id); }
+    }
+
+    // Reverse sync: if someone shared with me, share back with them
+    for (const rs of (receivedShares || [])) {
+      if (alreadySharedWith.has(rs.owner_id)) continue; // already sharing back
+      const { error } = await supabase.from("portfolio_shares").upsert({
+        owner_id: req.user.id,
+        shared_with: rs.owner_id,
+        role: "viewer",
+        created_at: new Date().toISOString(),
+      }, { onConflict: "owner_id,shared_with" });
+      if (!error) {
+        synced++;
+        console.log(`🔁 Auto-shared back with ${rs.owner_id}`);
+      }
     }
 
     res.json({ synced, checked: memberEmails.length });

@@ -1253,6 +1253,11 @@ export default function App() {
     console.log("🔄 Loading shared holdings from", sharedWithMe.length, "portfolios:", sharedWithMe.map(s => s.owner_name));
     const myEmail = user?.email?.toLowerCase();
     const mySelfMemberId = members.find(m => m.relation === "Self")?.id || members[0]?.id || null;
+    // Build a map of email → local member id for all my members (for bidirectional dedup)
+    const localMemberByEmail = new Map();
+    for (const m of members) {
+      if (m.email) localMemberByEmail.set(m.email.trim().toLowerCase(), m.id);
+    }
     try {
       const results = await Promise.all(
         sharedWithMe.map(s =>
@@ -1260,26 +1265,35 @@ export default function App() {
             .then(resp => {
               console.log(`📦 Shared portfolio from ${resp.owner_name}: ${resp.holdings?.length || 0} holdings`);
               const rawMembers = resp.portfolio?.members || [];
-              // Build a set of member IDs whose email matches current user — these are "me" in the sharer's portfolio
-              const myMemberIds = new Set(
-                rawMembers.filter(m => m.email && m.email.trim().toLowerCase() === myEmail).map(m => m.id)
-              );
-              if (myMemberIds.size > 0) console.log(`🔗 Dedup: skipping ${myMemberIds.size} shared member(s) matching ${myEmail} from ${resp.owner_name}`);
+              // Build maps for dedup:
+              // 1. Shared members whose email matches current user → remap to SELF
+              // 2. Shared members whose email matches ANY local member → remap to that local member (skip the shared member)
+              const skipMemberIds = new Map(); // shared member id → local member id to remap to
+              for (const m of rawMembers) {
+                if (!m.email) continue;
+                const email = m.email.trim().toLowerCase();
+                if (email === myEmail) {
+                  skipMemberIds.set(m.id, mySelfMemberId);
+                } else if (localMemberByEmail.has(email)) {
+                  skipMemberIds.set(m.id, localMemberByEmail.get(email));
+                }
+              }
+              if (skipMemberIds.size > 0) console.log(`🔗 Dedup: merging ${skipMemberIds.size} shared member(s) into local members from ${resp.owner_name}`);
               return {
               holdings: (resp.holdings || []).map(h => {
-                const isMyMember = h.member_id && myMemberIds.has(h.member_id);
+                const localId = h.member_id && skipMemberIds.get(h.member_id);
                 return {
                   ...h,
                   _shared: true,
                   _shared_owner: resp.owner_name || s.owner_name,
                   _shared_owner_id: s.owner_id,
-                  // If this holding belongs to "me" in the sharer's portfolio, remap to my own SELF member
-                  member_id: isMyMember ? mySelfMemberId : (h.member_id ? `shared_${s.owner_id}_${h.member_id}` : null),
+                  // Remap to local member if matched, otherwise namespace as shared
+                  member_id: localId || (h.member_id ? `shared_${s.owner_id}_${h.member_id}` : null),
                 };
               }),
-              // Filter out members that match current user — they already exist as SELF in own portfolio
+              // Filter out shared members that matched a local member
               members: rawMembers
-                .filter(m => !myMemberIds.has(m.id))
+                .filter(m => !skipMemberIds.has(m.id))
                 .map(m => ({
                   ...m,
                   _shared: true,
