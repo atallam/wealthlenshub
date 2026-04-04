@@ -1023,6 +1023,7 @@ export default function App() {
   const [form,           setForm]           = useState(BF);
   const [editHolding,    setEditHolding]    = useState(null);
   const [newMember,      setNewMember]      = useState({name:"",relation:""});
+  const [shareWithFamily, setShareWithFamily] = useState(true);  // cross-link new member with existing family
   const [editingMemberId, setEditingMemberId] = useState(null);
   const [mergeCandidate,  setMergeCandidate]  = useState(null);
   const [memberAction,    setMemberAction]    = useState(null); // {type:"delete"|"merge", memberId, reassignTo:""}
@@ -1244,30 +1245,47 @@ export default function App() {
     setSharedMembers([]);
   }
   // Load all shared portfolios into the merged view (for "Family Portfolio" combined view)
+  // Dedup logic: if a shared member's email matches the current user's email,
+  // skip that member (avoid duplicate) and remap their holdings to the user's own SELF member.
   async function loadAllSharedHoldings() {
     if (sharedWithMe.length === 0) { setSharedHoldings([]); setSharedMembers([]); return; }
     console.log("🔄 Loading shared holdings from", sharedWithMe.length, "portfolios:", sharedWithMe.map(s => s.owner_name));
+    const myEmail = user?.email?.toLowerCase();
+    const mySelfMemberId = members.find(m => m.relation === "Self")?.id || members[0]?.id || null;
     try {
       const results = await Promise.all(
         sharedWithMe.map(s =>
           api(`/api/shared-portfolio/${s.owner_id}`)
             .then(resp => {
               console.log(`📦 Shared portfolio from ${resp.owner_name}: ${resp.holdings?.length || 0} holdings`);
+              const rawMembers = resp.portfolio?.members || [];
+              // Build a set of member IDs whose email matches current user — these are "me" in the sharer's portfolio
+              const myMemberIds = new Set(
+                rawMembers.filter(m => m.email && m.email.trim().toLowerCase() === myEmail).map(m => m.id)
+              );
+              if (myMemberIds.size > 0) console.log(`🔗 Dedup: skipping ${myMemberIds.size} shared member(s) matching ${myEmail} from ${resp.owner_name}`);
               return {
-              holdings: (resp.holdings || []).map(h => ({
-                ...h,
-                _shared: true,
-                _shared_owner: resp.owner_name || s.owner_name,
-                _shared_owner_id: s.owner_id,
-                member_id: h.member_id ? `shared_${s.owner_id}_${h.member_id}` : null,
-              })),
-              members: (resp.portfolio?.members || []).map(m => ({
-                ...m,
-                _shared: true,
-                _shared_owner: resp.owner_name || s.owner_name,
-                _shared_owner_id: s.owner_id,
-                id: `shared_${s.owner_id}_${m.id}`,
-              })),
+              holdings: (resp.holdings || []).map(h => {
+                const isMyMember = h.member_id && myMemberIds.has(h.member_id);
+                return {
+                  ...h,
+                  _shared: true,
+                  _shared_owner: resp.owner_name || s.owner_name,
+                  _shared_owner_id: s.owner_id,
+                  // If this holding belongs to "me" in the sharer's portfolio, remap to my own SELF member
+                  member_id: isMyMember ? mySelfMemberId : (h.member_id ? `shared_${s.owner_id}_${h.member_id}` : null),
+                };
+              }),
+              // Filter out members that match current user — they already exist as SELF in own portfolio
+              members: rawMembers
+                .filter(m => !myMemberIds.has(m.id))
+                .map(m => ({
+                  ...m,
+                  _shared: true,
+                  _shared_owner: resp.owner_name || s.owner_name,
+                  _shared_owner_id: s.owner_id,
+                  id: `shared_${s.owner_id}_${m.id}`,
+                })),
             };})
             .catch(e => { console.error(`❌ Failed to load shared portfolio ${s.owner_id}:`, e.message); return { holdings: [], members: [] }; })
         )
@@ -1664,6 +1682,9 @@ export default function App() {
   function saveMember() {
     if (!newMember.name.trim()) return;
     const email = (newMember.email || "").trim().toLowerCase();
+    // Email is required for non-Self members (Self gets auto-populated from user.email)
+    const isSelf = newMember.relation === "Self" || (editingMemberId && members.find(m => m.id === editingMemberId)?.relation === "Self");
+    if (!isSelf && !email) return;
     if (editingMemberId) {
       // Update existing member
       setMembers(p => p.map(m => m.id === editingMemberId ? { ...m, name: newMember.name.trim(), relation: newMember.relation, email: email || m.email || "" } : m));
@@ -1674,10 +1695,18 @@ export default function App() {
     // Auto-create portfolio share if email is provided
     if (email && email !== user?.email?.toLowerCase()) {
       api("/api/shares", { method: "POST", body: JSON.stringify({ email, role: "viewer" }) })
-        .then(() => loadShares())
+        .then(() => {
+          // Cross-link: also share new member with all existing family members
+          if (shareWithFamily && sharedWithMe.length > 0) {
+            api("/api/shares/cross-link", { method: "POST", body: JSON.stringify({ email }) })
+              .then(r => { if (r.linked > 0) console.log(`🔗 Cross-linked ${email} with ${r.family_size} family member(s)`); })
+              .catch(e => console.warn("Cross-link failed:", e.message));
+          }
+          loadShares();
+        })
         .catch(e => console.warn("Auto-share failed:", e.message));
     }
-    setNewMember({ name: "", relation: "", email: "" }); setEditingMemberId(null); setMergeCandidate(null); setModal(null);
+    setNewMember({ name: "", relation: "", email: "" }); setEditingMemberId(null); setMergeCandidate(null); setShareWithFamily(true); setModal(null);
   }
 
   async function mergeMember(targetId) {
@@ -4912,17 +4941,24 @@ ${alertLines||"  None"}`;
           {["Self","Spouse","Son","Daughter","Father","Mother","Sibling"].map(r=><option key={r} value={r}>{r}</option>)}
         </select>
       </FG>
-      <FG label="Email (optional — enables shared login access)">
+      <FG label="Email (required — enables shared login access)">
         <input className="fi" type="email" value={newMember.email||""} placeholder="e.g. priya@gmail.com"
           onChange={e=>setNewMember(p=>({...p,email:e.target.value}))}/>
         <div style={{fontSize:".62rem",color:"rgba(255,255,255,.38)",marginTop:".3rem",lineHeight:1.5}}>
-          If this person has a WealthLens account, they'll be able to see your portfolio when they log in.
+          This person will be able to see your portfolio when they log in with this email.
           They'll need to sign up first if they don't have an account.
         </div>
       </FG>
+      {/* Cross-link checkbox — only show when user has existing family shares */}
+      {sharedWithMe.length > 0 && !editingMemberId && (
+        <label style={{display:"flex",alignItems:"center",gap:".5rem",fontSize:".75rem",color:"rgba(255,255,255,.7)",marginBottom:".8rem",cursor:"pointer"}}>
+          <input type="checkbox" checked={shareWithFamily} onChange={e=>setShareWithFamily(e.target.checked)} style={{accentColor:"#a084ca"}}/>
+          Also share with existing family members ({sharedWithMe.map(s=>s.owner_name).join(", ")})
+        </label>
+      )}
       <MA>
         <button className="btnc" onClick={()=>{setModal(null);setEditingMemberId(null);setMergeCandidate(null);}}>Cancel</button>
-        <button className="btns" onClick={saveMember} disabled={!newMember.name.trim()}>
+        <button className="btns" onClick={saveMember} disabled={!newMember.name.trim() || (newMember.relation !== "Self" && !(newMember.email||"").trim())}>
           {editingMemberId?"Save Changes":"Add Member"}
         </button>
       </MA>

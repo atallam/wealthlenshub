@@ -70,7 +70,7 @@ app.get("/api/portfolio", auth, async (req, res) => {
       // Get display name from profile or auth metadata
       const { data: profile } = await supabase.from("profiles").select("display_name").eq("id", req.user.id).single();
       const displayName = profile?.display_name || req.user.email?.split("@")[0] || "Me";
-      const defaultMember = { id: "m_" + Date.now().toString(36), name: displayName, relation: "Self" };
+      const defaultMember = { id: "m_" + Date.now().toString(36), name: displayName, relation: "Self", email: req.user.email || "" };
       const newPortfolio = {
         id: req.user.id, user_id: req.user.id,
         members: [defaultMember], goals: [], alerts: [],
@@ -1018,6 +1018,49 @@ app.post("/api/shares/sync", auth, async (req, res) => {
   } catch (e) {
     console.error("Share sync error:", e.message);
     res.json({ synced: 0, error: e.message }); // non-fatal
+  }
+});
+
+// ── Cross-link: when adding a new member, share with all existing family members ──
+// e.g. Priyanka adds Vijaya → also create Vijaya↔Avinash shares (since Avinash↔Priyanka already linked)
+app.post("/api/shares/cross-link", auth, async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required" });
+    const normalEmail = email.trim().toLowerCase();
+    if (normalEmail === req.user.email?.toLowerCase()) return res.json({ linked: 0 });
+
+    // Find the target user
+    const { data: { users } } = await supabase.auth.admin.listUsers();
+    const target = users.find(u => u.email?.toLowerCase() === normalEmail);
+    if (!target) return res.json({ linked: 0, reason: "User not signed up yet" });
+
+    // Get all users in my sharing graph (both directions)
+    const { data: myGranted } = await supabase.from("portfolio_shares").select("shared_with").eq("owner_id", req.user.id);
+    const { data: myReceived } = await supabase.from("portfolio_shares").select("owner_id").eq("shared_with", req.user.id);
+    const familyIds = new Set([
+      ...(myGranted || []).map(s => s.shared_with),
+      ...(myReceived || []).map(s => s.owner_id),
+    ]);
+    familyIds.delete(req.user.id);
+    familyIds.delete(target.id); // don't re-link target↔me (already done by /api/shares)
+
+    let linked = 0;
+    for (const familyUserId of familyIds) {
+      // Create bidirectional shares: familyUser↔target
+      for (const [ownerId, sharedWith] of [[familyUserId, target.id], [target.id, familyUserId]]) {
+        const { error } = await supabase.from("portfolio_shares").upsert({
+          owner_id: ownerId, shared_with: sharedWith, role: "viewer",
+          created_at: new Date().toISOString(),
+        }, { onConflict: "owner_id,shared_with" });
+        if (!error) linked++;
+      }
+    }
+    console.log(`🔗 Cross-linked ${normalEmail} with ${familyIds.size} family member(s) (${linked} shares created)`);
+    res.json({ linked, family_size: familyIds.size });
+  } catch (e) {
+    console.error("Cross-link error:", e.message);
+    res.json({ linked: 0, error: e.message }); // non-fatal
   }
 });
 
