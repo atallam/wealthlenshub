@@ -839,36 +839,55 @@ app.post("/api/prices/refresh", auth, async (req, res) => {
   const { rate: usdInr, source: fxSource } = await fetchUsdInr();
 
   const updates = [];
+  let fetchIdx = 0;
   for (const h of holdings) {
     let patch = null;
     try {
       if (h.type === "MF" && h.scheme_code) {
         const nav = await mfNav(h.scheme_code);
-        if (nav) patch = { current_nav: nav, price_fetched_at: new Date().toISOString() };
+        if (nav) {
+          const cv = (h.units || 0) * nav;
+          patch = { current_nav: nav, current_value: cv, price_fetched_at: new Date().toISOString() };
+        }
 
       } else if ((h.type === "IN_STOCK" || h.type === "IN_ETF") && h.ticker) {
         // Twelve Data → Yahoo .NS → Yahoo .BO
         const q = await stockPrice(`${h.ticker.toUpperCase()}.NS`, "NSE");
         const price = q?.price ?? await yahooPrice(`${h.ticker.toUpperCase()}.BO`);
-        if (price) patch = { current_price: price, price_fetched_at: new Date().toISOString() };
+        if (price) {
+          const cv = (h.units || 0) * price;
+          patch = { current_price: price, current_value: cv, price_fetched_at: new Date().toISOString() };
+        }
 
       } else if (h.type === "US_STOCK" && h.ticker) {
         const q = await stockPrice(h.ticker.toUpperCase());
-        if (q?.price) patch = { current_price: q.price, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
+        if (q?.price) {
+          const cv = (h.units || 0) * q.price;
+          patch = { current_price: q.price, current_value: cv, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
+        }
 
       } else if (h.type === "US_ETF" && h.ticker) {
         const q = await stockPrice(h.ticker.toUpperCase());
-        if (q?.price) patch = { current_price: q.price, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
+        if (q?.price) {
+          const cv = (h.units || 0) * q.price;
+          patch = { current_price: q.price, current_value: cv, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
+        }
 
       } else if (h.type === "US_BOND" && h.ticker) {
         const q = await stockPrice(h.ticker.toUpperCase());
-        if (q?.price) patch = { current_price: q.price, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
+        if (q?.price) {
+          const cv = (h.units || 0) * q.price;
+          patch = { current_price: q.price, current_value: cv, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
+        }
 
       } else if (h.type === "CRYPTO" && h.ticker) {
         // Yahoo uses BTC-USD, ETH-USD format for crypto
         const sym = h.ticker.toUpperCase().includes("-") ? h.ticker.toUpperCase() : `${h.ticker.toUpperCase()}-USD`;
         const q = await stockPrice(sym);
-        if (q?.price) patch = { current_price: q.price, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
+        if (q?.price) {
+          const cv = (h.units || 0) * q.price;
+          patch = { current_price: q.price, current_value: cv, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() };
+        }
       }
     } catch { /* skip failed holding */ }
 
@@ -876,6 +895,9 @@ app.post("/api/prices/refresh", auth, async (req, res) => {
       await supabase.from("holdings").update(patch).eq("id", h.id);
       updates.push({ id: h.id, ...patch });
     }
+    // Rate-limit: 800ms delay between Yahoo fetches to avoid throttling
+    fetchIdx++;
+    if (fetchIdx < holdings.length) await new Promise(r => setTimeout(r, 800));
   }
   res.json({ updated: updates.length, usdInr, fxSource, results: updates });
 });
@@ -4524,14 +4546,21 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
             console.log(`📋 ISIN resolve: ${dematHoldings.length} demat holdings need ticker resolution`);
             for (const h of dematHoldings) {
                 try {
-                  // Try Yahoo search with ISIN first, then company name
-                  let quotes = await yahooSearch(h.scheme_code);
-                  console.log(`📋 ISIN search "${h.scheme_code}": ${quotes.length} results`);
+                  // Try Yahoo search with ISIN first, then company name (with retry)
+                  let quotes = [];
+                  for (let attempt = 0; attempt < 2 && !quotes.length; attempt++) {
+                    if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
+                    quotes = await yahooSearch(h.scheme_code);
+                    console.log(`📋 ISIN search "${h.scheme_code}" attempt ${attempt+1}: ${quotes.length} results`);
+                  }
                   if (!quotes.length && h.name) {
                     // ISIN search failed — try first 2 words of company name
                     const nameQuery = h.name.split(/\s+/).slice(0, 2).join(" ");
-                    quotes = await yahooSearch(nameQuery);
-                    console.log(`📋 Name search "${nameQuery}": ${quotes.length} results`);
+                    for (let attempt = 0; attempt < 2 && !quotes.length; attempt++) {
+                      if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
+                      quotes = await yahooSearch(nameQuery);
+                      console.log(`📋 Name search "${nameQuery}" attempt ${attempt+1}: ${quotes.length} results`);
+                    }
                   }
                   const nse = quotes.find(q => q.symbol?.endsWith(".NS"));
                   const bse = quotes.find(q => q.symbol?.endsWith(".BO"));
@@ -4541,19 +4570,23 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
                     console.log(`📋 ISIN→Ticker: ${h.scheme_code} → ${resolved} (${match.symbol})`);
                     h.ticker = resolved;
                     // Delay to avoid Yahoo rate-limiting
-                    await new Promise(r => setTimeout(r, 1000));
-                    // Fetch live price
-                    try {
-                      const price = await yahooPrice(match.symbol);
-                      console.log(`📋 Price fetch ${match.symbol}: ${price}`);
-                      if (price && price > 0) {
-                        h.current_price = price;
-                        h.current_value = h.units * price;
-                        h._needs_price = false;
-                        console.log(`📋 Live price: ${resolved} = ₹${price} → val=${h.current_value.toFixed(2)}`);
+                    await new Promise(r => setTimeout(r, 1500));
+                    // Fetch live price (with retry)
+                    for (let priceAttempt = 0; priceAttempt < 2; priceAttempt++) {
+                      try {
+                        if (priceAttempt > 0) await new Promise(r => setTimeout(r, 2000));
+                        const price = await yahooPrice(match.symbol);
+                        console.log(`📋 Price fetch ${match.symbol} attempt ${priceAttempt+1}: ${price}`);
+                        if (price && price > 0) {
+                          h.current_price = price;
+                          h.current_value = h.units * price;
+                          h._needs_price = false;
+                          console.log(`📋 Live price: ${resolved} = ₹${price} → val=${h.current_value.toFixed(2)}`);
+                          break;
+                        }
+                      } catch (pe) {
+                        console.log(`📋 Price fetch error for ${match.symbol} attempt ${priceAttempt+1}: ${pe.message}`);
                       }
-                    } catch (pe) {
-                      console.log(`📋 Price fetch error for ${match.symbol}: ${pe.message}`);
                     }
                   } else {
                     console.log(`📋 ISIN→Ticker: ${h.scheme_code} — no Yahoo match found. Top results: ${quotes.slice(0,3).map(q=>q.symbol).join(", ")}`);
@@ -4561,8 +4594,28 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
                 } catch (e) {
                   console.log(`📋 ISIN→Ticker: ${h.scheme_code} — search error: ${e.message}`);
                 }
-                // Rate-limit: 1500ms between each holding
-                await new Promise(r => setTimeout(r, 1500));
+                // Rate-limit: 2000ms between each holding to avoid Yahoo throttling
+                await new Promise(r => setTimeout(r, 2000));
+            }
+
+            // ── Also fetch prices for demat holdings that already have tickers but no price ──
+            const needsPriceHoldings = result.holdings.filter(h => h.type !== "MF" && h._needs_price && h.ticker && h.ticker !== h.scheme_code);
+            console.log(`📋 Price fetch: ${needsPriceHoldings.length} resolved holdings still need prices`);
+            for (const h of needsPriceHoldings) {
+              try {
+                const sym = `${h.ticker.toUpperCase()}.NS`;
+                let price = await yahooPrice(sym);
+                if (!price) price = await yahooPrice(`${h.ticker.toUpperCase()}.BO`);
+                if (price && price > 0) {
+                  h.current_price = price;
+                  h.current_value = h.units * price;
+                  h._needs_price = false;
+                  console.log(`📋 Deferred price: ${h.ticker} = ₹${price} → val=${h.current_value.toFixed(2)}`);
+                }
+              } catch (e) {
+                console.log(`📋 Deferred price error for ${h.ticker}: ${e.message}`);
+              }
+              await new Promise(r => setTimeout(r, 1500));
             }
             result.holdings.forEach((h,i) => console.log(`   [${i}] ${h.name} | units=${h.units} | nav=${h.current_nav||h.current_price} | val=${h.current_value} | cost=${h.purchase_value} | type=${h.type} | ticker=${h.ticker}`));
             const { data: existing } = await supabase.from("holdings")
@@ -4792,7 +4845,40 @@ app.post("/api/holdings/import", auth, async (req, res) => {
     }
   }
   res.json({ ok: true, inserted_count: inserted.length, updated_count: updated.length,
-    skipped_count: skipped.length, error_count: errors.length, inserted, updated, skipped, errors });
+    skipped_count: skipped.length, error_count: errors.length, inserted, updated, skipped, errors,
+    needs_price_refresh: inserted.length > 0 || updated.length > 0 });
+
+  // ── Background: auto-fetch prices for zero-price holdings just imported ──
+  // (non-blocking — runs after response is sent)
+  (async () => {
+    try {
+      const { data: freshHoldings } = await supabase.from("holdings")
+        .select("id, type, ticker, scheme_code, units")
+        .eq("user_id", req.user.id)
+        .in("type", ["IN_STOCK", "IN_ETF"])
+        .or("current_price.eq.0,current_price.is.null");
+      if (!freshHoldings?.length) return;
+      console.log(`📋 Post-import: ${freshHoldings.length} holdings need background price fetch`);
+      for (const h of freshHoldings) {
+        if (!h.ticker || h.ticker.startsWith("INE")) continue;
+        try {
+          const q = await stockPrice(`${h.ticker.toUpperCase()}.NS`, "NSE");
+          const price = q?.price ?? await yahooPrice(`${h.ticker.toUpperCase()}.BO`);
+          if (price && price > 0) {
+            const cv = (h.units || 0) * price;
+            await supabase.from("holdings").update({
+              current_price: price, current_value: cv,
+              price_fetched_at: new Date().toISOString(),
+            }).eq("id", h.id);
+            console.log(`📋 Post-import price: ${h.ticker} = ₹${price}`);
+          }
+        } catch { /* skip */ }
+        await new Promise(r => setTimeout(r, 1200));
+      }
+    } catch (e) {
+      console.log(`📋 Post-import price fetch error: ${e.message}`);
+    }
+  })();
 });
 
 // ── IMPORT: Bulk import transactions ──────────────────────────────

@@ -1593,6 +1593,14 @@ export default function App() {
       // Reload holdings
       const hlds = await api("/api/holdings");
       setHoldings(hlds || []);
+      // Auto-trigger price refresh for newly imported holdings that may lack prices
+      if ((result.inserted_count || 0) + (result.updated_count || 0) > 0) {
+        setTimeout(() => {
+          refreshPrices().then(() => {
+            api("/api/holdings").then(h => setHoldings(h || [])).catch(() => {});
+          }).catch(() => {});
+        }, 1500);
+      }
     } catch (e) {
       setCasWarnings([`Import failed: ${e.message}`]);
       setCasStep("matching");
