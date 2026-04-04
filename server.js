@@ -4094,76 +4094,155 @@ function parseNSDLCASStatement(rawText) {
 
     let rawName = "", qty = 0, marketPrice = 0, totalValue = 0;
 
-    // ── Strategy A: CDSL format — ISIN followed by NAME#DESC then numbers ──
-    // Match: ISIN + spaces + NAME (up to 200 chars, until first decimal number)
-    const cdslMatch = after.match(/^INE[A-Z0-9]{9}\s{2,}(.+?)(?=\s+\d+\.\d{3}\s)/);
-    console.log(`📋 CAS Demat Strategy A (CDSL): ${isin} → ${cdslMatch ? "MATCHED" : "no match"}`);
-    if (cdslMatch) {
-      rawName = cdslMatch[1].replace(/\s+/g, " ").trim();
-
-      // Extract all decimal numbers after the name, stopping at section boundaries
-      // Truncate numPart at "Sub Total", "Consolidated", next "INE" ISIN, or "Closing"
-      let numPartRaw = after.substring(cdslMatch.index + cdslMatch[0].length);
-      const boundaryMatch = numPartRaw.match(/\s+(?:Sub\s*Total|Consolidated|INE[A-Z0-9]{9}|Closing|Page\s+\d)/i);
-      if (boundaryMatch) numPartRaw = numPartRaw.substring(0, boundaryMatch.index);
-
-      const decNums = [];
-      const dnRe = /([\d,]+\.\d+)/g;
-      let dn;
-      while ((dn = dnRe.exec(numPartRaw)) !== null) {
-        decNums.push(pNum(dn[1]));
+    // ── Strategy N: NSDL tabular format (tab-delimited columns) ──────
+    // With Y-coordinate extraction, NSDL CAS rows look like:
+    //   INE018E01016\tSBI CARDS AND PAYMENT\t10.00  \t10  \t774.40  \t7,744.00
+    //   SBICARD.NSE  \tSERVICES LIMITED
+    // Column order: ISIN | Company Name | Face Value | No. of Shares | Market Price | Value in ₹
+    // Key: only parse numbers from the FIRST LINE (up to \n) to avoid bleeding into next ISIN
+    const firstLine = after.split("\n")[0] || "";
+    const secondLine = (after.split("\n")[1] || "").trim();
+    // Split first line by tabs to get columns
+    const cols = firstLine.split("\t").map(c => c.trim());
+    // cols[0] = ISIN, cols[1] = Company Name, cols[2..] = numbers
+    console.log(`📋 CAS Demat Strategy N: ${isin} cols=${cols.length} → [${cols.map((c,i)=>i+":"+c.substring(0,30)).join(" | ")}]`);
+    
+    if (cols.length >= 4) {
+      // Extract name from column 1 (and possibly continuation on second line)
+      rawName = cols[1] || "";
+      // Check if second line is a name continuation (no ISIN, no ticker pattern with numbers)
+      if (secondLine && !/^INE[A-Z0-9]{9}/.test(secondLine) && !/^\d/.test(secondLine)) {
+        // Second line might be "SERVICES LIMITED" or "TICKER.NSE  SERVICES LIMITED"
+        const tickerOnSecond = secondLine.match(/^([A-Z0-9]+\.(?:NSE|BSE))\s*/);
+        if (tickerOnSecond) {
+          // "SBICARD.NSE  SERVICES LIMITED" — extract ticker and append remaining name
+          const restName = secondLine.substring(tickerOnSecond[0].length).trim();
+          if (restName) rawName += " " + restName;
+        } else {
+          // Plain continuation like "LIMITED" or "SCIENCES LIMITED"
+          const namePart = secondLine.split("\t")[0]?.trim();
+          if (namePart && /^[A-Z]/.test(namePart) && !/^INE|^INF|^Sub\s*Total|^Total/i.test(namePart)) {
+            rawName += " " + namePart;
+          }
+        }
       }
-
-      // CDSL column order: Free Bal, Total Bal, [various zero columns], Market Price, Total Value
-      // First decimal is the quantity (Free Balance)
-      if (decNums.length >= 2) {
-        qty = decNums[0];
-      }
-
-      // Last two non-zero numbers = Market Price, Total Value
-      const bigNums = decNums.filter(n => n > 0);
-      if (bigNums.length >= 2) {
-        totalValue = bigNums[bigNums.length - 1];
-        marketPrice = bigNums[bigNums.length - 2];
-
-        // Cross-validate: qty × marketPrice ≈ totalValue (within 5%)
+      
+      // Parse numeric columns (cols[2] onward) — only from the first line
+      const numCols = cols.slice(2).map(c => pNum(c)).filter(n => n > 0);
+      console.log(`📋 CAS Demat Strategy N nums: ${isin} numCols=[${numCols.join(",")}]`);
+      
+      // NSDL column order: Face Value, No. of Shares, Market Price, Value
+      if (numCols.length >= 4) {
+        // faceValue = numCols[0], qty = numCols[1], marketPrice = numCols[2], totalValue = numCols[3]
+        qty = numCols[1];
+        marketPrice = numCols[2];
+        totalValue = numCols[3];
+        // Cross-validate: qty × marketPrice ≈ totalValue
         if (qty > 0 && marketPrice > 0) {
           const expected = qty * marketPrice;
           const err = Math.abs(expected - totalValue) / Math.max(totalValue, 1);
           if (err > 0.05) {
-            // Price/value mismatch — try swapping or recalculating
-            // Maybe totalValue is actually a sub-total from another section
-            // Use cross-validation: find the pair where factor × qty ≈ product
-            let found = false;
-            for (let vi = bigNums.length - 1; vi >= 1; vi--) {
-              for (let pi = vi - 1; pi >= 0; pi--) {
-                const vCandidate = bigNums[vi];
-                const pCandidate = bigNums[pi];
-                if (pCandidate > 0 && qty > 0) {
-                  const checkErr = Math.abs(qty * pCandidate - vCandidate) / Math.max(vCandidate, 1);
-                  if (checkErr < 0.05) {
-                    marketPrice = pCandidate;
-                    totalValue = vCandidate;
-                    found = true;
-                    break;
+            console.log(`📋 CAS Demat Strategy N: ${isin} cross-validation FAILED (${expected.toFixed(2)} vs ${totalValue}, err=${(err*100).toFixed(1)}%)`);
+            // Try all permutations to find qty × price ≈ value
+            for (let qi = 0; qi < numCols.length; qi++) {
+              for (let pi = 0; pi < numCols.length; pi++) {
+                if (qi === pi) continue;
+                for (let vi = 0; vi < numCols.length; vi++) {
+                  if (vi === qi || vi === pi) continue;
+                  const e2 = Math.abs(numCols[qi] * numCols[pi] - numCols[vi]) / Math.max(numCols[vi], 1);
+                  if (e2 < 0.02) {
+                    qty = numCols[qi]; marketPrice = numCols[pi]; totalValue = numCols[vi];
+                    console.log(`📋 CAS Demat Strategy N: ${isin} cross-validated → qty=${qty} price=${marketPrice} val=${totalValue}`);
+                    qi = pi = vi = numCols.length; // break all loops
                   }
                 }
               }
-              if (found) break;
             }
           }
         }
-      } else if (bigNums.length === 1) {
-        if (bigNums[0] > qty * 2) {
-          totalValue = bigNums[0];
-          marketPrice = qty > 0 ? totalValue / qty : 0;
-        } else {
-          marketPrice = bigNums[0];
-          totalValue = qty * marketPrice;
+        console.log(`📋 CAS Demat (NSDL tabular): ${isin} name="${rawName.substring(0,60)}" qty=${qty} price=${marketPrice} val=${totalValue}`);
+      } else if (numCols.length >= 2) {
+        // Fewer columns — might be partial data. Try FV + qty
+        const commonFV = new Set([1, 2, 5, 10]);
+        if (commonFV.has(numCols[0]) && numCols.length >= 2) {
+          qty = numCols[1];
+          if (numCols.length >= 3) marketPrice = numCols[2];
+          if (numCols.length >= 4) totalValue = numCols[3];
+          else if (qty > 0 && marketPrice > 0) totalValue = qty * marketPrice;
         }
+        console.log(`📋 CAS Demat (NSDL partial): ${isin} qty=${qty} price=${marketPrice} val=${totalValue}`);
       }
+    }
 
-      console.log(`📋 CAS Demat (CDSL): ${isin} name="${rawName.substring(0,60)}" qty=${qty} price=${marketPrice} val=${totalValue} (${decNums.length} decimals found)`);
+    // ── Strategy A: CDSL format — ISIN followed by NAME#DESC then numbers ──
+    // Match: ISIN + spaces + NAME (up to 200 chars, until first decimal number with .000 pattern)
+    if (!rawName || qty <= 0) {
+      const cdslMatch = after.match(/^INE[A-Z0-9]{9}\s{2,}(.+?)(?=\s+\d+\.\d{3}\s)/);
+      console.log(`📋 CAS Demat Strategy A (CDSL): ${isin} → ${cdslMatch ? "MATCHED" : "no match"}`);
+      if (cdslMatch) {
+        rawName = cdslMatch[1].replace(/\s+/g, " ").trim();
+
+        // Extract all decimal numbers after the name, stopping at section boundaries
+        let numPartRaw = after.substring(cdslMatch.index + cdslMatch[0].length);
+        // Only use first line to avoid cross-ISIN bleed
+        const nlIdx = numPartRaw.indexOf("\n");
+        if (nlIdx > 0) numPartRaw = numPartRaw.substring(0, nlIdx);
+        const boundaryMatch = numPartRaw.match(/\s+(?:Sub\s*Total|Consolidated|INE[A-Z0-9]{9}|Closing|Page\s+\d)/i);
+        if (boundaryMatch) numPartRaw = numPartRaw.substring(0, boundaryMatch.index);
+
+        const decNums = [];
+        const dnRe = /([\d,]+\.\d+)/g;
+        let dn;
+        while ((dn = dnRe.exec(numPartRaw)) !== null) {
+          decNums.push(pNum(dn[1]));
+        }
+
+        // CDSL column order: Free Bal, Total Bal, [various zero columns], Market Price, Total Value
+        if (decNums.length >= 2) {
+          qty = decNums[0];
+        }
+
+        const bigNums = decNums.filter(n => n > 0);
+        if (bigNums.length >= 2) {
+          totalValue = bigNums[bigNums.length - 1];
+          marketPrice = bigNums[bigNums.length - 2];
+
+          // Cross-validate: qty × marketPrice ≈ totalValue (within 5%)
+          if (qty > 0 && marketPrice > 0) {
+            const expected = qty * marketPrice;
+            const err = Math.abs(expected - totalValue) / Math.max(totalValue, 1);
+            if (err > 0.05) {
+              let found = false;
+              for (let vi = bigNums.length - 1; vi >= 1; vi--) {
+                for (let pi = vi - 1; pi >= 0; pi--) {
+                  const vCandidate = bigNums[vi];
+                  const pCandidate = bigNums[pi];
+                  if (pCandidate > 0 && qty > 0) {
+                    const checkErr = Math.abs(qty * pCandidate - vCandidate) / Math.max(vCandidate, 1);
+                    if (checkErr < 0.05) {
+                      marketPrice = pCandidate;
+                      totalValue = vCandidate;
+                      found = true;
+                      break;
+                    }
+                  }
+                }
+                if (found) break;
+              }
+            }
+          }
+        } else if (bigNums.length === 1) {
+          if (bigNums[0] > qty * 2) {
+            totalValue = bigNums[0];
+            marketPrice = qty > 0 ? totalValue / qty : 0;
+          } else {
+            marketPrice = bigNums[0];
+            totalValue = qty * marketPrice;
+          }
+        }
+
+        console.log(`📋 CAS Demat (CDSL): ${isin} name="${rawName.substring(0,60)}" qty=${qty} price=${marketPrice} val=${totalValue} (${decNums.length} decimals found)`);
+      }
     }
 
     // ── Strategy B: Generic fallback — older format or different layout ──
@@ -4214,17 +4293,15 @@ function parseNSDLCASStatement(rawText) {
 
     // Strategy Q2: For NSDL — face value is typically first small number, qty is second
     if (qty <= 0) {
-      const afterNums = after.substring(0, 500);
+      // CRITICAL: Only use numbers from the FIRST LINE after the ISIN to avoid cross-ISIN bleed
+      const firstLineAfter = after.split("\n")[0] || "";
+      const afterNums = firstLineAfter.substring(0, 500);
       // Detect face value (often labeled, or just the first small integer like 1, 2, 5, 10)
       const fvMatch = afterNums.match(/(?:Face\s*Value|FV|Fv|F\.V\.?)[:\s]*(?:Rs\.?|₹|INR|RE\.?)?\s*(\d[\d,.]*)/i);
       const faceValue = fvMatch ? pNum(fvMatch[1]) : 0;
 
-      // In NSDL CAS, typical pattern after ISIN + company name:
-      // "... LIMITED  2  10 ..." where 2=FV, 10=qty
-      // Or: "... LIMITED  Face Value: Rs 2/-  10.000 10.000 0.000 ..."
-      // Strategy: collect all numbers, skip the face value, pick the first plausible qty
-      const nameEnd = rawName ? (after.indexOf(rawName) >= 0 ? after.indexOf(rawName) + rawName.length : 12) : 12;
-      const numText = after.substring(nameEnd, nameEnd + 400);
+      const nameEnd = rawName ? (firstLineAfter.indexOf(rawName) >= 0 ? firstLineAfter.indexOf(rawName) + rawName.length : 12) : 12;
+      const numText = firstLineAfter.substring(nameEnd);
       const allNums = [...numText.matchAll(/([\d,]+\.?\d*)/g)].map(m => pNum(m[1])).filter(n => n > 0);
 
       console.log(`📋 CAS Demat Q2: ${isin} fv=${faceValue} allNums=[${allNums.slice(0,10).join(",")}] numText="${numText.substring(0,120).replace(/\n/g,"\\n")}"`);
@@ -4262,7 +4339,11 @@ function parseNSDLCASStatement(rawText) {
     }
 
     // Also check the text BEFORE the ISIN for "TICKER.NSE COMPANY NAME" pattern
-    const exchangeTicker = extractExchangeTicker(rawName) || extractExchangeTicker(before.split(/\n/).pop() || "");
+    // And check the second line AFTER the ISIN (NSDL format: "SBICARD.NSE  SERVICES LIMITED")
+    const afterLines = after.split("\n");
+    const secondLineForTicker = (afterLines[1] || "").trim();
+    const tickerFromSecondLine = secondLineForTicker.match(/^([A-Z][A-Z0-9]+)\.(?:NSE|BSE)/)?.[1] || "";
+    const exchangeTicker = tickerFromSecondLine || extractExchangeTicker(rawName) || extractExchangeTicker(before.split(/\n/).pop() || "");
 
     // ── Clean the name ──
     let name = cleanCASName(rawName);
