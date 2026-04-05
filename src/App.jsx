@@ -2603,10 +2603,12 @@ ${alertLines||"  None"}`;
                           <div style={{fontSize:".72rem",color:"#4caf9a",fontWeight:500}}>Live</div>
                         ) : r.date ? (
                           <div style={{fontSize:".72rem",color:"#c9a84c",fontWeight:500}}>{new Date(r.date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>
+                        ) : r.lastRefresh ? (
+                          <div style={{fontSize:".72rem",color:"rgba(201,168,76,.6)",fontWeight:500}}>{new Date(r.lastRefresh).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>
                         ) : (
                           <div style={{fontSize:".72rem",color:"rgba(255,255,255,.3)"}}>—</div>
                         )}
-                        {r.lastRefresh && (
+                        {r.lastRefresh && r.date && (
                           <div style={{fontSize:".58rem",color:"rgba(255,255,255,.25)"}}>Price: {new Date(r.lastRefresh).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</div>
                         )}
                       </div>
