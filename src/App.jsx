@@ -1592,6 +1592,8 @@ export default function App() {
           member_id: singleMember || "",
           account_map: Object.keys(casHolderMap).length > 0 ? casHolderMap : undefined,
           cas_statement_date: casStatementDate,
+          cas_period_start: casPeriodStart,
+          cas_period_end: casPeriodEnd,
         }),
       });
       const result = await res.json();
@@ -2601,13 +2603,18 @@ ${alertLines||"  None"}`;
               const src = h.source === "cas" ? "CAS" : h.source === "snaptrade" ? "SnapTrade" : h.source === "csv" ? "CSV" : "Manual";
               const mem = allMembers.find(m => m.id === h.member_id)?.name || (h._shared_owner ? h._shared_owner : "Unassigned");
               const key = `${src}|${mem}`;
-              if (!srcMap[key]) srcMap[key] = { src, member: mem, date: h.source_date || null, count: 0, hasLive: src === "SnapTrade", lastRefresh: null };
+              if (!srcMap[key]) srcMap[key] = { src, member: mem, date: h.source_date || null, count: 0, hasLive: src === "SnapTrade", lastRefresh: null, casPeriodStart: null, casPeriodEnd: null, importDate: null };
               srcMap[key].count++;
               if (h.source_date && (!srcMap[key].date || h.source_date > srcMap[key].date)) srcMap[key].date = h.source_date;
               if (h.price_fetched_at && (!srcMap[key].lastRefresh || h.price_fetched_at > srcMap[key].lastRefresh)) srcMap[key].lastRefresh = h.price_fetched_at;
+              if (h.cas_period_start && (!srcMap[key].casPeriodStart || h.cas_period_start < srcMap[key].casPeriodStart)) srcMap[key].casPeriodStart = h.cas_period_start;
+              if (h.cas_period_end && (!srcMap[key].casPeriodEnd || h.cas_period_end > srcMap[key].casPeriodEnd)) srcMap[key].casPeriodEnd = h.cas_period_end;
+              if (h.created_at && (!srcMap[key].importDate || h.created_at > srcMap[key].importDate)) srcMap[key].importDate = h.created_at;
             }
             const rows = Object.values(srcMap);
             if (rows.length === 0) return null;
+            const dfmt = (d) => new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"});
+            const dfmtShort = (d) => new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"});
             return (
               <div className="card">
                 <div className="ctitle">Data Freshness</div>
@@ -2622,15 +2629,23 @@ ${alertLines||"  None"}`;
                       <div style={{textAlign:"right"}}>
                         {r.hasLive ? (
                           <div style={{fontSize:".72rem",color:"#4caf9a",fontWeight:500}}>Live</div>
+                        ) : r.casPeriodEnd ? (
+                          <>
+                            <div style={{fontSize:".72rem",color:"#c9a84c",fontWeight:500}}>{r.casPeriodStart ? `${dfmtShort(r.casPeriodStart)} → ${dfmt(r.casPeriodEnd)}` : dfmt(r.casPeriodEnd)}</div>
+                            {r.importDate && <div style={{fontSize:".58rem",color:"rgba(255,255,255,.25)"}}>Imported: {dfmtShort(r.importDate)}</div>}
+                          </>
                         ) : r.date ? (
-                          <div style={{fontSize:".72rem",color:"#c9a84c",fontWeight:500}}>{new Date(r.date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>
+                          <>
+                            <div style={{fontSize:".72rem",color:"#c9a84c",fontWeight:500}}>{dfmt(r.date)}</div>
+                            {r.importDate && r.importDate.slice(0,10) !== r.date && <div style={{fontSize:".58rem",color:"rgba(255,255,255,.25)"}}>Imported: {dfmtShort(r.importDate)}</div>}
+                          </>
                         ) : r.lastRefresh ? (
-                          <div style={{fontSize:".72rem",color:"rgba(201,168,76,.6)",fontWeight:500}}>{new Date(r.lastRefresh).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>
+                          <div style={{fontSize:".72rem",color:"rgba(201,168,76,.6)",fontWeight:500}}>Price: {dfmt(r.lastRefresh)}</div>
                         ) : (
                           <div style={{fontSize:".72rem",color:"rgba(255,255,255,.3)"}}>—</div>
                         )}
-                        {r.lastRefresh && r.date && (
-                          <div style={{fontSize:".58rem",color:"rgba(255,255,255,.25)"}}>Price: {new Date(r.lastRefresh).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</div>
+                        {r.lastRefresh && (r.casPeriodEnd || r.date) && (
+                          <div style={{fontSize:".58rem",color:"rgba(255,255,255,.25)"}}>Price: {dfmtShort(r.lastRefresh)}</div>
                         )}
                       </div>
                     </div>
