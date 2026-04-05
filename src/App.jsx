@@ -60,7 +60,7 @@ function getVal(h){
 function getInv(h){
   if(h.avg_cost!=null && h.net_units!=null) return h.net_units * h.avg_cost;
   switch(h.type){
-    case"MF":          return(h.units||0)*(h.purchase_nav||0);
+    case"MF":          return(h.units||0)*(h.purchase_nav||0)||(h.purchase_value||0);
     case"IN_STOCK":
     case"IN_ETF":      return(h.units||0)*(h.purchase_price||0);
     case"US_STOCK":
@@ -1128,6 +1128,7 @@ export default function App() {
   const [aiInput,        setAiInput]        = useState("");
   const [aiLoading,      setAiLoading]      = useState(false);
   const [showSnapTrade,  setShowSnapTrade]   = useState(false);
+  const [showSharedDropdown, setShowSharedDropdown] = useState(false);
   // const [showSetuAA, setShowSetuAA] = useState(false); // Setu AA disabled
   const [moreSheetOpen,  setMoreSheetOpen]  = useState(false);
   const [expandedHolding,setExpandedHolding]= useState(null);
@@ -2388,13 +2389,33 @@ ${alertLines||"  None"}`;
           ))}
           {sharedOwnerChips.length > 0 && <>
             <span style={{width:1,height:16,background:"rgba(255,255,255,.1)",margin:"0 .2rem"}}/>
-            {sharedOwnerChips.map(m=>(
-              <div key={m.id} className={`mchip${selMember===m.id?" act":""}`}
-                onClick={()=>setSelMember(m.id)}
-                style={{borderColor:selMember===m.id?"rgba(167,139,250,.5)":"rgba(167,139,250,.2)",color:selMember===m.id?"#a78bfa":"rgba(167,139,250,.6)",background:selMember===m.id?"rgba(167,139,250,.12)":"rgba(167,139,250,.04)"}}>
-                👁 {m.name}
+            <div style={{position:"relative",display:"inline-block"}}>
+              <div className={`mchip${selMember.startsWith("_owner_")?" act":""}`}
+                onClick={()=>setShowSharedDropdown(p=>!p)}
+                style={{borderColor:selMember.startsWith("_owner_")?"rgba(167,139,250,.5)":"rgba(167,139,250,.2)",
+                  color:selMember.startsWith("_owner_")?"#a78bfa":"rgba(167,139,250,.6)",
+                  background:selMember.startsWith("_owner_")?"rgba(167,139,250,.12)":"rgba(167,139,250,.04)",cursor:"pointer"}}>
+                👁 Shared ({sharedOwnerChips.length}) {showSharedDropdown?"▴":"▾"}
               </div>
-            ))}
+              {showSharedDropdown && (
+                <div style={{position:"absolute",top:"100%",left:0,marginTop:4,zIndex:50,
+                  background:"#0c1526",border:"1px solid rgba(167,139,250,.25)",borderRadius:8,
+                  minWidth:220,boxShadow:"0 8px 24px rgba(0,0,0,.4)"}}>
+                  {sharedOwnerChips.map(m=>(
+                    <div key={m.id}
+                      onClick={()=>{setSelMember(m.id);setShowSharedDropdown(false);}}
+                      style={{padding:".55rem .75rem",cursor:"pointer",fontSize:".75rem",
+                        color:selMember===m.id?"#a78bfa":"rgba(167,139,250,.7)",
+                        background:selMember===m.id?"rgba(167,139,250,.1)":"transparent",
+                        borderBottom:"1px solid rgba(255,255,255,.05)",transition:"background .15s"}}
+                      onMouseEnter={e=>{if(selMember!==m.id)e.currentTarget.style.background="rgba(167,139,250,.08)";}}
+                      onMouseLeave={e=>{if(selMember!==m.id)e.currentTarget.style.background="transparent";}}>
+                      👁 {m.name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </>}
         </div>
 
@@ -2534,13 +2555,13 @@ ${alertLines||"  None"}`;
             {[
               {label:"Portfolio Value",val:fmtCr(totCur),sub2:fmtCrINR(totCur),sub:`${visH.length} holdings`},
               {label:"Amount Invested",val:fmtCr(totInv),sub2:fmtCrINR(totInv)},
-              {label:"Total Gains",val:(totGain>=0?"+":"")+fmtCr(totGain),sub:fmtPct(totPct),c:totGain>=0?"gain":"loss"},
+              {label:"Total Gains",val:(totGain>=0?"+":"")+fmtCr(totGain),sub2:(totGain>=0?"+":"")+fmtCrINR(Math.abs(totGain)),sub:fmtPct(totPct),c:totGain>=0?"gain":"loss"},
               {label:"Return",val:fmtPct(totPct),c:totPct>=0?"gain":"loss",sub:"P&L %"}
             ].map(m=>(
               <div key={m.label} className="mc">
                 <div className="mclbl">{m.label}</div>
                 <div className={`mcval${m.c?" "+m.c:""}`}>{m.val}</div>
-                {m.sub2&&<div style={{fontFamily:"'DM Mono',monospace",fontSize:".68rem",color:"rgba(201,168,76,.6)",marginTop:".2rem"}}>≈ {m.sub2}</div>}
+                {m.sub2&&<div style={{fontFamily:"'DM Mono',monospace",fontSize:".82rem",color:"rgba(201,168,76,.85)",marginTop:".25rem",fontWeight:600}}>≈ {m.sub2}</div>}
                 {m.sub&&<div className={`mcsub${m.c?" "+m.c:""}`}>{m.sub}</div>}
               </div>
             ))}
@@ -2891,7 +2912,7 @@ ${alertLines||"  None"}`;
                           </td>
                           <td className="r" style={{padding:".7rem .65rem",borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`}}>
                             <span style={{fontFamily:"'DM Mono',monospace",fontSize:".76rem",color:grp.color,fontWeight:600}}>{fmtCr(grpCur)}</span>
-                            <div style={{fontFamily:"'DM Mono',monospace",fontSize:".6rem",color:"rgba(201,168,76,.55)"}}>≈ {fmtCrINR(grpCur)}</div>
+                            <div style={{fontFamily:"'DM Mono',monospace",fontSize:".68rem",color:"rgba(201,168,76,.75)",fontWeight:600}}>≈ {fmtCrINR(grpCur)}</div>
                           </td>
                           <td className="r" style={{padding:".7rem .65rem",borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`}}>
                             <span className={`mono${grpG>=0?" gain":" loss"}`} style={{fontSize:".72rem",fontWeight:600}}>{grpG>=0?"+":""}{fmtCr(grpG)} ({fmtPct(grpP)})</span>
@@ -3005,7 +3026,7 @@ ${alertLines||"  None"}`;
                       <td colSpan={8} style={{padding:".75rem .65rem",fontSize:".7rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.42)",fontWeight:600}}>Total · {visH.length} holding{visH.length!==1?"s":""}</td>
                       <td className="r" style={{padding:".75rem .65rem"}}>
                         <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,color:"#c9a84c",fontSize:".88rem"}}>{fmtCr(totC)}</div>
-                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:"rgba(201,168,76,.55)",marginTop:1}}>≈ {fmtCrINR(totC)}</div>
+                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:"rgba(201,168,76,.8)",marginTop:1,fontWeight:600}}>≈ {fmtCrINR(totC)}</div>
                         <div style={{fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:"rgba(255,255,255,.35)",marginTop:1}}>inv. {fmtCr(totI)}</div>
                       </td>
                       <td className="r" style={{padding:".75rem .65rem"}}>

@@ -757,7 +757,7 @@ async function getAmfiList() {
       for (const line of text.split("\n")) {
         const parts = line.split(";");
         if (parts.length >= 5 && /^\d+$/.test(parts[0]?.trim())) {
-          schemes.push({ scheme_code: parts[0].trim(), name: parts[3]?.trim() || "" });
+          schemes.push({ scheme_code: parts[0].trim(), isin1: parts[1]?.trim() || "", isin2: parts[2]?.trim() || "", name: parts[3]?.trim() || "" });
         }
       }
       if (schemes.length > 100) {
@@ -4724,6 +4724,35 @@ app.post("/api/import/detect", auth, upload.single("file"), async (req, res) => 
           const result = parseNSDLCASStatement(rawPdfText);
           console.log(`📋 CAS: parser returned ${result.holdings.length} holdings, ${result.warnings.length} warnings`);
           if (result.holdings.length > 0) {
+            // ── Enrich MF names from AMFI master list (ISIN→full scheme name) ──
+            try {
+              const amfiList = await getAmfiList();
+              const amfiByIsin = new Map();
+              for (const f of amfiList) {
+                if (f.isin1) amfiByIsin.set(f.isin1, f);
+                if (f.isin2) amfiByIsin.set(f.isin2, f);
+              }
+              let enriched = 0;
+              for (const h of result.holdings) {
+                if (h.type === "MF" && h.ticker?.startsWith("INF")) {
+                  const entry = amfiByIsin.get(h.ticker);
+                  if (entry) {
+                    console.log(`📋 AMFI enrich: ${h.ticker} "${h.name}" → "${entry.name}" (code=${entry.scheme_code})`);
+                    h.name = entry.name;
+                    if (entry.scheme_code) h.scheme_code = entry.scheme_code;
+                    enriched++;
+                  }
+                }
+                // Backfill avg_cost from purchase_value/units when purchase_nav is missing
+                if (h.type === "MF" && h.units > 0 && h.purchase_value > 0 && (!h.purchase_nav || h.purchase_nav === 0)) {
+                  h.purchase_nav = h.purchase_value / h.units;
+                  h.purchase_price = h.purchase_nav;
+                  h.avg_cost = h.purchase_nav;
+                  console.log(`📋 Backfill avg_cost: ${h.name} → ₹${h.purchase_nav.toFixed(4)}`);
+                }
+              }
+              if (enriched > 0) console.log(`📋 AMFI: enriched ${enriched} MF name(s) from ISIN lookup`);
+            } catch (e) { console.log(`📋 AMFI enrichment error: ${e.message}`); }
             // ── Resolve ISIN→NSE/BSE ticker + fetch live price for demat holdings ──
             const dematHoldings = result.holdings.filter(h => h.type !== "MF" && h.ticker === h.scheme_code && h.scheme_code?.startsWith("INE"));
             console.log(`📋 ISIN resolve: ${dematHoldings.length} demat holdings need ticker resolution`);
