@@ -1220,6 +1220,7 @@ export default function App() {
     setShareLoading(false);
   }
   async function removeShare(shareId) {
+    if (!confirm("Remove this portfolio share? This action cannot be undone.")) return;
     try { await api(`/api/shares/${shareId}`, { method: "DELETE" }); await loadShares(); } catch {}
   }
   async function updateShareRole(shareId, newRole) {
@@ -2329,7 +2330,7 @@ ${alertLines||"  None"}`;
           </button>
           {lastPriceRefresh&&<span style={{fontSize:".62rem",color:"rgba(255,255,255,.38)",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{ago(lastPriceRefresh)}</span>}
           <button className="btn-g" onClick={generatePDF}>⤓ PDF</button>
-          <button className="btn-p" onClick={()=>setModal("add")}>+ Add</button>
+          {!viewingShared && <button className="btn-p" onClick={()=>setModal("add")}>+ Add</button>}
           <input ref={importFileRef} type="file" accept=".csv,.xlsx,.xls,.pdf" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){handleImportFile(e.target.files[0]);e.target.value="";}}}/>
 
           {/* User */}
@@ -2577,7 +2578,7 @@ ${alertLines||"  None"}`;
             const srcMap = {};
             for (const h of allHoldings) {
               const src = h.source === "cas" ? "CAS" : h.source === "snaptrade" ? "SnapTrade" : h.source === "csv" ? "CSV" : "Manual";
-              const mem = members.find(m => m.id === h.member_id)?.name || "Unassigned";
+              const mem = allMembers.find(m => m.id === h.member_id)?.name || (h._shared_owner ? h._shared_owner : "Unassigned");
               const key = `${src}|${mem}`;
               if (!srcMap[key]) srcMap[key] = { src, member: mem, date: h.source_date || null, count: 0, hasLive: src === "SnapTrade", lastRefresh: null };
               srcMap[key].count++;
@@ -2787,10 +2788,11 @@ ${alertLines||"  None"}`;
             for (const h of visH) {
               if (!h.source_date) continue;
               const src = h.source === "cas" ? (h.brokerage_name || "CAS") : (h.source || "manual");
-              const mem = members.find(m => m.id === h.member_id);
-              const key = `${src}|${mem?.name || "Unassigned"}`;
+              const mem = allMembers.find(m => m.id === h.member_id);
+              const memName = mem?.name || (h._shared_owner ? h._shared_owner : "Unassigned");
+              const key = `${src}|${memName}`;
               if (!srcDates[key] || h.source_date > srcDates[key].date) {
-                srcDates[key] = { date: h.source_date, src, member: mem?.name || "Unassigned" };
+                srcDates[key] = { date: h.source_date, src, member: memName };
               }
             }
             const entries = Object.values(srcDates);
@@ -5360,11 +5362,7 @@ ${alertLines||"  None"}`;
                 onKeyDown={e=>e.key==="Enter"&&addShare()}
                 style={{width:"100%",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"#fff",padding:".38rem .6rem",borderRadius:4,fontSize:".75rem",fontFamily:"'DM Sans',sans-serif"}}/>
             </div>
-            <select value={shareRole} onChange={e=>setShareRole(e.target.value)}
-              style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.85)",padding:".38rem .5rem",borderRadius:4,fontSize:".7rem",fontFamily:"'DM Sans',sans-serif"}}>
-              <option value="viewer">Viewer</option>
-              <option value="editor">Editor</option>
-            </select>
+            <span style={{fontSize:".65rem",color:"rgba(255,255,255,.4)",padding:".38rem .3rem",whiteSpace:"nowrap"}}>Viewer</span>
             <button className="btn-sm" onClick={addShare} disabled={shareLoading||!shareEmail.trim()}
               style={{padding:".38rem .75rem",opacity:shareEmail.trim()?1:.5}}>
               {shareLoading?"…":"Share"}
@@ -5385,11 +5383,7 @@ ${alertLines||"  None"}`;
                     <div style={{fontSize:".75rem",color:"#fff"}}>{s.shared_with_name||"User"}</div>
                     <div style={{fontSize:".6rem",color:"rgba(255,255,255,.4)"}}>Shared {new Date(s.created_at).toLocaleDateString()}</div>
                   </div>
-                  <select value={s.role} onChange={e=>updateShareRole(s.id,e.target.value)}
-                    style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.7)",padding:".22rem .4rem",borderRadius:4,fontSize:".62rem",fontFamily:"'DM Sans',sans-serif"}}>
-                    <option value="viewer">Viewer</option>
-                    <option value="editor">Editor</option>
-                  </select>
+                  <span style={{fontSize:".6rem",color:"rgba(255,255,255,.4)",padding:".2rem .4rem",background:"rgba(255,255,255,.04)",borderRadius:3}}>Viewer</span>
                   <button className="delbtn" onClick={()=>removeShare(s.id)} title="Revoke access"
                     style={{color:"rgba(224,124,90,.6)",fontSize:".8rem"}}>✕</button>
                 </div>

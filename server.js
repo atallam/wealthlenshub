@@ -992,6 +992,26 @@ app.delete("/api/artifacts/:id", auth, async (req, res) => {
 //  PORTFOLIO SHARING
 // ══════════════════════════════════════════════════════════════════
 
+// ── Scalable user lookup (replaces listUsers which only returns page 1) ──
+async function lookupUserByEmail(email) {
+  if (!email) return null;
+  const normalized = email.trim().toLowerCase();
+  // Supabase Admin API: lookup by email directly — no pagination limit
+  const { data, error } = await supabase.auth.admin.listUsers({ filter: normalized, perPage: 1 });
+  if (error || !data?.users?.length) return null;
+  const match = data.users.find(u => u.email?.toLowerCase() === normalized);
+  return match || null;
+}
+
+async function lookupUsersByEmails(emails) {
+  const results = new Map();
+  await Promise.all(emails.map(async (email) => {
+    const user = await lookupUserByEmail(email);
+    if (user) results.set(email, user);
+  }));
+  return results;
+}
+
 // ── List shares I've granted (as owner) ──────────────────────────
 app.get("/api/shares", auth, async (req, res) => {
   try {
@@ -1069,14 +1089,14 @@ app.post("/api/shares/sync", auth, async (req, res) => {
     const { data: receivedShares } = await supabase
       .from("portfolio_shares").select("owner_id").eq("shared_with", req.user.id);
 
-    // Look up all users to find matching emails
-    const { data: { users } } = await supabase.auth.admin.listUsers();
+    // Look up users by email (scalable — no listUsers pagination limit)
+    const usersByEmail = await lookupUsersByEmails(memberEmails);
     let synced = 0;
 
     // Forward sync: share with members whose emails have accounts
     for (const email of memberEmails) {
       if (email === req.user.email?.toLowerCase()) continue;
-      const target = users.find(u => u.email?.toLowerCase() === email);
+      const target = usersByEmail.get(email);
       if (!target) continue;
       if (alreadySharedWith.has(target.id)) continue;
 
@@ -1089,20 +1109,9 @@ app.post("/api/shares/sync", auth, async (req, res) => {
       if (!error) { synced++; alreadySharedWith.add(target.id); }
     }
 
-    // Reverse sync: if someone shared with me, share back with them
-    for (const rs of (receivedShares || [])) {
-      if (alreadySharedWith.has(rs.owner_id)) continue; // already sharing back
-      const { error } = await supabase.from("portfolio_shares").upsert({
-        owner_id: req.user.id,
-        shared_with: rs.owner_id,
-        role: "viewer",
-        created_at: new Date().toISOString(),
-      }, { onConflict: "owner_id,shared_with" });
-      if (!error) {
-        synced++;
-        console.log(`🔁 Auto-shared back with ${rs.owner_id}`);
-      }
-    }
+    // Reverse sync disabled for Hub (multi-tenant):
+    // Users must explicitly share their portfolio — auto-sharing back without consent is a privacy risk.
+    // In Pro (family-only), the old bidirectional auto-share was acceptable.
 
     res.json({ synced, checked: memberEmails.length });
   } catch (e) {
@@ -1120,9 +1129,8 @@ app.post("/api/shares/cross-link", auth, async (req, res) => {
     const normalEmail = email.trim().toLowerCase();
     if (normalEmail === req.user.email?.toLowerCase()) return res.json({ linked: 0 });
 
-    // Find the target user
-    const { data: { users } } = await supabase.auth.admin.listUsers();
-    const target = users.find(u => u.email?.toLowerCase() === normalEmail);
+    // Find the target user (scalable — no listUsers pagination limit)
+    const target = await lookupUserByEmail(normalEmail);
     if (!target) return res.json({ linked: 0, reason: "User not signed up yet" });
 
     // Get all users in my sharing graph (both directions)
@@ -1137,14 +1145,13 @@ app.post("/api/shares/cross-link", auth, async (req, res) => {
 
     let linked = 0;
     for (const familyUserId of familyIds) {
-      // Create bidirectional shares: familyUser↔target
-      for (const [ownerId, sharedWith] of [[familyUserId, target.id], [target.id, familyUserId]]) {
-        const { error } = await supabase.from("portfolio_shares").upsert({
-          owner_id: ownerId, shared_with: sharedWith, role: "viewer",
-          created_at: new Date().toISOString(),
-        }, { onConflict: "owner_id,shared_with" });
-        if (!error) linked++;
-      }
+      // Only share the current user's portfolio with the target — never create shares on behalf of other users
+      // (In a multi-tenant platform, User A should not grant User D access to User C's portfolio)
+      const { error } = await supabase.from("portfolio_shares").upsert({
+        owner_id: req.user.id, shared_with: target.id, role: "viewer",
+        created_at: new Date().toISOString(),
+      }, { onConflict: "owner_id,shared_with" });
+      if (!error) linked++;
     }
     console.log(`🔗 Cross-linked ${normalEmail} with ${familyIds.size} family member(s) (${linked} shares created)`);
     res.json({ linked, family_size: familyIds.size });
@@ -1159,12 +1166,10 @@ app.post("/api/shares", auth, async (req, res) => {
   try {
     const { email, role } = req.body;
     if (!email) return res.status(400).json({ error: "Email is required" });
-    const validRole = ["viewer", "editor"].includes(role) ? role : "viewer";
+    const validRole = "viewer"; // Editor write-path not yet enforced — viewer only
 
-    // Look up user by email
-    const { data: { users }, error: lookupErr } = await supabase.auth.admin.listUsers();
-    if (lookupErr) return res.status(500).json({ error: lookupErr.message });
-    const target = users.find(u => u.email?.toLowerCase() === email.toLowerCase().trim());
+    // Look up user by email (scalable — no listUsers pagination limit)
+    const target = await lookupUserByEmail(email);
     if (!target) return res.status(404).json({ error: "No account found with that email. They need to sign up first." });
     if (target.id === req.user.id) return res.status(400).json({ error: "You can't share with yourself." });
 
@@ -1187,7 +1192,7 @@ app.post("/api/shares", auth, async (req, res) => {
 app.put("/api/shares/:shareId", auth, async (req, res) => {
   try {
     const { role } = req.body;
-    const validRole = ["viewer", "editor"].includes(role) ? role : "viewer";
+    const validRole = "viewer"; // Editor write-path not yet enforced — viewer only
     const { error } = await supabase
       .from("portfolio_shares")
       .update({ role: validRole })
