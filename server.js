@@ -5598,7 +5598,6 @@ app.use((err, req, res, next) => {
 //  Free for all Zerodha users · equity + Coin MF · token expires daily
 // ══════════════════════════════════════════════════════════════════
 const KITE_BASE = "https://api.kite.trade";
-const crypto_node = require("crypto");
 
 function kiteTokenValid(tokenDate) {
   if (!tokenDate) return false;
@@ -5740,7 +5739,7 @@ app.delete("/api/kite/disconnect", auth, async (req, res) => {
 const BREEZE_BASE = "https://api.icicidirect.com/breezeapi/api/v1";
 
 function breezeChecksum(timestamp, jsonBody, apiSecret) {
-  return crypto_node.createHash("sha256").update(timestamp + jsonBody + apiSecret).digest("hex");
+  return crypto.createHash("sha256").update(timestamp + jsonBody + apiSecret).digest("hex");
 }
 
 async function breezeReq(method, path, body, apiKey, apiSecret, sessionToken) {
