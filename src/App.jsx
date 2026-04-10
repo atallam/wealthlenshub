@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from "./supabase.js";
 import SnapTradeImport from "./SnapTradeImport";
+import KiteImport from "./KiteImport";
+import BreezeImport from "./BreezeImport";
 // SetuAAImport — disabled until Setu integration is ready
 // import SetuAAImport from "./SetuAAImport";
 
@@ -1128,6 +1130,8 @@ export default function App() {
   const [aiInput,        setAiInput]        = useState("");
   const [aiLoading,      setAiLoading]      = useState(false);
   const [showSnapTrade,  setShowSnapTrade]   = useState(false);
+  const [showKite,       setShowKite]        = useState(false);
+  const [showBreeze,     setShowBreeze]      = useState(false);
   const [showSharedDropdown, setShowSharedDropdown] = useState(false);
   // const [showSetuAA, setShowSetuAA] = useState(false); // Setu AA disabled
   const [moreSheetOpen,  setMoreSheetOpen]  = useState(false);
@@ -5621,33 +5625,82 @@ ${alertLines||"  None"}`;
     {modal==="add"&&(
       <Overlay onClose={()=>setModal(null)}>
         <div className="modtitle">Add to portfolio</div>
-        {/* ── Featured: SnapTrade ── */}
-        <div onClick={()=>{setModal(null);setShowSnapTrade(true);}}
-          style={{padding:"1.1rem 1.4rem",borderRadius:12,border:"1.5px solid rgba(167,139,250,.45)",
-            background:"linear-gradient(135deg,rgba(167,139,250,.10) 0%,rgba(90,156,224,.06) 100%)",
-            cursor:"pointer",marginBottom:"1rem",display:"flex",alignItems:"center",gap:"1.2rem",transition:"all .2s",position:"relative",overflow:"hidden"}}
-          onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,.7)";}}
-          onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(167,139,250,.45)";}}>
-          <div style={{width:40,height:40,borderRadius:10,background:"linear-gradient(135deg,#1a3a6e 0%,#2d5aa0 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:"1px solid rgba(90,156,224,.35)"}}>
-            <span style={{fontSize:".75rem",fontWeight:700,color:"#ffffff",letterSpacing:".06em"}}>US</span>
-          </div>
-          <div style={{flex:1}}>
-            <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".25rem"}}>
-              <span style={{fontSize:".92rem",color:"#ffffff",fontWeight:600}}>SnapTrade Import</span>
-              <span style={{fontSize:".55rem",padding:".15rem .5rem",borderRadius:10,background:"rgba(167,139,250,.18)",color:"#a78bfa",fontWeight:600,letterSpacing:".04em",textTransform:"uppercase"}}>Recommended</span>
-            </div>
-            <div style={{fontSize:".74rem",color:"rgba(255,255,255,.6)",lineHeight:1.5}}>Connect Robinhood, Schwab, Fidelity & more — automatic sync from US brokerages</div>
-          </div>
-          <div style={{fontSize:"1.1rem",color:"rgba(167,139,250,.6)",flexShrink:0}}>→</div>
+
+        {/* ── Section: Connect a broker (auto-sync) ── */}
+        <div style={{fontSize:".6rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.35)",marginBottom:".5rem",paddingLeft:".1rem"}}>
+          🔗 Connect broker — auto-sync holdings
         </div>
-        {/* ── Other options ── */}
-        <div style={{fontSize:".6rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.35)",marginBottom:".5rem",paddingLeft:".1rem"}}>Other ways to add</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:".65rem",marginBottom:"1rem"}}>
+        <div style={{display:"flex",flexDirection:"column",gap:".5rem",marginBottom:"1rem"}}>
+
+          {/* SnapTrade — US */}
+          <div onClick={()=>{setModal(null);setShowSnapTrade(true);}}
+            style={{padding:".85rem 1rem",borderRadius:10,border:"1.5px solid rgba(167,139,250,.4)",
+              background:"linear-gradient(135deg,rgba(167,139,250,.08) 0%,rgba(90,156,224,.05) 100%)",
+              cursor:"pointer",display:"flex",alignItems:"center",gap:".9rem",transition:"all .15s"}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(167,139,250,.7)"}
+            onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(167,139,250,.4)"}>
+            <div style={{width:34,height:34,borderRadius:8,background:"linear-gradient(135deg,#1a3a6e,#2d5aa0)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <span style={{fontSize:".65rem",fontWeight:700,color:"#fff",letterSpacing:".06em"}}>US</span>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:".4rem",marginBottom:".15rem"}}>
+                <span style={{fontSize:".85rem",color:"#fff",fontWeight:600}}>SnapTrade</span>
+                <span style={{fontSize:".52rem",padding:".1rem .45rem",borderRadius:8,background:"rgba(167,139,250,.18)",color:"#a78bfa",fontWeight:600,letterSpacing:".04em",textTransform:"uppercase"}}>Recommended</span>
+              </div>
+              <div style={{fontSize:".7rem",color:"rgba(255,255,255,.5)"}}>Robinhood · Schwab · Fidelity · 25+ US brokers · automatic</div>
+            </div>
+            <span style={{color:"rgba(167,139,250,.5)",fontSize:"1rem"}}>→</span>
+          </div>
+
+          {/* Kite — Zerodha */}
+          <div onClick={()=>{setModal(null);setShowKite(true);}}
+            style={{padding:".85rem 1rem",borderRadius:10,border:"1.5px solid rgba(201,168,76,.35)",
+              background:"rgba(201,168,76,.05)",cursor:"pointer",display:"flex",alignItems:"center",gap:".9rem",transition:"all .15s"}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(201,168,76,.65)"}
+            onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(201,168,76,.35)"}>
+            <div style={{width:34,height:34,borderRadius:8,background:"linear-gradient(135deg,#1a2e0a,#2d5010)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:"1px solid rgba(201,168,76,.3)"}}>
+              <span style={{fontSize:".65rem",fontWeight:700,color:"#c9a84c",letterSpacing:".04em"}}>ZE</span>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:".4rem",marginBottom:".15rem"}}>
+                <span style={{fontSize:".85rem",color:"#fff",fontWeight:600}}>Zerodha Kite</span>
+                <span style={{fontSize:".52rem",padding:".1rem .45rem",borderRadius:8,background:"rgba(76,175,154,.12)",color:"#4caf9a",fontWeight:600,letterSpacing:".04em",textTransform:"uppercase"}}>Free</span>
+              </div>
+              <div style={{fontSize:".7rem",color:"rgba(255,255,255,.5)"}}>Equity + Coin MF · Personal API · 1-click daily refresh</div>
+            </div>
+            <span style={{color:"rgba(201,168,76,.4)",fontSize:"1rem"}}>→</span>
+          </div>
+
+          {/* Breeze — ICICI Direct */}
+          <div onClick={()=>{setModal(null);setShowBreeze(true);}}
+            style={{padding:".85rem 1rem",borderRadius:10,border:"1.5px solid rgba(90,156,224,.35)",
+              background:"rgba(90,156,224,.05)",cursor:"pointer",display:"flex",alignItems:"center",gap:".9rem",transition:"all .15s"}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(90,156,224,.65)"}
+            onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(90,156,224,.35)"}>
+            <div style={{width:34,height:34,borderRadius:8,background:"linear-gradient(135deg,#0a1e3a,#0d2d5a)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:"1px solid rgba(90,156,224,.3)"}}>
+              <span style={{fontSize:".6rem",fontWeight:700,color:"#5a9ce0",letterSpacing:".02em"}}>ICICI</span>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:".4rem",marginBottom:".15rem"}}>
+                <span style={{fontSize:".85rem",color:"#fff",fontWeight:600}}>ICICI Direct</span>
+                <span style={{fontSize:".52rem",padding:".1rem .45rem",borderRadius:8,background:"rgba(76,175,154,.12)",color:"#4caf9a",fontWeight:600,letterSpacing:".04em",textTransform:"uppercase"}}>Free</span>
+              </div>
+              <div style={{fontSize:".7rem",color:"rgba(255,255,255,.5)"}}>Equity + MF · Breeze API · daily session token</div>
+            </div>
+            <span style={{color:"rgba(90,156,224,.4)",fontSize:"1rem"}}>→</span>
+          </div>
+        </div>
+
+        {/* ── Section: Import / Manual ── */}
+        <div style={{fontSize:".6rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.35)",marginBottom:".5rem",paddingLeft:".1rem"}}>
+          📂 Import or add manually
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:".55rem"}}>
           {[
-            {key:"import",icon:"📂",title:"Import file",desc:"CSV or Excel from any broker",tag:"most used",tagColor:"#4caf9a"},
-            {key:"cas",icon:"📥",title:"CAS Downloader",desc:"Import NSDL/CDSL CAS PDF",tag:"Indian MF + demat",tagColor:"#a084ca"},
-            {key:"holding",icon:"✏️",title:"Add holding",desc:"Manually add a single instrument",tag:null},
-            {key:"txn",icon:"📋",title:"Log transaction",desc:"Record a buy/sell on existing holding",tag:null},
+            {key:"import",icon:"📂",title:"Import file",desc:"CSV or Excel from any broker",tag:"most used",tagColor:"#4caf9a",border:"rgba(201,168,76,.3)",bg:"rgba(201,168,76,.05)"},
+            {key:"cas",icon:"📥",title:"CAS PDF",desc:"NSDL/CDSL CAS — all MF + demat",tag:"Indian",tagColor:"#a084ca",border:"rgba(160,132,202,.3)",bg:"rgba(160,132,202,.05)"},
+            {key:"holding",icon:"✏️",title:"Add holding",desc:"Manually add an instrument",tag:null,border:"rgba(255,255,255,.08)",bg:"rgba(255,255,255,.03)"},
+            {key:"txn",icon:"📋",title:"Log transaction",desc:"Record buy/sell on existing",tag:null,border:"rgba(255,255,255,.08)",bg:"rgba(255,255,255,.03)"},
           ].map(opt=>(
             <div key={opt.key} onClick={()=>{
               setModal(null);
@@ -5655,14 +5708,14 @@ ${alertLines||"  None"}`;
               else if(opt.key==="cas"){resetCASDownloader();setCasModal(true);}
               else if(opt.key==="holding"){setForm(BF);setEditHolding(null);setModal("holding");}
               else {setTxnForm(BT);setGlobalTxnModal(true);}
-            }} style={{padding:"1rem",borderRadius:10,border:`1px solid ${opt.key==="import"?"rgba(201,168,76,.35)":opt.key==="cas"?"rgba(160,132,202,.35)":"rgba(255,255,255,.08)"}`,
-              background:opt.key==="import"?"rgba(201,168,76,.06)":opt.key==="cas"?"rgba(160,132,202,.06)":"rgba(255,255,255,.03)",cursor:"pointer",textAlign:"center",transition:"all .15s"}}
-              onMouseEnter={e=>e.currentTarget.style.borderColor=opt.key==="import"?"rgba(201,168,76,.5)":opt.key==="cas"?"rgba(160,132,202,.5)":"rgba(255,255,255,.18)"}
-              onMouseLeave={e=>e.currentTarget.style.borderColor=opt.key==="import"?"rgba(201,168,76,.35)":opt.key==="cas"?"rgba(160,132,202,.35)":"rgba(255,255,255,.08)"}>
-              <div style={{fontSize:"1.3rem",marginBottom:".5rem"}}>{opt.icon}</div>
-              <div style={{fontSize:".82rem",color:"#ffffff",fontWeight:500,marginBottom:".3rem"}}>{opt.title}</div>
-              <div style={{fontSize:".68rem",color:"rgba(255,255,255,.5)",lineHeight:1.5}}>{opt.desc}</div>
-              {opt.tag&&<div style={{fontSize:".6rem",display:"inline-block",marginTop:".5rem",padding:".15rem .45rem",borderRadius:3,background:"rgba(76,175,154,.12)",color:opt.tagColor}}>{opt.tag}</div>}
+            }} style={{padding:".85rem",borderRadius:10,border:`1px solid ${opt.border}`,
+              background:opt.bg,cursor:"pointer",textAlign:"center",transition:"all .15s"}}
+              onMouseEnter={e=>e.currentTarget.style.opacity=".85"}
+              onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
+              <div style={{fontSize:"1.2rem",marginBottom:".4rem"}}>{opt.icon}</div>
+              <div style={{fontSize:".8rem",color:"#fff",fontWeight:500,marginBottom:".25rem"}}>{opt.title}</div>
+              <div style={{fontSize:".66rem",color:"rgba(255,255,255,.45)",lineHeight:1.4}}>{opt.desc}</div>
+              {opt.tag&&<div style={{fontSize:".55rem",display:"inline-block",marginTop:".4rem",padding:".12rem .4rem",borderRadius:3,background:"rgba(76,175,154,.1)",color:opt.tagColor}}>{opt.tag}</div>}
             </div>
           ))}
         </div>
@@ -5671,6 +5724,16 @@ ${alertLines||"  None"}`;
     {showSnapTrade&&(
       <Overlay onClose={()=>{setShowSnapTrade(false);reloadHoldings();}} wide>
         <SnapTradeImport onClose={async()=>{setShowSnapTrade(false);await reloadHoldings();}} members={members} />
+      </Overlay>
+    )}
+    {showKite&&(
+      <Overlay onClose={()=>{setShowKite(false);reloadHoldings();}} wide>
+        <KiteImport onClose={async()=>{setShowKite(false);await reloadHoldings();}} members={members} api={api} />
+      </Overlay>
+    )}
+    {showBreeze&&(
+      <Overlay onClose={()=>{setShowBreeze(false);reloadHoldings();}} wide>
+        <BreezeImport onClose={async()=>{setShowBreeze(false);await reloadHoldings();}} members={members} api={api} />
       </Overlay>
     )}
     {/* Setu AA overlay — disabled until integration is ready */}

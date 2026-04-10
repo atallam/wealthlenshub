@@ -5593,6 +5593,286 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
+// ══════════════════════════════════════════════════════════════════
+//  ZERODHA KITE PERSONAL API — Indian Portfolio Sync
+//  Free for all Zerodha users · equity + Coin MF · token expires daily
+// ══════════════════════════════════════════════════════════════════
+const KITE_BASE = "https://api.kite.trade";
+const crypto_node = require("crypto");
+
+function kiteTokenValid(tokenDate) {
+  if (!tokenDate) return false;
+  return tokenDate === new Date().toISOString().slice(0, 10);
+}
+
+async function kiteGet(path, accessToken, apiKey) {
+  const r = await fetch(`${KITE_BASE}${path}`, {
+    headers: { "X-Kite-Version": "3", "Authorization": `token ${apiKey}:${accessToken}` },
+  });
+  if (!r.ok) { const b = await r.json().catch(() => ({})); throw new Error(b.message || `Kite ${r.status}`); }
+  return r.json();
+}
+
+async function upsertKiteConn(userId, fields) {
+  const { error } = await supabase.from("kite_connections")
+    .upsert({ user_id: userId, updated_at: new Date().toISOString(), ...fields }, { onConflict: "user_id" });
+  if (error) throw new Error(error.message);
+}
+
+async function getKiteConn(userId) {
+  const { data, error } = await supabase.from("kite_connections").select("*").eq("user_id", userId).single();
+  if (error || !data) throw new Error("No Kite connection — connect first.");
+  return data;
+}
+
+app.post("/api/kite/connect", auth, async (req, res) => {
+  try {
+    const { api_key } = req.body;
+    if (!api_key?.trim()) return res.status(400).json({ error: "api_key required" });
+    await upsertKiteConn(req.user.id, { api_key: api_key.trim() });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/kite/login-url", auth, async (req, res) => {
+  try {
+    const conn = await getKiteConn(req.user.id);
+    const loginUrl = `https://kite.zerodha.com/connect/login?api_key=${conn.api_key}&v=3`;
+    res.json({ login_url: loginUrl });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/kite/callback", auth, async (req, res) => {
+  try {
+    const { request_token } = req.body;
+    if (!request_token) return res.status(400).json({ error: "request_token required" });
+    const conn = await getKiteConn(req.user.id);
+    const r = await fetch(`${KITE_BASE}/session/token`, {
+      method: "POST",
+      headers: { "X-Kite-Version": "3", "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ api_key: conn.api_key, request_token, checksum: "" }).toString(),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.data?.access_token) return res.status(400).json({ error: data.message || "Token exchange failed" });
+    const today = new Date().toISOString().slice(0, 10);
+    await upsertKiteConn(req.user.id, {
+      access_token: encrypt(data.data.access_token),
+      token_date: today,
+      profile_name: data.data?.user_name || "",
+      profile_email: data.data?.email || "",
+    });
+    res.json({ ok: true, profile_name: data.data?.user_name || "", token_date: today });
+  } catch (e) { console.error("Kite callback:", e.message); res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/kite/status", auth, async (req, res) => {
+  try {
+    const { data } = await supabase.from("kite_connections")
+      .select("api_key,token_date,profile_name,profile_email,last_synced_at").eq("user_id", req.user.id).single();
+    if (!data) return res.json({ connected: false });
+    res.json({ connected: true, token_valid: kiteTokenValid(data.token_date), token_date: data.token_date,
+      profile_name: data.profile_name, profile_email: data.profile_email, last_synced_at: data.last_synced_at,
+      needs_reauth: !kiteTokenValid(data.token_date) });
+  } catch { res.json({ connected: false }); }
+});
+
+app.post("/api/kite/sync", auth, async (req, res) => {
+  try {
+    const { member_id } = req.body;
+    const conn = await getKiteConn(req.user.id);
+    if (!kiteTokenValid(conn.token_date))
+      return res.status(401).json({ error: "Kite token expired — re-authorize.", needs_reauth: true });
+    const rawToken = decrypt(conn.access_token);
+    const [holdingsResp, mfResp] = await Promise.all([
+      kiteGet("/portfolio/holdings", rawToken, conn.api_key),
+      kiteGet("/portfolio/holdings/mf", rawToken, conn.api_key).catch(() => ({ data: [] })),
+    ]);
+    const now = new Date().toISOString(); const today = now.slice(0, 10); const rows = [];
+    for (const h of (holdingsResp.data || [])) {
+      if (!h.tradingsymbol || (h.quantity || 0) <= 0) continue;
+      rows.push({ id: `kite_${req.user.id.slice(0,8)}_${h.tradingsymbol}`.replace(/[^a-zA-Z0-9_-]/g,"_"),
+        user_id: req.user.id, member_id: member_id || null,
+        type: h.instrument_type === "ETF" ? "IN_ETF" : "IN_STOCK",
+        name: h.tradingsymbol, ticker: h.tradingsymbol, units: h.quantity,
+        purchase_price: h.average_price || 0, current_price: h.last_price || 0,
+        purchase_value: (h.average_price||0)*h.quantity, current_value: (h.last_price||0)*h.quantity,
+        currency: "INR", source: "kite", brokerage_name: "Zerodha",
+        last_synced: now, price_fetched_at: now, start_date: today });
+    }
+    for (const h of (mfResp.data || [])) {
+      if (!h.folio || (h.quantity || 0) <= 0) continue;
+      rows.push({ id: `kite_mf_${req.user.id.slice(0,8)}_${h.folio}`.replace(/[^a-zA-Z0-9_-]/g,"_"),
+        user_id: req.user.id, member_id: member_id || null, type: "MF",
+        name: h.fund || h.tradingsymbol || h.folio, ticker: "", scheme_code: h.tradingsymbol || "",
+        units: h.quantity, purchase_nav: h.average_price||0, current_nav: h.last_price||0,
+        purchase_price: h.average_price||0, current_price: h.last_price||0,
+        purchase_value: (h.average_price||0)*h.quantity, current_value: (h.last_price||0)*h.quantity,
+        currency: "INR", source: "kite", brokerage_name: "Zerodha Coin",
+        last_synced: now, price_fetched_at: now, start_date: today });
+    }
+    if (!rows.length) return res.json({ synced: 0, message: "No holdings found." });
+    const { error } = await supabase.from("holdings").upsert(rows, { onConflict: "id" });
+    if (error) throw new Error(error.message);
+    await supabase.from("kite_connections").update({ last_synced_at: now }).eq("user_id", req.user.id);
+    fetch(`${req.protocol}://${req.get("host")}/api/snapshots`, { method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":req.headers.authorization},
+      body: JSON.stringify({ source:"kite_sync" }) }).catch(()=>{});
+    res.json({ synced: rows.length, equity_count: rows.filter(r=>r.type!=="MF").length, mf_count: rows.filter(r=>r.type==="MF").length });
+  } catch (e) {
+    console.error("Kite sync:", e.message);
+    if (e.message.includes("TokenException") || e.message.includes("Invalid")) return res.status(401).json({ error: "Token invalid.", needs_reauth: true });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/kite/disconnect", auth, async (req, res) => {
+  try {
+    await supabase.from("kite_connections").delete().eq("user_id", req.user.id);
+    await supabase.from("holdings").delete().eq("user_id", req.user.id).eq("source", "kite");
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  ICICI DIRECT BREEZE API — Indian Portfolio Sync
+//  Free for all ICICIdirect customers · equity + MF · token expires daily
+// ══════════════════════════════════════════════════════════════════
+const BREEZE_BASE = "https://api.icicidirect.com/breezeapi/api/v1";
+
+function breezeChecksum(timestamp, jsonBody, apiSecret) {
+  return crypto_node.createHash("sha256").update(timestamp + jsonBody + apiSecret).digest("hex");
+}
+
+async function breezeReq(method, path, body, apiKey, apiSecret, sessionToken) {
+  const timestamp = new Date().toISOString();
+  const jsonBody = JSON.stringify(body || {});
+  const r = await fetch(`${BREEZE_BASE}${path}`, {
+    method,
+    headers: { "Content-Type":"application/json",
+      "X-Checksum":`token ${breezeChecksum(timestamp, jsonBody, apiSecret)}`,
+      "X-Timestamp":timestamp, "X-AppKey":apiKey, "X-SessionToken":sessionToken },
+    ...(method !== "GET" ? { body: jsonBody } : {}),
+  });
+  if (!r.ok) { const b = await r.json().catch(()=>({})); throw new Error(b.Error || b.message || `Breeze ${r.status}`); }
+  return r.json();
+}
+
+async function upsertBreezeConn(userId, fields) {
+  const { error } = await supabase.from("breeze_connections")
+    .upsert({ user_id: userId, updated_at: new Date().toISOString(), ...fields }, { onConflict: "user_id" });
+  if (error) throw new Error(error.message);
+}
+
+async function getBreezeConn(userId) {
+  const { data, error } = await supabase.from("breeze_connections").select("*").eq("user_id", userId).single();
+  if (error || !data) throw new Error("No Breeze connection — connect first.");
+  return data;
+}
+
+app.post("/api/breeze/connect", auth, async (req, res) => {
+  try {
+    const { api_key, api_secret } = req.body;
+    if (!api_key?.trim() || !api_secret?.trim()) return res.status(400).json({ error: "api_key and api_secret required" });
+    await upsertBreezeConn(req.user.id, { api_key: encrypt(api_key.trim()), api_secret: encrypt(api_secret.trim()) });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/breeze/login-url", auth, async (req, res) => {
+  try {
+    const conn = await getBreezeConn(req.user.id);
+    const rawKey = decrypt(conn.api_key);
+    res.json({ login_url: `https://api.icicidirect.com/apiuser/login?api_key=${encodeURIComponent(rawKey)}` });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/breeze/callback", auth, async (req, res) => {
+  try {
+    const { session_token } = req.body;
+    if (!session_token?.trim()) return res.status(400).json({ error: "session_token required" });
+    const conn = await getBreezeConn(req.user.id);
+    const rawKey = decrypt(conn.api_key); const rawSecret = decrypt(conn.api_secret);
+    const profile = await breezeReq("GET", "/customerdetails",
+      { SessionToken: session_token.trim(), AppKey: rawKey }, rawKey, rawSecret, session_token.trim());
+    if (!profile?.Success?.idirect_userid) return res.status(400).json({ error: "Invalid session token." });
+    const today = new Date().toISOString().slice(0, 10);
+    await upsertBreezeConn(req.user.id, { session_token: encrypt(session_token.trim()), token_date: today,
+      profile_name: profile.Success.idirect_user_name || "", client_id: profile.Success.idirect_userid || "" });
+    res.json({ ok: true, profile_name: profile.Success.idirect_user_name || "",
+      client_id: profile.Success.idirect_userid || "", token_date: today });
+  } catch (e) { console.error("Breeze callback:", e.message); res.status(400).json({ error: e.message }); }
+});
+
+app.get("/api/breeze/status", auth, async (req, res) => {
+  try {
+    const { data } = await supabase.from("breeze_connections")
+      .select("token_date,profile_name,client_id,last_synced_at").eq("user_id", req.user.id).single();
+    if (!data) return res.json({ connected: false });
+    const tokenValid = kiteTokenValid(data.token_date);
+    res.json({ connected: true, token_valid: tokenValid, token_date: data.token_date,
+      profile_name: data.profile_name, client_id: data.client_id,
+      last_synced_at: data.last_synced_at, needs_reauth: !tokenValid });
+  } catch { res.json({ connected: false }); }
+});
+
+app.post("/api/breeze/sync", auth, async (req, res) => {
+  try {
+    const { member_id } = req.body;
+    const conn = await getBreezeConn(req.user.id);
+    if (!kiteTokenValid(conn.token_date))
+      return res.status(401).json({ error: "Breeze session expired — re-authorize.", needs_reauth: true });
+    const rawKey = decrypt(conn.api_key); const rawSecret = decrypt(conn.api_secret); const rawToken = decrypt(conn.session_token);
+    const [equityResp, mfResp] = await Promise.all([
+      breezeReq("GET", "/portfolioholdings", { exchange_code:"NSE", product_type:"cash" }, rawKey, rawSecret, rawToken),
+      breezeReq("GET", "/mfholdings", {}, rawKey, rawSecret, rawToken).catch(() => ({ Success: [] })),
+    ]);
+    const now = new Date().toISOString(); const today = now.slice(0, 10); const rows = [];
+    for (const h of (equityResp?.Success || [])) {
+      const qty = parseFloat(h.quantity || 0); if (qty <= 0) continue;
+      const sym = h.stock_code || ""; const avg = parseFloat(h.average_price || 0); const ltp = parseFloat(h.ltp || 0);
+      rows.push({ id: `breeze_${req.user.id.slice(0,8)}_${sym}`.replace(/[^a-zA-Z0-9_-]/g,"_"),
+        user_id: req.user.id, member_id: member_id||null, type:"IN_STOCK",
+        name: h.company_name||sym, ticker:sym, units:qty, purchase_price:avg, current_price:ltp,
+        purchase_value:avg*qty, current_value:ltp*qty, currency:"INR", source:"breeze",
+        brokerage_name:"ICICI Direct", last_synced:now, price_fetched_at:now, start_date:today });
+    }
+    for (const h of (mfResp?.Success || [])) {
+      const units = parseFloat(h.quantity||h.units||0); if (units<=0) continue;
+      const avgNav=parseFloat(h.average_price||0); const curNav=parseFloat(h.ltp||0);
+      rows.push({ id:`breeze_mf_${req.user.id.slice(0,8)}_${(h.folio_number||h.scheme_name||"").slice(0,20)}`.replace(/[^a-zA-Z0-9_-]/g,"_"),
+        user_id:req.user.id, member_id:member_id||null, type:"MF", name:h.scheme_name||"",
+        ticker:"", scheme_code:h.isin||"", units, purchase_nav:avgNav, current_nav:curNav,
+        purchase_price:avgNav, current_price:curNav, purchase_value:avgNav*units, current_value:curNav*units,
+        currency:"INR", source:"breeze", brokerage_name:"ICICI Direct MF",
+        last_synced:now, price_fetched_at:now, start_date:today });
+    }
+    if (!rows.length) return res.json({ synced:0, message:"No holdings found." });
+    const { error } = await supabase.from("holdings").upsert(rows, { onConflict:"id" });
+    if (error) throw new Error(error.message);
+    await supabase.from("breeze_connections").update({ last_synced_at:now }).eq("user_id", req.user.id);
+    fetch(`${req.protocol}://${req.get("host")}/api/snapshots`, { method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":req.headers.authorization},
+      body:JSON.stringify({ source:"breeze_sync" }) }).catch(()=>{});
+    res.json({ synced:rows.length, equity_count:rows.filter(r=>r.type==="IN_STOCK").length, mf_count:rows.filter(r=>r.type==="MF").length });
+  } catch (e) {
+    console.error("Breeze sync:", e.message);
+    if (e.message.includes("401") || e.message.includes("session")) return res.status(401).json({ error:"Session expired.", needs_reauth:true });
+    res.status(500).json({ error:e.message });
+  }
+});
+
+app.delete("/api/breeze/disconnect", auth, async (req, res) => {
+  try {
+    await supabase.from("breeze_connections").delete().eq("user_id", req.user.id);
+    await supabase.from("holdings").delete().eq("user_id", req.user.id).eq("source", "breeze");
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  END INDIAN BROKER INTEGRATIONS
+// ══════════════════════════════════════════════════════════════════
+
 // ── Serve React app for all other routes ─────────────────────────
 app.get("*", (_, res) => {
   const indexPath = path.join(process.cwd(), "dist", "index.html");
