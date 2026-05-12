@@ -1091,6 +1091,8 @@ export default function App() {
   const [casDepository,    setCasDepository]    = useState("");       // "NSDL" | "CDSL"
   const [wealthSnapshots,  setWealthSnapshots]  = useState([]);       // monthly snapshots
   const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+  const [benchmark,        setBenchmark]        = useState(null);     // { nifty50, sp500, period }
+  const [bmPeriod,         setBmPeriod]         = useState("1Y");     // benchmark period selector
 
   // ── Net Worth Timeline + Calendar ─────────────────────────────
   const [nwMember,          setNwMember]          = useState("all");
@@ -1202,6 +1204,7 @@ export default function App() {
       } catch(e) { console.warn("Shares load:", e.message); }
       // Load wealth snapshots
       api("/api/snapshots?months=24").then(d => setWealthSnapshots(d?.snapshots || [])).catch(() => {});
+      api("/api/benchmark?period=1Y").then(d => setBenchmark(d)).catch(() => {});
     })();
   },[user]);
 
@@ -2784,9 +2787,14 @@ ${alertLines||"  None"}`;
             <div className="card" style={{marginTop:"1rem"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:".8rem",flexWrap:"wrap",gap:".5rem"}}>
                 <div className="ctitle" style={{margin:0}}>📈 Wealth Progression</div>
-                <div style={{display:"flex",gap:"1rem",fontSize:".68rem"}}>
-                  <span style={{color:"rgba(255,255,255,.5)"}}>{snaps.length} months tracked</span>
-                  <span style={{color:totalGain>=0?"#4caf9a":"#e07c5a"}}>{totalGain>=0?"+":""}{fmtCr(totalGain)} ({totalPct}%)</span>
+                <div style={{display:"flex",gap:".6rem",alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{fontSize:".65rem",color:"rgba(255,255,255,.45)"}}>{snaps.length} months</span>
+                  <span style={{fontSize:".68rem",color:totalGain>=0?"#4caf9a":"#e07c5a"}}>{totalGain>=0?"+":""}{fmtCr(totalGain)} ({totalPct}%)</span>
+                  {/* Benchmark period selector */}
+                  <select className="fi fs" style={{width:68,marginBottom:0,fontSize:".65rem",padding:".2rem .4rem"}}
+                    value={bmPeriod} onChange={e=>{setBmPeriod(e.target.value);api(`/api/benchmark?period=${e.target.value}`).then(d=>setBenchmark(d)).catch(()=>{});}}>
+                    {["1Y","3Y","5Y","ALL"].map(p=><option key={p} value={p}>{p}</option>)}
+                  </select>
                 </div>
               </div>
               <div style={{display:"flex",gap:"1rem",marginBottom:".8rem",flexWrap:"wrap"}}>
@@ -2809,7 +2817,29 @@ ${alertLines||"  None"}`;
                 <polyline points={invPts} fill="none" stroke="#c9a84c" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.6}/>
                 <polyline points={curPts} fill="none" stroke="#4caf9a" strokeWidth={2}/>
                 {snaps.map((s,i)=>(<g key={i}><circle cx={xP(i)} cy={yP(s.total_current)} r={snaps.length>15?2:3} fill="#4caf9a"/>{showLabel(i)&&(<text x={xP(i)} y={H-pad.b+14} fill="rgba(255,255,255,.4)" fontSize={7.5} textAnchor={i===0?"start":i===snaps.length-1?"end":"middle"} fontFamily="DM Mono,monospace">{(()=>{const[y,m]=s.snapshot_month.split("-");return["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1]+"'"+y.slice(2);})()}</text>)}{s.source==="cas_import"&&<circle cx={xP(i)} cy={yP(s.total_current)-8} r={2} fill="#a084ca" opacity={0.7}/>}</g>))}
-                <g transform={`translate(${pad.l},${H-6})`}><line x1={0} y1={0} x2={14} y2={0} stroke="#4caf9a" strokeWidth={2}/><text x={18} y={3} fill="rgba(255,255,255,.4)" fontSize={7}>Current</text><line x1={60} y1={0} x2={74} y2={0} stroke="#c9a84c" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.6}/><text x={78} y={3} fill="rgba(255,255,255,.4)" fontSize={7}>Invested</text><circle cx={125} cy={0} r={2} fill="#a084ca" opacity={0.7}/><text x={130} y={3} fill="rgba(255,255,255,.4)" fontSize={7}>CAS import</text></g>
+                <g transform={`translate(${pad.l},${H-6})`}><line x1={0} y1={0} x2={14} y2={0} stroke="#4caf9a" strokeWidth={2}/><text x={18} y={3} fill="rgba(255,255,255,.4)" fontSize={7}>Current</text><line x1={60} y1={0} x2={74} y2={0} stroke="#c9a84c" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.6}/><text x={78} y={3} fill="rgba(255,255,255,.4)" fontSize={7}>Invested</text><circle cx={125} cy={0} r={2} fill="#a084ca" opacity={0.7}/><text x={130} y={3} fill="rgba(255,255,255,.4)" fontSize={7}>CAS import</text>
+                  {benchmark?.nifty50?.length&&<><line x1={165} y1={0} x2={179} y2={0} stroke="#f4a261" strokeWidth={1.5} strokeDasharray="2,2"/><text x={183} y={3} fill="rgba(255,255,255,.4)" fontSize={7}>Nifty 50</text></>}
+                  {benchmark?.sp500?.length&&<><line x1={228} y1={0} x2={242} y2={0} stroke="#5a9ce0" strokeWidth={1.5} strokeDasharray="2,2"/><text x={246} y={3} fill="rgba(255,255,255,.4)" fontSize={7}>S&P 500</text></>}
+                </g>
+                {/* Benchmark overlay — normalized % return mapped to portfolio scale */}
+                {(()=>{
+                  if(!benchmark?.nifty50?.length||snaps.length<2) return null;
+                  // Map benchmark dates to snapshot months
+                  const snapMonths=snaps.map(s=>s.snapshot_month);
+                  const firstSnap=snapMonths[0];
+                  const bmBase=snaps[0].total_current;
+                  const renderBmLine=(series,color)=>{
+                    const pts=snapMonths.map((mo,i)=>{
+                      const bmPt=series.find(p=>p.date===mo)||series.reduce((best,p)=>(!best||Math.abs(p.date.localeCompare(mo))<Math.abs(best.date.localeCompare(mo)))?p:best,null);
+                      if(!bmPt) return null;
+                      const scaledVal=bmBase*(1+bmPt.pct/100);
+                      return `${xP(i)},${yP(scaledVal)}`;
+                    }).filter(Boolean);
+                    if(pts.length<2) return null;
+                    return <polyline points={pts.join(" ")} fill="none" stroke={color} strokeWidth={1.2} strokeDasharray="3,2" opacity={0.6}/>;
+                  };
+                  return<>{renderBmLine(benchmark.nifty50,"#f4a261")}{renderBmLine(benchmark.sp500,"#5a9ce0")}</>;
+                })()}
               </svg>
               <details style={{marginTop:".6rem"}}>
                 <summary style={{fontSize:".68rem",color:"rgba(255,255,255,.45)",cursor:"pointer",userSelect:"none"}}>View monthly data ({snaps.length} snapshots)</summary>
