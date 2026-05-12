@@ -21,6 +21,21 @@ services:
         sync: false
       - key: VITE_SUPABASE_ANON_KEY
         sync: false
-        sync: false
       - key: ANTHROPIC_KEY
+        sync: false
+      - key: BUDGET_ENCRYPT_KEY
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: wealthlens-hub-price-cron
+    runtime: node
+    region: singapore
+    schedule: "30 0 * * 1-5"
+    buildCommand: echo "no build"
+    startCommand: >
+      node -e "fetch('https://wealthlens.pro/api/cron/refresh-all-prices',{method:'POST',headers:{'x-cron-secret':process.env.CRON_SECRET}}).then(r=>r.json()).then(console.log)"
+    envVars:
+      - key: CRON_SECRET
         sync: false
