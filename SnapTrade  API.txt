@@ -1,0 +1,27 @@
+
+
+
+
+Client ID 
+PERS-8P0L0UNSTMYYKDFV123M
+
+Consumer Key :  
+0ftYVrlrRK9SJODFdIiOeyXcJWgwaEnEIRFxViyutVfHdOzJeA
+
+
+
+User details 
+
+user secret
+d7df1103-3c3c-441b-8c7b-1176bfb09010
+
+
+
+
+Connect a brokerage Account
+{2 items
+"redirectURI":"https://app.snaptrade.com/snapTrade/redeemToken?token=/Oe9jDiKUpiY53/6XsC7XSgTUq54mekfDMHmkcO/vQ5cQRx4BwfeqmbO8Ce0Xg1FpE5LYjWpU5/4bWFrog109alqqO0TpCkRgBXn&clientId=PERS-8P0L0UNSTMYYKDFV123M&connectionPortalVersion=v4&sessionId=c0c4f353-af2b-49d7-a964-aee8c1095306"
+"sessionId":"c0c4f353-af2b-49d7-a964-aee8c1095306"
+}
+
+
