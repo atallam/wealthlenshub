@@ -82,7 +82,7 @@ export function useCASImport(user, onSuccess) {
       let password = "";
       try {
         const creds = await api("/api/profile/cas-credentials");
-        if (creds.has_credentials && creds._pan) password = creds._pan;
+        if (creds.has_credentials && creds.pan_for_cas_unlock) password = creds.pan_for_cas_unlock;
       } catch {}
 
       const fd = new FormData();

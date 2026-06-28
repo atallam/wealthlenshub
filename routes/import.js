@@ -9,11 +9,12 @@ import {
   parseNSDLCASStatement, parseFidelityPDFStatement,
 } from "../lib/parsers.js";
 import { getAmfiList, yahooSearch, yahooPrice } from "../lib/prices.js";
+import { auditImport } from "../lib/importLogger.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
-router.post("/detect", auth, upload.single("file"), async (req, res) => {
+router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file" });
   const ext = req.file.originalname.split(".").pop().toLowerCase();
 

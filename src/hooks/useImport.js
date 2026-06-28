@@ -57,7 +57,7 @@ export function useImport(user, onSuccess) {
         let savedPan = "", savedDob = "";
         try {
           const creds = await api("/api/profile/cas-credentials");
-          if (creds.has_credentials) { savedPan = creds._pan || ""; savedDob = creds.dob || ""; }
+          if (creds.has_credentials) { savedPan = creds.pan_for_cas_unlock || ""; savedDob = creds.dob || ""; }
         } catch {}
         setImportState(s => ({
           ...s, step: "cas_password", needsPassword: true, pendingFile: file,

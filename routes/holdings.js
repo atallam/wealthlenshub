@@ -3,6 +3,8 @@ import { supabase } from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
 import { sanitizeDates, enrichHoldings } from "./portfolio.js";
 import { yahooPrice, stockPrice } from "../lib/prices.js";
+import { validate, holdingSchema, validateRows } from "../lib/validate.js";
+import { auditImport } from "../lib/importLogger.js";
 
 const router = Router();
 
@@ -13,9 +15,17 @@ router.get("/", auth, async (req, res) => {
   res.json(enrichHoldings(data));
 });
 
-router.post("/import", auth, async (req, res) => {
+router.post("/import", auth, auditImport("HOLDINGS_IMPORT"), async (req, res) => {
   const { holdings, member_id, account_map, cas_statement_date, cas_period_start, cas_period_end } = req.body;
   if (!holdings?.length) return res.status(400).json({ error: "No holdings to import" });
+
+  // Validate each row before touching the database.
+  const { valid, invalid } = validateRows(holdingSchema.partial(), holdings);
+  if (invalid.length > 0) {
+    console.warn(`[import] ${invalid.length} invalid row(s) rejected:`, invalid.slice(0, 5));
+    // Warn but don't block — import may include partial/enriched data from parsers.
+    // Full rejection would break CAS imports. Log for audit purposes only.
+  }
 
   let effectiveMemberId = member_id || null;
   if (!effectiveMemberId) {
