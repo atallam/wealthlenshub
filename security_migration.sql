@@ -88,8 +88,7 @@ DO $$ BEGIN
           EXISTS (
             SELECT 1 FROM portfolio_shares ps
             WHERE ps.owner_id = holdings.user_id
-              AND ps.shared_with_email = (SELECT email FROM auth.users WHERE id = auth.uid())
-              AND ps.status = 'active'
+              AND ps.shared_with = auth.uid()
           )
         )
     $p$;
