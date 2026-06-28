@@ -180,7 +180,7 @@ export default function OverviewTab({
 </div>);})}
         </div>
       </div>
-      <div className="card"><div className="ctitle">Category Distribution</div><DonutChart data={byType} total={totCur}/></div>
+      <div className="card"><div className="ctitle">Category Distribution</div><DonutChart data={byType} total={totCur} AT={AT}/></div>
 
       {/* ── DATA FRESHNESS CARD ── */}
       {(()=>{
