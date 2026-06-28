@@ -91,6 +91,19 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
 
         if (/consolidated\s*account\s*statement|nsdl|cdsl/i.test(rawPdfText) && /mutual\s*fund|demat|folio/i.test(rawPdfText)) {
           const result = parseNSDLCASStatement(rawPdfText);
+          // If CAS format was detected but holdings array is empty, return early with
+          // the parser warnings so the CAS modal can show them (don't fall through to
+          // generic CSV parsing which would return a confusing empty result).
+          if (result.holdings.length === 0) {
+            return res.json({
+              holdings: [], warnings: result.warnings || ["No holdings could be parsed from this CAS statement."],
+              detected_type: "holdings", format: result.format || "CAS",
+              holder_names: result.holder_names || [], holder_pans: result.holder_pans || [],
+              accounts: [], statement_date: result.statement_date || null,
+              period_start: result.period_start || null, period_end: result.period_end || null,
+              depository: result.depository || "",
+            });
+          }
           if (result.holdings.length > 0) {
             try {
               const amfiList = await getAmfiList();

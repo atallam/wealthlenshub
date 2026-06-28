@@ -1269,40 +1269,7 @@ ${alertsText}`;
         />
       )}
 
-      {/* ── CAS Import modal ─────────────────────────────────────── */}
-      {casImport.casModal && (
-        <Overlay onClose={casImport.resetCASDownloader} wide>
-          <div className="modtitle">📄 Import CAS (NSDL/CDSL)</div>
-          <div style={{padding:'1.5rem 0',textAlign:'center',color:'var(--text-dim)',fontSize:'.82rem'}}>
-            {casImport.casStep === 'intro' && <>
-              <p style={{marginBottom:'1rem'}}>Upload your NSDL or CDSL Consolidated Account Statement PDF to import all mutual fund and stock holdings automatically.</p>
-              <button className="btns" onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file'; input.accept = '.pdf';
-                input.onchange = e => casImport.handleCASUpload(e.target.files[0], members);
-                input.click();
-              }}>Choose CAS PDF</button>
-            </>}
-            {casImport.casUploading && <div>Parsing CAS… please wait</div>}
-            {casImport.casStep === 'done' && casImport.casResult && (
-              <div style={{color:'var(--gain)',fontWeight:600}}>✓ Imported {casImport.casResult.inserted || 0} holdings from CAS</div>
-            )}
-            {casImport.casWarnings.length > 0 && (
-              <div style={{marginTop:'1rem',textAlign:'left'}}>
-                {casImport.casWarnings.map((w, i) => <div key={i} style={{fontSize:'.72rem',color:'#e07c5a'}}>⚠ {w}</div>)}
-              </div>
-            )}
-          </div>
-          <MA>
-            <button className="btnc" onClick={casImport.resetCASDownloader}>Close</button>
-          </MA>
-        </Overlay>
-      )}
-
-      {/* ── Broker import overlays ───────────────────────────────── */}
-      {showSnapTrade && <SnapTradeImport onClose={() => setShowSnapTrade(false)} onSuccess={() => { setShowSnapTrade(false); portfolio.reloadHoldings(); }}/>}
-      {showKite      && <KiteImport      onClose={() => setShowKite(false)}      onSuccess={() => { setShowKite(false);      portfolio.reloadHoldings(); }}/>}
-      {showBreeze    && <BreezeImport    onClose={() => setShowBreeze(false)}    onSuccess={() => { setShowBreeze(false);    portfolio.reloadHoldings(); }}/>}
+      {/* old inline CAS + broker overlays removed — now handled by CASImportModal and Import Hub above */}
 
       {/* ── Hidden file input for import ─────────────────────────── */}
       <input ref={importFileRef} type="file" style={{display:'none'}} accept=".csv,.xlsx,.xls,.pdf"
