@@ -3,7 +3,7 @@ import {
   LayoutDashboard, BarChart2, Target, Compass,
   Users, Wallet, CalendarDays, MessageSquare,
   RefreshCw, Settings, LogOut, Eye, X, MoreHorizontal,
-  AlertTriangle,
+  AlertTriangle, Download,
 } from 'lucide-react';
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
 import SnapTradeImport from './SnapTradeImport.jsx';
@@ -90,9 +90,10 @@ export default function App() {
   const [modal,            setModal]            = useState(null);
   const [fdScanOpen,       setFdScanOpen]       = useState(false);
   const [showSettings,     setShowSettings]     = useState(false);
-  const [showSnapTrade,    setShowSnapTrade]     = useState(false);
-  const [showKite,         setShowKite]          = useState(false);
-  const [showBreeze,       setShowBreeze]        = useState(false);
+  const [showImportHub,    setShowImportHub]    = useState(false);
+  const [showSnapTrade,    setShowSnapTrade]    = useState(false);
+  const [showKite,         setShowKite]         = useState(false);
+  const [showBreeze,       setShowBreeze]       = useState(false);
   const [moreSheetOpen,    setMoreSheetOpen]     = useState(false);
   const [expandedHolding,  setExpandedHolding]  = useState(null);
   const [showQuietAlerts,  setShowQuietAlerts]  = useState(false);
@@ -518,6 +519,9 @@ ${alertsText}`;
             <RefreshCw size={13} strokeWidth={2} style={priceRefreshing ? {animation:'spin 1s linear infinite'} : {}}/>
           </button>
 
+          <button className="btn-o" onClick={() => setShowImportHub(true)} title="Import Holdings">
+            <Download size={13} strokeWidth={2}/>
+          </button>
           <button className="btn-o" onClick={() => setShowSettings(true)} title="Settings"><Settings size={13} strokeWidth={2}/></button>
           <button className="btn-o" onClick={signOut} title="Sign out"><LogOut size={13} strokeWidth={2}/></button>
         </div>
@@ -669,6 +673,10 @@ ${alertsText}`;
                   <span className="msi-label">{t.label}</span>
                 </button>
               ))}
+              <button className="more-sheet-item" onClick={() => { setShowImportHub(true); setMoreSheetOpen(false); }}>
+                <span className="msi-icon"><Download size={22} strokeWidth={1.6}/></span>
+                <span className="msi-label">Import</span>
+              </button>
               <button className="more-sheet-item" onClick={() => { setShowSettings(true); setMoreSheetOpen(false); }}>
                 <span className="msi-icon"><Settings size={22} strokeWidth={1.6}/></span>
                 <span className="msi-label">Settings</span>
@@ -1073,23 +1081,95 @@ ${alertsText}`;
             <div style={{fontSize:'.85rem',color:'var(--text)',fontWeight:500}}>{user.email}</div>
           </div>
           <div style={{marginBottom:'1rem'}}>
-            <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.5rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Broker import</div>
-            <div style={{display:'flex',gap:'.4rem',flexWrap:'wrap'}}>
-              <button className="btn-o" onClick={() => { setShowSnapTrade(true); setShowSettings(false); }}>🇺🇸 SnapTrade (US)</button>
-              <button className="btn-o" onClick={() => { setShowKite(true); setShowSettings(false); }}>🇮🇳 Zerodha Kite</button>
-              <button className="btn-o" onClick={() => { setShowBreeze(true); setShowSettings(false); }}>🇮🇳 ICICI Breeze</button>
-            </div>
-          </div>
-          <div style={{marginBottom:'1rem'}}>
-            <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.5rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>CAS import</div>
-            <button className="btn-o" onClick={() => { casImport.setCasModal(true); setShowSettings(false); }}>
-              📄 Import NSDL/CDSL CAS
+            <button className="btn-o" onClick={() => { setShowImportHub(true); setShowSettings(false); }}>
+              <Download size={13} strokeWidth={2}/> Import Holdings
             </button>
           </div>
           <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem'}}>
             <button className="btn-o" style={{color:'var(--loss)',borderColor:'rgba(220,38,38,.25)'}}
               onClick={() => { if (confirm('Sign out?')) signOut(); }}>
               <LogOut size={13} strokeWidth={2}/> Sign Out
+            </button>
+          </div>
+        </Overlay>
+      )}
+
+      {/* ── Import Hub ───────────────────────────────────────────── */}
+      {showImportHub && (
+        <Overlay onClose={() => setShowImportHub(false)}>
+          <div className="modtitle" style={{marginBottom:'1.4rem'}}>
+            <Download size={16} strokeWidth={2} style={{display:'inline',verticalAlign:'middle',marginRight:'.45rem'}}/>
+            Import Holdings
+          </div>
+
+          {/* ── Indian brokers / mutual funds ── */}
+          <div style={{fontSize:'.65rem',letterSpacing:'.08em',textTransform:'uppercase',color:'var(--text-muted)',fontWeight:600,marginBottom:'.5rem'}}>🇮🇳 India</div>
+          <div style={{display:'flex',flexDirection:'column',gap:'.45rem',marginBottom:'1.1rem'}}>
+            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
+              onClick={() => { casImport.setCasModal(true); setShowImportHub(false); }}>
+              <span style={{fontSize:'1rem'}}>📄</span>
+              <span>
+                <span style={{fontWeight:600}}>NSDL / CDSL CAS</span>
+                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Import all mutual funds & demat holdings from your CAS PDF</span>
+              </span>
+            </button>
+            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
+              onClick={() => { setShowKite(true); setShowImportHub(false); }}>
+              <span style={{fontSize:'1rem'}}>📥</span>
+              <span>
+                <span style={{fontWeight:600}}>Zerodha Kite</span>
+                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Connect your Zerodha Kite account via Personal API</span>
+              </span>
+            </button>
+            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
+              onClick={() => { setShowBreeze(true); setShowImportHub(false); }}>
+              <span style={{fontSize:'1rem'}}>📥</span>
+              <span>
+                <span style={{fontWeight:600}}>ICICI Breeze</span>
+                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Sync your ICICI Direct / Breeze brokerage holdings</span>
+              </span>
+            </button>
+            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
+              onClick={() => { setShowImportHub(false); setForm(p => ({...p, type:'FD'})); setModal('add'); }}>
+              <span style={{fontSize:'1rem'}}>🏦</span>
+              <span>
+                <span style={{fontWeight:600}}>Fixed Deposit (FD)</span>
+                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Scan certificate with AI vision or enter details manually</span>
+              </span>
+            </button>
+          </div>
+
+          {/* ── US / Global ── */}
+          <div style={{fontSize:'.65rem',letterSpacing:'.08em',textTransform:'uppercase',color:'var(--text-muted)',fontWeight:600,marginBottom:'.5rem'}}>🇺🇸 US / Global</div>
+          <div style={{display:'flex',flexDirection:'column',gap:'.45rem',marginBottom:'1.1rem'}}>
+            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
+              onClick={() => { setShowSnapTrade(true); setShowImportHub(false); }}>
+              <span style={{fontSize:'1rem'}}>📥</span>
+              <span>
+                <span style={{fontWeight:600}}>SnapTrade — US Brokers</span>
+                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Connect TD Ameritrade, Schwab, Fidelity, Robinhood &amp; more</span>
+              </span>
+            </button>
+          </div>
+
+          {/* ── CSV / Manual ── */}
+          <div style={{fontSize:'.65rem',letterSpacing:'.08em',textTransform:'uppercase',color:'var(--text-muted)',fontWeight:600,marginBottom:'.5rem'}}>Manual / CSV</div>
+          <div style={{display:'flex',flexDirection:'column',gap:'.45rem'}}>
+            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
+              onClick={() => { setShowImportHub(false); setModal('import'); }}>
+              <span style={{fontSize:'1rem'}}>📊</span>
+              <span>
+                <span style={{fontWeight:600}}>CSV / Excel Import</span>
+                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Upload a spreadsheet of holdings or transactions</span>
+              </span>
+            </button>
+            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
+              onClick={() => { setShowImportHub(false); setModal('add'); }}>
+              <span style={{fontSize:'1rem'}}>✏️</span>
+              <span>
+                <span style={{fontWeight:600}}>Add Manually</span>
+                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Enter a single holding — stocks, MF, crypto, FD, PPF, EPF…</span>
+              </span>
             </button>
           </div>
         </Overlay>
@@ -1102,6 +1182,32 @@ ${alertsText}`;
           members={members}
           onClose={() => { casImport.resetCASDownloader(); }}
           onPriceRefresh={() => portfolio.refreshPrices?.()}
+        />
+      )}
+
+      {/* ── SnapTrade Import ─────────────────────────────────────── */}
+      {showSnapTrade && (
+        <SnapTradeImport
+          onClose={() => setShowSnapTrade(false)}
+          members={members}
+        />
+      )}
+
+      {/* ── Kite Import ──────────────────────────────────────────── */}
+      {showKite && (
+        <KiteImport
+          onClose={() => setShowKite(false)}
+          members={members}
+          api={api}
+        />
+      )}
+
+      {/* ── Breeze Import ────────────────────────────────────────── */}
+      {showBreeze && (
+        <BreezeImport
+          onClose={() => setShowBreeze(false)}
+          members={members}
+          api={api}
         />
       )}
 
