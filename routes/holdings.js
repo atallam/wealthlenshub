@@ -34,11 +34,32 @@ router.post("/import", auth, auditImport("HOLDINGS_IMPORT"), async (req, res) =>
     if (pMembers.length > 0) effectiveMemberId = pMembers[0].id;
   }
 
-  const { data: existing } = await supabase.from("holdings").select("id, name, ticker, scheme_code, type").eq("user_id", req.user.id);
+  // CAS imports are flush-and-fill: delete only the CAS holdings belonging to
+  // the member(s) in this statement — never touch manual or other-source holdings.
+  const isCASImport = !!cas_statement_date;
+  if (isCASImport) {
+    // Collect member IDs present in this CAS (via account_map + single member fallback).
+    const affectedMemberIds = new Set();
+    if (account_map) {
+      for (const mid of Object.values(account_map)) { if (mid) affectedMemberIds.add(mid); }
+    }
+    if (effectiveMemberId) affectedMemberIds.add(effectiveMemberId);
+
+    let deleteQ = supabase.from("holdings").delete().eq("user_id", req.user.id).eq("source", "cas");
+    if (affectedMemberIds.size > 0) {
+      deleteQ = deleteQ.in("member_id", [...affectedMemberIds]);
+    }
+    await deleteQ;
+  }
+
+  // For non-CAS imports, build an existingMap to support update-vs-insert.
   const existingMap = {};
-  for (const h of (existing || [])) {
-    const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
-    existingMap[key] = h.id;
+  if (!isCASImport) {
+    const { data: existing } = await supabase.from("holdings").select("id, name, ticker, scheme_code, type").eq("user_id", req.user.id);
+    for (const h of (existing || [])) {
+      const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
+      existingMap[key] = h.id;
+    }
   }
 
   await supabase.from("holdings").delete().eq("user_id", req.user.id).like("notes", "%__demo__%");
@@ -46,7 +67,7 @@ router.post("/import", auth, auditImport("HOLDINGS_IMPORT"), async (req, res) =>
   const inserted = [], updated = [], skipped = [], errors = [];
   for (const h of holdings) {
     const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
-    const existingId = existingMap[key];
+    const existingId = !isCASImport ? existingMap[key] : null;
 
     if (existingId && h._dupAction === "skip") { skipped.push(h.name); continue; }
 

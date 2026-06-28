@@ -112,14 +112,28 @@ router.get("/holdings/:accountId", auth, async (req, res) => {
   try {
     const conn = await getSnapConn(req.user.id);
     const client = getSnapClient();
+    const acctId = req.params.accountId;
     const brokerageName = req.query.brokerage || "SnapTrade";
+
+    // Fetch live positions, balances, and existing DB holdings in parallel.
+    // We only care about: (a) holdings already from THIS account's last sync,
+    // and (b) manually-added holdings for conflict warnings.
     const [posResp, balResp, existingResp] = await Promise.all([
-      client.accountInformation.getUserAccountPositions({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: req.params.accountId }),
-      client.accountInformation.getUserAccountBalance({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: req.params.accountId }),
-      supabase.from("holdings").select("id, ticker, units, name, type, source, source_account, brokerage_name, current_price, purchase_price").eq("user_id", req.user.id),
+      client.accountInformation.getUserAccountPositions({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: acctId }),
+      client.accountInformation.getUserAccountBalance({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: acctId }),
+      supabase.from("holdings").select("id, ticker, units, name, source, source_account").eq("user_id", req.user.id),
     ]);
-    const existingMap = {};
-    for (const h of existingResp.data || []) { if (h.ticker) existingMap[h.ticker.toUpperCase()] = h; }
+
+    // Split existing holdings: this account's previous snapshot vs manual entries.
+    const thisAcctMap = {};   // ticker → holding (from this SnapTrade account)
+    const manualMap   = {};   // ticker → holding (manual/non-snaptrade)
+    for (const h of existingResp.data || []) {
+      if (!h.ticker) continue;
+      const key = h.ticker.toUpperCase();
+      if (h.source === "snaptrade" && h.source_account === acctId) thisAcctMap[key] = h;
+      else if (h.source !== "snaptrade") manualMap[key] = h;
+    }
+
     const positions = (posResp.data || []).map(p => {
       const units = Number(p.units || 0), price = Number(p.price || 0), avg = Number(p.average_purchase_price || 0);
       const ticker = p.symbol?.symbol?.symbol || "UNKNOWN";
@@ -127,24 +141,43 @@ router.get("/holdings/:accountId", auth, async (req, res) => {
       const typeCode = _extractTypeCode(p.symbol?.symbol?.type);
       const isCashSweep = CASH_SWEEP_TICKERS.has(ticker.toUpperCase()) || (typeCode === "oef" && (desc.includes("money market") || desc.includes("cash") || desc.includes("sweep")));
       if (isCashSweep) return null;
-      const existing = existingMap[ticker.toUpperCase()];
+
+      // dup_status is now purely informational — no resolutions required.
+      // "existing" = was in this account's last snapshot (will be refreshed)
+      // "manual_conflict" = manual entry exists for same ticker (preserved separately)
+      // "new" = first time seeing this ticker in this account
+      const key = ticker.toUpperCase();
       let dup_status = "new", dup_detail = null;
-      if (existing) {
-        const existingUnits = Number(existing.units || 0);
-        const existSrc = existing.brokerage_name || existing.source || "manual";
-        if (existingUnits === units && existing.source === "snaptrade") { dup_status = "exact_match"; dup_detail = `Already imported: ${existingUnits} units via ${existSrc}`; }
-        else if (existing.source === "snaptrade") { dup_status = "qty_changed"; dup_detail = `${existSrc}: ${existingUnits} units → New: ${units} units`; }
-        else { dup_status = "manual_exists"; dup_detail = `Manual entry exists: ${existing.name} (${existingUnits || "?"} units) via ${existSrc}`; }
+      if (thisAcctMap[key]) {
+        const prev = thisAcctMap[key];
+        dup_status = "existing";
+        dup_detail = Math.abs(Number(prev.units) - units) > 0.001
+          ? `Was ${prev.units} units → now ${units} units`
+          : `${units} units (unchanged)`;
+      } else if (manualMap[key]) {
+        dup_status = "manual_conflict";
+        dup_detail = `Manual entry preserved: ${manualMap[key].name}`;
       }
-      return { ticker, asset_name: p.symbol?.symbol?.description || ticker, asset_type: snapHoldingType(p.symbol?.symbol), brokerage_name: brokerageName, source: "snaptrade", units, current_price: price, avg_cost: avg, market_value: units * price, unrealized_pnl: avg ? (price - avg) * units : 0, currency: p.symbol?.symbol?.currency?.code || "USD", dup_status, dup_detail, existing_id: existing?.id || null };
+
+      return { ticker, asset_name: p.symbol?.symbol?.description || ticker, asset_type: snapHoldingType(p.symbol?.symbol), brokerage_name: brokerageName, source: "snaptrade", units, current_price: price, avg_cost: avg, market_value: units * price, unrealized_pnl: avg ? (price - avg) * units : 0, currency: p.symbol?.symbol?.currency?.code || "USD", dup_status, dup_detail };
     }).filter(Boolean);
+
     const cashPositions = (balResp.data || []).filter(b => Number(b.cash || 0) > 0).map(b => {
       const cash = Number(b.cash), cur = b.currency?.code || "USD", ticker = `CASH-${cur}`;
-      const existing = existingMap[ticker.toUpperCase()];
-      return { ticker, asset_name: `Cash (${cur})`, asset_type: "CASH", brokerage_name: brokerageName, source: "snaptrade", units: 1, current_price: cash, avg_cost: cash, market_value: cash, unrealized_pnl: 0, currency: cur, dup_status: existing ? "exact_match" : "new", dup_detail: existing ? "Cash balance already tracked" : null, existing_id: existing?.id || null };
+      const key = ticker.toUpperCase();
+      return { ticker, asset_name: `Cash (${cur})`, asset_type: "CASH", brokerage_name: brokerageName, source: "snaptrade", units: 1, current_price: cash, avg_cost: cash, market_value: cash, unrealized_pnl: 0, currency: cur, dup_status: thisAcctMap[key] ? "existing" : "new", dup_detail: null };
     });
+
     const all = [...positions, ...cashPositions];
-    res.json({ account_id: req.params.accountId, assets: all, asset_count: all.length, total_market_value: Math.round(all.reduce((s, a) => s + a.market_value, 0) * 100) / 100, duplicates: { new_count: all.filter(a => a.dup_status === "new").length, exact_match_count: all.filter(a => a.dup_status === "exact_match").length, qty_changed_count: all.filter(a => a.dup_status === "qty_changed").length, manual_exists_count: all.filter(a => a.dup_status === "manual_exists").length } });
+    res.json({
+      account_id: acctId, assets: all, asset_count: all.length,
+      total_market_value: Math.round(all.reduce((s, a) => s + a.market_value, 0) * 100) / 100,
+      summary: {
+        new_count:            all.filter(a => a.dup_status === "new").length,
+        existing_count:       all.filter(a => a.dup_status === "existing").length,
+        manual_conflict_count: all.filter(a => a.dup_status === "manual_conflict").length,
+      },
+    });
   } catch (e) { sendError(res, e); }
 });
 
@@ -154,19 +187,25 @@ router.post("/import/:accountId", auth, async (req, res) => {
     const client = getSnapClient();
     const now = new Date().toISOString();
     const acctId = req.params.accountId;
-    const resolutions = req.body?.resolutions || {};
     const brokerageName = req.body?.brokerage_name || "SnapTrade";
     const memberId = req.body?.member_id || null;
-    const [posResp, balResp, existingResp] = await Promise.all([
+
+    // Fetch live positions and balances.
+    const [posResp, balResp] = await Promise.all([
       client.accountInformation.getUserAccountPositions({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: acctId }),
       client.accountInformation.getUserAccountBalance({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: acctId }),
-      supabase.from("holdings").select("id, ticker, units, name, type, source, current_price, purchase_price").eq("user_id", req.user.id),
     ]);
-    const existingMap = {};
-    for (const h of existingResp.data || []) { if (h.ticker) existingMap[h.ticker.toUpperCase()] = h; }
-    const newRows = [], updateOps = [];
-    let skipped = 0, merged = 0, replaced = 0;
-    const unresolved = [];
+
+    // Flush-and-fill: delete ONLY this account's previous snapshot.
+    // Manual holdings (source != 'snaptrade') and other accounts are never touched.
+    await supabase.from("holdings").delete()
+      .eq("user_id", req.user.id)
+      .eq("source", "snaptrade")
+      .eq("source_account", acctId);
+
+    // Build fresh rows from live positions.
+    const newRows = [];
+    let skipped = 0;
     for (const p of posResp.data || []) {
       const ticker = p.symbol?.symbol?.symbol || "UNKNOWN";
       const units = Number(p.units || 0), price = Number(p.price || 0), avg = Number(p.average_purchase_price || 0);
@@ -175,16 +214,6 @@ router.post("/import/:accountId", auth, async (req, res) => {
       const typeCode = _extractTypeCode(p.symbol?.symbol?.type);
       const isCashSweep = CASH_SWEEP_TICKERS.has(ticker.toUpperCase()) || (typeCode === "oef" && (descLow.includes("money market") || descLow.includes("cash") || descLow.includes("sweep")));
       if (isCashSweep) { skipped++; continue; }
-      const existing = existingMap[ticker.toUpperCase()];
-      const resolution = resolutions[ticker] || resolutions[ticker.toUpperCase()];
-      if (existing) {
-        if (!resolution) { unresolved.push(ticker); skipped++; continue; }
-        if (resolution === "skip") { skipped++; continue; }
-        const existingUnits = Number(existing.units || 0);
-        if (resolution === "merge") updateOps.push(supabase.from("holdings").update({ units: existingUnits + units, current_price: price, brokerage_name: brokerageName, source: "snaptrade", ...(memberId && { member_id: memberId }), price_fetched_at: now, last_synced: now }).eq("id", existing.id).then(r => { if (!r.error) merged++; }));
-        else updateOps.push(supabase.from("holdings").update({ units, type: snapHoldingType(p.symbol?.symbol), name: p.symbol?.symbol?.description || ticker, purchase_price: avg || price, current_price: price, currency: p.symbol?.symbol?.currency?.code || "USD", source: "snaptrade", source_account: acctId, brokerage_name: brokerageName, ...(memberId && { member_id: memberId }), last_synced: now, price_fetched_at: now }).eq("id", existing.id).then(r => { if (!r.error) replaced++; }));
-        continue;
-      }
       newRows.push({ id: `snap_${acctId}_${ticker}`.replace(/[^a-zA-Z0-9_-]/g, "_"), user_id: req.user.id, type: snapHoldingType(p.symbol?.symbol), ticker, name: p.symbol?.symbol?.description || ticker, units, purchase_price: avg || price, current_price: price, currency: p.symbol?.symbol?.currency?.code || "USD", source: "snaptrade", source_account: acctId, brokerage_name: brokerageName, ...(memberId && { member_id: memberId }), last_synced: now, price_fetched_at: now, start_date: now.slice(0, 10) });
     }
     for (const b of balResp.data || []) {
@@ -192,11 +221,16 @@ router.post("/import/:accountId", auth, async (req, res) => {
       const cur = b.currency?.code || "USD";
       newRows.push({ id: `snap_${acctId}_CASH_${cur}`, user_id: req.user.id, type: "CASH", ticker: `CASH-${cur}`, name: `Cash (${cur})`, units: 1, purchase_price: cash, current_price: cash, currency: cur, source: "snaptrade", source_account: acctId, brokerage_name: brokerageName, ...(memberId && { member_id: memberId }), last_synced: now, price_fetched_at: now, start_date: now.slice(0, 10) });
     }
-    const bulkUpsertPromise = newRows.length > 0 ? supabase.from("holdings").upsert(newRows, { onConflict: "id" }) : Promise.resolve({ error: null });
-    const [bulkResult] = await Promise.all([bulkUpsertPromise, ...updateOps, supabase.from("snaptrade_connections").update({ last_synced_at: now }).eq("owner_id", req.user.id)]);
-    const imported = bulkResult.error ? 0 : newRows.length;
-    if (bulkResult.error) console.error("SnapTrade bulk upsert error:", bulkResult.error.message);
-    res.json({ status: "imported", assets_imported: imported, assets_skipped: skipped, assets_merged: merged, assets_replaced: replaced, unresolved_tickers: unresolved, account_id: acctId, brokerage_name: brokerageName });
+
+    let imported = 0;
+    if (newRows.length > 0) {
+      const { error } = await supabase.from("holdings").insert(newRows);
+      if (error) { console.error("SnapTrade insert error:", error.message); return res.status(500).json({ error: error.message }); }
+      imported = newRows.length;
+    }
+    await supabase.from("snaptrade_connections").update({ last_synced_at: now }).eq("owner_id", req.user.id);
+
+    res.json({ status: "refreshed", assets_imported: imported, assets_skipped: skipped, account_id: acctId, brokerage_name: brokerageName });
   } catch (e) { sendError(res, e); }
 });
 

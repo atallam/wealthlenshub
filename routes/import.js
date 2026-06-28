@@ -154,11 +154,11 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
               await new Promise(r => setTimeout(r, 1500));
             }
 
-            const { data: existing } = await supabase.from("holdings").select("name, ticker, scheme_code, type").eq("user_id", req.user.id);
-            const existingSet = new Set((existing || []).map(h => `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`));
-            result.holdings = result.holdings.map(h => ({ ...h, _duplicate: existingSet.has(`${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`) }));
-            const dupCount = result.holdings.filter(h => h._duplicate).length;
-            if (dupCount > 0) result.warnings.push(`${dupCount} holding(s) already exist (marked as duplicates)`);
+            // CAS is flush-and-fill: count existing CAS holdings that will be replaced,
+            // but do NOT mark them as _duplicate (which would trigger the dup-review UI).
+            const { data: existingCAS } = await supabase.from("holdings").select("id").eq("user_id", req.user.id).eq("source", "cas");
+            const replaceCount = (existingCAS || []).length;
+            if (replaceCount > 0) result.warnings.push(`${replaceCount} existing CAS holding(s) will be replaced (flush & fill)`);
             return res.json({ ...result, detected_type: "holdings", accounts: result.accounts || [], holder_names: result.holder_names || [], holder_pans: result.holder_pans || [], statement_date: result.statement_date || null, period_start: result.period_start || null, period_end: result.period_end || null, depository: result.depository || "" });
           }
         }

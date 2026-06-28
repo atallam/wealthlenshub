@@ -62,11 +62,15 @@ const TYPE_DISPLAY = {
   OTHER: { label: "Other", color: "rgba(255,255,255,.5)", bg: "rgba(255,255,255,.05)" },
 };
 
+// Flush-and-fill: dup_status is informational only — no resolution required.
 const DUP_DISPLAY = {
-  new: { label: "New", color: "#4caf9a", icon: "✦", bg: "rgba(76,175,154,.1)" },
-  exact_match: { label: "Exists", color: "#c9a84c", icon: "≡", bg: "rgba(201,168,76,.1)" },
-  qty_changed: { label: "Updated", color: "#5a9ce0", icon: "↻", bg: "rgba(90,156,224,.1)" },
-  manual_exists: { label: "Manual", color: "#e07c5a", icon: "⚠", bg: "rgba(224,124,90,.1)" },
+  new:             { label: "New",      color: "#4caf9a", icon: "✦", bg: "rgba(76,175,154,.1)" },
+  existing:        { label: "Refresh",  color: "#5a9ce0", icon: "↻", bg: "rgba(90,156,224,.1)" },
+  manual_conflict: { label: "Manual ⚠", color: "#e07c5a", icon: "⚠", bg: "rgba(224,124,90,.1)" },
+  // legacy values — kept so any cached preview data doesn't break display
+  exact_match:  { label: "Refresh", color: "#5a9ce0", icon: "↻", bg: "rgba(90,156,224,.1)" },
+  qty_changed:  { label: "Refresh", color: "#5a9ce0", icon: "↻", bg: "rgba(90,156,224,.1)" },
+  manual_exists:{ label: "Manual ⚠", color: "#e07c5a", icon: "⚠", bg: "rgba(224,124,90,.1)" },
 };
 
 export default function SnapTradeImport({ onClose, members = [] }) {
@@ -79,8 +83,7 @@ export default function SnapTradeImport({ onClose, members = [] }) {
   const [selectedAcct, setSelectedAcct] = useState(null);
   const [selectedBrokerage, setSelectedBrokerage] = useState("");  // brokerage name for selected account
   const [holdings, setHoldings] = useState([]);
-  const [dupSummary, setDupSummary] = useState(null);
-  const [resolutions, setResolutions] = useState({});
+  const [previewSummary, setPreviewSummary] = useState(null);
   const [importResult, setImportResult] = useState(null);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(null);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -139,20 +142,10 @@ export default function SnapTradeImport({ onClose, members = [] }) {
     try {
       const resp = await api(`/api/snaptrade/holdings/${accountId}?brokerage=${encodeURIComponent(brokerageName || "")}`);
       setHoldings(resp.assets || []);
-      setDupSummary(resp.duplicates || null);
-      // Do NOT pre-fill resolutions — user must explicitly choose for every duplicate
-      setResolutions({});
+      setPreviewSummary(resp.summary || null);
       setStep("preview");
     } catch (e) { setError(e.message); }
     setLoading(false);
-  }
-
-  function setResolution(ticker, action) { setResolutions(prev => ({ ...prev, [ticker]: action })); }
-
-  function bulkResolve(action) {
-    const updated = { ...resolutions };
-    for (const h of holdings) { if (h.dup_status !== "new") updated[h.ticker] = action; }
-    setResolutions(updated);
   }
 
   async function doImport() {
@@ -162,7 +155,6 @@ export default function SnapTradeImport({ onClose, members = [] }) {
       const resp = await api(`/api/snaptrade/import/${selectedAcct}`, {
         method: "POST",
         body: JSON.stringify({
-          resolutions,
           brokerage_name: selectedBrokerage,
           member_id: memberMap[selectedAcct] || null,
         }),
@@ -195,10 +187,8 @@ export default function SnapTradeImport({ onClose, members = [] }) {
   }
 
   const fmtVal = n => "$" + Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
-  const hasDuplicates = dupSummary && (dupSummary.exact_match_count + dupSummary.qty_changed_count + dupSummary.manual_exists_count) > 0;
-  const unresolvedDupCount = holdings.filter(h => h.dup_status !== "new" && !resolutions[h.ticker]).length;
-  const importableCount = holdings.filter(h => h.dup_status === "new" || (resolutions[h.ticker] && resolutions[h.ticker] !== "skip")).length;
-  const canImport = unresolvedDupCount === 0 && importableCount > 0;
+  const manualConflictCount = holdings.filter(h => h.dup_status === "manual_conflict").length;
+  const canImport = holdings.length > 0;
 
   return (
     <div>
@@ -290,29 +280,20 @@ export default function SnapTradeImport({ onClose, members = [] }) {
           )}
         </div>
 
-        {hasDuplicates && (<div style={{ background: unresolvedDupCount > 0 ? "rgba(224,124,90,.06)" : "rgba(201,168,76,.06)", border: `1px solid ${unresolvedDupCount > 0 ? "rgba(224,124,90,.25)" : "rgba(201,168,76,.2)"}`, borderRadius: 8, padding: ".7rem .85rem", marginBottom: "1rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: ".5rem", marginBottom: ".5rem" }}>
-            <span style={{ fontSize: ".85rem" }}>⚠</span>
-            <span style={{ fontSize: ".78rem", color: unresolvedDupCount > 0 ? "#e07c5a" : "#c9a84c", fontWeight: 500 }}>
-              {unresolvedDupCount > 0
-                ? `${unresolvedDupCount} duplicate${unresolvedDupCount > 1 ? "s" : ""} need${unresolvedDupCount === 1 ? "s" : ""} your decision`
-                : "Duplicates resolved"}
-            </span>
-          </div>
-          <div style={{ fontSize: ".68rem", color: "rgba(255,255,255,.55)", lineHeight: 1.6, marginBottom: ".6rem" }}>
-            {dupSummary.exact_match_count > 0 && <span style={{ marginRight: 12 }}>≡ {dupSummary.exact_match_count} already imported</span>}
-            {dupSummary.qty_changed_count > 0 && <span style={{ marginRight: 12 }}>↻ {dupSummary.qty_changed_count} quantity changed</span>}
-            {dupSummary.manual_exists_count > 0 && <span>⚠ {dupSummary.manual_exists_count} manual entries</span>}
-          </div>
-          <div style={{ display: "flex", gap: ".4rem", flexWrap: "wrap" }}>
-            <span style={{ fontSize: ".62rem", color: "rgba(255,255,255,.4)", lineHeight: "26px", marginRight: 4 }}>Bulk:</span>
-            {["skip", "replace", "merge"].map(action => (
-              <button key={action} onClick={() => bulkResolve(action)} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.12)", color: "rgba(255,255,255,.6)", padding: ".2rem .55rem", borderRadius: 4, cursor: "pointer", fontSize: ".62rem", transition: "all .15s", textTransform: "capitalize" }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,.4)"; e.currentTarget.style.color = "#a78bfa"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,.12)"; e.currentTarget.style.color = "rgba(255,255,255,.6)"; }}>{action} all</button>
-            ))}
-          </div>
-        </div>)}
+        {/* Flush-and-fill info banner */}
+        <div style={{ background: "rgba(90,156,224,.05)", border: "1px solid rgba(90,156,224,.2)", borderRadius: 8, padding: ".6rem .85rem", marginBottom: "1rem", fontSize: ".7rem", color: "rgba(255,255,255,.6)", lineHeight: 1.6 }}>
+          <span style={{ color: "#5a9ce0", fontWeight: 500 }}>↻ Refresh mode</span>
+          {" — "}previous {selectedBrokerage} positions will be replaced with this live snapshot.
+          {previewSummary && (<span style={{ marginLeft: 8, color: "rgba(255,255,255,.4)" }}>
+            {previewSummary.new_count > 0 && `✦ ${previewSummary.new_count} new `}
+            {previewSummary.existing_count > 0 && `↻ ${previewSummary.existing_count} refreshed `}
+          </span>)}
+          {manualConflictCount > 0 && (
+            <div style={{ marginTop: ".3rem", color: "#e07c5a" }}>
+              ⚠ {manualConflictCount} manually-added holding{manualConflictCount > 1 ? "s" : ""} with matching ticker{manualConflictCount > 1 ? "s" : ""} will be preserved separately.
+            </div>
+          )}
+        </div>
 
         {holdings.length > 0 ? (<div style={{ maxHeight: 360, overflowY: "auto", marginBottom: "1rem" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -320,15 +301,11 @@ export default function SnapTradeImport({ onClose, members = [] }) {
               <th style={thStyle}>Ticker</th><th style={thStyle}>Type</th><th style={thStyle}>Source</th>
               <th style={{ ...thStyle, textAlign: "right" }}>Units</th><th style={{ ...thStyle, textAlign: "right" }}>Price</th>
               <th style={{ ...thStyle, textAlign: "right" }}>Value</th><th style={thStyle}>Status</th>
-              {hasDuplicates && <th style={thStyle}>Action</th>}
             </tr></thead>
             <tbody>{holdings.map((h, i) => {
               const typeInfo = TYPE_DISPLAY[h.asset_type] || TYPE_DISPLAY.OTHER;
               const dupInfo = DUP_DISPLAY[h.dup_status] || DUP_DISPLAY.new;
-              const resolution = resolutions[h.ticker];
-              const isSkipped = resolution === "skip";
-              const isUnresolved = h.dup_status !== "new" && !resolution;
-              return (<tr key={i} style={{ borderBottom: `1px solid ${isUnresolved ? "rgba(224,124,90,.15)" : "rgba(255,255,255,.04)"}`, opacity: isSkipped ? 0.4 : 1, transition: "opacity .2s", background: isUnresolved ? "rgba(224,124,90,.03)" : "transparent" }}>
+              return (<tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
                 <td style={tdStyle}><div style={{ fontWeight: 500, color: "#fff" }}>{h.ticker}</div><div style={{ fontSize: ".6rem", color: "rgba(255,255,255,.4)", marginTop: 1, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.asset_name}</div></td>
                 <td style={tdStyle}><span style={{ fontSize: ".58rem", padding: ".1rem .35rem", borderRadius: 3, background: typeInfo.bg, color: typeInfo.color, whiteSpace: "nowrap" }}>{typeInfo.label}</span></td>
                 <td style={tdStyle}><span style={{ fontSize: ".58rem", color: "rgba(255,255,255,.45)" }}>{h.brokerage_name || h.source || "—"}</span></td>
@@ -339,31 +316,18 @@ export default function SnapTradeImport({ onClose, members = [] }) {
                   <span style={{ fontSize: ".58rem", padding: ".1rem .35rem", borderRadius: 3, background: dupInfo.bg, color: dupInfo.color, whiteSpace: "nowrap" }}>{dupInfo.icon} {dupInfo.label}</span>
                   {h.dup_detail && <div style={{ fontSize: ".55rem", color: "rgba(255,255,255,.35)", marginTop: 2, maxWidth: 140, lineHeight: 1.3 }}>{h.dup_detail}</div>}
                 </td>
-                {hasDuplicates && (<td style={tdStyle}>
-                  {h.dup_status !== "new" ? (<div style={{ display: "flex", gap: ".2rem" }}>
-                    {["skip", "replace", "merge"].map(action => (
-                      <button key={action} onClick={() => setResolution(h.ticker, action)} style={{
-                        background: resolution === action ? actionColors[action].bg : "transparent",
-                        border: `1px solid ${resolution === action ? actionColors[action].border : isUnresolved ? "rgba(224,124,90,.3)" : "rgba(255,255,255,.1)"}`,
-                        color: resolution === action ? actionColors[action].color : isUnresolved ? "rgba(224,124,90,.6)" : "rgba(255,255,255,.35)",
-                        padding: ".12rem .3rem", borderRadius: 3, cursor: "pointer", fontSize: ".55rem", transition: "all .15s", textTransform: "capitalize", lineHeight: 1.2,
-                      }}>{action === "skip" ? "Skip" : action === "replace" ? "Replace" : "Merge"}</button>
-                    ))}
-                  </div>) : (<span style={{ fontSize: ".58rem", color: "rgba(76,175,154,.6)" }}>Auto-import</span>)}
-                </td>)}
               </tr>);
             })}</tbody>
           </table>
         </div>) : (<div style={{ textAlign: "center", padding: "2rem", color: "rgba(255,255,255,.4)", fontSize: ".8rem" }}>No positions found in this account.</div>)}
 
         <div style={{ display: "flex", gap: ".6rem", justifyContent: "flex-end", alignItems: "center" }}>
-          <button onClick={() => { setStep("accounts"); setHoldings([]); setResolutions({}); setDupSummary(null); }} style={btnSecondary}>← Back</button>
-          {holdings.length > 0 && (<button onClick={doImport} disabled={!canImport} style={{ ...btnPrimary, opacity: canImport ? 1 : 0.45, cursor: canImport ? "pointer" : "not-allowed" }}>
-            {unresolvedDupCount > 0
-              ? `Resolve ${unresolvedDupCount} duplicate${unresolvedDupCount > 1 ? "s" : ""} to continue`
-              : `Import ${importableCount} position${importableCount !== 1 ? "s" : ""} into WealthLens`
-            }
-          </button>)}
+          <button onClick={() => { setStep("accounts"); setHoldings([]); setPreviewSummary(null); }} style={btnSecondary}>← Back</button>
+          {holdings.length > 0 && (
+            <button onClick={doImport} disabled={!canImport} style={{ ...btnPrimary, opacity: canImport ? 1 : 0.45, cursor: canImport ? "pointer" : "not-allowed" }}>
+              Refresh {holdings.length} position{holdings.length !== 1 ? "s" : ""}
+            </button>
+          )}
         </div>
       </div>)}
 
@@ -372,13 +336,11 @@ export default function SnapTradeImport({ onClose, members = [] }) {
         <div style={{ fontSize: "2.2rem", marginBottom: ".6rem" }}>✅</div>
         <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "1.15rem", color: "#ffffff", marginBottom: ".4rem" }}>Import Complete</div>
         <div style={{ display: "flex", gap: ".8rem", justifyContent: "center", flexWrap: "wrap", marginBottom: "1.2rem", fontSize: ".72rem" }}>
-          {importResult.assets_imported > 0 && <span style={{ color: "#4caf9a" }}>✦ {importResult.assets_imported} imported</span>}
-          {(importResult.assets_replaced || 0) > 0 && <span style={{ color: "#5a9ce0" }}>↻ {importResult.assets_replaced} replaced</span>}
-          {(importResult.assets_merged || 0) > 0 && <span style={{ color: "#a084ca" }}>⊕ {importResult.assets_merged} merged</span>}
-          {(importResult.assets_skipped || 0) > 0 && <span style={{ color: "rgba(255,255,255,.4)" }}>— {importResult.assets_skipped} skipped</span>}
+          {importResult.assets_imported > 0 && <span style={{ color: "#4caf9a" }}>↻ {importResult.assets_imported} positions refreshed</span>}
+          {(importResult.assets_skipped || 0) > 0 && <span style={{ color: "rgba(255,255,255,.4)" }}>— {importResult.assets_skipped} skipped (cash sweeps)</span>}
         </div>
         <div style={{ display: "flex", gap: ".6rem", justifyContent: "center" }}>
-          <button onClick={() => { setStep("accounts"); setImportResult(null); setResolutions({}); }} style={btnSecondary}>Import another account</button>
+          <button onClick={() => { setStep("accounts"); setImportResult(null); }} style={btnSecondary}>Refresh another account</button>
           <button onClick={onClose} style={btnPrimary}>Done</button>
         </div>
       </div>)}
@@ -410,8 +372,3 @@ const thStyle = { fontSize: ".6rem", letterSpacing: ".08em", textTransform: "upp
 const tdStyle = { padding: ".55rem .5rem", fontSize: ".75rem", color: "rgba(255,255,255,.8)" };
 const btnSecondary = { background: "none", border: "1px solid rgba(255,255,255,.15)", color: "rgba(255,255,255,.6)", padding: ".52rem 1rem", borderRadius: 6, cursor: "pointer", fontSize: ".78rem", transition: "all .2s", fontFamily: "'DM Sans',sans-serif" };
 const btnPrimary = { background: "rgba(167,139,250,.14)", border: "1px solid rgba(167,139,250,.48)", color: "#a78bfa", padding: ".52rem 1.2rem", borderRadius: 6, cursor: "pointer", fontSize: ".78rem", fontWeight: 500, transition: "all .2s", fontFamily: "'DM Sans',sans-serif" };
-const actionColors = {
-  skip: { bg: "rgba(255,255,255,.06)", border: "rgba(255,255,255,.18)", color: "rgba(255,255,255,.5)" },
-  replace: { bg: "rgba(90,156,224,.1)", border: "rgba(90,156,224,.35)", color: "#5a9ce0" },
-  merge: { bg: "rgba(160,132,202,.1)", border: "rgba(160,132,202,.35)", color: "#a084ca" },
-};

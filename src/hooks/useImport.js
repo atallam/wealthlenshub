@@ -18,6 +18,7 @@ export function useImport(user, onSuccess) {
     warnings: [], progress: 0, result: null, dragOver: false,
     assignMember: "", accounts: [], accountMap: {},
     pendingFile: null, needsPassword: false, casPan: "", casDob: "", casRemember: false,
+    casStatementDate: null,  // populated from CAS detect response; sent to /api/holdings/import
     dupAction: {},       // { holdingIndex: "skip"|"update" } per-holding duplicate decisions
     dupBulk: "ask",      // "ask" | "update_all" | "skip_all" | "pick"
     dupConfirmed: false,  // true once user confirms duplicate handling
@@ -91,6 +92,7 @@ export function useImport(user, onSuccess) {
           ...s, step: "preview", mode: "holdings", format: data.format || "Unknown",
           holdings: data.holdings || [], warnings: autoWarnings,
           accounts: accts, accountMap: autoMap,
+          casStatementDate: data.statement_date || null,
         }));
       }
     } catch (e) {
@@ -128,7 +130,7 @@ export function useImport(user, onSuccess) {
 
   // ── Execute Import ── Lines 2111–2157
   async function executeImport(members) {
-    const { mode, holdings: impHoldings, transactions: impTxns, assignMember, accountMap, format } = importState;
+    const { mode, holdings: impHoldings, transactions: impTxns, assignMember, accountMap, format, casStatementDate } = importState;
     setImportState(s => ({ ...s, step: "importing", progress: 0 }));
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -158,6 +160,7 @@ export function useImport(user, onSuccess) {
             holdings: enriched,
             member_id: assignMember || (members && members[0]?.id) || "",
             account_map: Object.keys(accountMap).length > 0 ? accountMap : undefined,
+            ...(isCAS && casStatementDate ? { cas_statement_date: casStatementDate } : {}),
           }),
         });
         result = await res.json();
@@ -176,6 +179,7 @@ export function useImport(user, onSuccess) {
       warnings: [], progress: 0, result: null, dragOver: false, assignMember: "",
       accounts: [], accountMap: {}, dupAction: {}, dupBulk: "ask", dupConfirmed: false,
       pendingFile: null, needsPassword: false, casPan: "", casDob: "", casRemember: false,
+      casStatementDate: null,
     });
   }
 
