@@ -1,13 +1,16 @@
 import { useState, useRef } from 'react';
 import { FG } from './Overlay.jsx';
+import { supabase } from '../../supabase.js';
 
 /* ══════════════════════════════════════════════
    ARTIFACT PANEL (per holding)
    Extracted from App.jsx lines 871–964
 ══════════════════════════════════════════════ */
 
-// api helper — uses the passed token (Authorization header attached here)
-async function api(path, opts={}, token="") {
+// api helper — fetches its own session token from Supabase
+async function api(path, opts={}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token || "";
   const isForm = opts.body instanceof FormData;
   const headers = { Authorization:`Bearer ${token}`, ...(isForm?{}:{"Content-Type":"application/json"}), ...(opts.headers||{}) };
   const res = await fetch(path, { ...opts, headers });
@@ -33,7 +36,7 @@ export default function ArtifactPanel({ holding, token, onClose }) {
     fd.append("holdingId", holding.id);
     fd.append("description", desc);
     try {
-      const result = await api("/api/artifacts/upload", { method:"POST", body:fd }, token);
+      const result = await api("/api/artifacts/upload", { method:"POST", body:fd });
       setArtifacts(p => [{
         id: result.id, file_name: result.file_name, description: desc,
         file_size: file.size, file_type: file.type,
@@ -46,14 +49,14 @@ export default function ArtifactPanel({ holding, token, onClose }) {
 
   async function download(art) {
     try {
-      const { url } = await api(`/api/artifacts/download/${art.id}`, {}, token);
+      const { url } = await api(`/api/artifacts/download/${art.id}`, {});
       window.open(url, "_blank");
     } catch(e) { alert("Download failed: " + e.message); }
   }
 
   async function remove(id) {
     if (!confirm("Delete this file?")) return;
-    await api(`/api/artifacts/${id}`, { method:"DELETE" }, token);
+    await api(`/api/artifacts/${id}`, { method:"DELETE" });
     setArtifacts(p => p.filter(a => a.id !== id));
   }
 

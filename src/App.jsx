@@ -1073,9 +1073,11 @@ ${alertsText}`;
           onAddTxn={() => portfolio.addTransaction(txnForm, null, null, txnHolding, txnSaving)
             .then(res => { if (res?.hlds) setTxnForm(BT); })}
           onDeleteTxn={(txnId, holdingId) => portfolio.deleteTransaction(txnId, holdingId)}
+          onReload={portfolio.reloadHoldings}
           onClose={() => setTxnHolding(null)}
-          isUSDHolding={isUSDHolding}
-          usdInrRate={usdInrRate}
+          fxRate={usdInrRate}
+          fxLoading={usdInrLoading}
+          onFetchFx={fetchUsdInr}
         />
       )}
 
