@@ -204,4 +204,12 @@ export default function CalendarTab({
               <div key={l.label} style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".35rem"}}>
                 <div style={{fontSize:".85rem"}}>{l.icon}</div>
                 <div style={{fontSize:".73rem",color:"var(--text-dim)"}}>{l.label}</div>
-                <div style={{width:8,height:8,borderRadius:"50%
+                <div style={{width:8,height:8,borderRadius:"50%",background:l.color,marginLeft:"auto"}}/>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
