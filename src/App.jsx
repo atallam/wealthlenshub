@@ -1,4 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import {
+  LayoutDashboard, BarChart2, Target, Compass,
+  Users, Wallet, CalendarDays, MessageSquare,
+  RefreshCw, Settings, LogOut, Eye, X, MoreHorizontal,
+  AlertTriangle,
+} from 'lucide-react';
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
 import SnapTradeImport from './SnapTradeImport.jsx';
 import KiteImport from './KiteImport.jsx';
@@ -60,14 +66,14 @@ async function api(path, opts = {}) {
 }
 
 const TABS = [
-  { key: 'overview',  label: 'Overview',  icon: '◈' },
-  { key: 'holdings',  label: 'Holdings',  icon: '⊞' },
-  { key: 'goals',     label: 'Goals',     icon: '◎' },
-  { key: 'strategy',  label: 'Strategy',  icon: '⌖' },
-  { key: 'members',   label: 'Members',   icon: '◉' },
-  { key: 'budget',    label: 'Budget',    icon: '₹' },
-  { key: 'calendar',  label: 'Calendar',  icon: '⊡' },
-  { key: 'advisor',   label: 'Advisor',   icon: '✦' },
+  { key: 'overview',  label: 'Overview',  Icon: LayoutDashboard },
+  { key: 'holdings',  label: 'Holdings',  Icon: BarChart2 },
+  { key: 'goals',     label: 'Goals',     Icon: Target },
+  { key: 'strategy',  label: 'Strategy',  Icon: Compass },
+  { key: 'members',   label: 'Members',   Icon: Users },
+  { key: 'budget',    label: 'Budget',    Icon: Wallet },
+  { key: 'calendar',  label: 'Calendar',  Icon: CalendarDays },
+  { key: 'advisor',   label: 'Advisor',   Icon: MessageSquare },
 ];
 
 export default function App() {
@@ -453,7 +459,7 @@ ${alertsText}`;
         <div className="hdr-left">
           <div className="logo">Wealth<span>Lens</span></div>
           {demoMode && (
-            <span style={{marginLeft:'.7rem',fontSize:'.62rem',background:'rgba(160,132,202,.15)',border:'1px solid rgba(160,132,202,.35)',color:'#a084ca',borderRadius:4,padding:'2px 8px',letterSpacing:'.06em'}}>
+            <span style={{marginLeft:'.5rem',fontSize:'.62rem',background:'rgba(160,132,202,.12)',border:'1px solid rgba(160,132,202,.3)',color:'#A084CA',borderRadius:4,padding:'2px 8px',letterSpacing:'.06em',fontWeight:600}}>
               DEMO
             </span>
           )}
@@ -462,25 +468,25 @@ ${alertsText}`;
         <div className="hdr-right">
           {/* Viewing shared portfolio indicator */}
           {viewingShared && (
-            <div style={{display:'flex',alignItems:'center',gap:'.4rem',fontSize:'.72rem',color:'rgba(255,255,255,.5)',background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.08)',borderRadius:6,padding:'.3rem .65rem'}}>
-              <span>👁 {viewingShared.owner_name}</span>
-              <button className="delbtn" onClick={shares.exitSharedView}>✕</button>
+            <div style={{display:'flex',alignItems:'center',gap:'.4rem',fontSize:'.72rem',color:'var(--text-dim)',background:'var(--bg-muted)',border:'1px solid var(--border)',borderRadius:6,padding:'.3rem .65rem'}}>
+              <Eye size={13} strokeWidth={2}/>
+              <span>{viewingShared.owner_name}</span>
+              <button className="delbtn" style={{minWidth:'auto',minHeight:'auto',padding:'2px 4px'}} onClick={shares.exitSharedView}><X size={12}/></button>
             </div>
           )}
 
           {/* Shared portfolios dropdown */}
           {sharedWithMe.length > 0 && !viewingShared && (
             <div style={{position:'relative'}}>
-              <button className="btn-o" style={{fontSize:'.72rem',padding:'.3rem .7rem'}}
-                onClick={() => setShowSharedDropdown(p => !p)}>
-                👥 Shared ({sharedWithMe.length})
+              <button className="btn-o" onClick={() => setShowSharedDropdown(p => !p)}>
+                <Users size={13} strokeWidth={2}/> Shared ({sharedWithMe.length})
               </button>
               {showSharedDropdown && (
-                <div style={{position:'absolute',right:0,top:'110%',minWidth:200,background:'#0c1526',border:'1px solid rgba(255,255,255,.1)',borderRadius:8,padding:'.4rem',zIndex:999,boxShadow:'0 8px 32px rgba(0,0,0,.4)'}}>
+                <div style={{position:'absolute',right:0,top:'110%',minWidth:200,background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:8,padding:'.4rem',zIndex:999,boxShadow:'var(--shadow-lg)'}}>
                   {sharedWithMe.map(s => (
                     <div key={s.owner_id}
                       onClick={() => { shares.viewSharedPortfolio(s.owner_id, s.owner_name, s.role); setShowSharedDropdown(false); }}
-                      style={{padding:'.5rem .7rem',cursor:'pointer',borderRadius:6,fontSize:'.78rem',color:'rgba(255,255,255,.8)'}}>
+                      style={{padding:'.5rem .7rem',cursor:'pointer',borderRadius:6,fontSize:'.78rem',color:'var(--text)'}}>
                       {s.owner_name}
                     </div>
                   ))}
@@ -490,29 +496,30 @@ ${alertsText}`;
           )}
 
           {/* Sync status */}
-          {syncSt === 'saving' && <span style={{fontSize:'.65rem',color:'rgba(255,255,255,.3)'}}>saving…</span>}
-          {syncSt === 'saved'  && <span style={{fontSize:'.65rem',color:'rgba(76,175,154,.5)'}}>saved</span>}
-          {syncSt === 'error'  && <span style={{fontSize:'.65rem',color:'#e07c5a'}}>save error</span>}
+          {syncSt === 'saving' && <span className="sync-saving">saving…</span>}
+          {syncSt === 'saved'  && <span className="sync-saved">saved</span>}
+          {syncSt === 'error'  && <span className="sync-error">save error</span>}
 
           {/* Triggered alerts badge */}
           {trigAlerts.length > 0 && (
-            <button className="btn-o" style={{fontSize:'.72rem',padding:'.3rem .65rem',borderColor:'rgba(224,124,90,.4)',color:'#e07c5a'}}
+            <button className="btn-o" style={{borderColor:'rgba(220,38,38,.3)',color:'var(--loss)'}}
               onClick={() => setTab('strategy')}>
-              ⚠ {trigAlerts.length}
+              <AlertTriangle size={13} strokeWidth={2}/> {trigAlerts.length}
             </button>
           )}
 
           {/* Price refresh */}
-          <button className="btn-o" style={{fontSize:'.72rem',padding:'.3rem .65rem'}}
+          <button className="btn-o"
             onClick={portfolio.refreshPrices} disabled={priceRefreshing}
             title={lastPriceRefresh ? `Last: ${ago(lastPriceRefresh)}` : 'Refresh prices'}>
-            {priceRefreshing ? '⟳…' : '⟳'}
+            <RefreshCw size={13} strokeWidth={2} style={priceRefreshing ? {animation:'spin 1s linear infinite'} : {}}/>
           </button>
 
-          <button className="btn-o" style={{fontSize:'.72rem',padding:'.3rem .65rem'}} onClick={() => setShowSettings(true)}>⚙</button>
-          <button className="btn-o" style={{fontSize:'.72rem',padding:'.3rem .65rem'}} onClick={signOut}>↩</button>
+          <button className="btn-o" onClick={() => setShowSettings(true)} title="Settings"><Settings size={13} strokeWidth={2}/></button>
+          <button className="btn-o" onClick={signOut} title="Sign out"><LogOut size={13} strokeWidth={2}/></button>
         </div>
       </header>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
       {/* ── MEMBER FILTER BAR ──────────────────────────────────── */}
       {allMembers.length > 1 && (
@@ -530,7 +537,7 @@ ${alertsText}`;
       <nav className="tabs">
         {TABS.map(t => (
           <button key={t.key} className={tab === t.key ? 'tab active' : 'tab'} onClick={() => setTab(t.key)}>
-            <span className="tab-icon">{t.icon}</span>
+            <span className="tab-icon"><t.Icon size={15} strokeWidth={1.8}/></span>
             <span className="tab-label">{t.label}</span>
           </button>
         ))}
@@ -630,12 +637,12 @@ ${alertsText}`;
       <nav className="bnav">
         {TABS.slice(0, 4).map(t => (
           <button key={t.key} className={tab === t.key ? 'bnav-btn active' : 'bnav-btn'} onClick={() => setTab(t.key)}>
-            <span className="bnav-icon">{t.icon}</span>
+            <span className="bnav-icon"><t.Icon size={20} strokeWidth={1.7}/></span>
             <span className="bnav-label">{t.label}</span>
           </button>
         ))}
         <button className={moreSheetOpen ? 'bnav-btn active' : 'bnav-btn'} onClick={() => setMoreSheetOpen(p => !p)}>
-          <span className="bnav-icon">⋯</span>
+          <span className="bnav-icon"><MoreHorizontal size={20} strokeWidth={1.7}/></span>
           <span className="bnav-label">More</span>
         </button>
       </nav>
@@ -646,7 +653,7 @@ ${alertsText}`;
           {TABS.slice(4).map(t => (
             <button key={t.key} className={tab === t.key ? 'bnav-btn active' : 'bnav-btn'}
               onClick={() => { setTab(t.key); setMoreSheetOpen(false); }}>
-              <span className="bnav-icon">{t.icon}</span>
+              <span className="bnav-icon"><t.Icon size={20} strokeWidth={1.7}/></span>
               <span className="bnav-label">{t.label}</span>
             </button>
           ))}
@@ -681,11 +688,11 @@ ${alertsText}`;
             <FG label="Search Mutual Fund">
               <input className="fi" placeholder="e.g. Mirae Asset, Axis Midcap…" value={mfSearch}
                 onChange={e => handleMfSearch(e.target.value)}/>
-              {mfSearching && <div style={{fontSize:'.72rem',color:'rgba(255,255,255,.4)',marginTop:'.3rem'}}>Searching…</div>}
+              {mfSearching && <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginTop:'.3rem'}}>Searching…</div>}
               {mfResults.length > 0 && (
-                <div style={{maxHeight:180,overflowY:'auto',border:'1px solid rgba(255,255,255,.1)',borderRadius:6,marginTop:'.3rem'}}>
+                <div style={{maxHeight:180,overflowY:'auto',border:'1px solid var(--border)',borderRadius:6,marginTop:'.3rem',background:'var(--bg-card)',boxShadow:'var(--shadow-md)'}}>
                   {mfResults.map(f => (
-                    <div key={f.schemeCode} style={{padding:'.5rem .75rem',cursor:'pointer',fontSize:'.78rem',borderBottom:'1px solid rgba(255,255,255,.04)'}}
+                    <div key={f.schemeCode} style={{padding:'.5rem .75rem',cursor:'pointer',fontSize:'.78rem',borderBottom:'1px solid var(--border)',color:'var(--text)'}}
                       onClick={() => { setForm(p => ({ ...p, name: f.schemeName, scheme_code: String(f.schemeCode) })); setMfSearch(f.schemeName); setMfResults([]); }}>
                       {f.schemeName}
                     </div>
@@ -700,13 +707,13 @@ ${alertsText}`;
             <FG label="Search Indian Stock">
               <input className="fi" placeholder="e.g. RELIANCE, TCS…" value={stockSearch}
                 onChange={e => handleStockSearch(e.target.value)}/>
-              {stockSearching && <div style={{fontSize:'.72rem',color:'rgba(255,255,255,.4)',marginTop:'.3rem'}}>Searching…</div>}
+              {stockSearching && <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginTop:'.3rem'}}>Searching…</div>}
               {stockResults.length > 0 && (
-                <div style={{maxHeight:180,overflowY:'auto',border:'1px solid rgba(255,255,255,.1)',borderRadius:6,marginTop:'.3rem'}}>
+                <div style={{maxHeight:180,overflowY:'auto',border:'1px solid var(--border)',borderRadius:6,marginTop:'.3rem',background:'var(--bg-card)',boxShadow:'var(--shadow-md)'}}>
                   {stockResults.map(r => (
-                    <div key={r.symbol} style={{padding:'.5rem .75rem',cursor:'pointer',fontSize:'.78rem',borderBottom:'1px solid rgba(255,255,255,.04)'}}
+                    <div key={r.symbol} style={{padding:'.5rem .75rem',cursor:'pointer',fontSize:'.78rem',borderBottom:'1px solid var(--border)',color:'var(--text)'}}
                       onClick={() => { setForm(p => ({ ...p, ticker: r.symbol, name: r.name || r.symbol })); setStockSearch(r.name || r.symbol); setStockResults([]); }}>
-                      <span style={{color:'#c9a84c',fontFamily:'monospace'}}>{r.symbol}</span> — {r.name}
+                      <span style={{color:'var(--gold)',fontFamily:'var(--font-mono)'}}>{r.symbol}</span> — {r.name}
                     </div>
                   ))}
                 </div>
@@ -719,13 +726,13 @@ ${alertsText}`;
             <FG label="Search Indian ETF">
               <input className="fi" placeholder="e.g. NIFTYBEES, GOLDBEES…" value={etfSearch}
                 onChange={e => handleEtfSearch(e.target.value)}/>
-              {etfSearching && <div style={{fontSize:'.72rem',color:'rgba(255,255,255,.4)',marginTop:'.3rem'}}>Searching…</div>}
+              {etfSearching && <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginTop:'.3rem'}}>Searching…</div>}
               {etfResults.length > 0 && (
-                <div style={{maxHeight:180,overflowY:'auto',border:'1px solid rgba(255,255,255,.1)',borderRadius:6,marginTop:'.3rem'}}>
+                <div style={{maxHeight:180,overflowY:'auto',border:'1px solid var(--border)',borderRadius:6,marginTop:'.3rem',background:'var(--bg-card)',boxShadow:'var(--shadow-md)'}}>
                   {etfResults.map(r => (
-                    <div key={r.symbol} style={{padding:'.5rem .75rem',cursor:'pointer',fontSize:'.78rem',borderBottom:'1px solid rgba(255,255,255,.04)'}}
+                    <div key={r.symbol} style={{padding:'.5rem .75rem',cursor:'pointer',fontSize:'.78rem',borderBottom:'1px solid var(--border)',color:'var(--text)'}}
                       onClick={() => { setForm(p => ({ ...p, ticker: r.symbol, name: r.name || r.symbol })); setEtfSearch(r.name || r.symbol); setEtfResults([]); }}>
-                      <span style={{color:'#c9a84c',fontFamily:'monospace'}}>{r.symbol}</span> — {r.name}
+                      <span style={{color:'var(--gold)',fontFamily:'var(--font-mono)'}}>{r.symbol}</span> — {r.name}
                     </div>
                   ))}
                 </div>
@@ -738,13 +745,13 @@ ${alertsText}`;
             <FG label={`Search ${AT[form.type]?.label}`}>
               <input className="fi" placeholder="e.g. NVDA, VOO, BTC-USD…" value={usSearch}
                 onChange={e => handleUsSearch(e.target.value)}/>
-              {usSearching && <div style={{fontSize:'.72rem',color:'rgba(255,255,255,.4)',marginTop:'.3rem'}}>Searching…</div>}
+              {usSearching && <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginTop:'.3rem'}}>Searching…</div>}
               {usResults.length > 0 && (
-                <div style={{maxHeight:180,overflowY:'auto',border:'1px solid rgba(255,255,255,.1)',borderRadius:6,marginTop:'.3rem'}}>
+                <div style={{maxHeight:180,overflowY:'auto',border:'1px solid var(--border)',borderRadius:6,marginTop:'.3rem',background:'var(--bg-card)',boxShadow:'var(--shadow-md)'}}>
                   {usResults.map(r => (
-                    <div key={r.symbol} style={{padding:'.5rem .75rem',cursor:'pointer',fontSize:'.78rem',borderBottom:'1px solid rgba(255,255,255,.04)'}}
+                    <div key={r.symbol} style={{padding:'.5rem .75rem',cursor:'pointer',fontSize:'.78rem',borderBottom:'1px solid var(--border)',color:'var(--text)'}}
                       onClick={() => { setForm(p => ({ ...p, ticker: r.symbol, name: r.name || r.symbol })); setUsSearch(r.name || r.symbol); setUsResults([]); }}>
-                      <span style={{color:'#5a9ce0',fontFamily:'monospace'}}>{r.symbol}</span> — {r.name}
+                      <span style={{color:'var(--primary)',fontFamily:'var(--font-mono)'}}>{r.symbol}</span> — {r.name}
                     </div>
                   ))}
                 </div>
@@ -984,7 +991,7 @@ ${alertsText}`;
           </FG>
           {!editingMemberId && (
             <FG label="">
-              <label style={{display:'flex',alignItems:'center',gap:'.5rem',fontSize:'.78rem',color:'rgba(255,255,255,.6)',cursor:'pointer'}}>
+              <label style={{display:'flex',alignItems:'center',gap:'.5rem',fontSize:'.78rem',color:'var(--text-dim)',cursor:'pointer'}}>
                 <input type="checkbox" checked={shareWithFamily} onChange={e => setShareWithFamily(e.target.checked)}/>
                 Link as family member (share portfolio access)
               </label>
@@ -1006,27 +1013,27 @@ ${alertsText}`;
         <Overlay onClose={() => setShowSettings(false)}>
           <div className="modtitle">⚙ Settings</div>
           <div style={{marginBottom:'1rem'}}>
-            <div style={{fontSize:'.75rem',color:'rgba(255,255,255,.45)',marginBottom:'.4rem'}}>Signed in as</div>
-            <div style={{fontSize:'.82rem',color:'rgba(255,255,255,.8)'}}>{user.email}</div>
+            <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.35rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Signed in as</div>
+            <div style={{fontSize:'.85rem',color:'var(--text)',fontWeight:500}}>{user.email}</div>
           </div>
           <div style={{marginBottom:'1rem'}}>
-            <div style={{fontSize:'.75rem',color:'rgba(255,255,255,.45)',marginBottom:'.5rem'}}>Broker import</div>
+            <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.5rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Broker import</div>
             <div style={{display:'flex',gap:'.4rem',flexWrap:'wrap'}}>
-              <button className="btn-o" style={{fontSize:'.72rem'}} onClick={() => { setShowSnapTrade(true); setShowSettings(false); }}>🇺🇸 SnapTrade (US)</button>
-              <button className="btn-o" style={{fontSize:'.72rem'}} onClick={() => { setShowKite(true); setShowSettings(false); }}>🇮🇳 Zerodha Kite</button>
-              <button className="btn-o" style={{fontSize:'.72rem'}} onClick={() => { setShowBreeze(true); setShowSettings(false); }}>🇮🇳 ICICI Breeze</button>
+              <button className="btn-o" onClick={() => { setShowSnapTrade(true); setShowSettings(false); }}>🇺🇸 SnapTrade (US)</button>
+              <button className="btn-o" onClick={() => { setShowKite(true); setShowSettings(false); }}>🇮🇳 Zerodha Kite</button>
+              <button className="btn-o" onClick={() => { setShowBreeze(true); setShowSettings(false); }}>🇮🇳 ICICI Breeze</button>
             </div>
           </div>
           <div style={{marginBottom:'1rem'}}>
-            <div style={{fontSize:'.75rem',color:'rgba(255,255,255,.45)',marginBottom:'.5rem'}}>CAS import</div>
-            <button className="btn-o" style={{fontSize:'.72rem'}} onClick={() => { casImport.setCasModal(true); setShowSettings(false); }}>
+            <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.5rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>CAS import</div>
+            <button className="btn-o" onClick={() => { casImport.setCasModal(true); setShowSettings(false); }}>
               📄 Import NSDL/CDSL CAS
             </button>
           </div>
-          <div style={{borderTop:'1px solid rgba(255,255,255,.06)',paddingTop:'1rem',marginTop:'.5rem'}}>
-            <button className="btn-o" style={{fontSize:'.75rem',color:'rgba(224,124,90,.6)',borderColor:'rgba(224,124,90,.2)'}}
+          <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem'}}>
+            <button className="btn-o" style={{color:'var(--loss)',borderColor:'rgba(220,38,38,.25)'}}
               onClick={() => { if (confirm('Sign out?')) signOut(); }}>
-              ↩ Sign Out
+              <LogOut size={13} strokeWidth={2}/> Sign Out
             </button>
           </div>
         </Overlay>
@@ -1094,7 +1101,7 @@ ${alertsText}`;
       {casImport.casModal && (
         <Overlay onClose={casImport.resetCASDownloader} wide>
           <div className="modtitle">📄 Import CAS (NSDL/CDSL)</div>
-          <div style={{padding:'1.5rem 0',textAlign:'center',color:'rgba(255,255,255,.55)',fontSize:'.82rem'}}>
+          <div style={{padding:'1.5rem 0',textAlign:'center',color:'var(--text-dim)',fontSize:'.82rem'}}>
             {casImport.casStep === 'intro' && <>
               <p style={{marginBottom:'1rem'}}>Upload your NSDL or CDSL Consolidated Account Statement PDF to import all mutual fund and stock holdings automatically.</p>
               <button className="btns" onClick={() => {
@@ -1106,7 +1113,7 @@ ${alertsText}`;
             </>}
             {casImport.casUploading && <div>Parsing CAS… please wait</div>}
             {casImport.casStep === 'done' && casImport.casResult && (
-              <div style={{color:'#4caf9a'}}>✓ Imported {casImport.casResult.inserted || 0} holdings from CAS</div>
+              <div style={{color:'var(--gain)',fontWeight:600}}>✓ Imported {casImport.casResult.inserted || 0} holdings from CAS</div>
             )}
             {casImport.casWarnings.length > 0 && (
               <div style={{marginTop:'1rem',textAlign:'left'}}>
