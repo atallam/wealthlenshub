@@ -47,6 +47,7 @@ import LoginScreen from './components/shared/LoginScreen.jsx';
 import TransactionPanel from './components/shared/TransactionPanel.jsx';
 import ArtifactPanel from './components/shared/ArtifactPanel.jsx';
 import { Overlay, FG, MA } from './components/shared/Overlay.jsx';
+import CASImportModal from './components/modals/CASImportModal.jsx';
 import DonutChart from './components/shared/DonutChart.jsx';
 import FmtInput from './components/shared/FmtInput.jsx';
 import FDScanSheet from './components/shared/FDScanSheet.jsx';
@@ -1092,6 +1093,16 @@ ${alertsText}`;
             </button>
           </div>
         </Overlay>
+      )}
+
+      {/* ── CAS Import modal ─────────────────────────────────────── */}
+      {casImport.casModal && (
+        <CASImportModal
+          casImport={casImport}
+          members={members}
+          onClose={() => { casImport.resetCASDownloader(); }}
+          onPriceRefresh={() => portfolio.refreshPrices?.()}
+        />
       )}
 
       {/* ── Import modal ─────────────────────────────────────────── */}
