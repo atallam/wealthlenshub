@@ -68,7 +68,7 @@ export default function ArtifactPanel({ holding, token, onClose }) {
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1.2rem"}}>
           <div>
             <div className="modtitle" style={{marginBottom:".15rem"}}>📎 Documents</div>
-            <div style={{fontSize:".73rem",color:"rgba(255,255,255,.5)"}}>{holding.name}</div>
+            <div style={{fontSize:".73rem",color:"var(--text-muted)"}}>{holding.name}</div>
           </div>
           <button className="delbtn" style={{fontSize:"1rem"}} onClick={onClose}>✕</button>
         </div>
@@ -79,11 +79,11 @@ export default function ArtifactPanel({ holding, token, onClose }) {
           onDragLeave={()=>setDragOver(false)}
           onDrop={e=>{e.preventDefault();setDragOver(false);upload(e.dataTransfer.files[0]);}}
           onClick={()=>fileRef.current?.click()}
-          style={{border:`2px dashed ${dragOver?"rgba(201,168,76,.6)":"rgba(255,255,255,.12)"}`,borderRadius:10,padding:"1.4rem",textAlign:"center",cursor:"pointer",transition:"all .2s",background:dragOver?"rgba(201,168,76,.05)":"transparent",marginBottom:"1rem"}}
+          style={{border:`2px dashed ${dragOver?"rgba(201,168,76,.6)":"var(--text-muted)"}`,borderRadius:10,padding:"1.4rem",textAlign:"center",cursor:"pointer",transition:"all .2s",background:dragOver?"rgba(201,168,76,.05)":"transparent",marginBottom:"1rem"}}
         >
           <div style={{fontSize:"1.6rem",marginBottom:".4rem"}}>☁</div>
-          <div style={{fontSize:".8rem",color:"rgba(255,255,255,.6)"}}>Drag & drop or click to upload</div>
-          <div style={{fontSize:".68rem",color:"rgba(255,255,255,.38)",marginTop:".25rem"}}>PDF, images, Excel, Word — up to 15 MB</div>
+          <div style={{fontSize:".8rem",color:"var(--text-dim)"}}>Drag & drop or click to upload</div>
+          <div style={{fontSize:".68rem",color:"var(--text-muted)",marginTop:".25rem"}}>PDF, images, Excel, Word — up to 15 MB</div>
           <input ref={fileRef} type="file" style={{display:"none"}} onChange={e=>upload(e.target.files[0])}/>
         </div>
         <div className="frow" style={{marginBottom:"1rem"}}>
@@ -96,19 +96,11 @@ export default function ArtifactPanel({ holding, token, onClose }) {
           ? <div className="empty" style={{padding:"1.5rem"}}>No documents attached yet</div>
           : <div style={{display:"flex",flexDirection:"column",gap:".5rem",maxHeight:280,overflowY:"auto"}}>
               {artifacts.map(a=>(
-                <div key={a.id} style={{display:"flex",alignItems:"center",gap:".7rem",padding:".75rem .9rem",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:8}}>
+                <div key={a.id} style={{display:"flex",alignItems:"center",gap:".7rem",padding:".75rem .9rem",background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:8}}>
                   <div style={{fontSize:"1.2rem",flexShrink:0}}>{fileIcon(a.file_type)}</div>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:".82rem",color:"#ffffff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.file_name}</div>
-                    <div style={{fontSize:".67rem",color:"rgba(255,255,255,.45)",marginTop:2}}>{a.description?`${a.description} · `:""}{fmtSize(a.file_size||0)} · {ago(a.uploaded_at)}</div>
+                    <div style={{fontSize:".82rem",color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.file_name}</div>
+                    <div style={{fontSize:".67rem",color:"var(--text-muted)",marginTop:2}}>{a.description?`${a.description} · `:""}{fmtSize(a.file_size||0)} · {ago(a.uploaded_at)}</div>
                   </div>
                   <button className="btn-o" style={{padding:".26rem .6rem",fontSize:".65rem"}} onClick={()=>download(a)}>↓ View</button>
-                  <button className="delbtn" onClick={()=>remove(a.id)}>✕</button>
-                </div>
-              ))}
-            </div>
-        }
-      </div>
-    </div>
-  );
-}
+                  <button className="delbtn" onClick={()=>remove(a.id)}>✕

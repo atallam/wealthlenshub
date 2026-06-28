@@ -60,7 +60,7 @@ export default function LoginScreen({ error: initError }) {
         </div>
 
         {/* Right: Login */}
-        <div style={{flex:"0 1 420px",width:"100%",background:"rgba(255,255,255,.02)",border:"1px solid rgba(232,224,208,.06)",borderRadius:20,padding:"2.2rem 2rem"}}>
+        <div style={{flex:"0 1 420px",width:"100%",background:"var(--bg-muted)",border:"1px solid rgba(232,224,208,.06)",borderRadius:20,padding:"2.2rem 2rem"}}>
           <div style={{fontSize:"1.15rem",fontWeight:500,marginBottom:".2rem",textAlign:"center"}}>Get started</div>
           <div style={{fontSize:".78rem",color:"rgba(232,224,208,.35)",marginBottom:"1.4rem",textAlign:"center"}}>Free account — no credit card required</div>
 
@@ -78,10 +78,10 @@ export default function LoginScreen({ error: initError }) {
             </button>
           </div>
 
-          <div style={{display:"flex",alignItems:"center",gap:".7rem",margin:"0 0 .9rem"}}><div style={{flex:1,height:1,background:"rgba(255,255,255,.05)"}}/><div style={{fontSize:".58rem",color:"rgba(255,255,255,.2)",letterSpacing:".06em"}}>or use email</div><div style={{flex:1,height:1,background:"rgba(255,255,255,.05)"}}/></div>
+          <div style={{display:"flex",alignItems:"center",gap:".7rem",margin:"0 0 .9rem"}}><div style={{flex:1,height:1,background:"var(--bg-muted)"}}/><div style={{fontSize:".58rem",color:"var(--text-muted)",letterSpacing:".06em"}}>or use email</div><div style={{flex:1,height:1,background:"var(--bg-muted)"}}/></div>
 
-          {mode!=="forgot"&&<div style={{display:"flex",gap:".25rem",marginBottom:".8rem",borderRadius:8,background:"rgba(255,255,255,.025)",padding:"3px"}}>
-            {["signin","signup"].map(m=><div key={m} onClick={()=>{setMode(m);setErr("");setMsg("");}} style={{flex:1,textAlign:"center",padding:".4rem",borderRadius:6,cursor:"pointer",fontSize:".72rem",fontWeight:mode===m?500:400,background:mode===m?"rgba(201,168,76,.1)":"transparent",color:mode===m?"#c9a84c":"rgba(255,255,255,.35)",transition:"all .2s"}}>{m==="signin"?"Sign In":"Create Account"}</div>)}
+          {mode!=="forgot"&&<div style={{display:"flex",gap:".25rem",marginBottom:".8rem",borderRadius:8,background:"var(--bg-muted)",padding:"3px"}}>
+            {["signin","signup"].map(m=><div key={m} onClick={()=>{setMode(m);setErr("");setMsg("");}} style={{flex:1,textAlign:"center",padding:".4rem",borderRadius:6,cursor:"pointer",fontSize:".72rem",fontWeight:mode===m?500:400,background:mode===m?"rgba(201,168,76,.1)":"transparent",color:mode===m?"#c9a84c":"var(--text-muted)",transition:"all .2s"}}>{m==="signin"?"Sign In":"Create Account"}</div>)}
           </div>}
 
           <form onSubmit={handleSubmit}>
@@ -91,7 +91,7 @@ export default function LoginScreen({ error: initError }) {
             <button type="submit" className="btns" disabled={loading} style={{width:"100%",padding:".65rem",fontSize:".85rem",borderRadius:10}}>{loading?"Please wait…":mode==="signin"?"Sign In":mode==="signup"?"Create Account":"Send Reset Link"}</button>
           </form>
 
-          <div style={{display:"flex",justifyContent:"space-between",marginTop:".6rem",fontSize:".65rem",color:"rgba(255,255,255,.25)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:".6rem",fontSize:".65rem",color:"var(--text-muted)"}}>
             {mode==="signin"&&<span onClick={()=>{setMode("forgot");setErr("");setMsg("");}} style={{cursor:"pointer"}}>Forgot password?</span>}
             {mode==="forgot"&&<span onClick={()=>setMode("signin")} style={{cursor:"pointer"}}>← Back</span>}
             <span style={{marginLeft:"auto"}}>🔒 Encrypted &amp; Private</span>
@@ -136,7 +136,7 @@ export default function LoginScreen({ error: initError }) {
               {icon:"💰",t:"Budget Tracker",d:"Upload bank statements from Chase, BofA, HDFC, ICICI and 10 more. CSV, Excel, or PDF. Auto-categorised spending analytics.",tag:"14 Banks",c:"#e07c5a"},
               {icon:"🏦",t:"US Bank Auto-Sync",d:"Connect your bank via Plaid. Transactions flow in automatically. Smart categorisation maps to your budget. No uploads needed.",tag:"Plaid",c:"#5a9ce0"},
             ].map(f=>(
-              <div key={f.t} style={{padding:"1.4rem",borderRadius:14,border:"1px solid rgba(232,224,208,.05)",background:"rgba(255,255,255,.015)",transition:"border-color .3s"}}>
+              <div key={f.t} style={{padding:"1.4rem",borderRadius:14,border:"1px solid rgba(232,224,208,.05)",background:"var(--bg-muted)",transition:"border-color .3s"}}>
                 <div style={{fontSize:"1.2rem",marginBottom:".8rem"}}>{f.icon}</div>
                 <div style={{fontSize:".88rem",fontWeight:600,marginBottom:".35rem"}}>{f.t}</div>
                 <div style={{fontSize:".78rem",color:"rgba(232,224,208,.4)",lineHeight:1.7,marginBottom:".6rem"}}>{f.d}</div>

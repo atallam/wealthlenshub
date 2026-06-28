@@ -50,8 +50,8 @@ export default function MFTransactionForm({ holding, isMF, isUS, fx, txnForm, se
   const canSubmit = txnForm.units&&txnForm.price&&txnForm.txn_date;
 
   return (
-    <div style={{background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.07)",borderRadius:9,padding:"1rem"}}>
-      <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.45)",marginBottom:".8rem"}}>Add Transaction</div>
+    <div style={{background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:9,padding:"1rem"}}>
+      <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".8rem"}}>Add Transaction</div>
       <div className="frow">
         <FG label="Type">
           <select className="fi fs" value={txnForm.txn_type} onChange={e=>setTxnForm(p=>({...p,txn_type:e.target.value}))}>
@@ -87,27 +87,27 @@ export default function MFTransactionForm({ holding, isMF, isUS, fx, txnForm, se
       {isMF&&(
         <div style={{marginBottom:".8rem"}}>
           <div style={{display:"flex",alignItems:"center",gap:".65rem",padding:".55rem .8rem",
-            background:navFetched?"rgba(76,175,154,.06)":"rgba(255,255,255,.02)",
-            border:`1px solid ${navFetched?"rgba(76,175,154,.25)":"rgba(255,255,255,.07)"}`,borderRadius:7}}>
+            background:navFetched?"rgba(76,175,154,.06)":"var(--text-muted)",
+            border:`1px solid ${navFetched?"rgba(76,175,154,.25)":"var(--text-muted)"}`,borderRadius:7}}>
             <div style={{flex:1}}>
               {navFetched?(<div style={{display:"flex",gap:"1.2rem",flexWrap:"wrap"}}>
                 <div>
-                  <div style={{fontSize:".6rem",letterSpacing:".07em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".18rem"}}>NAV {navFetched.estimated?"(Est.)":navFetched.future?"(Today)":"(Exact)"}</div>
+                  <div style={{fontSize:".6rem",letterSpacing:".07em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".18rem"}}>NAV {navFetched.estimated?"(Est.)":navFetched.future?"(Today)":"(Exact)"}</div>
                   <div style={{fontFamily:"'DM Mono',monospace",fontSize:".9rem",color:"#c9a84c"}}>₹{Number(navFetched.nav).toFixed(4)}</div>
                 </div>
                 {mfAmount&&txnForm.units&&(<>
                   <div>
-                    <div style={{fontSize:".6rem",letterSpacing:".07em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".18rem"}}>Units Allotted</div>
-                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".9rem",color:"#ffffff"}}>{Number(txnForm.units).toFixed(4)}</div>
+                    <div style={{fontSize:".6rem",letterSpacing:".07em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".18rem"}}>Units Allotted</div>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".9rem",color:"var(--text)"}}>{Number(txnForm.units).toFixed(4)}</div>
                   </div>
                   <div>
-                    <div style={{fontSize:".6rem",letterSpacing:".07em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".18rem"}}>Total</div>
-                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".9rem",color:"#ffffff"}}>₹{(+mfAmount).toLocaleString("en-IN")}</div>
+                    <div style={{fontSize:".6rem",letterSpacing:".07em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".18rem"}}>Total</div>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".9rem",color:"var(--text)"}}>₹{(+mfAmount).toLocaleString("en-IN")}</div>
                   </div>
                 </>)}
                 {navFetched.estimated&&<div style={{fontSize:".65rem",color:"rgba(201,168,76,.55)",width:"100%",marginTop:".2rem"}}>Nearest available NAV used</div>}
               </div>):(
-                <div style={{fontSize:".75rem",color:"rgba(255,255,255,.42)"}}>
+                <div style={{fontSize:".75rem",color:"var(--text-muted)"}}>
                   {txnForm.txn_date?"Click Fetch NAV to get the NAV for this date":"Select a date, then fetch NAV"}
                 </div>
               )}
@@ -126,9 +126,9 @@ export default function MFTransactionForm({ holding, isMF, isUS, fx, txnForm, se
       {isUS&&(
         <div style={{display:"flex",alignItems:"center",gap:".75rem",marginBottom:".7rem",padding:".5rem .8rem",background:"rgba(90,156,224,.06)",border:"1px solid rgba(90,156,224,.18)",borderRadius:6}}>
           <div style={{flex:1,fontSize:".75rem"}}>
-            <span style={{color:"rgba(255,255,255,.5)"}}>1 USD = </span>
+            <span style={{color:"var(--text-muted)"}}>1 USD = </span>
             <span style={{fontFamily:"'DM Mono',monospace",color:"#5a9ce0"}}>₹{fx.toFixed(2)}</span>
-            {txnForm.price_usd&&<span style={{marginLeft:".75rem",color:"rgba(255,255,255,.5)"}}>→ ₹<span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>{(+txnForm.price_usd*fx).toLocaleString("en-IN",{maximumFractionDigits:0})}</span> per unit</span>}
+            {txnForm.price_usd&&<span style={{marginLeft:".75rem",color:"var(--text-muted)"}}>→ ₹<span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>{(+txnForm.price_usd*fx).toLocaleString("en-IN",{maximumFractionDigits:0})}</span> per unit</span>}
           </div>
           <button onClick={onFetchFx} disabled={fxLoading} style={{background:"rgba(90,156,224,.15)",border:"1px solid rgba(90,156,224,.3)",color:"#5a9ce0",borderRadius:4,padding:"2px 8px",cursor:"pointer",fontSize:".65rem",fontFamily:"'DM Sans',sans-serif"}}>
             {fxLoading?"…":"⟳ Rate"}

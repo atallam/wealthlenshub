@@ -97,14 +97,14 @@ export default function StrategyTab({
       {/* ═══ SECTION 2: ALERT RULES ═══ */}
       <div style={{marginBottom:"1.2rem"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".7rem"}}>
-          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.05rem",color:"#ffffff"}}>Alert Rules</div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.05rem",color:"var(--text)"}}>Alert Rules</div>
           <button className="btn-sm" onClick={()=>{setAlertForm(BA);setModal("alert");}}>+ New Alert</button>
         </div>
 
         {alerts.length===0?(
           <div className="card" style={{padding:"1.2rem",textAlign:"center"}}>
-            <div style={{fontSize:".78rem",color:"rgba(255,255,255,.45)",marginBottom:".4rem"}}>No alert rules configured</div>
-            <div style={{fontSize:".65rem",color:"rgba(255,255,255,.3)"}}>Create alerts to monitor allocation drift, concentration risk, or return targets</div>
+            <div style={{fontSize:".78rem",color:"var(--text-muted)",marginBottom:".4rem"}}>No alert rules configured</div>
+            <div style={{fontSize:".65rem",color:"var(--text-muted)"}}>Create alerts to monitor allocation drift, concentration risk, or return targets</div>
           </div>
         ):(
           <div className="card">
@@ -114,10 +114,10 @@ export default function StrategyTab({
                 <div style={{width:7,height:7,borderRadius:"50%",background:"#e07c5a",flexShrink:0}}/>
                 <div style={{flex:1}}>
                   <div style={{fontSize:".78rem",color:"#e07c5a"}}>{a.label}</div>
-                  <div style={{fontSize:".62rem",color:"rgba(255,255,255,.35)",marginTop:1}}>{a.type==="CONCENTRATION"?"Under-weight below ":"Over-weight above "}{a.threshold}%{a.type==="RETURN_TARGET"?" return target":""}</div>
+                  <div style={{fontSize:".62rem",color:"var(--text-muted)",marginTop:1}}>{a.type==="CONCENTRATION"?"Under-weight below ":"Over-weight above "}{a.threshold}%{a.type==="RETURN_TARGET"?" return target":""}</div>
                 </div>
                 <button onClick={()=>setAlerts(p=>p.map(x=>x.id===a.id?{...x,active:!x.active}:x))}
-                  style={{background:"none",border:"1px solid rgba(255,255,255,.1)",borderRadius:4,padding:"2px 9px",fontSize:".65rem",cursor:"pointer",color:"#4caf9a"}}>ON</button>
+                  style={{background:"none",border:"1px solid var(--border)",borderRadius:4,padding:"2px 9px",fontSize:".65rem",cursor:"pointer",color:"#4caf9a"}}>ON</button>
                 <button className="delbtn" onClick={()=>setAlerts(p=>p.filter(x=>x.id!==a.id))}>✕</button>
               </div>
             ))}
@@ -127,12 +127,12 @@ export default function StrategyTab({
               <div key={a.id} style={{display:"flex",alignItems:"center",gap:".7rem",padding:".55rem .7rem",borderRadius:5,marginBottom:".35rem",background:"rgba(76,175,154,.03)",border:"1px solid rgba(76,175,154,.1)"}}>
                 <div style={{width:7,height:7,borderRadius:"50%",background:"#4caf9a",flexShrink:0}}/>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:".78rem",color:"rgba(255,255,255,.75)"}}>{a.label}</div>
-                  <div style={{fontSize:".62rem",color:"rgba(255,255,255,.35)",marginTop:1}}>{a.type==="CONCENTRATION"?"Under-weight below ":"Over-weight above "}{a.threshold}%{a.type==="RETURN_TARGET"?" return target":""}</div>
+                  <div style={{fontSize:".78rem",color:"var(--text)"}}>{a.label}</div>
+                  <div style={{fontSize:".62rem",color:"var(--text-muted)",marginTop:1}}>{a.type==="CONCENTRATION"?"Under-weight below ":"Over-weight above "}{a.threshold}%{a.type==="RETURN_TARGET"?" return target":""}</div>
                 </div>
                 <span style={{fontSize:".6rem",color:"rgba(76,175,154,.6)",padding:"2px 6px",borderRadius:3,background:"rgba(76,175,154,.08)",border:"1px solid rgba(76,175,154,.15)"}}>✓ Passing</span>
                 <button onClick={()=>setAlerts(p=>p.map(x=>x.id===a.id?{...x,active:!x.active}:x))}
-                  style={{background:"none",border:"1px solid rgba(255,255,255,.1)",borderRadius:4,padding:"2px 9px",fontSize:".65rem",cursor:"pointer",color:"#4caf9a"}}>ON</button>
+                  style={{background:"none",border:"1px solid var(--border)",borderRadius:4,padding:"2px 9px",fontSize:".65rem",cursor:"pointer",color:"#4caf9a"}}>ON</button>
                 <button className="delbtn" onClick={()=>setAlerts(p=>p.filter(x=>x.id!==a.id))}>✕</button>
               </div>
             ))}
@@ -141,19 +141,19 @@ export default function StrategyTab({
             {inactiveAlerts.length>0&&(
               <>
                 <div onClick={()=>setShowQuietAlerts(p=>!p)}
-                  style={{display:"flex",alignItems:"center",gap:".5rem",padding:".45rem .7rem",marginTop:".3rem",cursor:"pointer",borderRadius:5,background:"rgba(255,255,255,.02)"}}>
-                  <span style={{fontSize:".6rem",color:"rgba(255,255,255,.3)",transform:showQuietAlerts?"rotate(90deg)":"rotate(0deg)",transition:"transform .15s"}}>▶</span>
-                  <span style={{fontSize:".68rem",color:"rgba(255,255,255,.35)"}}>{inactiveAlerts.length} paused rule{inactiveAlerts.length>1?"s":""}</span>
+                  style={{display:"flex",alignItems:"center",gap:".5rem",padding:".45rem .7rem",marginTop:".3rem",cursor:"pointer",borderRadius:5,background:"var(--bg-muted)"}}>
+                  <span style={{fontSize:".6rem",color:"var(--text-muted)",transform:showQuietAlerts?"rotate(90deg)":"rotate(0deg)",transition:"transform .15s"}}>▶</span>
+                  <span style={{fontSize:".68rem",color:"var(--text-muted)"}}>{inactiveAlerts.length} paused rule{inactiveAlerts.length>1?"s":""}</span>
                 </div>
                 {showQuietAlerts&&inactiveAlerts.map(a=>(
                   <div key={a.id} style={{display:"flex",alignItems:"center",gap:".7rem",padding:".45rem .7rem",borderRadius:5,marginBottom:".2rem",opacity:.55}}>
-                    <div style={{width:7,height:7,borderRadius:"50%",background:"rgba(255,255,255,.18)",flexShrink:0}}/>
+                    <div style={{width:7,height:7,borderRadius:"50%",background:"var(--bg-muted)",flexShrink:0}}/>
                     <div style={{flex:1}}>
-                      <div style={{fontSize:".75rem",color:"rgba(255,255,255,.5)"}}>{a.label}</div>
-                      <div style={{fontSize:".6rem",color:"rgba(255,255,255,.25)",marginTop:1}}>{a.type==="CONCENTRATION"?"Under ":"Over "}{a.threshold}%</div>
+                      <div style={{fontSize:".75rem",color:"var(--text-muted)"}}>{a.label}</div>
+                      <div style={{fontSize:".6rem",color:"var(--text-muted)",marginTop:1}}>{a.type==="CONCENTRATION"?"Under ":"Over "}{a.threshold}%</div>
                     </div>
                     <button onClick={()=>setAlerts(p=>p.map(x=>x.id===a.id?{...x,active:!x.active}:x))}
-                      style={{background:"none",border:"1px solid rgba(255,255,255,.08)",borderRadius:4,padding:"2px 9px",fontSize:".65rem",cursor:"pointer",color:"rgba(255,255,255,.3)"}}>OFF</button>
+                      style={{background:"none",border:"1px solid var(--border)",borderRadius:4,padding:"2px 9px",fontSize:".65rem",cursor:"pointer",color:"var(--text-muted)"}}>OFF</button>
                     <button className="delbtn" onClick={()=>setAlerts(p=>p.filter(x=>x.id!==a.id))}>✕</button>
                   </div>
                 ))}
@@ -164,10 +164,10 @@ export default function StrategyTab({
       </div>
 
       {/* ═══ DIVIDER ═══ */}
-      <div style={{height:1,background:"rgba(255,255,255,.06)",margin:"0.5rem 0 1.2rem"}}/>
+      <div style={{height:1,background:"var(--bg-muted)",margin:"0.5rem 0 1.2rem"}}/>
 
       {/* ═══ SECTION 3: ASSET ALLOCATION & REBALANCE ═══ */}
-      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.05rem",color:"#ffffff",marginBottom:".8rem"}}>Asset Allocation</div>
+      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.05rem",color:"var(--text)",marginBottom:".8rem"}}>Asset Allocation</div>
 
       {/* Member selector + Cash — compact top bar */}
       <div style={{display:"flex",gap:"1rem",alignItems:"flex-end",marginBottom:"1rem",flexWrap:"wrap"}}>
@@ -177,9 +177,9 @@ export default function StrategyTab({
             {["all",...members.map(m=>m.id)].map(id=>(
               <div key={id} onClick={()=>setRebalMember(id)}
                 style={{padding:".28rem .6rem",borderRadius:4,cursor:"pointer",fontSize:".72rem",
-                  background:rebalMember===id?"rgba(201,168,76,.16)":"rgba(255,255,255,.04)",
-                  border:`1px solid ${rebalMember===id?"rgba(201,168,76,.4)":"rgba(255,255,255,.1)"}`,
-                  color:rebalMember===id?"#c9a84c":"rgba(255,255,255,.55)"}}>
+                  background:rebalMember===id?"rgba(201,168,76,.16)":"var(--text-muted)",
+                  border:`1px solid ${rebalMember===id?"rgba(201,168,76,.4)":"var(--text-muted)"}`,
+                  color:rebalMember===id?"#c9a84c":"var(--text-dim)"}}>
                 {id==="all"?"All":members.find(m=>m.id===id)?.name}
               </div>
             ))}
@@ -191,15 +191,15 @@ export default function StrategyTab({
             onChange={e=>setRebalCash(e.target.value)} style={{marginTop:".3rem"}}/>
         </div>
         <div style={{flex:1,textAlign:"right"}}>
-          <div style={{fontSize:".62rem",color:"rgba(255,255,255,.45)",letterSpacing:".08em",textTransform:"uppercase"}}>Portfolio</div>
-          <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.15rem",color:"#ffffff"}}>{fmtCr(rTotal)}</div>
+          <div style={{fontSize:".62rem",color:"var(--text-muted)",letterSpacing:".08em",textTransform:"uppercase"}}>Portfolio</div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.15rem",color:"var(--text)"}}>{fmtCr(rTotal)}</div>
           {cash>0&&<div style={{fontSize:".65rem",color:"rgba(201,168,76,.6)"}}>+ {fmtCr(cash)} cash</div>}
         </div>
       </div>
 
       {/* Quick Strategy Presets */}
       <div style={{display:"flex",gap:".4rem",marginBottom:"1rem",flexWrap:"wrap"}}>
-        <span style={{fontSize:".62rem",color:"rgba(255,255,255,.4)",alignSelf:"center",marginRight:".2rem"}}>STRATEGY:</span>
+        <span style={{fontSize:".62rem",color:"var(--text-muted)",alignSelf:"center",marginRight:".2rem"}}>STRATEGY:</span>
         {[
           {name:"Conservative",desc:"Low risk, FD/PPF heavy",alloc:{IN_STOCK:15,MF:20,IN_ETF:5,US_STOCK:0,US_ETF:0,US_BOND:5,CRYPTO:0,FD:25,PPF:15,EPF:15,REAL_ESTATE:0}},
           {name:"Balanced",desc:"Mix of equity & debt",alloc:{IN_STOCK:25,MF:25,IN_ETF:5,US_STOCK:8,US_ETF:5,US_BOND:0,CRYPTO:2,FD:10,PPF:10,EPF:10,REAL_ESTATE:0}},
@@ -209,10 +209,10 @@ export default function StrategyTab({
           <div key={p.name} onClick={()=>setTargetAlloc(p.alloc)}
             title={p.desc}
             style={{padding:".3rem .65rem",borderRadius:4,cursor:"pointer",fontSize:".7rem",
-              background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",
-              color:"rgba(255,255,255,.65)",transition:"all .15s"}}
+              background:"var(--bg-muted)",border:"1px solid var(--border)",
+              color:"var(--text-dim)",transition:"all .15s"}}
             onMouseEnter={e=>{e.currentTarget.style.background="rgba(201,168,76,.1)";e.currentTarget.style.borderColor="rgba(201,168,76,.3)";e.currentTarget.style.color="#c9a84c";}}
-            onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,.04)";e.currentTarget.style.borderColor="rgba(255,255,255,.08)";e.currentTarget.style.color="rgba(255,255,255,.65)";}}>
+            onMouseLeave={e=>{e.currentTarget.style.background="var(--bg-muted)";e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.color="var(--text-dim)";}}>
             {p.name}
           </div>
         ))}
@@ -243,22 +243,22 @@ export default function StrategyTab({
                 <tr key={t.type}>
                   <td>
                     <span style={{color:a.color}}>{a.icon}</span> {a.label}
-                    <div style={{fontSize:".62rem",color:"rgba(255,255,255,.4)",marginTop:1}}>{fmtCr(t.cur)}</div>
+                    <div style={{fontSize:".62rem",color:"var(--text-muted)",marginTop:1}}>{fmtCr(t.cur)}</div>
                   </td>
                   <td className="r">
                     <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:".2rem"}}>
                       <input type="number" min="0" max="100" step="1"
                         value={targetAlloc[t.type]||0}
                         onChange={e=>setTargetAlloc(p=>({...p,[t.type]:+e.target.value}))}
-                        style={{width:44,textAlign:"right",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",
+                        style={{width:44,textAlign:"right",background:"var(--bg-muted)",border:"1px solid var(--border)",
                           borderRadius:3,padding:".18rem .35rem",color:"#c9a84c",fontFamily:"'DM Mono',monospace",fontSize:".78rem"}}/>
-                      <span style={{fontSize:".68rem",color:"rgba(255,255,255,.4)"}}>%</span>
+                      <span style={{fontSize:".68rem",color:"var(--text-muted)"}}>%</span>
                     </div>
                   </td>
-                  <td className="r mono" style={{color:"rgba(255,255,255,.6)",fontSize:".75rem"}}>{t.curPct.toFixed(1)}%</td>
+                  <td className="r mono" style={{color:"var(--text-dim)",fontSize:".75rem"}}>{t.curPct.toFixed(1)}%</td>
                   <td>
                     <div style={{display:"flex",alignItems:"center",gap:".5rem"}}>
-                      <div style={{flex:1,height:6,background:"rgba(255,255,255,.05)",borderRadius:3,overflow:"visible",position:"relative"}}>
+                      <div style={{flex:1,height:6,background:"var(--bg-muted)",borderRadius:3,overflow:"visible",position:"relative"}}>
                         <div style={{position:"absolute",left:`${Math.min(t.tgtPct/maxPct*100,100)}%`,top:-1,width:2,height:8,
                           background:"rgba(201,168,76,.7)",borderRadius:1,transform:"translateX(-50%)",zIndex:2}}/>
                         <div style={{height:"100%",width:`${Math.min(t.curPct/maxPct*100,100)}%`,
@@ -266,7 +266,7 @@ export default function StrategyTab({
                           borderRadius:3,transition:"width .4s"}}/>
                       </div>
                       <span style={{fontSize:".6rem",fontFamily:"'DM Mono',monospace",minWidth:40,textAlign:"right",
-                        color:isFlat?"rgba(255,255,255,.35)":isOver?"#e07c5a":"#4caf9a"}}>
+                        color:isFlat?"var(--text-muted)":isOver?"#e07c5a":"#4caf9a"}}>
                         {isFlat?"—":`${driftPct>0?"+":""}${driftPct.toFixed(1)}%`}
                       </span>
                     </div>
@@ -323,13 +323,13 @@ export default function StrategyTab({
             </div>
           </div>
 
-          <div style={{marginTop:".6rem",fontSize:".65rem",color:"rgba(255,255,255,.35)",lineHeight:1.5}}>
+          <div style={{marginTop:".6rem",fontSize:".65rem",color:"var(--text-muted)",lineHeight:1.5}}>
             ℹ️ "Trim" = redeem units or redirect future SIPs to other asset classes. Selling may have tax implications — consult your CA.
             {cash>0&&<span style={{color:"rgba(201,168,76,.5)"}}> Fresh cash of {fmtCr(cash)} is factored into Invest amounts.</span>}
           </div>
 
           {/* Legend */}
-          <div style={{marginTop:".5rem",display:"flex",gap:".8rem",fontSize:".6rem",color:"rgba(255,255,255,.35)"}}>
+          <div style={{marginTop:".5rem",display:"flex",gap:".8rem",fontSize:".6rem",color:"var(--text-muted)"}}>
             <div style={{display:"flex",alignItems:"center",gap:".25rem"}}><div style={{width:8,height:2,background:"rgba(201,168,76,.7)"}}/> Target</div>
             <div style={{display:"flex",alignItems:"center",gap:".25rem"}}><div style={{width:8,height:6,background:"rgba(76,175,154,.5)",borderRadius:1}}/> Under</div>
             <div style={{display:"flex",alignItems:"center",gap:".25rem"}}><div style={{width:8,height:6,background:"rgba(224,124,90,.5)",borderRadius:1}}/> Over</div>
@@ -340,8 +340,8 @@ export default function StrategyTab({
 
       {/* Show all asset types (collapsed) */}
       {Object.keys(AT).filter(t=>!activeTypes.has(t)&&(+targetAlloc[t]||0)===0).length>0&&(
-        <div style={{fontSize:".68rem",color:"rgba(255,255,255,.4)",cursor:"pointer",textAlign:"center",padding:".4rem",
-          border:"1px dashed rgba(255,255,255,.1)",borderRadius:6}}
+        <div style={{fontSize:".68rem",color:"var(--text-muted)",cursor:"pointer",textAlign:"center",padding:".4rem",
+          border:"1px dashed var(--border)",borderRadius:6}}
           onClick={()=>{
             const missing = Object.keys(AT).filter(t=>!activeTypes.has(t)&&(+targetAlloc[t]||0)===0);
             if(missing.length) setTargetAlloc(p=>{const n={...p};missing.forEach(t=>n[t]=0);return n;});
@@ -352,3 +352,4 @@ export default function StrategyTab({
     </>
   );
 }
+                        

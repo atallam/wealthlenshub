@@ -108,9 +108,9 @@ export default function BudgetTab({
           {["overview","transactions","categories","import"].map(v=>(
             <div key={v} onClick={async()=>{setBudgetView(v);if(v==="overview"||v==="categories")await loadBudget();if(v==="transactions")await loadTxns();}}
               style={{padding:".3rem .75rem",borderRadius:5,cursor:"pointer",fontSize:".73rem",fontWeight:500,
-                background:budgetView===v?"rgba(201,168,76,.18)":"rgba(255,255,255,.04)",
-                border:`1px solid ${budgetView===v?"rgba(201,168,76,.5)":"rgba(255,255,255,.1)"}`,
-                color:budgetView===v?"#c9a84c":"rgba(255,255,255,.6)",transition:"all .15s",textTransform:"capitalize"}}>
+                background:budgetView===v?"rgba(201,168,76,.18)":"var(--text-muted)",
+                border:`1px solid ${budgetView===v?"rgba(201,168,76,.5)":"var(--text-muted)"}`,
+                color:budgetView===v?"#c9a84c":"var(--text-dim)",transition:"all .15s",textTransform:"capitalize"}}>
               {v==="overview"?"📊 Overview":v==="transactions"?"📋 Transactions":v==="categories"?"🏷️ Categories":"📤 Import"}
             </div>
           ))}
@@ -154,13 +154,13 @@ export default function BudgetTab({
                 setBudgetTxns(txns||[]);
               } catch(err) { console.error("Month clear reload:", err); }
             })();
-          }} style={{background:"none",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:".9rem"}}>✕</button>}
+          }} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:".9rem"}}>✕</button>}
         </div>
       </div>
 
       {/* ═══ OVERVIEW ═══ */}
       {budgetView==="overview"&&(()=>{
-        if(!analytics) return(<div style={{textAlign:"center",padding:"3rem",color:"rgba(255,255,255,.4)"}}>
+        if(!analytics) return(<div style={{textAlign:"center",padding:"3rem",color:"var(--text-muted)"}}>
           <div style={{fontSize:"2rem",marginBottom:".5rem"}}>📊</div>
           <div>Import a bank statement to see your spending overview</div>
           <button className="btns" style={{marginTop:"1rem"}} onClick={()=>setBudgetView("import")}>+ Import Statement</button>
@@ -175,7 +175,7 @@ export default function BudgetTab({
               {label:"Categories",val:catData.length,color:"#c9a84c",isCnt:true},
             ].map(k=>(
               <div key={k.label} className="card" style={{padding:".85rem 1rem"}}>
-                <div style={{fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.45)",marginBottom:".4rem"}}>{k.label}</div>
+                <div style={{fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".4rem"}}>{k.label}</div>
                 <div style={{fontFamily:"'DM Mono',monospace",fontSize:k.isCnt?"1.4rem":"1.1rem",color:k.color}}>
                   {k.isCnt?k.val:fmtAmt(Math.abs(k.val),domCur)}
                 </div>
@@ -206,14 +206,14 @@ export default function BudgetTab({
                       });
                     })()}
                     <text x="90" y="86" textAnchor="middle" fill="#ffffff" fontSize="10" fontFamily="'DM Mono',monospace">{fmtAmt(totalSpend,domCur)}</text>
-                    <text x="90" y="100" textAnchor="middle" fill="rgba(255,255,255,.5)" fontSize="8">spent</text>
+                    <text x="90" y="100" textAnchor="middle" fill="var(--text-muted)" fontSize="8">spent</text>
                   </svg>
                   <div style={{flex:1,minWidth:120}}>
                     {catData.slice(0,8).map(d=>(
                       <div key={d.name} style={{display:"flex",alignItems:"center",gap:".4rem",marginBottom:".35rem",fontSize:".72rem"}}>
                         <div style={{width:8,height:8,borderRadius:"50%",background:d.color,flexShrink:0}}/>
-                        <div style={{flex:1,color:"rgba(255,255,255,.65)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.icon} {d.name}</div>
-                        <div style={{fontFamily:"'DM Mono',monospace",color:"rgba(255,255,255,.65)",fontSize:".68rem"}}>{((d.value/totalSpend)*100).toFixed(1)}%</div>
+                        <div style={{flex:1,color:"var(--text-dim)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.icon} {d.name}</div>
+                        <div style={{fontFamily:"'DM Mono',monospace",color:"var(--text-dim)",fontSize:".68rem"}}>{((d.value/totalSpend)*100).toFixed(1)}%</div>
                       </div>
                     ))}
                   </div>
@@ -231,11 +231,11 @@ export default function BudgetTab({
                     const label=new Date(mo+"-01").toLocaleDateString("en-IN",{month:"short"});
                     return(
                     <div key={mo} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:".3rem"}}>
-                      <div style={{fontSize:".6rem",color:"rgba(255,255,255,.5)",fontFamily:"'DM Mono',monospace"}}>{fmtAmt(val,domCur)}</div>
+                      <div style={{fontSize:".6rem",color:"var(--text-muted)",fontFamily:"'DM Mono',monospace"}}>{fmtAmt(val,domCur)}</div>
                       <div style={{width:"100%",background:"rgba(201,168,76,.12)",borderRadius:"3px 3px 0 0",height:100,display:"flex",alignItems:"flex-end"}}>
                         <div style={{width:"100%",background:"rgba(201,168,76,.7)",borderRadius:"3px 3px 0 0",height:`${pct}%`,transition:"height .6s ease"}}/>
                       </div>
-                      <div style={{fontSize:".62rem",color:"rgba(255,255,255,.55)"}}>{label}</div>
+                      <div style={{fontSize:".62rem",color:"var(--text-dim)"}}>{label}</div>
                     </div>);
                   })}
                 </div>
@@ -254,17 +254,17 @@ export default function BudgetTab({
                   const pct=limit>0?Math.min((d.value/limit)*100,100):0;
                   const over=limit>0&&d.value>limit;
                   return(
-                  <div key={d.name} style={{padding:".75rem .9rem",background:"rgba(255,255,255,.03)",border:`1px solid rgba(255,255,255,.07)`,borderRadius:7}}>
+                  <div key={d.name} style={{padding:".75rem .9rem",background:"var(--bg-muted)",border:`1px solid var(--border)`,borderRadius:7}}>
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:".45rem"}}>
-                      <span style={{fontSize:".8rem",color:"#ffffff"}}>{d.icon} {d.name}</span>
+                      <span style={{fontSize:".8rem",color:"var(--text)"}}>{d.icon} {d.name}</span>
                       <span style={{fontFamily:"'DM Mono',monospace",fontSize:".78rem",color:over?"#e07c5a":"#c9a84c"}}>{fmtAmt(d.value,domCur)}</span>
                     </div>
                     {limit>0&&(
                       <>
-                        <div style={{height:4,background:"rgba(255,255,255,.07)",borderRadius:2,marginBottom:".3rem"}}>
+                        <div style={{height:4,background:"var(--bg-muted)",borderRadius:2,marginBottom:".3rem"}}>
                           <div style={{height:"100%",width:`${pct}%`,background:over?"#e07c5a":d.color,borderRadius:2,transition:"width .6s"}}/>
                         </div>
-                        <div style={{fontSize:".65rem",color:"rgba(255,255,255,.45)"}}>
+                        <div style={{fontSize:".65rem",color:"var(--text-muted)"}}>
                           {over?<span style={{color:"#e07c5a"}}>Over by {fmtAmt(d.value-limit,domCur)}</span>:
                             <span>{fmtAmt(limit-d.value,domCur)} remaining of {fmtAmt(limit,domCur)}</span>}
                         </div>
@@ -281,7 +281,7 @@ export default function BudgetTab({
           <div className="card" style={{borderTop:"2px solid rgba(201,168,76,.3)"}}>
             <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".85rem"}}>
               <div className="ctitle" style={{margin:0}}>💡 Spend-to-Wealth Bridge</div>
-              <div style={{fontSize:".68rem",color:"rgba(255,255,255,.4)"}}>What if you invested more?</div>
+              <div style={{fontSize:".68rem",color:"var(--text-muted)"}}>What if you invested more?</div>
             </div>
             {(()=>{
               const topCats = catData.filter(d=>!["Investments","Transfers","Other"].includes(d.name)).slice(0,4);
@@ -306,14 +306,14 @@ export default function BudgetTab({
                           const fv=monthly*((Math.pow(1+r,n)-1)/r)*(1+r);
                           return <td key={y} className="r mono" style={{color:"#4caf9a"}}>{fmtCr(fv)}</td>;
                         })}
-                        <td className="r" style={{fontSize:".68rem",color:"rgba(255,255,255,.5)"}}>
+                        <td className="r" style={{fontSize:".68rem",color:"var(--text-muted)"}}>
                           {totInv>0?`Your portfolio: ${fmtPct((allCur-allInv)/allInv*100)}`:"—"}
                         </td>
                       </tr>);
                     })}
                   </tbody>
                 </table>
-                <div style={{fontSize:".65rem",color:"rgba(255,255,255,.35)",marginTop:".5rem"}}>Assumes 12% CAGR. Monthly spend estimated from {budgetSelMonth||"all imported"} data.</div>
+                <div style={{fontSize:".65rem",color:"var(--text-muted)",marginTop:".5rem"}}>Assumes 12% CAGR. Monthly spend estimated from {budgetSelMonth||"all imported"} data.</div>
               </div>);
             })()}
           </div>
@@ -363,7 +363,7 @@ export default function BudgetTab({
                 setSelectedTxnIds(new Set());setBulkCatTarget("");
                 await loadTxns();
               }}>Apply</button>
-              <button onClick={()=>setSelectedTxnIds(new Set())} style={{background:"none",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer"}}>✕ Clear</button>
+              <button onClick={()=>setSelectedTxnIds(new Set())} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer"}}>✕ Clear</button>
             </div>
           )}
 
@@ -386,7 +386,7 @@ export default function BudgetTab({
                       <td><input type="checkbox" checked={selectedTxnIds.has(t.id)}
                         onChange={e=>{const s=new Set(selectedTxnIds);e.target.checked?s.add(t.id):s.delete(t.id);setSelectedTxnIds(s);}}/></td>
                       <td className="mono dim" style={{fontSize:".75rem"}}>{t.txn_date}</td>
-                      <td style={{maxWidth:"30vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:".78rem",color:"rgba(255,255,255,.8)"}}>{t.description}</td>
+                      <td style={{maxWidth:"30vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:".78rem",color:"var(--text)"}}>{t.description}</td>
                       <td className="r mono" style={{color:t.txn_type==="DEBIT"?"#e07c5a":"#4caf9a",fontSize:".82rem"}}>
                         {t.txn_type==="DEBIT"?"-":"+"}{fmtAmt(t.amount,t.currency)}
                       </td>
@@ -397,14 +397,14 @@ export default function BudgetTab({
                             await api(`/api/budget/transactions/${t.id}`,{method:"PATCH",body:JSON.stringify({category:e.target.value})});
                             setBudgetTxns(p=>p.map(x=>x.id===t.id?{...x,category:e.target.value}:x));
                           }}>
-                          {budgetCategories.map(c=><option key={c.id} value={c.name} style={{background:"#0c1526",color:"#ffffff"}}>{c.icon} {c.name}</option>)}
+                          {budgetCategories.map(c=><option key={c.id} value={c.name} style={{background:"#0c1526",color:"var(--text)"}}>{c.icon} {c.name}</option>)}
                         </select>
                       </td>
                     </tr>);
                   })}
                 </tbody>
               </table>
-              {budgetTxns.length>200&&<div style={{padding:".65rem",textAlign:"center",fontSize:".72rem",color:"rgba(255,255,255,.4)"}}>Showing 200 of {budgetTxns.length} transactions — apply filters to narrow</div>}
+              {budgetTxns.length>200&&<div style={{padding:".65rem",textAlign:"center",fontSize:".72rem",color:"var(--text-muted)"}}>Showing 200 of {budgetTxns.length} transactions — apply filters to narrow</div>}
             </div>
           )}
         </>);
@@ -421,11 +421,11 @@ export default function BudgetTab({
             <div key={cat.id} className="card" style={{borderLeft:`3px solid ${cat.color}`,padding:".85rem 1rem"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div>
-                  <div style={{fontSize:".9rem",color:"#ffffff",marginBottom:".2rem"}}>{cat.icon} {cat.name}</div>
-                  <div style={{fontSize:".68rem",color:"rgba(255,255,255,.45)"}}>
+                  <div style={{fontSize:".9rem",color:"var(--text)",marginBottom:".2rem"}}>{cat.icon} {cat.name}</div>
+                  <div style={{fontSize:".68rem",color:"var(--text-muted)"}}>
                     {cat.monthly_limit>0?`Budget: ₹${cat.monthly_limit.toLocaleString("en-IN")} /mo`:"No budget set"}
                   </div>
-                  {cat.keywords&&<div style={{fontSize:".65rem",color:"rgba(255,255,255,.38)",marginTop:".2rem",lineHeight:1.5}}>Keywords: {cat.keywords.slice(0,60)}{cat.keywords.length>60?"…":""}</div>}
+                  {cat.keywords&&<div style={{fontSize:".65rem",color:"var(--text-muted)",marginTop:".2rem",lineHeight:1.5}}>Keywords: {cat.keywords.slice(0,60)}{cat.keywords.length>60?"…":""}</div>}
                 </div>
                 <div style={{display:"flex",gap:".3rem"}}>
                   <button className="delbtn" onClick={()=>setBudgetEditCat(cat)} title="Edit">✎</button>
@@ -485,7 +485,7 @@ export default function BudgetTab({
         {/* Manual Upload card */}
         <div className="card" style={{marginBottom:"1.2rem"}}>
           <div className="ctitle">Import Bank Statement</div>
-          <div style={{fontSize:".77rem",color:"rgba(255,255,255,.55)",marginBottom:"1rem",lineHeight:1.7}}>
+          <div style={{fontSize:".77rem",color:"var(--text-dim)",marginBottom:"1rem",lineHeight:1.7}}>
             Upload CSV, Excel, or PDF statements from US banks (Chase, BofA, Wells Fargo, Citi, Capital One, Amex, Discover, US Bank) and Indian banks (HDFC, ICICI, Axis, SBI, Kotak).
             Transactions are <span style={{color:"#4caf9a"}}>AES-256 encrypted</span> before storage. Statements older than 1 year are automatically purged.
           </div>
@@ -547,7 +547,7 @@ export default function BudgetTab({
           <FG label="Statement File (CSV, XLSX, or PDF)">
             <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="fi"
               onChange={e=>setBudgetUploadFile(e.target.files[0])}
-              style={{paddingTop:".4rem",color:"rgba(255,255,255,.85)"}}/>
+              style={{paddingTop:".4rem",color:"var(--text)"}}/>
           </FG>
           <FG label="Notes (optional)">
             <input className="fi" placeholder="e.g. Jan–Mar 2026 statement"
@@ -561,7 +561,7 @@ export default function BudgetTab({
               maxHeight:budgetUploadMsg.startsWith("📄")?"400px":"none",overflow:"auto",
               background:budgetUploadMsg.startsWith("✓")?"rgba(76,175,154,.1)":budgetUploadMsg.startsWith("📄")?"rgba(90,156,224,.08)":"rgba(224,124,90,.1)",
               border:`1px solid ${budgetUploadMsg.startsWith("✓")?"rgba(76,175,154,.3)":budgetUploadMsg.startsWith("📄")?"rgba(90,156,224,.2)":"rgba(224,124,90,.3)"}`,
-              color:budgetUploadMsg.startsWith("✓")?"#4caf9a":budgetUploadMsg.startsWith("📄")?"rgba(255,255,255,.7)":"#e07c5a"}}>
+              color:budgetUploadMsg.startsWith("✓")?"#4caf9a":budgetUploadMsg.startsWith("📄")?"var(--text-dim)":"#e07c5a"}}>
               {budgetUploadMsg}
             </div>
           )}
@@ -631,7 +631,7 @@ export default function BudgetTab({
               <tbody>
                 {budgetStatements.map(s=>(
                   <tr key={s.id}>
-                    <td style={{fontWeight:500,color:"#ffffff"}}>{s.source}</td>
+                    <td style={{fontWeight:500,color:"var(--text)"}}>{s.source}</td>
                     <td><span style={{fontSize:".68rem",padding:"2px 7px",borderRadius:3,background:`${TYPE_COLORS[s.statement_type]||"#6b6356"}22`,color:TYPE_COLORS[s.statement_type]||"#6b6356",border:`1px solid ${TYPE_COLORS[s.statement_type]||"#6b6356"}44`}}>{TYPE_ICONS[s.statement_type]} {s.statement_type}</span></td>
                     <td className="dim" style={{fontSize:".75rem"}}>{s.period_start||"?"} → {s.period_end||"?"}</td>
                     <td className="r mono" style={{color:"#c9a84c"}}>{s.txn_count}</td>
@@ -654,3 +654,4 @@ export default function BudgetTab({
     </>
   );
 }
+             

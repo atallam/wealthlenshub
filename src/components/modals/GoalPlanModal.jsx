@@ -119,7 +119,7 @@ Keep the response practical, specific to the numbers, and formatted clearly with
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1.2rem"}}>
           <div>
             <div className="modtitle" style={{marginBottom:".15rem"}}>✦ Goal Fulfillment Plan</div>
-            <div style={{fontSize:".72rem",color:"rgba(255,255,255,.5)"}}>AI-powered analysis of your {goals.length} goal{goals.length!==1?"s":""}</div>
+            <div style={{fontSize:".72rem",color:"var(--text)"}}>AI-powered analysis of your {goals.length} goal{goals.length!==1?"s":""}</div>
           </div>
           <div style={{display:"flex",gap:".4rem"}}>
             <button onClick={generate} disabled={loading}
@@ -142,10 +142,10 @@ Keep the response practical, specific to the numbers, and formatted clearly with
         </div>
 
         {/* Quick summary table */}
-        <div style={{marginBottom:"1rem",overflowX:"auto",border:"1px solid rgba(255,255,255,.06)",borderRadius:6}}>
+        <div style={{marginBottom:"1rem",overflowX:"auto",border:"1px solid var(--border)",borderRadius:6}}>
           <table style={{width:"100%",fontSize:".7rem",borderCollapse:"collapse"}}>
-            <thead><tr style={{borderBottom:"1px solid rgba(255,255,255,.1)"}}>
-              {["Goal","Status","Funded","Gap","Monthly Needed"].map(h=><th key={h} style={{padding:".4rem .55rem",textAlign:"left",color:"rgba(255,255,255,.4)",fontWeight:500,fontSize:".6rem",letterSpacing:".06em",textTransform:"uppercase"}}>{h}</th>)}
+            <thead><tr style={{borderBottom:"1px solid var(--border)"}}>
+              {["Goal","Status","Funded","Gap","Monthly Needed"].map(h=><th key={h} style={{padding:".4rem .55rem",textAlign:"left",color:"var(--text)",fontWeight:500,fontSize:".6rem",letterSpacing:".06em",textTransform:"uppercase"}}>{h}</th>)}
             </tr></thead>
             <tbody>{sorted.map((g,i)=>{
               const cur=goalCurVal(g);
@@ -155,7 +155,7 @@ Keep the response practical, specific to the numbers, and formatted clearly with
               const pct=g.targetAmount>0?(cur/g.targetAmount*100):0;
               const status=pct>=100?"Achieved":yLeft<=0?"Overdue":pct>=40?"On track":"Behind";
               const stColor=status==="Achieved"?"#1d9e75":status==="On track"?"#1d9e75":status==="Overdue"?"#e07c5a":"#e07c5a";
-              return <tr key={g.id} style={{borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+              return <tr key={g.id} style={{borderBottom:"1px solid var(--border)"}}>
                 <td style={{padding:".4rem .55rem",color:g.color,fontWeight:500}}>{g.name}</td>
                 <td style={{padding:".4rem .55rem"}}><span style={{color:stColor,fontSize:".62rem",background:stColor+"15",border:`1px solid ${stColor}33`,borderRadius:8,padding:"1px 7px"}}>{status}</span></td>
                 <td style={{padding:".4rem .55rem",fontFamily:"'DM Mono',monospace"}}>{pct.toFixed(0)}%</td>
@@ -173,12 +173,12 @@ Keep the response practical, specific to the numbers, and formatted clearly with
           {loading&&!plan&&(
             <div style={{textAlign:"center"}}>
               <div style={{width:28,height:28,border:"2px solid rgba(160,132,202,.2)",borderTopColor:"#a084ca",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto .75rem"}}/>
-              <div style={{fontSize:".78rem",color:"rgba(255,255,255,.45)"}}>Analysing your goals…</div>
+              <div style={{fontSize:".78rem",color:"var(--text)"}}>Analysing your goals…</div>
             </div>
           )}
           {error&&<div style={{color:"#e07c5a",fontSize:".8rem"}}>⚠ {error}</div>}
           {plan&&(
-            <div style={{fontSize:".8rem",lineHeight:1.75,color:"rgba(255,255,255,.85)",whiteSpace:"pre-wrap",width:"100%"}}>
+            <div style={{fontSize:".8rem",lineHeight:1.75,color:"var(--text)",whiteSpace:"pre-wrap",width:"100%"}}>
               {plan}
             </div>
           )}

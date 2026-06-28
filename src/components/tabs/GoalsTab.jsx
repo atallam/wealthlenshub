@@ -63,7 +63,7 @@ export default function GoalsTab({
     <>
       {/* Header */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem",flexWrap:"wrap",gap:".7rem"}}>
-        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Financial Goals</div>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"var(--text)"}}>Financial Goals</div>
         <div style={{display:"flex",gap:".5rem"}}>
           {goals.length>0&&<button className="btn-o" onClick={()=>setModal("goalplan")}>✦ Fulfillment Plan</button>}
           <button className="btn-sm" onClick={()=>{setGoalForm({...BG,priority:goals.length+1});setEditGoalId(null);setModal("goal");}}>+ New Goal</button>
@@ -80,12 +80,12 @@ export default function GoalsTab({
         const totalFunded=sortedGoals.reduce((s,g)=>s+goalCur(g),0);
         const pct=totalTarget>0?(totalFunded/totalTarget*100).toFixed(0):0;
         return(
-        <div style={{marginBottom:"1rem",padding:".55rem .85rem",background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,display:"flex",gap:"1.5rem",flexWrap:"wrap",fontSize:".72rem",color:"rgba(255,255,255,.55)",alignItems:"center"}}>
+        <div style={{marginBottom:"1rem",padding:".55rem .85rem",background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:8,display:"flex",gap:"1.5rem",flexWrap:"wrap",fontSize:".72rem",color:"var(--text-dim)",alignItems:"center"}}>
           <span>{goals.length} goal{goals.length!==1?"s":""}</span>
           {onTrack>0&&<span style={{color:"#1d9e75"}}>{onTrack} on track</span>}
           {needsAttn>0&&<span style={{color:"#d4a017"}}>{needsAttn} needs attention</span>}
           {behind>0&&<span style={{color:"#e07c5a"}}>{behind} behind</span>}
-          <span style={{marginLeft:"auto"}}>Target: <span style={{color:"#fff",fontFamily:"'DM Mono',monospace"}}>{fmtCr(totalTarget)}</span></span>
+          <span style={{marginLeft:"auto"}}>Target: <span style={{color:"var(--text)",fontFamily:"'DM Mono',monospace"}}>{fmtCr(totalTarget)}</span></span>
           <span>Funded: <span style={{color:"#c9a84c",fontFamily:"'DM Mono',monospace"}}>{pct}%</span></span>
         </div>);
       })()}
@@ -95,7 +95,7 @@ export default function GoalsTab({
       {doubleAllocated.length>0&&(
         <div style={{marginBottom:"1rem",padding:".55rem .85rem",background:"rgba(224,124,90,.06)",border:"1px solid rgba(224,124,90,.2)",borderRadius:8,fontSize:".72rem",color:"#e07c5a",lineHeight:1.6}}>
           ⚠ Double-counted: {doubleAllocated.map(([t,gs])=>`${AT[t]?.icon||""} ${AT[t]?.label||t} → ${gs.join(" & ")}`).join(" · ")}
-          <span style={{color:"rgba(255,255,255,.4)",marginLeft:6}}>Same asset type in multiple goals inflates total funded %</span>
+          <span style={{color:"var(--text-muted)",marginLeft:6}}>Same asset type in multiple goals inflates total funded %</span>
         </div>
       )}
 
@@ -115,7 +115,7 @@ export default function GoalsTab({
             <div style={{display:"flex",alignItems:"center",gap:".35rem",marginBottom:".55rem"}}>
               <div style={{background:`${g.color}22`,border:`1px solid ${g.color}55`,borderRadius:3,padding:"1px 7px",fontSize:".6rem",letterSpacing:".08em",color:g.color,fontWeight:600}}>P{g.priority||idx+1}</div>
               <div style={{background:st.color+"18",border:`1px solid ${st.color}44`,borderRadius:10,padding:"1px 8px",fontSize:".58rem",color:st.color,fontWeight:500}}>{st.label}</div>
-              <span style={{fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:"rgba(255,255,255,.28)",marginLeft:".15rem"}}>{g.category}</span>
+              <span style={{fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:"var(--text-muted)",marginLeft:".15rem"}}>{g.category}</span>
             </div>
             {/* Controls — top right */}
             <div style={{position:"absolute",top:8,right:8,display:"flex",gap:".2rem"}}>
@@ -126,13 +126,13 @@ export default function GoalsTab({
             </div>
 
             {/* Goal name */}
-            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",color:"#ffffff",marginBottom:".2rem"}}>{g.name}</div>
-            {g.notes&&<div style={{fontSize:".72rem",color:"rgba(255,255,255,.4)",marginBottom:".6rem"}}>{g.notes}</div>}
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",color:"var(--text)",marginBottom:".2rem"}}>{g.name}</div>
+            {g.notes&&<div style={{fontSize:".72rem",color:"var(--text-muted)",marginBottom:".6rem"}}>{g.notes}</div>}
 
             {/* Funded by: members + asset types */}
-            <div style={{marginBottom:".5rem",fontSize:".62rem",color:"rgba(255,255,255,.35)",letterSpacing:".04em",textTransform:"uppercase",fontWeight:500}}>Funded by</div>
+            <div style={{marginBottom:".5rem",fontSize:".62rem",color:"var(--text-muted)",letterSpacing:".04em",textTransform:"uppercase",fontWeight:500}}>Funded by</div>
             <div style={{marginBottom:".65rem",display:"flex",flexWrap:"wrap",gap:".35rem"}}>
-              <span style={{fontSize:".65rem",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,padding:"2px 9px",color:"rgba(255,255,255,.55)"}}>
+              <span style={{fontSize:".65rem",background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:12,padding:"2px 9px",color:"var(--text-dim)"}}>
                 👤 {memberNames}
               </span>
               {(g.linkedTypes||[]).length>0?g.linkedTypes.map(t=>{
@@ -144,7 +144,7 @@ export default function GoalsTab({
                   {a.icon} {a.label}{isDouble&&<span style={{color:"#e07c5a",marginLeft:3}} title={`Also in: ${typeGoalMap[t].filter(n=>n!==g.name).join(", ")}`}>⚠</span>}
                 </span>);
               }):(
-                <span style={{fontSize:".6rem",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:4,padding:"2px 7px",color:"rgba(255,255,255,.4)",display:"flex",alignItems:"center",gap:".25rem"}}>
+                <span style={{fontSize:".6rem",background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:4,padding:"2px 7px",color:"var(--text-muted)",display:"flex",alignItems:"center",gap:".25rem"}}>
                   <span style={{fontSize:".7rem",opacity:.6}}>ℹ</span> Entire portfolio
                 </span>
               )}
@@ -153,18 +153,18 @@ export default function GoalsTab({
             {/* Progress */}
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:".45rem"}}>
               <span style={{fontFamily:"'DM Mono',monospace",fontSize:"1.05rem",color:g.color}}>{fmtCr(cur)}</span>
-              <span style={{fontFamily:"'DM Mono',monospace",fontSize:".82rem",color:"rgba(255,255,255,.5)"}}>of {fmtCr(g.targetAmount)}</span>
+              <span style={{fontFamily:"'DM Mono',monospace",fontSize:".82rem",color:"var(--text-muted)"}}>of {fmtCr(g.targetAmount)}</span>
             </div>
             <div className="gbbg"><div className="gbfill" style={{width:`${prog}%`,background:g.color}}/></div>
             <div style={{display:"flex",justifyContent:"space-between",marginTop:".55rem",fontSize:".7rem"}}>
-              <span style={{color:"rgba(255,255,255,.5)"}}>Remaining <span style={{color:"#ffffff",fontFamily:"'DM Mono',monospace"}}>{fmtCr(rem)}</span></span>
-              <span style={{color:"rgba(255,255,255,.5)"}}>{yLeft}y · {prog.toFixed(0)}%</span>
+              <span style={{color:"var(--text-muted)"}}>Remaining <span style={{color:"var(--text)",fontFamily:"'DM Mono',monospace"}}>{fmtCr(rem)}</span></span>
+              <span style={{color:"var(--text-muted)"}}>{yLeft}y · {prog.toFixed(0)}%</span>
             </div>
 
             {/* Monthly contribution if set */}
             {monthly>0&&(
-              <div style={{marginTop:".65rem",padding:".4rem .7rem",background:"rgba(255,255,255,.03)",borderRadius:5,fontSize:".68rem",color:"rgba(255,255,255,.5)"}}>
-                Monthly SIP: <span style={{fontFamily:"'DM Mono',monospace",color:"rgba(255,255,255,.85)"}}>₹{monthly.toLocaleString("en-IN")}</span>
+              <div style={{marginTop:".65rem",padding:".4rem .7rem",background:"var(--bg-muted)",borderRadius:5,fontSize:".68rem",color:"var(--text-muted)"}}>
+                Monthly SIP: <span style={{fontFamily:"'DM Mono',monospace",color:"var(--text)"}}>₹{monthly.toLocaleString("en-IN")}</span>
               </div>
             )}
           </div>);

@@ -28,20 +28,20 @@ export default function MembersTab({
 }) {
   return (
     <>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>Family Members</div><button className="btn-sm" onClick={()=>openMemberModal(null)}>+ Add Member</button></div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"var(--text)"}}>Family Members</div><button className="btn-sm" onClick={()=>openMemberModal(null)}>+ Add Member</button></div>
       {mSum.length===0&&(<div className="empty">No members yet. Add a family member to start tracking individual portfolios.</div>)}
       {mSum.map(m=>{const hs=allHoldings.filter(h=>h.member_id===m.id);const byT=Object.keys(AT).map(t=>({t,v:hs.filter(h=>h.type===t).reduce((s,h)=>s+(valINRCache.get(h.id)||0),0)})).filter(x=>x.v>0);const holdingCount=hs.length;return(<div key={m.id} className="card" style={{marginBottom:"1rem"}}>
         <div style={{display:"flex",alignItems:"center",gap:".82rem",marginBottom:".95rem"}}>
           <div className="av" style={{width:42,height:42,fontSize:"1rem"}}>{m.name[0]}</div>
           <div style={{flex:1}}>
-            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",color:"#ffffff"}}>{m.name}</div>
-            <div style={{fontSize:".68rem",color:"rgba(255,255,255,.4)",textTransform:"uppercase",letterSpacing:".08em"}}>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.2rem",color:"var(--text)"}}>{m.name}</div>
+            <div style={{fontSize:".68rem",color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:".08em"}}>
               {m.relation}{holdingCount>0?` · ${holdingCount} holding${holdingCount>1?"s":""}`:""}{m.email?<span style={{textTransform:"none",letterSpacing:"normal",marginLeft:6,fontSize:".6rem",color:"rgba(76,175,154,.6)"}}>● Linked: {m.email}</span>:""}
             </div>
           </div>
           <div style={{display:"flex",gap:".35rem",alignItems:"center"}}>
             <button className="delbtn" title="Edit member" onClick={()=>openMemberModal(m.id)}
-              style={{color:"rgba(255,255,255,.5)",fontSize:".78rem"}}>✏️</button>
+              style={{color:"var(--text-muted)",fontSize:".78rem"}}>✏️</button>
             <button className="delbtn" title="Delete member" onClick={()=>setMemberAction({type:"delete",memberId:m.id,reassignTo:""})}
               style={{color:"rgba(224,124,90,.5)",fontSize:".78rem"}}>🗑️</button>
             {members.length>1&&holdingCount>0&&(
@@ -74,7 +74,7 @@ export default function MembersTab({
         return(
           <Overlay onClose={()=>setMemberAction(null)} narrow>
             <div className="modtitle">{isDelete?"🗑️":"🔗"} {title}</div>
-            <div style={{fontSize:".8rem",color:"rgba(255,255,255,.7)",marginBottom:"1rem",lineHeight:1.6}}>{desc}</div>
+            <div style={{fontSize:".8rem",color:"var(--text-dim)",marginBottom:"1rem",lineHeight:1.6}}>{desc}</div>
             {(holdingCount>0||!isDelete)&&otherMembers.length>0&&(
               <FG label={isDelete?"Reassign holdings to":"Merge into"}>
                 <select className="fi fs" value={memberAction.reassignTo} onChange={e=>setMemberAction(p=>({...p,reassignTo:e.target.value}))}>

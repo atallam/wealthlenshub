@@ -25,16 +25,16 @@ function StepBar({ step }) {
           <div style={{
             width: 22, height: 22, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: ".6rem", fontWeight: 600, flexShrink: 0,
-            background: i <= idx ? "rgba(167,139,250,.18)" : "rgba(255,255,255,.05)",
-            border: `1px solid ${i <= idx ? "rgba(167,139,250,.5)" : "rgba(255,255,255,.1)"}`,
-            color: i <= idx ? "#a78bfa" : "rgba(255,255,255,.3)",
+            background: i <= idx ? "rgba(167,139,250,.18)" : "var(--text-muted)",
+            border: `1px solid ${i <= idx ? "rgba(167,139,250,.5)" : "var(--text-muted)"}`,
+            color: i <= idx ? "#a78bfa" : "var(--text-muted)",
           }}>{i + 1}</div>
           <div style={{
             fontSize: ".62rem", letterSpacing: ".06em", whiteSpace: "nowrap",
-            color: i <= idx ? "#a78bfa" : "rgba(255,255,255,.3)",
+            color: i <= idx ? "#a78bfa" : "var(--text-muted)",
           }}>{s.label}</div>
           {i < steps.length - 1 && (
-            <div style={{ flex: 1, height: 1, background: i < idx ? "rgba(167,139,250,.3)" : "rgba(255,255,255,.06)", margin: "0 .3rem" }} />
+            <div style={{ flex: 1, height: 1, background: i < idx ? "rgba(167,139,250,.3)" : "var(--text-muted)", margin: "0 .3rem" }} />
           )}
         </div>
       ))}
@@ -59,7 +59,7 @@ const TYPE_DISPLAY = {
   MF: { label: "Mutual Fund", color: "#a084ca", bg: "rgba(160,132,202,.12)" },
   FD: { label: "Fixed Deposit", color: "#c9a84c", bg: "rgba(201,168,76,.12)" },
   CASH: { label: "Cash", color: "#4caf9a", bg: "rgba(76,175,154,.12)" },
-  OTHER: { label: "Other", color: "rgba(255,255,255,.5)", bg: "rgba(255,255,255,.05)" },
+  OTHER: { label: "Other", color: "var(--text-muted)", bg: "var(--text-muted)" },
 };
 
 // Flush-and-fill: dup_status is informational only — no resolution required.
@@ -200,16 +200,16 @@ export default function SnapTradeImport({ onClose, members = [] }) {
             onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "rgba(224,124,90,.7)"; }}>Disconnect All</button>
         )}
       </div>
-      <div style={{ fontSize: ".72rem", color: "rgba(255,255,255,.45)", marginBottom: "1.2rem" }}>Connect US brokerage accounts via SnapTrade to auto-import positions.</div>
+      <div style={{ fontSize: ".72rem", color: "var(--text-muted)", marginBottom: "1.2rem" }}>Connect US brokerage accounts via SnapTrade to auto-import positions.</div>
       <StepBar step={step} />
 
       {error && (<div style={{ background: "rgba(224,124,90,.08)", border: "1px solid rgba(224,124,90,.25)", borderRadius: 6, padding: ".55rem .85rem", fontSize: ".75rem", color: "#e07c5a", marginBottom: "1rem", display: "flex", alignItems: "center", gap: ".5rem" }}><span>⚠</span><span style={{ flex: 1 }}>{error}</span><span onClick={() => setError("")} style={{ cursor: "pointer", opacity: .6, fontSize: ".8rem" }}>✕</span></div>)}
 
-      {loading && (<div style={{ textAlign: "center", padding: "2rem 0" }}><div style={{ width: 30, height: 30, border: "2px solid rgba(167,139,250,.15)", borderTopColor: "#a78bfa", borderRadius: "50%", animation: "snapspin 1s linear infinite", margin: "0 auto .8rem" }} /><div style={{ fontSize: ".75rem", color: "rgba(255,255,255,.45)" }}>{step === "connect" ? "Checking connection…" : step === "preview" ? "Fetching positions…" : "Processing…"}</div><style>{`@keyframes snapspin{to{transform:rotate(360deg)}}`}</style></div>)}
+      {loading && (<div style={{ textAlign: "center", padding: "2rem 0" }}><div style={{ width: 30, height: 30, border: "2px solid rgba(167,139,250,.15)", borderTopColor: "#a78bfa", borderRadius: "50%", animation: "snapspin 1s linear infinite", margin: "0 auto .8rem" }} /><div style={{ fontSize: ".75rem", color: "var(--text-muted)" }}>{step === "connect" ? "Checking connection…" : step === "preview" ? "Fetching positions…" : "Processing…"}</div><style>{`@keyframes snapspin{to{transform:rotate(360deg)}}`}</style></div>)}
 
       {/* STEP: CONNECT */}
       {!loading && step === "connect" && (<div>
-        <div style={{ fontSize: ".72rem", color: "rgba(255,255,255,.6)", marginBottom: "1rem" }}>Choose a brokerage to connect. You'll be redirected to their login page — your credentials are never shared with WealthLens.</div>
+        <div style={{ fontSize: ".72rem", color: "var(--text-dim)", marginBottom: "1rem" }}>Choose a brokerage to connect. You'll be redirected to their login page — your credentials are never shared with WealthLens.</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: ".6rem" }}>
           {[{ slug: "FIDELITY", label: "Fidelity", icon: "🏦" },{ slug: "SCHWAB", label: "Schwab", icon: "🏦" },{ slug: "ROBINHOOD", label: "Robinhood", icon: "🪶" },{ slug: "ALPACA", label: "Alpaca", icon: "🦙" },{ slug: "INTERACTIVE_BROKERS", label: "IBKR", icon: "🏛️" },{ slug: "", label: "All Brokers", icon: "🔗" }].map(b => (
             <button key={b.slug || "all"} onClick={() => handleConnect(b.slug)} style={{ background: "rgba(167,139,250,.04)", border: "1px solid rgba(167,139,250,.18)", borderRadius: 8, padding: ".85rem .5rem", cursor: "pointer", textAlign: "center", transition: "all .2s", color: "#ffffff" }}
@@ -219,16 +219,16 @@ export default function SnapTradeImport({ onClose, members = [] }) {
               <div style={{ fontSize: ".75rem", fontWeight: 500 }}>{b.label}</div>
             </button>))}
         </div>
-        <div style={{ fontSize: ".62rem", color: "rgba(255,255,255,.3)", marginTop: "1rem", textAlign: "center", lineHeight: 1.6 }}>Powered by SnapTrade · OAuth2 · Your credentials stay with your broker</div>
+        <div style={{ fontSize: ".62rem", color: "var(--text-muted)", marginTop: "1rem", textAlign: "center", lineHeight: 1.6 }}>Powered by SnapTrade · OAuth2 · Your credentials stay with your broker</div>
       </div>)}
 
       {/* STEP: ACCOUNTS */}
       {!loading && step === "accounts" && (<div>
         {connections.length > 0 && (<div style={{ marginBottom: "1.2rem" }}>
-          <div style={{ fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginBottom: ".6rem" }}>Connected Brokerages</div>
-          {connections.map(c => (<div key={c.authorization_id} style={{ display: "flex", alignItems: "center", gap: ".7rem", padding: ".65rem .85rem", marginBottom: ".4rem", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 8 }}>
+          <div style={{ fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: ".6rem" }}>Connected Brokerages</div>
+          {connections.map(c => (<div key={c.authorization_id} style={{ display: "flex", alignItems: "center", gap: ".7rem", padding: ".65rem .85rem", marginBottom: ".4rem", background: "var(--bg-muted)", border: "1px solid var(--border)", borderRadius: 8 }}>
             <div style={{ fontSize: "1.1rem" }}>{brokerIcon(c.brokerage_slug)}</div>
-            <div style={{ flex: 1 }}><div style={{ fontSize: ".8rem", color: "#ffffff", fontWeight: 500 }}>{c.brokerage}</div><div style={{ fontSize: ".62rem", color: "rgba(255,255,255,.4)", marginTop: 2 }}>{c.status === "active" ? <span style={{ color: "rgba(76,175,154,.8)" }}>● Active</span> : <span style={{ color: "rgba(224,124,90,.8)" }}>● Disabled</span>}</div></div>
+            <div style={{ flex: 1 }}><div style={{ fontSize: ".8rem", color: "#ffffff", fontWeight: 500 }}>{c.brokerage}</div><div style={{ fontSize: ".62rem", color: "var(--text-muted)", marginTop: 2 }}>{c.status === "active" ? <span style={{ color: "rgba(76,175,154,.8)" }}>● Active</span> : <span style={{ color: "rgba(224,124,90,.8)" }}>● Disabled</span>}</div></div>
             <button onClick={() => setShowDisconnectConfirm(c.authorization_id)} style={{ background: "none", border: "1px solid rgba(224,124,90,.2)", color: "rgba(224,124,90,.55)", padding: ".22rem .55rem", borderRadius: 4, cursor: "pointer", fontSize: ".62rem", transition: "all .2s" }}
               onMouseEnter={e => { e.currentTarget.style.color = "#e07c5a"; e.currentTarget.style.borderColor = "rgba(224,124,90,.4)"; }}
               onMouseLeave={e => { e.currentTarget.style.color = "rgba(224,124,90,.55)"; e.currentTarget.style.borderColor = "rgba(224,124,90,.2)"; }}>Disconnect</button>
@@ -236,30 +236,30 @@ export default function SnapTradeImport({ onClose, members = [] }) {
         </div>)}
 
         {accounts.length > 0 ? (<>
-          <div style={{ fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.5)", marginBottom: ".6rem" }}>Accounts — assign member & click to preview</div>
+          <div style={{ fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: ".6rem" }}>Accounts — assign member & click to preview</div>
           {accounts.map(a => (<div key={a.account_id} style={{ marginBottom: ".4rem", background: "rgba(167,139,250,.04)", border: "1px solid rgba(167,139,250,.15)", borderRadius: 8, transition: "all .2s" }}>
             <div style={{ display: "flex", alignItems: "center", gap: ".7rem", padding: ".75rem .85rem", cursor: "pointer" }}
               onClick={() => previewHoldings(a.account_id, a.brokerage)}
               onMouseEnter={e => { e.currentTarget.parentElement.style.borderColor = "rgba(167,139,250,.4)"; e.currentTarget.parentElement.style.background = "rgba(167,139,250,.08)"; }}
               onMouseLeave={e => { e.currentTarget.parentElement.style.borderColor = "rgba(167,139,250,.15)"; e.currentTarget.parentElement.style.background = "rgba(167,139,250,.04)"; }}>
               <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: ".85rem", background: "rgba(167,139,250,.12)", border: "1px solid rgba(167,139,250,.25)", color: "#a78bfa", flexShrink: 0 }}>{brokerIcon(a.brokerage_slug)}</div>
-              <div style={{ flex: 1 }}><div style={{ fontSize: ".8rem", color: "#ffffff", fontWeight: 500 }}>{a.account_name || a.brokerage}</div><div style={{ fontSize: ".62rem", color: "rgba(255,255,255,.4)", marginTop: 2 }}>{a.brokerage} · {a.account_number ? `••${a.account_number.slice(-4)}` : "Account"}</div></div>
+              <div style={{ flex: 1 }}><div style={{ fontSize: ".8rem", color: "#ffffff", fontWeight: 500 }}>{a.account_name || a.brokerage}</div><div style={{ fontSize: ".62rem", color: "var(--text-muted)", marginTop: 2 }}>{a.brokerage} · {a.account_number ? `••${a.account_number.slice(-4)}` : "Account"}</div></div>
               <div style={{ fontSize: ".72rem", color: "#a78bfa" }}>Preview →</div>
             </div>
             {members.length > 0 && (
               <div style={{ padding: "0 .85rem .6rem", display: "flex", alignItems: "center", gap: ".5rem" }}
                 onClick={e => e.stopPropagation()}>
-                <span style={{ fontSize: ".6rem", color: "rgba(255,255,255,.4)", whiteSpace: "nowrap" }}>Assign to:</span>
+                <span style={{ fontSize: ".6rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Assign to:</span>
                 <select value={memberMap[a.account_id] || ""}
                   onChange={e => setMemberMap(prev => ({ ...prev, [a.account_id]: e.target.value || null }))}
-                  style={{ flex: 1, fontSize: ".68rem", padding: ".25rem .4rem", borderRadius: 4, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", color: "#fff", fontFamily: "'DM Sans',sans-serif", cursor: "pointer", maxWidth: 200 }}>
+                  style={{ flex: 1, fontSize: ".68rem", padding: ".25rem .4rem", borderRadius: 4, background: "var(--bg-muted)", border: "1px solid var(--border)", color: "var(--text)", fontFamily: "'DM Sans',sans-serif", cursor: "pointer", maxWidth: 200 }}>
                   <option value="">— No member —</option>
                   {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
               </div>
             )}
           </div>))}
-        </>) : (<div style={{ textAlign: "center", padding: "1.5rem", color: "rgba(255,255,255,.4)", fontSize: ".8rem" }}>{connections.length === 0 ? "No brokerages connected yet." : "No accounts found. Try refreshing."}</div>)}
+        </>) : (<div style={{ textAlign: "center", padding: "1.5rem", color: "var(--text-muted)", fontSize: ".8rem" }}>{connections.length === 0 ? "No brokerages connected yet." : "No accounts found. Try refreshing."}</div>)}
         <button onClick={() => setStep("connect")} style={{ display: "block", width: "100%", marginTop: ".8rem", background: "none", border: "1px dashed rgba(167,139,250,.25)", color: "rgba(167,139,250,.6)", padding: ".55rem", borderRadius: 6, cursor: "pointer", fontSize: ".72rem", transition: "all .2s" }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,.5)"; e.currentTarget.style.color = "#a78bfa"; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,.25)"; e.currentTarget.style.color = "rgba(167,139,250,.6)"; }}>+ Connect another brokerage</button>
@@ -268,23 +268,23 @@ export default function SnapTradeImport({ onClose, members = [] }) {
       {/* STEP: PREVIEW with duplicate resolution */}
       {!loading && step === "preview" && (<div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: ".7rem" }}>
-          <div style={{ fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(255,255,255,.5)" }}>
+          <div style={{ fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-muted)" }}>
             {holdings.length} positions found{holdings.length > 0 && ` · Total ${fmtVal(holdings.reduce((s, h) => s + h.market_value, 0))}`}
           </div>
           {selectedBrokerage && (
             <div style={{ display: "flex", alignItems: "center", gap: ".35rem", fontSize: ".63rem", color: "rgba(167,139,250,.7)" }}>
               <span style={{ fontSize: ".75rem" }}>{brokerIcon(accounts.find(a => a.account_id === selectedAcct)?.brokerage_slug)}</span>
               {selectedBrokerage}
-              <span style={{ color: "rgba(255,255,255,.3)" }}>via SnapTrade</span>
+              <span style={{ color: "var(--text-muted)" }}>via SnapTrade</span>
             </div>
           )}
         </div>
 
         {/* Flush-and-fill info banner */}
-        <div style={{ background: "rgba(90,156,224,.05)", border: "1px solid rgba(90,156,224,.2)", borderRadius: 8, padding: ".6rem .85rem", marginBottom: "1rem", fontSize: ".7rem", color: "rgba(255,255,255,.6)", lineHeight: 1.6 }}>
+        <div style={{ background: "rgba(90,156,224,.05)", border: "1px solid rgba(90,156,224,.2)", borderRadius: 8, padding: ".6rem .85rem", marginBottom: "1rem", fontSize: ".7rem", color: "var(--text-dim)", lineHeight: 1.6 }}>
           <span style={{ color: "#5a9ce0", fontWeight: 500 }}>↻ Refresh mode</span>
           {" — "}previous {selectedBrokerage} positions will be replaced with this live snapshot.
-          {previewSummary && (<span style={{ marginLeft: 8, color: "rgba(255,255,255,.4)" }}>
+          {previewSummary && (<span style={{ marginLeft: 8, color: "var(--text-muted)" }}>
             {previewSummary.new_count > 0 && `✦ ${previewSummary.new_count} new `}
             {previewSummary.existing_count > 0 && `↻ ${previewSummary.existing_count} refreshed `}
           </span>)}
@@ -305,21 +305,21 @@ export default function SnapTradeImport({ onClose, members = [] }) {
             <tbody>{holdings.map((h, i) => {
               const typeInfo = TYPE_DISPLAY[h.asset_type] || TYPE_DISPLAY.OTHER;
               const dupInfo = DUP_DISPLAY[h.dup_status] || DUP_DISPLAY.new;
-              return (<tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
-                <td style={tdStyle}><div style={{ fontWeight: 500, color: "#fff" }}>{h.ticker}</div><div style={{ fontSize: ".6rem", color: "rgba(255,255,255,.4)", marginTop: 1, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.asset_name}</div></td>
+              return (<tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
+                <td style={tdStyle}><div style={{ fontWeight: 500, color: "var(--text)" }}>{h.ticker}</div><div style={{ fontSize: ".6rem", color: "var(--text-muted)", marginTop: 1, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.asset_name}</div></td>
                 <td style={tdStyle}><span style={{ fontSize: ".58rem", padding: ".1rem .35rem", borderRadius: 3, background: typeInfo.bg, color: typeInfo.color, whiteSpace: "nowrap" }}>{typeInfo.label}</span></td>
-                <td style={tdStyle}><span style={{ fontSize: ".58rem", color: "rgba(255,255,255,.45)" }}>{h.brokerage_name || h.source || "—"}</span></td>
+                <td style={tdStyle}><span style={{ fontSize: ".58rem", color: "var(--text-muted)" }}>{h.brokerage_name || h.source || "—"}</span></td>
                 <td style={{ ...tdStyle, textAlign: "right", fontFamily: "'DM Mono',monospace", fontSize: ".72rem" }}>{h.units?.toFixed(h.units % 1 === 0 ? 0 : 4)}</td>
                 <td style={{ ...tdStyle, textAlign: "right", fontFamily: "'DM Mono',monospace", fontSize: ".72rem" }}>${h.current_price?.toFixed(2)}</td>
-                <td style={{ ...tdStyle, textAlign: "right", fontFamily: "'DM Mono',monospace", fontSize: ".72rem", color: "#fff" }}>{fmtVal(h.market_value)}</td>
+                <td style={{ ...tdStyle, textAlign: "right", fontFamily: "'DM Mono',monospace", fontSize: ".72rem", color: "var(--text)" }}>{fmtVal(h.market_value)}</td>
                 <td style={tdStyle}>
                   <span style={{ fontSize: ".58rem", padding: ".1rem .35rem", borderRadius: 3, background: dupInfo.bg, color: dupInfo.color, whiteSpace: "nowrap" }}>{dupInfo.icon} {dupInfo.label}</span>
-                  {h.dup_detail && <div style={{ fontSize: ".55rem", color: "rgba(255,255,255,.35)", marginTop: 2, maxWidth: 140, lineHeight: 1.3 }}>{h.dup_detail}</div>}
+                  {h.dup_detail && <div style={{ fontSize: ".55rem", color: "var(--text-muted)", marginTop: 2, maxWidth: 140, lineHeight: 1.3 }}>{h.dup_detail}</div>}
                 </td>
               </tr>);
             })}</tbody>
           </table>
-        </div>) : (<div style={{ textAlign: "center", padding: "2rem", color: "rgba(255,255,255,.4)", fontSize: ".8rem" }}>No positions found in this account.</div>)}
+        </div>) : (<div style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)", fontSize: ".8rem" }}>No positions found in this account.</div>)}
 
         <div style={{ display: "flex", gap: ".6rem", justifyContent: "flex-end", alignItems: "center" }}>
           <button onClick={() => { setStep("accounts"); setHoldings([]); setPreviewSummary(null); }} style={btnSecondary}>← Back</button>
@@ -337,7 +337,7 @@ export default function SnapTradeImport({ onClose, members = [] }) {
         <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "1.15rem", color: "#ffffff", marginBottom: ".4rem" }}>Import Complete</div>
         <div style={{ display: "flex", gap: ".8rem", justifyContent: "center", flexWrap: "wrap", marginBottom: "1.2rem", fontSize: ".72rem" }}>
           {importResult.assets_imported > 0 && <span style={{ color: "#4caf9a" }}>↻ {importResult.assets_imported} positions refreshed</span>}
-          {(importResult.assets_skipped || 0) > 0 && <span style={{ color: "rgba(255,255,255,.4)" }}>— {importResult.assets_skipped} skipped (cash sweeps)</span>}
+          {(importResult.assets_skipped || 0) > 0 && <span style={{ color: "var(--text-muted)" }}>— {importResult.assets_skipped} skipped (cash sweeps)</span>}
         </div>
         <div style={{ display: "flex", gap: ".6rem", justifyContent: "center" }}>
           <button onClick={() => { setStep("accounts"); setImportResult(null); }} style={btnSecondary}>Refresh another account</button>
@@ -350,12 +350,12 @@ export default function SnapTradeImport({ onClose, members = [] }) {
         <div onClick={e => e.stopPropagation()} style={{ background: "#0c1526", border: "1px solid rgba(224,124,90,.25)", borderRadius: 12, padding: "1.5rem", width: "100%", maxWidth: 380 }}>
           <div style={{ fontSize: "1.4rem", textAlign: "center", marginBottom: ".6rem" }}>⚠️</div>
           <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "1.1rem", color: "#ffffff", textAlign: "center", marginBottom: ".5rem" }}>{showDisconnectConfirm === "all" ? "Disconnect All Brokerages?" : "Disconnect Brokerage?"}</div>
-          <div style={{ fontSize: ".75rem", color: "rgba(255,255,255,.55)", textAlign: "center", lineHeight: 1.6, marginBottom: "1.2rem" }}>
+          <div style={{ fontSize: ".75rem", color: "var(--text-dim)", textAlign: "center", lineHeight: 1.6, marginBottom: "1.2rem" }}>
             {showDisconnectConfirm === "all"
               ? <><span>This will </span><strong style={{ color: "#e07c5a" }}>delete your SnapTrade account</strong><span>, revoke all connections, and remove all imported holdings.</span></>
               : "This will revoke the OAuth connection and remove imported holdings. You can reconnect anytime."}
           </div>
-          {disconnecting ? (<div style={{ textAlign: "center", padding: ".5rem" }}><div style={{ width: 24, height: 24, border: "2px solid rgba(224,124,90,.15)", borderTopColor: "#e07c5a", borderRadius: "50%", animation: "snapspin 1s linear infinite", margin: "0 auto .5rem" }} /><div style={{ fontSize: ".72rem", color: "rgba(255,255,255,.4)" }}>Disconnecting…</div></div>
+          {disconnecting ? (<div style={{ textAlign: "center", padding: ".5rem" }}><div style={{ width: 24, height: 24, border: "2px solid rgba(224,124,90,.15)", borderTopColor: "#e07c5a", borderRadius: "50%", animation: "snapspin 1s linear infinite", margin: "0 auto .5rem" }} /><div style={{ fontSize: ".72rem", color: "var(--text-muted)" }}>Disconnecting…</div></div>
           ) : (<div style={{ display: "flex", gap: ".6rem" }}>
             <button onClick={() => setShowDisconnectConfirm(null)} style={{ ...btnSecondary, flex: 1, textAlign: "center" }}>Cancel</button>
             <button onClick={() => { if (showDisconnectConfirm === "all") disconnectAll(); else disconnectConnection(showDisconnectConfirm); }} style={{ flex: 1, textAlign: "center", background: "rgba(224,124,90,.12)", border: "1px solid rgba(224,124,90,.45)", color: "#e07c5a", padding: ".52rem 1rem", borderRadius: 6, cursor: "pointer", fontSize: ".78rem", fontWeight: 500, transition: "all .2s", fontFamily: "'DM Sans',sans-serif" }}
@@ -368,7 +368,8 @@ export default function SnapTradeImport({ onClose, members = [] }) {
   );
 }
 
-const thStyle = { fontSize: ".6rem", letterSpacing: ".08em", textTransform: "uppercase", color: "rgba(255,255,255,.45)", textAlign: "left", padding: "0 .5rem .5rem", borderBottom: "1px solid rgba(255,255,255,.06)" };
-const tdStyle = { padding: ".55rem .5rem", fontSize: ".75rem", color: "rgba(255,255,255,.8)" };
-const btnSecondary = { background: "none", border: "1px solid rgba(255,255,255,.15)", color: "rgba(255,255,255,.6)", padding: ".52rem 1rem", borderRadius: 6, cursor: "pointer", fontSize: ".78rem", transition: "all .2s", fontFamily: "'DM Sans',sans-serif" };
+const thStyle = { fontSize: ".6rem", letterSpacing: ".08em", textTransform: "uppercase", color: "var(--text-muted)", textAlign: "left", padding: "0 .5rem .5rem", borderBottom: "1px solid var(--border)" };
+const tdStyle = { padding: ".55rem .5rem", fontSize: ".75rem", color: "var(--text)" };
+const btnSecondary = { background: "none", border: "1px solid var(--border)", color: "var(--text-dim)", padding: ".52rem 1rem", borderRadius: 6, cursor: "pointer", fontSize: ".78rem", transition: "all .2s", fontFamily: "'DM Sans',sans-serif" };
 const btnPrimary = { background: "rgba(167,139,250,.14)", border: "1px solid rgba(167,139,250,.48)", color: "#a78bfa", padding: ".52rem 1.2rem", borderRadius: 6, cursor: "pointer", fontSize: ".78rem", fontWeight: 500, transition: "all .2s", fontFamily: "'DM Sans',sans-serif" };
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
