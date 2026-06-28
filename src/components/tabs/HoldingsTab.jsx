@@ -195,6 +195,17 @@ export default function HoldingsTab({
                       <td>
                         <div className="hn">{h.name}</div>
                         <div className="hm">{mn}</div>
+                        {(h.type==="FD"||h.type==="CD")&&h.maturity_date&&(()=>{
+                          const dLeft=Math.ceil((new Date(h.maturity_date)-Date.now())/864e5);
+                          const mc=dLeft>90?"#4caf9a":dLeft>30?"#f0a050":"#e07c5a";
+                          const matLabel=new Date(h.maturity_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"2-digit"});
+                          return<div style={{marginTop:3,display:"inline-flex",alignItems:"center",gap:4,
+                            fontSize:".58rem",fontWeight:600,padding:"2px 6px",borderRadius:4,
+                            background:mc+"22",color:mc,border:`1px solid ${mc}44`}}>
+                            🏦 {matLabel} · {dLeft<=0?"Matured":`${dLeft}d`}
+                            {h.interest_rate?<span style={{opacity:.8}}> · {h.interest_rate}%</span>:null}
+                          </div>;
+                        })()}
                       </td>
                       <td>
                         {(h.ticker||h.scheme_code)
@@ -349,6 +360,18 @@ export default function HoldingsTab({
                           <span className="m-hc-lbl">Source</span>
                           <span className="m-hc-val" style={{fontSize:".68rem"}}>{h.source==="snaptrade"?"SnapTrade":h.source==="csv"||h.source==="import"?"CSV":h.source==="cas"?"CAS":"Manual"}</span>
                         </div>
+                        {(h.type==="FD"||h.type==="CD")&&h.maturity_date&&(()=>{
+                          const dLeft=Math.ceil((new Date(h.maturity_date)-Date.now())/864e5);
+                          const mc=dLeft>90?"#4caf9a":dLeft>30?"#f0a050":"#e07c5a";
+                          return<div className="m-hc-cell" style={{gridColumn:"1/-1"}}>
+                            <span className="m-hc-lbl">Maturity</span>
+                            <span className="m-hc-val" style={{color:mc,fontWeight:600}}>
+                              {new Date(h.maturity_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}
+                              {" "}· {dLeft<=0?"Matured":`${dLeft}d remaining`}
+                              {h.interest_rate?` · ${h.interest_rate}% p.a.`:""}
+                            </span>
+                          </div>;
+                        })()}
                       </>}
                     </div>
                     {!isExp&&<div style={{textAlign:"center",marginTop:".4rem",fontSize:".56rem",color:"var(--text-muted)",letterSpacing:".08em",textTransform:"uppercase"}}>tap for details</div>}

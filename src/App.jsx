@@ -49,6 +49,7 @@ import ArtifactPanel from './components/shared/ArtifactPanel.jsx';
 import { Overlay, FG, MA } from './components/shared/Overlay.jsx';
 import DonutChart from './components/shared/DonutChart.jsx';
 import FmtInput from './components/shared/FmtInput.jsx';
+import FDScanSheet from './components/shared/FDScanSheet.jsx';
 
 // ── Modals ───────────────────────────────────────────────────────
 import GoalPlanModal from './components/modals/GoalPlanModal.jsx';
@@ -86,6 +87,7 @@ export default function App() {
   const [tab,              setTab]              = useState('overview');
   const [selMember,        setSelMember]        = useState('all');
   const [modal,            setModal]            = useState(null);
+  const [fdScanOpen,       setFdScanOpen]       = useState(false);
   const [showSettings,     setShowSettings]     = useState(false);
   const [showSnapTrade,    setShowSnapTrade]     = useState(false);
   const [showKite,         setShowKite]          = useState(false);
@@ -792,6 +794,21 @@ ${alertsText}`;
             )}
           </div>
 
+          {/* FD Scan button */}
+          {form.type === 'FD' && (
+            <div style={{marginBottom:'.75rem'}}>
+              <button
+                type="button"
+                onClick={() => setFdScanOpen(true)}
+                style={{display:'flex',alignItems:'center',gap:'.5rem',padding:'.55rem 1rem',
+                  background:'rgba(13,148,136,.08)',color:'var(--primary)',
+                  border:'1px solid rgba(13,148,136,.25)',borderRadius:8,
+                  fontSize:'.82rem',fontWeight:600,cursor:'pointer',width:'100%',justifyContent:'center'}}>
+                📷 Scan Certificate — auto-fill with Claude Vision
+              </button>
+            </div>
+          )}
+
           {/* FD / PPF / EPF fields */}
           {['FD','PPF','EPF'].includes(form.type) && (<>
             <div className="frow">
@@ -882,6 +899,25 @@ ${alertsText}`;
             </button>
           </MA>
         </Overlay>
+      )}
+
+      {/* ── FD Certificate Scanner ──────────────────────────────── */}
+      {fdScanOpen && (
+        <FDScanSheet
+          api={api}
+          onClose={() => setFdScanOpen(false)}
+          onConfirm={fd => {
+            setForm(p => ({
+              ...p,
+              name:          fd.bank_name ? `${fd.bank_name} FD` : p.name,
+              principal:     fd.principal  != null ? String(fd.principal)    : p.principal,
+              interest_rate: fd.interest_rate != null ? String(fd.interest_rate) : p.interest_rate,
+              start_date:    fd.start_date    || p.start_date,
+              maturity_date: fd.maturity_date || p.maturity_date,
+            }));
+            setFdScanOpen(false);
+          }}
+        />
       )}
 
       {/* ── Add / Edit Goal ─────────────────────────────────────── */}

@@ -22,6 +22,7 @@ import snapshotsRouter    from "./routes/snapshots.js";
 import kiteRouter         from "./routes/kite.js";
 import breezeRouter       from "./routes/breeze.js";
 import gmailRouter        from "./routes/gmail.js";
+import fdRouter           from "./routes/fd.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -55,6 +56,7 @@ app.use("/api/snapshots",     snapshotsRouter);
 app.use("/api/kite",          kiteRouter);
 app.use("/api/breeze",        breezeRouter);
 app.use("/api/gmail",         gmailRouter);
+app.use("/api/fd",            fdRouter);
 
 // ── Global API error handler ─────────────────────────────────────────────────
 app.use((err, req, res, next) => {

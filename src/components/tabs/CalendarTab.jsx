@@ -25,7 +25,10 @@ export default function CalendarTab({
   // FD maturity + Insurance events
   for(const h of holdings){
     if(h.type==="FD"&&h.maturity_date){
-      addEvent(h.maturity_date,{type:"FD Maturity",label:h.name,color:"#f0a050",icon:"🏦"});
+      const dLeft=Math.ceil((new Date(h.maturity_date)-now)/864e5);
+      const fdColor=dLeft>90?"#4caf9a":dLeft>30?"#f0a050":"#e07c5a";
+      const fdLabel=`${h.name}${h.interest_rate?` · ${h.interest_rate}%`:""}`;
+      addEvent(h.maturity_date,{type:"FD Maturity",label:fdLabel,color:fdColor,icon:"🏦"});
     }
     // Insurance: policy maturity + recurring premium due dates
     if(h.type==="INSURANCE"&&h.start_date){
@@ -124,14 +127,14 @@ export default function CalendarTab({
         {/* Calendar grid */}
         <div className="card" style={{padding:"1rem"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
-            <button onClick={prevMo} style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.7)",borderRadius:5,padding:".25rem .6rem",cursor:"pointer",fontSize:".85rem"}}>‹</button>
-            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"#ffffff"}}>{monthName}</div>
-            <button onClick={nextMo} style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.7)",borderRadius:5,padding:".25rem .6rem",cursor:"pointer",fontSize:".85rem"}}>›</button>
+            <button onClick={prevMo} style={{background:"var(--bg-muted)",border:"1px solid var(--border)",color:"var(--text-dim)",borderRadius:5,padding:".25rem .6rem",cursor:"pointer",fontSize:".85rem"}}>‹</button>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"var(--text)"}}>{monthName}</div>
+            <button onClick={nextMo} style={{background:"var(--bg-muted)",border:"1px solid var(--border)",color:"var(--text-dim)",borderRadius:5,padding:".25rem .6rem",cursor:"pointer",fontSize:".85rem"}}>›</button>
           </div>
 
           {/* Day headers */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
-            {DAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:".63rem",color:"rgba(255,255,255,.38)",letterSpacing:".05em",padding:".3rem 0"}}>{d}</div>)}
+            {DAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:".63rem",color:"var(--text-muted)",letterSpacing:".05em",padding:".3rem 0"}}>{d}</div>)}
           </div>
 
           {/* Calendar cells */}
@@ -145,10 +148,10 @@ export default function CalendarTab({
               return(
               <div key={day} style={{
                 minHeight:56,padding:".3rem .28rem",borderRadius:5,position:"relative",
-                background:today?"rgba(201,168,76,.12)":"rgba(255,255,255,.02)",
-                border:`1px solid ${today?"rgba(201,168,76,.3)":"rgba(255,255,255,.05)"}`,
+                background:today?"rgba(201,168,76,.12)":"var(--bg-muted)",
+                border:`1px solid ${today?"rgba(201,168,76,.3)":"var(--border)"}`,
               }}>
-                <div style={{fontSize:".72rem",color:today?"#c9a84c":"rgba(255,255,255,.5)",fontWeight:today?600:400,marginBottom:".2rem"}}>{day}</div>
+                <div style={{fontSize:".72rem",color:today?"#c9a84c":"var(--text-dim)",fontWeight:today?600:400,marginBottom:".2rem"}}>{day}</div>
                 {dayEvents.slice(0,2).map((e,idx)=>(
                   <div key={idx} style={{fontSize:".55rem",lineHeight:1.3,padding:"1px 3px",borderRadius:2,marginBottom:1,
                     background:`${e.color}22`,color:e.color,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
@@ -156,7 +159,7 @@ export default function CalendarTab({
                     {e.icon} {e.label.slice(0,14)}{e.label.length>14?"…":""}
                   </div>
                 ))}
-                {dayEvents.length>2&&<div style={{fontSize:".52rem",color:"rgba(255,255,255,.4)"}}>+{dayEvents.length-2} more</div>}
+                {dayEvents.length>2&&<div style={{fontSize:".52rem",color:"var(--text-muted)"}}>+{dayEvents.length-2} more</div>}
               </div>);
             })}
           </div>
@@ -171,15 +174,15 @@ export default function CalendarTab({
                 const dt=new Date(e.date);
                 const daysLeft=Math.ceil((dt-now)/864e5);
                 return(
-                <div key={i} style={{display:"flex",gap:".6rem",padding:".6rem 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
+                <div key={i} style={{display:"flex",gap:".6rem",padding:".6rem 0",borderBottom:"1px solid var(--border)"}}>
                   <div style={{fontSize:"1.1rem",flexShrink:0}}>{e.icon}</div>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:".75rem",color:"#ffffff",lineHeight:1.4,marginBottom:".15rem"}}>{e.label}</div>
-                    <div style={{fontSize:".65rem",color:"rgba(255,255,255,.45)"}}>{e.type}</div>
+                    <div style={{fontSize:".75rem",color:"var(--text)",lineHeight:1.4,marginBottom:".15rem"}}>{e.label}</div>
+                    <div style={{fontSize:".65rem",color:"var(--text-muted)"}}>{e.type}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontFamily:"'DM Mono',monospace",fontSize:".7rem",color:e.color}}>{daysLeft===0?"Today":daysLeft===1?"Tomorrow":`${daysLeft}d`}</div>
-                    <div style={{fontSize:".62rem",color:"rgba(255,255,255,.38)"}}>{dt.toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</div>
+                    <div style={{fontSize:".62rem",color:"var(--text-muted)"}}>{dt.toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</div>
                   </div>
                 </div>);
               })
@@ -200,7 +203,7 @@ export default function CalendarTab({
             ].map(l=>(
               <div key={l.label} style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".35rem"}}>
                 <div style={{fontSize:".85rem"}}>{l.icon}</div>
-                <div style={{fontSize:".73rem",color:"rgba(255,255,255,.65)"}}>{l.label}</div>
+                <div style={{fontSize:".73rem",color:"var(--text-dim)"}}>{l.label}</div>
                 <div style={{width:8,height:8,borderRadius:"50%",background:l.color,marginLeft:"auto"}}/>
               </div>
             ))}
