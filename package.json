@@ -1,0 +1,37 @@
+{
+  "name": "wealthlens-pro",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "build": "npx vite build",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.108.2",
+    "@vitejs/plugin-react": "^6.0.3",
+    "exceljs": "^4.4.0",
+    "express": "^4.22.2",
+    "express-rate-limit": "^8.5.2",
+    "googleapis": "^173.0.0",
+    "multer": "^2.2.0",
+    "papaparse": "^5.4.1",
+    "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^4.4.168",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "snaptrade-typescript-sdk": "^10.0.17",
+    "vite": "^8.1.0"
+  },
+  "overrides": {
+    "axios": "^1.18.1",
+    "form-data": "^4.0.6",
+    "uuid": "^11.1.1",
+    "path-to-regexp": "0.1.13",
+    "ws": "^8.21.0"
+  }
+}

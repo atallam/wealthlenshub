@@ -1,0 +1,75 @@
+services:
+  - type: web
+    name: wealthlens-hub
+    runtime: node
+    region: singapore
+    buildCommand: npm install --include=dev && npx vite build
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.0
+      - key: NODE_ENV
+        value: production
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
+      # Supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      # Anthropic
+      - key: ANTHROPIC_KEY
+        sync: false
+      # Encryption
+      - key: BUDGET_ENCRYPT_KEY
+        sync: false
+      - key: ENCRYPT_KEY
+        sync: false
+      # Cron
+      - key: CRON_SECRET
+        sync: false
+      # SnapTrade
+      - key: SNAPTRADE_CLIENT_ID
+        sync: false
+      - key: SNAPTRADE_CONSUMER_KEY
+        sync: false
+      # Plaid
+      - key: PLAID_CLIENT_ID
+        sync: false
+      - key: PLAID_SECRET
+        sync: false
+      - key: PLAID_ENV
+        value: sandbox
+      # Gmail / Google OAuth
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REDIRECT_URI
+        sync: false
+      # Setu (optional — set SETU_ENABLED=true to activate)
+      - key: SETU_ENABLED
+        value: "false"
+      - key: SETU_CLIENT_ID
+        sync: false
+      - key: SETU_CLIENT_SECRET
+        sync: false
+      - key: SETU_BASE_URL
+        sync: false
+
+  - type: cron
+    name: wealthlens-hub-price-cron
+    runtime: node
+    region: singapore
+    schedule: "30 0 * * 1-5"
+    buildCommand: echo "no build"
+    startCommand: >
+      node -e "fetch('https://wealthlens.pro/api/cron/refresh-all-prices',{method:'POST',headers:{'x-cron-secret':process.env.CRON_SECRET}}).then(r=>r.json()).then(console.log)"
+    envVars:
+      - key: CRON_SECRET
+        sync: false

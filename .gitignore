@@ -1,2 +1,20 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+*.local
 
-WealthLensHub_Keys and Pass.txt
+# Prevent accidental OneDrive / local dev folder commits
+OneDrive/
+OneDrive
+
+# Editor & OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Replit
+.replit
+replit.nix
