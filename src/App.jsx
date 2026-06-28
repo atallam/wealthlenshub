@@ -1171,28 +1171,34 @@ ${alertsText}`;
 
       {/* ── SnapTrade Import ─────────────────────────────────────── */}
       {showSnapTrade && (
-        <SnapTradeImport
-          onClose={() => setShowSnapTrade(false)}
-          members={members}
-        />
+        <Overlay onClose={() => setShowSnapTrade(false)} wide>
+          <SnapTradeImport
+            onClose={() => setShowSnapTrade(false)}
+            members={members}
+          />
+        </Overlay>
       )}
 
       {/* ── Kite Import ──────────────────────────────────────────── */}
       {showKite && (
-        <KiteImport
-          onClose={() => setShowKite(false)}
-          members={members}
-          api={api}
-        />
+        <Overlay onClose={() => setShowKite(false)} wide>
+          <KiteImport
+            onClose={() => setShowKite(false)}
+            members={members}
+            api={api}
+          />
+        </Overlay>
       )}
 
       {/* ── Breeze Import ────────────────────────────────────────── */}
       {showBreeze && (
-        <BreezeImport
-          onClose={() => setShowBreeze(false)}
-          members={members}
-          api={api}
-        />
+        <Overlay onClose={() => setShowBreeze(false)} wide>
+          <BreezeImport
+            onClose={() => setShowBreeze(false)}
+            members={members}
+            api={api}
+          />
+        </Overlay>
       )}
 
       {/* ── Import modal ─────────────────────────────────────────── */}
