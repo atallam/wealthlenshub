@@ -1113,23 +1113,7 @@ ${alertsText}`;
                 <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Import all mutual funds & demat holdings from your CAS PDF</span>
               </span>
             </button>
-            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
-              onClick={() => { setShowKite(true); setShowImportHub(false); }}>
-              <span style={{fontSize:'1rem'}}>📥</span>
-              <span>
-                <span style={{fontWeight:600}}>Zerodha Kite</span>
-                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Connect your Zerodha Kite account via Personal API</span>
-              </span>
-            </button>
-            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
-              onClick={() => { setShowBreeze(true); setShowImportHub(false); }}>
-              <span style={{fontSize:'1rem'}}>📥</span>
-              <span>
-                <span style={{fontWeight:600}}>ICICI Breeze</span>
-                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Sync your ICICI Direct / Breeze brokerage holdings</span>
-              </span>
-            </button>
-            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
+<button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
               onClick={() => { setShowImportHub(false); setForm(p => ({...p, type:'FD'})); setModal('add'); }}>
               <span style={{fontSize:'1rem'}}>🏦</span>
               <span>
