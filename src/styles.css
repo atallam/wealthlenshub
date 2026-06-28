@@ -267,7 +267,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
 .mlbl {
   font-size: .65rem;
   letter-spacing: .1em;
-  color: var(--text-muted);
+  color: var(--text-dim);
   text-transform: uppercase;
   margin-right: .15rem;
   font-weight: 700;
@@ -399,7 +399,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   font-size: .64rem;
   letter-spacing: .1em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-dim);
   margin-bottom: .45rem;
   font-weight: 700;
 }
@@ -523,7 +523,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   font-size: .62rem;
   letter-spacing: .1em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-dim);
   text-align: left;
   padding: 0 .65rem .65rem;
   border-bottom: 2px solid var(--border);

@@ -30,16 +30,16 @@ export default function DonutChart({data, total, AT}){
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"2.5rem",flexWrap:"wrap",padding:".5rem 0"}}>
       <svg width={S} height={S} viewBox={`0 0 ${S} ${S}`}>
         {slices.map(s=><path key={s.t} d={arc(s.startA,s.endA,r,ir)} fill={AT[s.t].color} opacity={0.85}/>)}
-        <text x={cx} y={cy-6} textAnchor="middle" fill="#ffffff" fontSize="11" fontFamily="DM Mono">{total>=1e7?(total/1e7).toFixed(1)+"Cr":total>=1e5?(total/1e5).toFixed(1)+"L":"₹"+Math.round(total)}</text>
-        <text x={cx} y={cy+10} textAnchor="middle" fill="rgba(255,255,255,.42)" fontSize="8.5" fontFamily="DM Sans">TOTAL</text>
+        <text x={cx} y={cy-6} textAnchor="middle" fill="#0F3D38" fontSize="11" fontFamily="JetBrains Mono,DM Mono,monospace" fontWeight="700">{total>=1e7?(total/1e7).toFixed(1)+"Cr":total>=1e5?(total/1e5).toFixed(1)+"L":"₹"+Math.round(total)}</text>
+        <text x={cx} y={cy+10} textAnchor="middle" fill="#5E8A80" fontSize="8.5" fontFamily="Quicksand,system-ui,sans-serif" fontWeight="700" letterSpacing="0.08em">TOTAL</text>
       </svg>
       <div style={{display:"flex",flexDirection:"column",gap:".6rem"}}>
         {slices.map(s=>(
           <div key={s.t} style={{display:"flex",alignItems:"center",gap:".55rem"}}>
             <div style={{width:8,height:8,borderRadius:"50%",background:AT[s.t].color,flexShrink:0}}/>
-            <span style={{color:"rgba(255,255,255,.65)",fontSize:".76rem",minWidth:94}}>{AT[s.t].label}</span>
-            <span style={{fontFamily:"'DM Mono',monospace",fontSize:".73rem",color:"#ffffff",minWidth:72,textAlign:"right"}}>{fmtV(s.v)}</span>
-            <span style={{fontFamily:"'DM Mono',monospace",fontSize:".7rem",color:"rgba(255,255,255,.5)",minWidth:40,textAlign:"right"}}>{s.pct.toFixed(1)}%</span>
+            <span style={{color:"#1B5E57",fontSize:".76rem",minWidth:94,fontFamily:"'Quicksand',system-ui,sans-serif",fontWeight:600}}>{AT[s.t].label}</span>
+            <span style={{fontFamily:"'JetBrains Mono','DM Mono',monospace",fontSize:".73rem",color:"#0F3D38",minWidth:72,textAlign:"right",fontWeight:700}}>{fmtV(s.v)}</span>
+            <span style={{fontFamily:"'JetBrains Mono','DM Mono',monospace",fontSize:".7rem",color:"#5E8A80",minWidth:40,textAlign:"right"}}>{s.pct.toFixed(1)}%</span>
           </div>
         ))}
       </div>
