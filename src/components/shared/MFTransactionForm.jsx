@@ -88,7 +88,7 @@ export default function MFTransactionForm({ holding, isMF, isUS, fx, txnForm, se
         <div style={{marginBottom:".8rem"}}>
           <div style={{display:"flex",alignItems:"center",gap:".65rem",padding:".55rem .8rem",
             background:navFetched?"rgba(76,175,154,.06)":"var(--text-muted)",
-            border:`1px solid ${navFetched?"rgba(76,175,154,.25)":"var(--text-muted)"}`,borderRadius:7}}>
+            border:navFetched?"1px solid rgba(76,175,154,.25)":"1px solid var(--border)",borderRadius:7}}>
             <div style={{flex:1}}>
               {navFetched?(<div style={{display:"flex",gap:"1.2rem",flexWrap:"wrap"}}>
                 <div>

@@ -79,7 +79,7 @@ export default function ArtifactPanel({ holding, token, onClose }) {
           onDragLeave={()=>setDragOver(false)}
           onDrop={e=>{e.preventDefault();setDragOver(false);upload(e.dataTransfer.files[0]);}}
           onClick={()=>fileRef.current?.click()}
-          style={{border:`2px dashed ${dragOver?"rgba(201,168,76,.6)":"var(--text-muted)"}`,borderRadius:10,padding:"1.4rem",textAlign:"center",cursor:"pointer",transition:"all .2s",background:dragOver?"rgba(201,168,76,.05)":"transparent",marginBottom:"1rem"}}
+          style={{border:dragOver?"2px dashed rgba(201,168,76,.6)":"2px dashed var(--border-mid)",borderRadius:10,padding:"1.4rem",textAlign:"center",cursor:"pointer",transition:"all .2s",background:dragOver?"rgba(201,168,76,.05)":"transparent",marginBottom:"1rem"}}
         >
           <div style={{fontSize:"1.6rem",marginBottom:".4rem"}}>☁</div>
           <div style={{fontSize:".8rem",color:"var(--text-dim)"}}>Drag & drop or click to upload</div>

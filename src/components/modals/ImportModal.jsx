@@ -58,7 +58,7 @@ export default function ImportModal({ importState, setImportState, members, AT, 
       </div>
 
       {step==="upload"&&(<>
-        <div style={{border:`2px dashed ${dragOver?"#c9a84c":"var(--border-mid)"}`,borderRadius:12,
+        <div style={{border:dragOver?"2px dashed #c9a84c":"2px dashed var(--border-mid)",borderRadius:12,
           padding:"2.5rem 1.5rem",textAlign:"center",cursor:"pointer",
           background:dragOver?"rgba(201,168,76,.06)":"var(--bg-muted)",transition:"all .25s",marginBottom:"1.2rem"}}
           onClick={()=>importFileRef.current?.click()}

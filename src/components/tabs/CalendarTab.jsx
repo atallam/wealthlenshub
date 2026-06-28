@@ -149,7 +149,7 @@ export default function CalendarTab({
               <div key={day} style={{
                 minHeight:56,padding:".3rem .28rem",borderRadius:5,position:"relative",
                 background:today?"rgba(201,168,76,.12)":"var(--bg-muted)",
-                border:`1px solid ${today?"rgba(201,168,76,.3)":"var(--border)"}`,
+                border:today?"1px solid rgba(201,168,76,.3)":"1px solid var(--border)",
               }}>
                 <div style={{fontSize:".72rem",color:today?"#c9a84c":"var(--text-dim)",fontWeight:today?600:400,marginBottom:".2rem"}}>{day}</div>
                 {dayEvents.slice(0,2).map((e,idx)=>(
@@ -204,12 +204,4 @@ export default function CalendarTab({
               <div key={l.label} style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".35rem"}}>
                 <div style={{fontSize:".85rem"}}>{l.icon}</div>
                 <div style={{fontSize:".73rem",color:"var(--text-dim)"}}>{l.label}</div>
-                <div style={{width:8,height:8,borderRadius:"50%",background:l.color,marginLeft:"auto"}}/>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
+                <div style={{width:8,height:8,borderRadius:"50%

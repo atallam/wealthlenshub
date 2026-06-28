@@ -109,7 +109,7 @@ export default function BudgetTab({
             <div key={v} onClick={async()=>{setBudgetView(v);if(v==="overview"||v==="categories")await loadBudget();if(v==="transactions")await loadTxns();}}
               style={{padding:".3rem .75rem",borderRadius:5,cursor:"pointer",fontSize:".73rem",fontWeight:500,
                 background:budgetView===v?"rgba(201,168,76,.18)":"var(--text-muted)",
-                border:`1px solid ${budgetView===v?"rgba(201,168,76,.5)":"var(--text-muted)"}`,
+                border:budgetView===v?"1px solid rgba(201,168,76,.5)":"1px solid var(--border)",
                 color:budgetView===v?"#c9a84c":"var(--text-dim)",transition:"all .15s",textTransform:"capitalize"}}>
               {v==="overview"?"📊 Overview":v==="transactions"?"📋 Transactions":v==="categories"?"🏷️ Categories":"📤 Import"}
             </div>
@@ -254,7 +254,7 @@ export default function BudgetTab({
                   const pct=limit>0?Math.min((d.value/limit)*100,100):0;
                   const over=limit>0&&d.value>limit;
                   return(
-                  <div key={d.name} style={{padding:".75rem .9rem",background:"var(--bg-muted)",border:`1px solid var(--border)`,borderRadius:7}}>
+                  <div key={d.name} style={{padding:".75rem .9rem",background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:7}}>
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:".45rem"}}>
                       <span style={{fontSize:".8rem",color:"var(--text)"}}>{d.icon} {d.name}</span>
                       <span style={{fontFamily:"'DM Mono',monospace",fontSize:".78rem",color:over?"#e07c5a":"#c9a84c"}}>{fmtAmt(d.value,domCur)}</span>

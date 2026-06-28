@@ -181,7 +181,7 @@ export default function CASImportModal({
                     <th>Type</th>
                     <th>Ticker / ISIN</th>
                     <th className="r">Units</th>
-                    <th className="r">Invested</th>
+                    <th className="r">Curr Value</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -26,7 +26,7 @@ function StepBar({ step }) {
             width: 22, height: 22, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: ".6rem", fontWeight: 600, flexShrink: 0,
             background: i <= idx ? "rgba(167,139,250,.18)" : "var(--text-muted)",
-            border: `1px solid ${i <= idx ? "rgba(167,139,250,.5)" : "var(--text-muted)"}`,
+            border: i <= idx ? "1px solid rgba(167,139,250,.5)" : "1px solid var(--border)",
             color: i <= idx ? "#a78bfa" : "var(--text-muted)",
           }}>{i + 1}</div>
           <div style={{

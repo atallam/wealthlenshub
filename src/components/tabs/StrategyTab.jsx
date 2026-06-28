@@ -178,7 +178,7 @@ export default function StrategyTab({
               <div key={id} onClick={()=>setRebalMember(id)}
                 style={{padding:".28rem .6rem",borderRadius:4,cursor:"pointer",fontSize:".72rem",
                   background:rebalMember===id?"rgba(201,168,76,.16)":"var(--text-muted)",
-                  border:`1px solid ${rebalMember===id?"rgba(201,168,76,.4)":"var(--text-muted)"}`,
+                  border:rebalMember===id?"1px solid rgba(201,168,76,.4)":"1px solid var(--border)",
                   color:rebalMember===id?"#c9a84c":"var(--text-dim)"}}>
                 {id==="all"?"All":members.find(m=>m.id===id)?.name}
               </div>
