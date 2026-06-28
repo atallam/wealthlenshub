@@ -257,7 +257,10 @@ export default function App() {
       map[h.type].inv   += invINRCache.get(h.id) || 0;
       map[h.type].count += 1;
     }
-    return map;
+    const total = Object.values(map).reduce((s, v) => s + v.cur, 0);
+    return Object.entries(map)
+      .map(([t, v]) => ({ t, v: v.cur, i: v.inv, count: v.count, pct: total > 0 ? (v.cur / total) * 100 : 0 }))
+      .sort((a, b) => b.v - a.v);
   }, [visH, valINRCache, invINRCache]);
 
   const mSum = useMemo(() =>
@@ -303,9 +306,8 @@ export default function App() {
       const xirrStr = xi?.value != null ? ` | XIRR: ${xi.value.toFixed(1)}% (${xi.method})` : '';
       return `  - ${h.name} (${AT[h.type]?.label || h.type}): current=${fmtCrINR(cur)}, invested=${fmtCrINR(inv)}, gain=${pct}%${xirrStr} [${memberNames[h.member_id] || 'Unassigned'}]`;
     }).join('\n');
-    const byTypeText = Object.entries(byType)
-      .sort((a, b) => b[1].cur - a[1].cur)
-      .map(([t, v]) => `  ${AT[t]?.label || t}: ${fmtCrINR(v.cur)} (${allCur > 0 ? ((v.cur / allCur) * 100).toFixed(1) : 0}%)`)
+    const byTypeText = byType
+      .map(row => `  ${AT[row.t]?.label || row.t}: ${fmtCrINR(row.v)} (${allCur > 0 ? ((row.v / allCur) * 100).toFixed(1) : 0}%)`)
       .join('\n');
     const goalsText = goals.map(g => `  - ${g.name}: target=${fmtCrINR(g.targetAmount)}, by ${g.targetDate}`).join('\n');
     const alertsText = trigAlerts.length > 0
