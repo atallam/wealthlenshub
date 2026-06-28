@@ -67,20 +67,20 @@ export default function HoldingsTab({
               {allSame ? (
                 <div style={{fontSize:".75rem",color:"#4caf9a",fontWeight:500}}>
                   Data as on {new Date(entries[0].date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}
-                  <span style={{color:"rgba(255,255,255,.35)",fontWeight:400,marginLeft:".5rem"}}>{entries.length} source{entries.length>1?"s":""}</span>
+                  <span style={{color:"var(--text-muted)",fontWeight:400,marginLeft:".5rem"}}>{entries.length} source{entries.length>1?"s":""}</span>
                 </div>
               ) : (
                 <div style={{display:"flex",flexWrap:"wrap",gap:".25rem .8rem"}}>
                   {entries.map((e,i) => (
                     <div key={i} style={{fontSize:".72rem"}}>
-                      <span style={{color:"rgba(255,255,255,.5)"}}>{e.member}:</span>{" "}
+                      <span style={{color:"var(--text-dim)"}}>{e.member}:</span>{" "}
                       <span style={{color:"#4caf9a",fontWeight:500}}>{new Date(e.date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</span>
-                      <span style={{color:"rgba(255,255,255,.25)",marginLeft:".3rem",fontSize:".62rem"}}>{e.src}</span>
+                      <span style={{color:"var(--text-muted)",marginLeft:".3rem",fontSize:".62rem"}}>{e.src}</span>
                     </div>
                   ))}
                 </div>
               )}
-              <div style={{fontSize:".6rem",color:"rgba(255,255,255,.3)",marginTop:".15rem"}}>NAVs & prices reflect the CAS statement date, not live market</div>
+              <div style={{fontSize:".6rem",color:"var(--text-muted)",marginTop:".15rem"}}>NAVs & prices reflect the CAS statement date, not live market</div>
             </div>
           </div>
         );
@@ -109,7 +109,7 @@ export default function HoldingsTab({
                   onClick={()=>toggleSort(c.key)}
                   style={{cursor:"pointer",userSelect:"none",whiteSpace:"nowrap"}}>
                   {c.label}
-                  {c.tip&&<span title={c.tip} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",border:"1px solid rgba(255,255,255,.15)",fontSize:"8px",color:"rgba(255,255,255,.3)",marginLeft:3,cursor:"help",verticalAlign:"middle",fontStyle:"normal",fontWeight:400}}>?</span>}
+                  {c.tip&&<span title={c.tip} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",border:"1px solid var(--border)",fontSize:"8px",color:"var(--text-muted)",marginLeft:3,cursor:"help",verticalAlign:"middle",fontStyle:"normal",fontWeight:400}}>?</span>}
                   {sortCol===c.key
                     ? <span style={{marginLeft:3,fontSize:".55rem",opacity:.7}}>{sortDir==="asc"?"▲":"▼"}</span>
                     : <span style={{marginLeft:3,fontSize:".55rem",opacity:.25}}>⇅</span>}
@@ -147,7 +147,7 @@ export default function HoldingsTab({
                         <span style={{fontSize:".78rem",letterSpacing:".1em",textTransform:"uppercase",color:grp.color,fontWeight:700}}>
                           {grp.icon} {grp.label}
                         </span>
-                        <span style={{fontSize:".62rem",color:"rgba(255,255,255,.35)",marginLeft:10}}>{grp.items.length} holding{grp.items.length!==1?"s":""}</span>
+                        <span style={{fontSize:".62rem",color:"var(--text-muted)",marginLeft:10}}>{grp.items.length} holding{grp.items.length!==1?"s":""}</span>
                       </td>
                       <td className="r" style={{padding:".7rem .65rem",borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`}}>
                         <span style={{fontFamily:"'DM Mono',monospace",fontSize:".76rem",color:grp.color,fontWeight:600}}>{fmtCr(grpCur)}</span>
@@ -174,17 +174,17 @@ export default function HoldingsTab({
                   const fmtH = n => fmtNative(n, h);  // native formatter for this holding
 
                   const avgDisplay = avgCost
-                    ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(255,255,255,.85)"}}>
+                    ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"var(--text)"}}>
                         {nativeSym}{h.type==="MF"?Number(avgCost).toFixed(4):Number(avgCost).toLocaleString(isUS?"en-US":"en-IN",{maximumFractionDigits:2})}
                       </span>
-                    : <span style={{color:"rgba(255,255,255,.35)"}}>—</span>;
+                    : <span style={{color:"var(--text-muted)"}}>—</span>;
 
                   const rawPrice = h.type==="MF" ? (h.current_nav||h.purchase_nav||null) : (h.current_price||h.purchase_price||null);
                   const curPriceDisplay = rawPrice
-                    ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"#ffffff"}}>
+                    ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"var(--text)"}}>
                         {nativeSym}{h.type==="MF"?Number(rawPrice).toFixed(4):Number(rawPrice).toLocaleString(isUS?"en-US":"en-IN",{maximumFractionDigits:2})}
                       </span>
-                    : <span style={{color:"rgba(255,255,255,.35)"}}>—</span>;
+                    : <span style={{color:"var(--text-muted)"}}>—</span>;
 
                   const brokerLabel = h.brokerage_name && h.brokerage_name !== "Unknown" ? h.brokerage_name : null;
                   const src = h.source || "manual";
@@ -201,7 +201,7 @@ export default function HoldingsTab({
                           ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".73rem",color:"#c9a84c",background:"rgba(201,168,76,.08)",padding:"2px 7px",borderRadius:3,border:"1px solid rgba(201,168,76,.2)"}}>
                               {h.ticker||`SC:${h.scheme_code}`}
                             </span>
-                          : <span style={{fontSize:".7rem",color:"rgba(255,255,255,.3)"}}>—</span>
+                          : <span style={{fontSize:".7rem",color:"var(--text-muted)"}}>—</span>
                         }
                       </td>
                       <td><span className="tbadge2" style={{background:a.color+"22",color:a.color}}>{a.icon} {a.label}</span></td>
@@ -211,14 +211,14 @@ export default function HoldingsTab({
                       <td>
                         {brokerLabel
                           ? <div><span style={{fontSize:".62rem",background:"rgba(167,139,250,.08)",color:"rgba(167,139,250,.7)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(167,139,250,.15)"}}>{brokerLabel}</span>
-                              <div style={{fontSize:".55rem",color:"rgba(255,255,255,.3)",marginTop:2}}>{srcLabel}</div></div>
-                          : <span style={{fontSize:".62rem",color:"rgba(255,255,255,.3)"}}>{srcLabel}</span>
+                              <div style={{fontSize:".55rem",color:"var(--text-muted)",marginTop:2}}>{srcLabel}</div></div>
+                          : <span style={{fontSize:".62rem",color:"var(--text-muted)"}}>{srcLabel}</span>
                         }
                       </td>
                       <td className="r">
                         {units!=null
-                          ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"rgba(255,255,255,.85)"}}>{Number(units).toLocaleString("en-IN",{maximumFractionDigits:4})}</span>
-                          : <span style={{color:"rgba(255,255,255,.35)"}}>—</span>}
+                          ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"var(--text)"}}>{Number(units).toLocaleString("en-IN",{maximumFractionDigits:4})}</span>
+                          : <span style={{color:"var(--text-muted)"}}>—</span>}
                       </td>
                       <td className="r">{avgDisplay}</td>
                       <td className="r">
@@ -234,11 +234,11 @@ export default function HoldingsTab({
                       </td>
                       <td>
                         <div style={{display:"flex",gap:3}}>
-                          <button className="delbtn" title="View transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transactions||[]).length>0?"#a084ca":"rgba(255,255,255,.38)"}}>
+                          <button className="delbtn" title="View transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transactions||[]).length>0?"#a084ca":"var(--text-muted)"}}>
                             📋{(h.transactions||[]).length>0?` ${(h.transactions||[]).length}`:""}
                           </button>
                           {!isSharedH && <>
-                            <button className="delbtn" title="Attach documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"rgba(255,255,255,.38)"}}>
+                            <button className="delbtn" title="Attach documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)"}}>
                               📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}
                             </button>
                             <button className="delbtn" title="Modify holding" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>editH(h)}>✎</button>
@@ -262,11 +262,11 @@ export default function HoldingsTab({
               return(
               <tfoot>
                 <tr style={{borderTop:"2px solid rgba(201,168,76,.2)"}}>
-                  <td colSpan={8} style={{padding:".75rem .65rem",fontSize:".7rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.42)",fontWeight:600}}>Total · {visH.length} holding{visH.length!==1?"s":""}</td>
+                  <td colSpan={8} style={{padding:".75rem .65rem",fontSize:".7rem",letterSpacing:".08em",textTransform:"uppercase",color:"var(--text-dim)",fontWeight:600}}>Total · {visH.length} holding{visH.length!==1?"s":""}</td>
                   <td className="r" style={{padding:".75rem .65rem"}}>
                     <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,color:"#c9a84c",fontSize:".88rem"}}>{fmtCr(totC)}</div>
                     <div style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:"rgba(201,168,76,.8)",marginTop:1,fontWeight:600}}>≈ {fmtCrINR(totC)}</div>
-                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:"rgba(255,255,255,.35)",marginTop:1}}>inv. {fmtCr(totI)}</div>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:"var(--text-muted)",marginTop:1}}>inv. {fmtCr(totI)}</div>
                   </td>
                   <td className="r" style={{padding:".75rem .65rem"}}>
                     <div className={`mono${totG>=0?" gain":" loss"}`} style={{fontWeight:600,fontSize:".83rem"}}>{totG>=0?"+":""}{fmtCr(totG)}</div>
@@ -297,7 +297,7 @@ export default function HoldingsTab({
               const grpP=grpInv>0?(grpG/grpInv)*100:0;
               return(<div key={grp.key} style={gi>0?{marginTop:"1rem"}:{}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:".6rem .5rem",marginBottom:".35rem",borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`,background:`${grp.color}0D`,borderRadius:"4px 4px 0 0"}}>
-                  <span style={{fontSize:".76rem",letterSpacing:".1em",textTransform:"uppercase",color:grp.color,fontWeight:700}}>{grp.icon} {grp.label} <span style={{color:"rgba(255,255,255,.3)",fontWeight:400}}>{grp.items.length}</span></span>
+                  <span style={{fontSize:".76rem",letterSpacing:".1em",textTransform:"uppercase",color:grp.color,fontWeight:700}}>{grp.icon} {grp.label} <span style={{color:"var(--text-muted)",fontWeight:400}}>{grp.items.length}</span></span>
                   <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:grp.color,fontWeight:600}}>{fmtCr(grpCur)} <span className={grpG>=0?"gain":"loss"} style={{fontSize:".62rem"}}>{grpG>=0?"+":""}{fmtPct(grpP)}</span></span>
                 </div>
                 {grp.items.map(h=>{
@@ -351,11 +351,11 @@ export default function HoldingsTab({
                         </div>
                       </>}
                     </div>
-                    {!isExp&&<div style={{textAlign:"center",marginTop:".4rem",fontSize:".56rem",color:"rgba(255,255,255,.2)",letterSpacing:".08em",textTransform:"uppercase"}}>tap for details</div>}
+                    {!isExp&&<div style={{textAlign:"center",marginTop:".4rem",fontSize:".56rem",color:"var(--text-muted)",letterSpacing:".08em",textTransform:"uppercase"}}>tap for details</div>}
                     {isExp&&<div className="m-hc-actions" onClick={e=>e.stopPropagation()}>
-                      <button title="Transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transactions||[]).length>0?"#a084ca":"rgba(255,255,255,.3)"}}>📋{(h.transactions||[]).length>0?` ${(h.transactions||[]).length}`:""}</button>
+                      <button title="Transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transactions||[]).length>0?"#a084ca":"var(--text-muted)"}}>📋{(h.transactions||[]).length>0?` ${(h.transactions||[]).length}`:""}</button>
                       {!isSharedH&&<>
-                        <button title="Documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"rgba(255,255,255,.3)"}}>📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}</button>
+                        <button title="Documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)"}}>📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}</button>
                         <button title="Edit" onClick={()=>editH(h)} style={{color:"rgba(90,156,224,.5)"}}>✎</button>
                         <button title="Delete" onClick={()=>deleteHolding(h.id)} style={{color:"rgba(224,124,90,.4)"}}>✕</button>
                       </>}
@@ -371,14 +371,14 @@ export default function HoldingsTab({
             const totC=visH.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
             const totG=totC-totI;const totP=totI>0?(totG/totI)*100:0;
             return(<div className="m-hc-totals">
-              <div><div className="m-hc-lbl">{visH.length} holding{visH.length!==1?"s":""} · Invested</div><div className="m-hc-val" style={{color:"rgba(255,255,255,.6)",marginTop:".15rem"}}>{fmtCr(totI)}</div></div>
+              <div><div className="m-hc-lbl">{visH.length} holding{visH.length!==1?"s":""} · Invested</div><div className="m-hc-val" style={{color:"var(--text-dim)",marginTop:".15rem"}}>{fmtCr(totI)}</div></div>
               <div style={{textAlign:"right"}}><div className="m-hc-lbl">Current · P&L</div><div className="m-hc-val" style={{color:"#c9a84c",marginTop:".15rem"}}>{fmtCr(totC)}</div><div className={`m-hc-val ${totG>=0?"gain":"loss"}`} style={{fontWeight:600,fontSize:".75rem"}}>{totG>=0?"+":""}{fmtCr(totG)} ({fmtPct(totP)})</div></div>
             </div>);
           })()}
         </div>
       </>)}
-      <div style={{marginTop:"1rem",padding:".75rem 1rem",background:"rgba(255,255,255,.02)",borderRadius:8,fontSize:".72rem",color:"rgba(255,255,255,.45)",lineHeight:1.6}}>
-        <strong style={{color:"rgba(255,255,255,.65)"}}>Live prices:</strong> Add NSE ticker (e.g. <code style={{color:"#c9a84c"}}>RELIANCE</code>) or AMFI scheme code (e.g. <code style={{color:"#c9a84c"}}>119551</code>) when adding a holding, then click <strong style={{color:"rgba(255,255,255,.65)"}}>⟳ Live Prices</strong> to auto-fetch. 📎 button attaches contract notes, statements, or receipts to any holding.
+      <div style={{marginTop:"1rem",padding:".75rem 1rem",background:"var(--bg-muted)",borderRadius:8,fontSize:".72rem",color:"var(--text-dim)",lineHeight:1.6}}>
+        <strong style={{color:"var(--text)"}}>Live prices:</strong> Add NSE ticker (e.g. <code style={{color:"#c9a84c"}}>RELIANCE</code>) or AMFI scheme code (e.g. <code style={{color:"#c9a84c"}}>119551</code>) when adding a holding, then click <strong style={{color:"var(--text)"}}>⟳ Live Prices</strong> to auto-fetch. 📎 button attaches contract notes, statements, or receipts to any holding.
       </div>
     </div>
   );

@@ -251,6 +251,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   gap: .45rem;
   margin-bottom: 1.2rem;
   flex-wrap: wrap;
+  padding: 0 1.25rem;
 }
 .mlbl {
   font-size: .65rem;
@@ -294,6 +295,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   gap: .15rem;
+  padding: 0 1.25rem;
 }
 .tabs::-webkit-scrollbar { display: none; }
 
@@ -741,8 +743,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
 }
 .more-sheet-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: .6rem;
+  width: 100%;
 }
 .more-sheet-item {
   display: flex;
@@ -766,6 +769,32 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
 }
 .more-sheet-item.act .msi-icon { color: var(--primary); }
 .more-sheet-item.act .msi-label { color: var(--primary); }
+
+/* ══════════════════════════════════════════════════════════
+   FAB — Floating Action Button (mobile only)
+   ══════════════════════════════════════════════════════════ */
+.fab {
+  display: none;
+  position: fixed;
+  bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  right: 1.25rem;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(13,148,136,.35);
+  z-index: 175;
+  font-size: 1.6rem;
+  line-height: 1;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  transition: box-shadow .2s, transform .2s;
+}
+.fab:active { transform: scale(.92); box-shadow: 0 2px 8px rgba(13,148,136,.2); }
 
 /* ══════════════════════════════════════════════════════════
    MOBILE HOLDING CARDS
@@ -835,6 +864,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
 @media (max-width: 600px) {
   /* Bottom nav visible, top tabs hidden */
   .bottom-nav, .bnav { display: flex; }
+  .fab { display: flex; }
   .tabs { display: none; }
   .m-holdings-list { display: block; }
   .ht-desktop { display: none; }
@@ -857,7 +887,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   .ctitle { font-size: .95rem; margin-bottom: .75rem; }
 
   /* Member chips: horizontally scrollable */
-  .mbar { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: .3rem; margin-bottom: .85rem; gap: .4rem; }
+  .mbar { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 0 .75rem .3rem; margin-bottom: .85rem; gap: .4rem; }
   .mbar::-webkit-scrollbar { display: none; }
   .mbar-btn { min-height: 38px; padding: .4rem .75rem; font-size: .73rem; display: inline-flex; align-items: center; scroll-snap-align: start; }
 
@@ -914,7 +944,6 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   .mclbl { font-size: .58rem; }
   .m-hc-grid { gap: .3rem .6rem; }
   .m-hc-name { font-size: .82rem; }
-  .more-sheet-grid { grid-template-columns: repeat(3, 1fr); }
   .hdr-right .btn-o:not(:first-child), .hdr-r .btn-o:not(:first-child) { display: none; }
   .login-card { padding: 2rem 1.2rem; max-width: 100%; }
 }

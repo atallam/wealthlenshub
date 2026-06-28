@@ -102,7 +102,7 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1.2rem"}}>
           <div>
             <div className="modtitle" style={{marginBottom:".15rem"}}>📋 Transactions</div>
-            <div style={{fontSize:".73rem",color:"rgba(255,255,255,.5)"}}>{holding.name} {isUS&&<span style={{fontSize:".65rem",color:"#5a9ce0",marginLeft:4}}>{holding.type==="CRYPTO"?"₿":"$"} USD input</span>}</div>
+            <div style={{fontSize:".73rem",color:"var(--text-dim)"}}>{holding.name} {isUS&&<span style={{fontSize:".65rem",color:"#5a9ce0",marginLeft:4}}>{holding.type==="CRYPTO"?"₿":"$"} USD input</span>}</div>
           </div>
           <div style={{display:"flex",gap:".4rem",alignItems:"center"}}>
             {isMF&&holding.scheme_code&&(
@@ -148,30 +148,30 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
 
             {sipPreview.length>0&&(
               <>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:".5rem",marginBottom:".85rem"}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(80px,1fr))",gap:".5rem",marginBottom:".85rem"}}>
                   {[
                     {label:"Months",     val:sipPreview.length},
                     {label:"Past SIPs",  val:pastRows.length},
                     {label:"Future SIPs",val:futureRows.length, note:"estimated NAV"},
                     {label:"Avg NAV",    val:`₹${avgNav.toFixed(4)}`},
                   ].map(s=>(
-                    <div key={s.label} style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:7,padding:".55rem .7rem",textAlign:"center"}}>
-                      <div style={{fontSize:".58rem",letterSpacing:".07em",textTransform:"uppercase",color:"rgba(255,255,255,.4)",marginBottom:".2rem"}}>{s.label}</div>
+                    <div key={s.label} style={{background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:7,padding:".55rem .7rem",textAlign:"center"}}>
+                      <div style={{fontSize:".58rem",letterSpacing:".07em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".2rem"}}>{s.label}</div>
                       <div style={{fontFamily:"'DM Mono',monospace",fontSize:".82rem",color:s.label==="Future SIPs"?"#5a9ce0":"#c9a84c"}}>{s.val}</div>
-                      {s.note&&<div style={{fontSize:".58rem",color:"rgba(255,255,255,.38)",marginTop:".1rem"}}>{s.note}</div>}
+                      {s.note&&<div style={{fontSize:".58rem",color:"var(--text-muted)",marginTop:".1rem"}}>{s.note}</div>}
                     </div>
                   ))}
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".5rem"}}>
-                  <div style={{fontSize:".72rem",color:"rgba(255,255,255,.55)"}}>
+                  <div style={{fontSize:".72rem",color:"var(--text-dim)"}}>
                     Total invested: <span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>₹{totalInvested.toLocaleString("en-IN")}</span>
                     <span style={{marginLeft:".75rem"}}>Total units: <span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>{totalUnits.toFixed(4)}</span></span>
                   </div>
                 </div>
 
-                <div style={{maxHeight:220,overflowY:"auto",marginBottom:".85rem",border:"1px solid rgba(255,255,255,.07)",borderRadius:7}}>
-                  <table className="ht" style={{fontSize:".72rem"}}>
-                    <thead style={{position:"sticky",top:0,background:"#0c1526",zIndex:1}}>
+                <div style={{maxHeight:220,overflowY:"auto",overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:".85rem",border:"1px solid var(--border)",borderRadius:7}}>
+                  <table className="ht" style={{fontSize:".72rem",minWidth:480}}>
+                    <thead style={{position:"sticky",top:0,background:"var(--bg-muted)",zIndex:1}}>
                       <tr>
                         <th>Month</th><th>Txn Date</th><th className="r">NAV ₹</th>
                         <th className="r">Units</th><th className="r">Amount</th><th>Status</th>
@@ -218,14 +218,14 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
 
         {/* Summary bar */}
         {!sipMode&&txns.length>0&&(
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:".6rem",marginBottom:"1.2rem"}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(90px,1fr))",gap:".6rem",marginBottom:"1.2rem"}}>
             {[
               {label:"Net Units", val:netUnits.toFixed(4)},
               {label:"Avg Cost (INR)", val:`₹${avgCost.toLocaleString("en-IN",{maximumFractionDigits:2})}`},
               {label:"Transactions", val:txns.length},
             ].map(s=>(
-              <div key={s.label} style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:8,padding:".7rem .9rem",textAlign:"center"}}>
-                <div style={{fontSize:".62rem",letterSpacing:".08em",textTransform:"uppercase",color:"rgba(255,255,255,.45)",marginBottom:".3rem"}}>{s.label}</div>
+              <div key={s.label} style={{background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:8,padding:".7rem .9rem",textAlign:"center"}}>
+                <div style={{fontSize:".62rem",letterSpacing:".08em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".3rem"}}>{s.label}</div>
                 <div style={{fontFamily:"'DM Mono',monospace",fontSize:".95rem",color:"#c9a84c"}}>{s.val}</div>
               </div>
             ))}
@@ -235,8 +235,8 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
         {/* Transaction list */}
         {!sipMode&&(txns.length===0
           ? <div className="empty" style={{padding:"1.5rem"}}>No transactions yet — add one below or use 📅 Add SIP History</div>
-          : <div style={{maxHeight:220,overflowY:"auto",marginBottom:"1.2rem"}}>
-              <table className="ht" style={{fontSize:".75rem"}}>
+          : <div style={{maxHeight:220,overflowY:"auto",overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:"1.2rem"}}>
+              <table className="ht" style={{fontSize:".75rem",minWidth:420}}>
                 <thead><tr>
                   <th>Date</th><th>Type</th><th className="r">Units</th>
                   <th className="r">{isUS?"Price $":"Price ₹"}</th>
@@ -254,7 +254,7 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
                         ? <><td className="r mono dim">${t.price_usd!=null?Number(t.price_usd).toFixed(2):(Number(t.price)/fx).toFixed(2)}</td><td className="r mono dim">₹{Number(t.price).toLocaleString("en-IN",{maximumFractionDigits:0})}</td></>
                         : <td className="r mono dim">₹{Number(t.price).toLocaleString("en-IN",{maximumFractionDigits:2})}</td>
                       }
-                      <td className="r mono" style={{color:"#ffffff"}}>₹{(Number(t.units)*Number(t.price)).toLocaleString("en-IN",{maximumFractionDigits:0})}</td>
+                      <td className="r mono" style={{color:"var(--text)"}}>₹{(Number(t.units)*Number(t.price)).toLocaleString("en-IN",{maximumFractionDigits:0})}</td>
                       <td className="dim" style={{maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.notes||"—"}</td>
                       <td><button className="delbtn" onClick={()=>onDeleteTxn(t.id, holding.id)}>✕</button></td>
                     </tr>

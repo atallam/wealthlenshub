@@ -633,6 +633,9 @@ ${alertsText}`;
 
       </main>
 
+      {/* ── FAB — Add Holding (mobile) ──────────────────────────── */}
+      <button className="fab" onClick={() => setModal('add')} title="Add holding">+</button>
+
       {/* ── BOTTOM NAV (mobile) ─────────────────────────────────── */}
       <nav className="bnav">
         {TABS.slice(0, 4).map(t => (
@@ -649,15 +652,31 @@ ${alertsText}`;
 
       {/* ── MORE SHEET (mobile) ─────────────────────────────────── */}
       {moreSheetOpen && (
-        <div className="more-sheet">
-          {TABS.slice(4).map(t => (
-            <button key={t.key} className={tab === t.key ? 'bnav-btn active' : 'bnav-btn'}
-              onClick={() => { setTab(t.key); setMoreSheetOpen(false); }}>
-              <span className="bnav-icon"><t.Icon size={20} strokeWidth={1.7}/></span>
-              <span className="bnav-label">{t.label}</span>
-            </button>
-          ))}
-        </div>
+        <>
+          {/* Backdrop dismiss */}
+          <div style={{position:'fixed',inset:0,zIndex:205,background:'rgba(0,0,0,.15)'}}
+            onClick={() => setMoreSheetOpen(false)}/>
+          <div className="more-sheet" style={{zIndex:210}}>
+            <div className="more-sheet-handle"/>
+            <div className="more-sheet-grid">
+              {TABS.slice(4).map(t => (
+                <button key={t.key} className={tab === t.key ? 'more-sheet-item act' : 'more-sheet-item'}
+                  onClick={() => { setTab(t.key); setMoreSheetOpen(false); }}>
+                  <span className="msi-icon"><t.Icon size={22} strokeWidth={1.6}/></span>
+                  <span className="msi-label">{t.label}</span>
+                </button>
+              ))}
+              <button className="more-sheet-item" onClick={() => { setShowSettings(true); setMoreSheetOpen(false); }}>
+                <span className="msi-icon"><Settings size={22} strokeWidth={1.6}/></span>
+                <span className="msi-label">Settings</span>
+              </button>
+              <button className="more-sheet-item" style={{color:'var(--loss)'}} onClick={() => { if(confirm('Sign out?')) signOut(); setMoreSheetOpen(false); }}>
+                <span className="msi-icon"><LogOut size={22} strokeWidth={1.6}/></span>
+                <span className="msi-label">Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* ══════════════════════════════════════════════════════════
