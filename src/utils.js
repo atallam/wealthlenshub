@@ -1,5 +1,5 @@
 // Pure utility functions extracted from App.jsx
-// Import this in App.jsx: import { calcFD, calcAccr, isUSDHolding, getVal, getInv, toINR, toUSD, fxFor, getValINR, getInvINR, xirr, getXIRR, fmtINR, fmtUSD, fmtCrINR, fmtCrUSD, fmtNative, fmtCrNative, fmt, fmtCr, fmtSec, fmtCrSec, fmtPct, uid, ago, fmtSize, setLiveUsdInr } from './utils.js'
+// Import this in App.jsx: import { calcFD, calcAccr, isUSDHolding, getVal, getInv, toINR, toINRCurrent, toUSD, fxFor, getValINR, getInvINR, xirr, getXIRR, fmtINR, fmtUSD, fmtCrINR, fmtCrUSD, fmtNative, fmtCrNative, fmt, fmtCr, fmtSec, fmtCrSec, fmtPct, uid, ago, fmtSize, setLiveUsdInr } from './utils.js'
 
 // ── FX live rate — call setLiveUsdInr(rate) on app load ──────────
 let _liveUsdInr = 94.5; // overwritten by /api/forex/usdinr on load
@@ -56,10 +56,15 @@ export function getInv(h){
   }
 }
 // Convert native value → INR for unified portfolio totals
+// toINR: uses purchase-time FX rate (h.usd_inr_rate) — correct for cost basis
 export function toINR(val, h) { return isUSDHolding(h) ? val * (h.usd_inr_rate || _liveUsdInr) : val; }
+// toINRCurrent: always uses live rate — correct for current market value
+export function toINRCurrent(val, h) { return isUSDHolding(h) ? val * _liveUsdInr : val; }
 export function toUSD(val, h) { return isUSDHolding(h) ? val : val / _liveUsdInr; }
 export function fxFor(h) { return isUSDHolding(h) ? (h.usd_inr_rate || _liveUsdInr) : 1; }
-export function getValINR(h) { return toINR(getVal(h), h); }
+// getValINR uses live rate so FX gains are reflected in current portfolio value
+export function getValINR(h) { return toINRCurrent(getVal(h), h); }
+// getInvINR uses purchase rate so cost basis reflects actual INR spent
 export function getInvINR(h) { return toINR(getInv(h), h); }
 export function xirr(cfs,dates){if(cfs.length<2)return null;const d0=dates[0],yrs=dates.map(d=>(d-d0)/(864e5*365.25));const npv=r=>cfs.reduce((s,c,i)=>s+c/Math.pow(1+r,yrs[i]),0);const dnpv=r=>cfs.reduce((s,c,i)=>s-yrs[i]*c/Math.pow(1+r,yrs[i]+1),0);let r=0.1;for(let i=0;i<100;i++){const f=npv(r),df=dnpv(r);if(Math.abs(df)<1e-12)break;const nr=r-f/df;if(Math.abs(nr-r)<1e-7){r=nr;break;}r=nr;if(r<-0.999)r=-0.999;}return isFinite(r)?r*100:null;}
 

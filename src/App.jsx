@@ -19,7 +19,7 @@ import {
   uid, ago, fmtSize,
   getVal, getInv, getValINR, getInvINR,
   xirr, getXIRR, isUSDHolding, toINR, toUSD, fxFor,
-  calcFD, calcAccr,
+  calcFD, calcAccr, setLiveUsdInr,
 } from './utils.js';
 import { AT, BF, BT, BG, BA, SEED } from './constants.js';
 import './styles.css';
@@ -428,7 +428,7 @@ ${alertsText}`;
 
   async function fetchUsdInr() {
     setUsdInrLoading(true);
-    try { const d = await api('/api/forex/usdinr'); if (d?.rate) setUsdInrRate(d.rate); }
+    try { const d = await api('/api/forex/usdinr'); if (d?.rate) { setUsdInrRate(d.rate); setLiveUsdInr(d.rate); } }
     catch {}
     setUsdInrLoading(false);
   }
