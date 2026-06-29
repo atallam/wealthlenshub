@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { supabase } from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
-import { fetchUsdInr, fetchAllFxRates, fetchMfNav, getAmfiList, scoreMf, stockSearch, stockPrice, yahooPrice, timedFetch, TWELVE_KEY, twelveQuote, mfNav } from "../lib/prices.js";
+import { fetchUsdInr, fetchAllFxRates, fetchMfNav, fetchMfNavByIsin, getAmfiList, scoreMf, stockSearch, stockPrice, yahooPrice, timedFetch, TWELVE_KEY, twelveQuote, mfNav } from "../lib/prices.js";
 
 const router = Router();
 
@@ -110,7 +110,18 @@ router.post("/prices/refresh", auth, async (req, res) => {
     const h = holdings[fetchIdx];
     let patch = null;
     try {
-      if (h.type === "MF" && h.scheme_code) { const nav = await mfNav(h.scheme_code); if (nav) patch = { current_nav: nav, current_value: (h.units||0)*nav, price_fetched_at: new Date().toISOString() }; }
+      if (h.type === "MF") {
+        if (h.scheme_code) {
+          // Normal path: scheme_code → AMFI/MFAPI NAV
+          const nav = await mfNav(h.scheme_code);
+          if (nav) patch = { current_nav: nav, current_value: (h.units||0)*nav, price_fetched_at: new Date().toISOString() };
+        } else if (h.ticker?.startsWith("INF")) {
+          // Fallback: CAS holdings where AMFI enrichment failed — look up by ISIN.
+          // Also backfills scheme_code so future refreshes use the fast path.
+          const result = await fetchMfNavByIsin(h.ticker);
+          if (result?.nav) patch = { current_nav: result.nav, current_value: (h.units||0)*result.nav, scheme_code: result.scheme_code, price_fetched_at: new Date().toISOString() };
+        }
+      }
       else if ((h.type === "IN_STOCK" || h.type === "IN_ETF") && h.ticker) { const q = await stockPrice(`${h.ticker.toUpperCase()}.NS`, "NSE"); const price = q?.price ?? await yahooPrice(`${h.ticker.toUpperCase()}.BO`); if (price) patch = { current_price: price, current_value: (h.units||0)*price, price_fetched_at: new Date().toISOString() }; }
       else if ((h.type === "US_STOCK" || h.type === "US_ETF" || h.type === "US_BOND") && h.ticker) { const q = await stockPrice(h.ticker.toUpperCase()); if (q?.price) patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() }; }
       else if (h.type === "CRYPTO" && h.ticker) { const sym = h.ticker.toUpperCase().includes("-") ? h.ticker.toUpperCase() : `${h.ticker.toUpperCase()}-USD`; const q = await stockPrice(sym); if (q?.price) patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() }; }
