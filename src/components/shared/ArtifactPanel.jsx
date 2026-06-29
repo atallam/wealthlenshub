@@ -103,4 +103,12 @@ export default function ArtifactPanel({ holding, token, onClose }) {
                     <div style={{fontSize:".67rem",color:"var(--text-muted)",marginTop:2}}>{a.description?`${a.description} · `:""}{fmtSize(a.file_size||0)} · {ago(a.uploaded_at)}</div>
                   </div>
                   <button className="btn-o" style={{padding:".26rem .6rem",fontSize:".65rem"}} onClick={()=>download(a)}>↓ View</button>
-                  <button className="delbtn" onClick={()=>remove(a.id)}>✕
+                  <button className="delbtn" onClick={()=>remove(a.id)}>✕</button>
+                </div>
+              ))}
+            </div>
+        }
+      </div>
+    </div>
+  );
+}
