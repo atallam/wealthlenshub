@@ -46,11 +46,16 @@ router.post("/import", auth, auditImport("HOLDINGS_IMPORT"), async (req, res) =>
     }
     if (effectiveMemberId) affectedMemberIds.add(effectiveMemberId);
 
-    let deleteQ = supabase.from("holdings").delete().eq("user_id", req.user.id).eq("source", "cas");
+    // Delete CAS holdings for affected members.
+    // We run TWO deletes: one for matched member_ids, one for member_id IS NULL.
+    // The IS NULL case catches legacy imports from before member tracking was added —
+    // those holdings have source='cas' but no member_id and would survive an IN filter,
+    // leaving stale wrong-NAV records that re-import can't overwrite.
     if (affectedMemberIds.size > 0) {
-      deleteQ = deleteQ.in("member_id", [...affectedMemberIds]);
+      await supabase.from("holdings").delete().eq("user_id", req.user.id).eq("source", "cas").in("member_id", [...affectedMemberIds]);
     }
-    await deleteQ;
+    // Always clear null-member CAS holdings (legacy or unmatched).
+    await supabase.from("holdings").delete().eq("user_id", req.user.id).eq("source", "cas").is("member_id", null);
   }
 
   // For non-CAS imports, build an existingMap to support update-vs-insert.
