@@ -118,10 +118,10 @@ export default function SnapTradeImport({ onClose, members = [] }) {
     } catch { /* ignore */ }
   }
 
-  async function handleConnect(broker) {
+  async function handleConnect() {
     setLoading(true); setError("");
     try {
-      const resp = await api("/api/snaptrade/connect", { method: "POST", body: JSON.stringify({ broker: broker || undefined }) });
+      const resp = await api("/api/snaptrade/connect", { method: "POST", body: JSON.stringify({}) });
       if (resp.redirect_uri) {
         const popup = window.open(resp.redirect_uri, "snaptrade_connect", "width=500,height=700");
         const pollInterval = setInterval(async () => {
@@ -223,8 +223,8 @@ export default function SnapTradeImport({ onClose, members = [] }) {
       {!loading && step === "connect" && (<div>
         <div style={{ fontSize: ".72rem", color: "rgba(255,255,255,.6)", marginBottom: "1rem" }}>Choose a brokerage to connect. You'll be redirected to their login page — your credentials are never shared with WealthLens.</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: ".6rem" }}>
-          {[{ slug: "FIDELITY", label: "Fidelity", icon: "🏦" },{ slug: "SCHWAB", label: "Schwab", icon: "🏦" },{ slug: "ROBINHOOD", label: "Robinhood", icon: "🪶" },{ slug: "ALPACA", label: "Alpaca", icon: "🦙" },{ slug: "INTERACTIVE_BROKERS", label: "IBKR", icon: "🏛️" },{ slug: "", label: "All Brokers", icon: "🔗" }].map(b => (
-            <button key={b.slug || "all"} onClick={() => handleConnect(b.slug)} style={{ background: "rgba(167,139,250,.04)", border: "1px solid rgba(167,139,250,.18)", borderRadius: 8, padding: ".85rem .5rem", cursor: "pointer", textAlign: "center", transition: "all .2s", color: "#ffffff" }}
+          {[{ label: "Fidelity", icon: "🏦" },{ label: "Schwab", icon: "🏦" },{ label: "Robinhood", icon: "🪶" },{ label: "Alpaca", icon: "🦙" },{ label: "IBKR", icon: "🏛️" },{ label: "All Brokers", icon: "🔗" }].map(b => (
+            <button key={b.label} onClick={() => handleConnect()} style={{ background: "rgba(167,139,250,.04)", border: "1px solid rgba(167,139,250,.18)", borderRadius: 8, padding: ".85rem .5rem", cursor: "pointer", textAlign: "center", transition: "all .2s", color: "#ffffff" }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,.45)"; e.currentTarget.style.background = "rgba(167,139,250,.08)"; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(167,139,250,.18)"; e.currentTarget.style.background = "rgba(167,139,250,.04)"; }}>
               <div style={{ fontSize: "1.3rem", marginBottom: ".3rem" }}>{b.icon}</div>
@@ -293,12 +293,12 @@ export default function SnapTradeImport({ onClose, members = [] }) {
         </div>
 
         {(existingCount > 0 || manualConflictCount > 0) && (
-          <div style={{ background: "rgba(90,156,224,.06)", border: "1px solid rgba(90,156,224,.22)", borderRadius: 8, padding: ".65rem .85rem", marginBottom: "1rem", display: "flex", alignItems: "flex-start", gap: ".55rem" }}>
-            <span style={{ fontSize: ".85rem", marginTop: 1 }}>↻</span>
-            <div style={{ fontSize: ".72rem", color: "rgba(255,255,255,.65)", lineHeight: 1.6 }}>
-              {existingCount > 0 && <span><strong style={{ color: "#5a9ce0" }}>{existingCount} existing holding{existingCount !== 1 ? "s" : ""}</strong> will be replaced (flush &amp; fill). </span>}
-              {manualConflictCount > 0 && <span><strong style={{ color: "#e07c5a" }}>{manualConflictCount} manual holding{manualConflictCount !== 1 ? "s" : ""}</strong> with the same ticker exist and will be preserved. </span>}
-              <span style={{ color: "rgba(255,255,255,.4)" }}>New positions: {previewSummary?.new_count ?? holdings.filter(h => h.dup_status === "new").length}.</span>
+          <div style={{ background: "rgba(90,156,224,.07)", border: "1px solid rgba(90,156,224,.28)", borderRadius: 8, padding: ".7rem .9rem", marginBottom: "1rem" }}>
+            <div style={{ fontSize: ".7rem", fontWeight: 600, color: "#5a9ce0", marginBottom: ".3rem", letterSpacing: ".03em" }}>↻ Flush &amp; Fill</div>
+            <div style={{ fontSize: ".72rem", color: "var(--text)", lineHeight: 1.7 }}>
+              {existingCount > 0 && <span><span style={{ color: "#5a9ce0", fontWeight: 600 }}>{existingCount}</span> existing holding{existingCount !== 1 ? "s" : ""} will be replaced. </span>}
+              {manualConflictCount > 0 && <span><span style={{ color: "#e07c5a", fontWeight: 600 }}>{manualConflictCount}</span> manual holding{manualConflictCount !== 1 ? "s" : ""} with the same ticker will be preserved. </span>}
+              <span style={{ color: "var(--text-dim)" }}>{previewSummary?.new_count ?? holdings.filter(h => h.dup_status === "new").length} new position{(previewSummary?.new_count ?? 0) !== 1 ? "s" : ""} will be added.</span>
             </div>
           </div>
         )}
