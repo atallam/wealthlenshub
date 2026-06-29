@@ -245,9 +245,22 @@ router.get("/connections", auth, async (req, res) => {
 router.delete("/connections/:authId", auth, async (req, res) => {
   try {
     const conn = await getSnapConn(req.user.id);
-    await getSnapClient().connections.removeBrokerageAuthorization({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret, authorizationId: req.params.authId });
-    await supabase.from("holdings").delete().eq("user_id", req.user.id).eq("source", "snaptrade");
-    const remaining = await getSnapClient().connections.listBrokerageAuthorizations({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret });
+    const client = getSnapClient();
+    // Remove the authorization from SnapTrade
+    await client.connections.removeBrokerageAuthorization({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret, authorizationId: req.params.authId });
+    // Determine which SnapTrade accounts still exist after the disconnect
+    const remainingAccts = await client.accountInformation.listUserAccounts({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret });
+    const remainingAccountIds = new Set((remainingAccts.data || []).map(a => a.id));
+    // Fetch all snaptrade holdings from DB and delete only the ones whose account is gone
+    const { data: existingHoldings } = await supabase.from("holdings")
+      .select("id, source_account")
+      .eq("user_id", req.user.id)
+      .eq("source", "snaptrade");
+    const toDelete = (existingHoldings || []).filter(h => !remainingAccountIds.has(h.source_account)).map(h => h.id);
+    if (toDelete.length > 0) {
+      await supabase.from("holdings").delete().eq("user_id", req.user.id).in("id", toDelete);
+    }
+    const remaining = await client.connections.listBrokerageAuthorizations({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret });
     res.json({ status: "disconnected", authorization_id: req.params.authId, remaining_connections: (remaining.data || []).length });
   } catch (e) { sendError(res, e); }
 });

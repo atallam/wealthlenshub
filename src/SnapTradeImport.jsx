@@ -124,15 +124,19 @@ export default function SnapTradeImport({ onClose, members = [] }) {
       const resp = await api("/api/snaptrade/connect", { method: "POST", body: JSON.stringify({}) });
       if (resp.redirect_uri) {
         const popup = window.open(resp.redirect_uri, "snaptrade_connect", "width=500,height=700");
-        const pollInterval = setInterval(async () => {
-          if (popup?.closed) {
-            clearInterval(pollInterval);
-            setLoading(true);
-            await new Promise(r => setTimeout(r, 2000));
-            await loadConnectionsAndAccounts();
-            setLoading(false);
-          }
-        }, 1000);
+        if (!popup) {
+          setError("Popup was blocked — allow popups for this site and try again.");
+        } else {
+          const pollInterval = setInterval(async () => {
+            if (popup.closed) {
+              clearInterval(pollInterval);
+              setLoading(true);
+              await new Promise(r => setTimeout(r, 2000));
+              await loadConnectionsAndAccounts();
+              setLoading(false);
+            }
+          }, 1000);
+        }
       }
     } catch (e) { setError(e.message); }
     setLoading(false);
@@ -150,14 +154,6 @@ export default function SnapTradeImport({ onClose, members = [] }) {
     setLoading(false);
   }
 
-  function setResolution(ticker, action) { setResolutions(prev => ({ ...prev, [ticker]: action })); }
-
-  function bulkResolve(action) {
-    const updated = { ...resolutions };
-    for (const h of holdings) { if (h.dup_status !== "new") updated[h.ticker] = action; }
-    setResolutions(updated);
-  }
-
   async function doImport() {
     if (!selectedAcct) return;
     setLoading(true); setError("");
@@ -165,7 +161,6 @@ export default function SnapTradeImport({ onClose, members = [] }) {
       const resp = await api(`/api/snaptrade/import/${selectedAcct}`, {
         method: "POST",
         body: JSON.stringify({
-          resolutions,
           brokerage_name: selectedBrokerage,
           member_id: memberMap[selectedAcct] || null,
         }),
@@ -179,10 +174,14 @@ export default function SnapTradeImport({ onClose, members = [] }) {
   async function disconnectConnection(authId) {
     setDisconnecting(true); setError("");
     try {
-      await api(`/api/snaptrade/connections/${authId}`, { method: "DELETE" });
+      // Use remaining_connections from API response — avoids reading stale React state
+      const result = await api(`/api/snaptrade/connections/${authId}`, { method: "DELETE" });
       setShowDisconnectConfirm(null);
-      await loadConnectionsAndAccounts();
-      if (connections.length <= 1) { setStep("connect"); setAccounts([]); setConnections([]); }
+      if ((result.remaining_connections || 0) === 0) {
+        setStep("connect"); setAccounts([]); setConnections([]);
+      } else {
+        await loadConnectionsAndAccounts();
+      }
     } catch (e) { setError(e.message); }
     setDisconnecting(false);
   }
@@ -345,10 +344,8 @@ export default function SnapTradeImport({ onClose, members = [] }) {
         <div style={{ fontSize: "2.2rem", marginBottom: ".6rem" }}>✅</div>
         <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "1.15rem", color: "#ffffff", marginBottom: ".4rem" }}>Import Complete</div>
         <div style={{ display: "flex", gap: ".8rem", justifyContent: "center", flexWrap: "wrap", marginBottom: "1.2rem", fontSize: ".72rem" }}>
-          {importResult.assets_imported > 0 && <span style={{ color: "#4caf9a" }}>✦ {importResult.assets_imported} imported</span>}
-          {(importResult.assets_replaced || 0) > 0 && <span style={{ color: "#5a9ce0" }}>↻ {importResult.assets_replaced} replaced</span>}
-          {(importResult.assets_merged || 0) > 0 && <span style={{ color: "#a084ca" }}>⊕ {importResult.assets_merged} merged</span>}
-          {(importResult.assets_skipped || 0) > 0 && <span style={{ color: "rgba(255,255,255,.4)" }}>— {importResult.assets_skipped} skipped</span>}
+          {importResult.assets_imported > 0 && <span style={{ color: "#4caf9a" }}>✦ {importResult.assets_imported} position{importResult.assets_imported !== 1 ? "s" : ""} synced</span>}
+          {(importResult.assets_skipped || 0) > 0 && <span style={{ color: "rgba(255,255,255,.4)" }}>— {importResult.assets_skipped} skipped (cash sweep)</span>}
         </div>
         <div style={{ display: "flex", gap: ".6rem", justifyContent: "center" }}>
           <button onClick={() => { setStep("accounts"); setImportResult(null); setResolutions({}); }} style={btnSecondary}>Import another account</button>

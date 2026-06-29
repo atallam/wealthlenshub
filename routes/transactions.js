@@ -41,7 +41,21 @@ router.post("/import", auth, async (req, res) => {
 });
 
 router.post("/", auth, async (req, res) => {
-  const { error } = await supabase.from("transactions").insert({ ...req.body, user_id: req.user.id });
+  const { holding_id, txn_type, units, price, price_usd, txn_date, notes } = req.body;
+  if (!holding_id) return res.status(400).json({ error: "holding_id is required" });
+  // Verify the holding belongs to the requesting user before inserting
+  const { data: holding } = await supabase.from("holdings").select("id").eq("id", holding_id).eq("user_id", req.user.id).single();
+  if (!holding) return res.status(403).json({ error: "Holding not found or access denied" });
+  const { error } = await supabase.from("transactions").insert({
+    id: "t_" + Date.now() + Math.random().toString(36).slice(2, 6),
+    holding_id, user_id: req.user.id,
+    txn_type: txn_type || "BUY",
+    units: Number(units) || 0,
+    price: Number(price) || 0,
+    ...(price_usd !== undefined ? { price_usd: Number(price_usd) } : {}),
+    txn_date: txn_date || new Date().toISOString().slice(0, 10),
+    notes: notes || "",
+  });
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
