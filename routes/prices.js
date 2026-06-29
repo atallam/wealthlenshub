@@ -102,7 +102,8 @@ router.get("/stock/info", auth, async (req, res) => {
 });
 
 router.post("/prices/refresh", auth, async (req, res) => {
-  const { data: holdings } = await supabase.from("holdings").select("id, type, ticker, scheme_code, units, usd_inr_rate").eq("user_id", req.user.id);
+  // Fetch purchase_nav + start_date so we can detect and repair implausible values
+  const { data: holdings } = await supabase.from("holdings").select("id, type, ticker, scheme_code, units, usd_inr_rate, purchase_nav, purchase_value, start_date").eq("user_id", req.user.id);
   if (!holdings?.length) return res.json({ updated: 0 });
   const { rate: usdInr, source: fxSource } = await fetchUsdInr();
   const updates = [];
@@ -111,15 +112,59 @@ router.post("/prices/refresh", auth, async (req, res) => {
     let patch = null;
     try {
       if (h.type === "MF") {
-        if (h.scheme_code) {
-          // Normal path: scheme_code → AMFI/MFAPI NAV
-          const nav = await mfNav(h.scheme_code);
-          if (nav) patch = { current_nav: nav, current_value: (h.units||0)*nav, price_fetched_at: new Date().toISOString() };
-        } else if (h.ticker?.startsWith("INF")) {
-          // Fallback: CAS holdings where AMFI enrichment failed — look up by ISIN.
-          // Also backfills scheme_code so future refreshes use the fast path.
-          const result = await fetchMfNavByIsin(h.ticker);
-          if (result?.nav) patch = { current_nav: result.nav, current_value: (h.units||0)*result.nav, scheme_code: result.scheme_code, price_fetched_at: new Date().toISOString() };
+        // Resolve scheme_code via ISIN if missing
+        let sc = h.scheme_code;
+        if (!sc && h.ticker?.startsWith("INF")) {
+          const resolved = await fetchMfNavByIsin(h.ticker);
+          if (resolved?.scheme_code) {
+            sc = resolved.scheme_code;
+            // Will be included in patch below
+          }
+        }
+        if (sc) {
+          const nav = await mfNav(sc);
+          if (nav) {
+            patch = { scheme_code: sc, current_nav: nav, current_value: (h.units||0)*nav, price_fetched_at: new Date().toISOString() };
+
+            // ── Repair implausible purchase_nav ───────────────────────────────
+            // A purchase_nav > 10× current means the fund would have dropped >90%,
+            // which is impossible for a normal equity/debt MF. This indicates a
+            // CAS parser error (e.g. JioBlackRock showing ₹451 when NAV is ₹9.86).
+            // Fix strategy: look up the historical NAV from MFAPI at start_date;
+            // if that fails, null out purchase_nav so the UI shows "—" rather than
+            // a catastrophically wrong gain/loss figure.
+            const pNav = h.purchase_nav || 0;
+            const navRatio = pNav > 0 ? pNav / nav : 0;
+            if (navRatio > 10 || (navRatio > 0 && navRatio < 0.05)) {
+              let fixedPurchaseNav = null;
+              if (h.start_date) {
+                try {
+                  const r = await timedFetch(`https://api.mfapi.in/mf/${sc}`, {}, 8000);
+                  if (r.ok) {
+                    const data = await r.json();
+                    const navHistory = data?.data || [];
+                    // CAS dates come as "DD-MMM-YYYY" or "YYYY-MM-DD"; normalise to Date
+                    const target = new Date(h.start_date);
+                    let bestNav = null, bestDiff = Infinity;
+                    for (const entry of navHistory) {
+                      // MFAPI returns dates as "DD-Mon-YYYY"
+                      const parts = entry.date.split("-");
+                      const entryDate = parts.length === 3
+                        ? new Date(`${parts[2]}-${parts[1]}-${parts[0]}`)
+                        : new Date(entry.date);
+                      const diff = Math.abs(entryDate - target);
+                      if (diff < bestDiff) { bestDiff = diff; bestNav = parseFloat(entry.nav); }
+                    }
+                    // Only trust if within 30 days of start_date
+                    if (bestNav && bestDiff < 30 * 86400000) fixedPurchaseNav = bestNav;
+                  }
+                } catch { /* fall through */ }
+              }
+              // Apply fix: historical NAV if found, else null (shows "—" in UI)
+              patch.purchase_nav = fixedPurchaseNav;
+              patch.purchase_value = fixedPurchaseNav != null ? (h.units||0) * fixedPurchaseNav : null;
+            }
+          }
         }
       }
       else if ((h.type === "IN_STOCK" || h.type === "IN_ETF") && h.ticker) { const q = await stockPrice(`${h.ticker.toUpperCase()}.NS`, "NSE"); const price = q?.price ?? await yahooPrice(`${h.ticker.toUpperCase()}.BO`); if (price) patch = { current_price: price, current_value: (h.units||0)*price, price_fetched_at: new Date().toISOString() }; }
