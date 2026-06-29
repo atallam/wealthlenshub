@@ -79,12 +79,14 @@ export function getXIRR(h){
       const units = +t.units || 0;
       const price = +t.price || 0;
       if(!units || !price) continue;
-      const amt = units * price * fx;
+      // Keep all cashflows in native currency (USD for USD holdings, INR for Indian).
+      // Do NOT multiply by fx here — cur (added below) is also in native currency.
+      const amt = units * price;
       cfs.push(t.txn_type === "BUY" ? -amt : amt);
       dates.push(new Date(t.txn_date));
     }
     if(cfs.length > 0) {
-      cfs.push(cur);
+      cfs.push(cur); // native currency — consistent with the cashflows above
       dates.push(new Date());
       const earliest = Math.min(...dates.map(d => d.getTime()));
       const daySpan = (Date.now() - earliest) / 864e5;
@@ -125,7 +127,7 @@ export const fmtCr = n => fmtCrUSD(n / _liveUsdInr);
 // Secondary line: ₹ equivalent
 export const fmtSec = n => fmtINR(n);
 export const fmtCrSec = n => fmtCrINR(n);
-export const fmtPct=n=>`${n>=0?"+":""}${n.toFixed(2)}%`;
+export const fmtPct=n=>n==null?"—":`${n>=0?"+":""}${n.toFixed(2)}%`;
 export const uid=()=>"x"+Date.now()+Math.random().toString(36).slice(2,6);
 export const ago=d=>{if(!d)return"Never";const s=Math.floor((Date.now()-new Date(d))/1000);if(s<60)return`${s}s ago`;if(s<3600)return`${Math.floor(s/60)}m ago`;if(s<86400)return`${Math.floor(s/3600)}h ago`;return`${Math.floor(s/86400)}d ago`;};
 export const fmtSize=b=>b>1e6?`${(b/1e6).toFixed(1)}MB`:b>1e3?`${(b/1e3).toFixed(0)}KB`:`${b}B`;

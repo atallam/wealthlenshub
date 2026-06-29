@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomUUID } from "crypto";
 import { supabase } from "../lib/db.js";
 import { auth } from "../lib/auth.js";
 
@@ -29,7 +30,7 @@ router.post("/import", auth, async (req, res) => {
     const holdingId = holdingMap[sym] || holdingMap[sym.replace(/\s+/g, "")] || Object.entries(holdingMap).find(([k]) => k.includes(sym))?.[1];
     if (!holdingId) { unmatched.push(t._symbol); continue; }
     const { error } = await supabase.from("transactions").insert({
-      id: "t_" + Date.now() + Math.random().toString(36).slice(2, 6),
+      id: "t_" + randomUUID().replace(/-/g, "").slice(0, 16),
       holding_id: holdingId, user_id: req.user.id,
       txn_type: t.txn_type || "BUY", units: Number(t.units) || 0, price: Number(t.price) || 0,
       txn_date: t.txn_date || new Date().toISOString().slice(0, 10), notes: t.notes || "Bulk import",
@@ -47,7 +48,7 @@ router.post("/", auth, async (req, res) => {
   const { data: holding } = await supabase.from("holdings").select("id").eq("id", holding_id).eq("user_id", req.user.id).single();
   if (!holding) return res.status(403).json({ error: "Holding not found or access denied" });
   const { error } = await supabase.from("transactions").insert({
-    id: "t_" + Date.now() + Math.random().toString(36).slice(2, 6),
+    id: "t_" + randomUUID().replace(/-/g, "").slice(0, 16),
     holding_id, user_id: req.user.id,
     txn_type: txn_type || "BUY",
     units: Number(units) || 0,

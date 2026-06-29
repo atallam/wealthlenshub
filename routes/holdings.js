@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomUUID } from "crypto";
 import { supabase } from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
 import { sanitizeDates, enrichHoldings } from "./portfolio.js";
@@ -95,13 +96,13 @@ router.post("/import", auth, auditImport("HOLDINGS_IMPORT"), async (req, res) =>
       if (error) { errors.push(`${h.name}: ${error.message}`); continue; }
       updated.push(h.name);
     } else {
-      const id = "h_" + Date.now() + Math.random().toString(36).slice(2, 8);
+      const id = "h_" + randomUUID().replace(/-/g, "").slice(0, 16);
       const { error } = await supabase.from("holdings").insert({ ...payload, id, user_id: req.user.id });
       if (error) { errors.push(`${h.name}: ${error.message}`); continue; }
       inserted.push(h.name);
       const price = h.purchase_price || h.purchase_nav || 0;
       if (h.units && price) {
-        await supabase.from("transactions").insert({ id: "t_" + Date.now() + Math.random().toString(36).slice(2, 6), holding_id: id, user_id: req.user.id, txn_type: "BUY", units: h.units, price, txn_date: h.start_date || new Date().toISOString().slice(0, 10), notes: "Imported from CSV" });
+        await supabase.from("transactions").insert({ id: "t_" + randomUUID().replace(/-/g, "").slice(0, 16), holding_id: id, user_id: req.user.id, txn_type: "BUY", units: h.units, price, txn_date: h.start_date || new Date().toISOString().slice(0, 10), notes: "Imported from CSV" });
       }
     }
   }
@@ -110,7 +111,8 @@ router.post("/import", auth, auditImport("HOLDINGS_IMPORT"), async (req, res) =>
 
   // Auto-snapshot
   try {
-    fetch(`${req.protocol}://${req.get("host")}/api/snapshots`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": req.headers.authorization }, body: JSON.stringify({ source: "cas_import", cas_statement_date: cas_statement_date || null }) }).catch(e => console.error("Auto-snapshot failed:", e.message));
+    const proto = req.headers["x-forwarded-proto"] || req.protocol;
+    fetch(`${proto}://${req.get("host")}/api/snapshots`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": req.headers.authorization }, body: JSON.stringify({ source: "cas_import", cas_statement_date: cas_statement_date || null }) }).catch(e => console.error("Auto-snapshot failed:", e.message));
   } catch {}
 
   // Background price fetch
@@ -143,7 +145,7 @@ router.post("/", auth, async (req, res) => {
   const { error } = await supabase.from("holdings").insert(sanitizeDates(insertData));
   if (error) return res.status(500).json({ error: error.message });
   if (first_transaction && first_transaction.units && first_transaction.price) {
-    await supabase.from("transactions").insert({ id: "t_" + Date.now() + Math.random().toString(36).slice(2,6), holding_id: holdingData.id, txn_type: first_transaction.txn_type || "BUY", units: Number(first_transaction.units), price: Number(first_transaction.price), txn_date: first_transaction.txn_date || holdingData.start_date || new Date().toISOString().slice(0,10), notes: first_transaction.notes || "" });
+    await supabase.from("transactions").insert({ id: "t_" + randomUUID().replace(/-/g, "").slice(0, 16), holding_id: holdingData.id, txn_type: first_transaction.txn_type || "BUY", units: Number(first_transaction.units), price: Number(first_transaction.price), txn_date: first_transaction.txn_date || holdingData.start_date || new Date().toISOString().slice(0,10), notes: first_transaction.notes || "" });
   }
   res.json({ ok: true });
 });

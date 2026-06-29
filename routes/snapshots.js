@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { supabase } from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
+import { fetchUsdInr, FX_FALLBACK } from "../lib/prices.js";
+
+// Asset types denominated in USD — must match utils.js USD_TYPES
+const USD_TYPES = new Set(["US_STOCK", "US_ETF", "US_BOND", "CRYPTO"]);
 
 const router = Router();
 
@@ -18,10 +22,11 @@ router.post("/", auth, async (req, res) => {
       .select("id, member_id, type, name, units, purchase_price, current_price, purchase_value, current_value, currency")
       .eq("user_id", req.user.id);
     if (!holdings?.length) return res.json({ snapshot: null, message: "No holdings to snapshot" });
-    let usdInr = 84;
-    try { const fxResp = await fetch("https://api.exchangerate-api.com/v4/latest/USD"); const fxData = await fxResp.json(); usdInr = fxData?.rates?.INR || 84; } catch {}
-    const toINR = (h) => { const val = h.current_value || (h.units * h.current_price) || 0; return (h.currency === "USD") ? val * usdInr : val; };
-    const invINR = (h) => { const val = h.purchase_value || (h.units * h.purchase_price) || 0; return (h.currency === "USD") ? val * usdInr : val; };
+    // Use the shared, cached FX fetcher — consistent with prices.js and the UI
+    const { rate: usdInr } = await fetchUsdInr().catch(() => ({ rate: FX_FALLBACK }));
+    const isUSD = (h) => USD_TYPES.has(h.type) || (h.currency || "").toUpperCase() === "USD";
+    const toINR = (h) => { const val = h.current_value || (h.units * h.current_price) || 0; return isUSD(h) ? val * usdInr : val; };
+    const invINR = (h) => { const val = h.purchase_value || (h.units * h.purchase_price) || 0; return isUSD(h) ? val * usdInr : val; };
     let totalInvested = 0, totalCurrent = 0;
     const memberBreakdown = {}, typeBreakdown = {};
     for (const h of holdings) {

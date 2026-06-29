@@ -120,7 +120,10 @@ router.post("/prices/refresh", auth, async (req, res) => {
     if (fetchIdx < holdings.length - 1) await new Promise(r => setTimeout(r, 800));
   }
   res.json({ updated: updates.length, usdInr, fxSource, results: updates });
-  try { fetch(`${req.protocol}://${req.get("host")}/api/snapshots`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": req.headers.authorization }, body: JSON.stringify({ source: "price_refresh" }) }).catch(e => console.error("Auto-snapshot failed:", e.message)); } catch {}
+  try {
+    const proto = req.headers["x-forwarded-proto"] || req.protocol;
+    fetch(`${proto}://${req.get("host")}/api/snapshots`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": req.headers.authorization }, body: JSON.stringify({ source: "price_refresh" }) }).catch(e => console.error("Auto-snapshot failed:", e.message));
+  } catch {}
 });
 
 // Benchmark overlay

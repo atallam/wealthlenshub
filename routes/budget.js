@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomUUID } from "crypto";
 import multer from "multer";
 import { supabase } from "../lib/db.js";
 import { auth, sendError, IS_PROD } from "../lib/auth.js";
@@ -17,7 +18,7 @@ router.post("/upload", auth, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file" });
     const { source, statement_type, notes, bank_key } = req.body;
-    const id = "bst_" + Date.now() + Math.random().toString(36).slice(2, 6);
+    const id = "bst_" + randomUUID().replace(/-/g, "").slice(0, 16);
     const ext = req.file.originalname.split(".").pop().toLowerCase();
     const bankInfo = BANK_REGISTRY[bank_key] || BANK_REGISTRY.auto;
     let region = bankInfo.region;
@@ -44,11 +45,8 @@ router.post("/upload", auth, upload.single("file"), async (req, res) => {
           else if (region === "IN") { rawRows = inRows.length > 0 ? inRows : usRows; }
           else { rawRows = usRows.length >= inRows.length ? usRows : inRows; region = usRows.length >= inRows.length ? "US" : "IN"; }
           if (rawRows.length === 0) {
-            try {
-              const { text: rawText2 } = await extractPDFText(req.file.buffer);
-              const usTest = parseUSPDF(rawText2); const inTest = parseIndianPDF(rawText2);
-              return res.status(400).json({ error: `PDF parsed 0 rows (ext=${ext}, bank=${bank_key}, region=${region}). Debug: US=${usTest.length}, IN=${inTest.length}.`, usRows: usTest.length, inRows: inTest.length });
-            } catch (dbgErr) { return res.status(400).json({ error: `PDF 0 rows + debug failed: ${dbgErr.message}` }); }
+            // usRows/inRows already parsed above — no need to re-extract PDF text
+            return res.status(400).json({ error: `PDF parsed 0 rows (ext=${ext}, bank=${bank_key}, region=${region}). Debug: US=${usRows.length}, IN=${inRows.length}.`, usRows: usRows.length, inRows: inRows.length });
           }
         } catch (pdfErr) { return res.status(400).json({ error: "PDF parse error: " + pdfErr.message }); }
       } else {
@@ -80,7 +78,7 @@ router.post("/upload", auth, upload.single("file"), async (req, res) => {
       if (!periodStart || date < periodStart) periodStart = date;
       if (!periodEnd || date > periodEnd) periodEnd = date;
       txns.push({
-        id: "btx_" + Date.now() + Math.random().toString(36).slice(2, 8),
+        id: "btx_" + randomUUID().replace(/-/g, "").slice(0, 16),
         statement_id: id, user_id: req.user.id, txn_date: date,
         description: encrypt(desc), raw_desc: encrypt(desc),
         amount, txn_type: type, category,
@@ -124,7 +122,7 @@ router.post("/debug-pdf", auth, upload.single("file"), async (req, res) => {
     let imported = 0, importError = null;
     if (rawRows.length > 0 && req.body && req.body !== "debug_only") {
       try {
-        const id = "bst_" + Date.now() + Math.random().toString(36).slice(2, 6);
+        const id = "bst_" + randomUUID().replace(/-/g, "").slice(0, 16);
         const txns = []; let periodStart = null, periodEnd = null;
         for (const row of rawRows) {
           const date = parseDateForRegion(row.date, region);
@@ -135,7 +133,7 @@ router.post("/debug-pdf", auth, upload.single("file"), async (req, res) => {
           const desc = String(row.desc || "").trim(); if (!desc) continue;
           const category = await autoCategorise(desc);
           if (!periodStart || date < periodStart) periodStart = date; if (!periodEnd || date > periodEnd) periodEnd = date;
-          txns.push({ id: "btx_" + Date.now() + Math.random().toString(36).slice(2, 8), statement_id: id, user_id: req.user.id, txn_date: date, description: encrypt(desc), raw_desc: encrypt(desc), amount, txn_type: type, category, balance: row.balance ? encrypt(String(row.balance)) : null, ref_number: (row.ref || "").slice(0, 50), currency: "USD" });
+          txns.push({ id: "btx_" + randomUUID().replace(/-/g, "").slice(0, 16), statement_id: id, user_id: req.user.id, txn_date: date, description: encrypt(desc), raw_desc: encrypt(desc), amount, txn_type: type, category, balance: row.balance ? encrypt(String(row.balance)) : null, ref_number: (row.ref || "").slice(0, 50), currency: "USD" });
         }
         if (txns.length > 0) {
           await supabase.from("budget_statements").delete().eq("user_id", req.user.id).lt("upload_date", new Date(Date.now() - 365*24*3600_000).toISOString());
