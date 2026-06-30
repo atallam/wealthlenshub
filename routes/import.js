@@ -58,9 +58,13 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
             if (!content.items.length) return "";
             const rows = new Map();
             for (const item of content.items) {
-              const y = Math.round((item.transform?.[5] ?? 0) * 2) / 2;
+              // Round Y to nearest 1pt for row grouping. Using 0.5 was too strict —
+              // adjacent glyphs of the same number can land on slightly different Y values
+              // causing digits to be split across rows and produce wrong numbers (e.g. 81,963.607 → 81,963.07).
+              const y = Math.round(item.transform?.[5] ?? 0);
               if (!rows.has(y)) rows.set(y, []);
-              rows.get(y).push({ x: item.transform?.[4] ?? 0, str: item.str });
+              // Use item.width (actual rendered width from pdfjs) instead of str.length*5 estimate.
+              rows.get(y).push({ x: item.transform?.[4] ?? 0, str: item.str, w: item.width ?? item.str.length * 6 });
             }
             const sortedRows = [...rows.entries()]
               .sort((a, b) => b[0] - a[0])
@@ -68,7 +72,16 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
                 items.sort((a, b) => a.x - b.x);
                 let line = "";
                 for (let j = 0; j < items.length; j++) {
-                  if (j > 0) { const gap = items[j].x - items[j-1].x - (items[j-1].str.length * 5); line += gap > 15 ? "\t" : " "; }
+                  if (j > 0) {
+                    // Use actual rendered width (w) for accurate gap detection.
+                    // gap ≤ 2: same token, concatenate directly (handles split digit groups)
+                    // gap ≤ 15: same word, single space
+                    // gap > 15: different column, tab separator
+                    const gap = items[j].x - items[j-1].x - items[j-1].w;
+                    if (gap > 15) line += "\t";
+                    else if (gap > 2) line += " ";
+                    // else: adjacent glyphs — concatenate with no separator
+                  }
                   line += items[j].str;
                 }
                 return line;
