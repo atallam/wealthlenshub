@@ -134,10 +134,18 @@ export default function HoldingsTab({
                 const COL_COUNT = 11;
 
                 return groups.map((grp, gi) => {
-                  const grpCur = grp.items.reduce((s, h) => s + (valINRCache.get(h.id)||0), 0);
-                  const grpInv = grp.items.reduce((s, h) => { const v=invINRCache.get(h.id); return v==null?s:s+v; }, 0);
+                  const isUSGrp = grp.key === "us";
+                  // US groups stay in $; Indian/Other groups use ₹ (INR-converted)
+                  const grpCur = isUSGrp
+                    ? grp.items.reduce((s, h) => s + (valNativeCache.get(h.id)||0), 0)
+                    : grp.items.reduce((s, h) => s + (valINRCache.get(h.id)||0), 0);
+                  const grpInv = isUSGrp
+                    ? grp.items.reduce((s, h) => { const v=invNativeCache.get(h.id); return v==null?s:s+v; }, 0)
+                    : grp.items.reduce((s, h) => { const v=invINRCache.get(h.id); return v==null?s:s+v; }, 0);
+                  const grpCurINR = isUSGrp ? grp.items.reduce((s, h) => s + (valINRCache.get(h.id)||0), 0) : grpCur;
                   const grpG = grpCur - grpInv;
                   const grpP = grpInv > 0 ? (grpG / grpInv) * 100 : 0;
+                  const fmtGrpCr = n => isUSGrp ? fmtCrNative(n, {currency:"USD"}) : fmtCr(n);
                   return [
                     // Spacer row between groups (skip for first)
                     gi > 0 && <tr key={`spc_${grp.key}`}><td colSpan={11} style={{padding:0,height:"18px",background:"transparent",border:"none"}}/></tr>,
@@ -150,11 +158,13 @@ export default function HoldingsTab({
                         <span style={{fontSize:".62rem",color:"var(--text-muted)",marginLeft:10}}>{grp.items.length} holding{grp.items.length!==1?"s":""}</span>
                       </td>
                       <td className="r" style={{padding:".7rem .65rem",borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`}}>
-                        <span style={{fontFamily:"'DM Mono',monospace",fontSize:".76rem",color:grp.color,fontWeight:600}}>{fmtCr(grpCur)}</span>
-                        <div style={{fontFamily:"'DM Mono',monospace",fontSize:".68rem",color:"rgba(201,168,76,.75)",fontWeight:600}}>≈ {fmtCrINR(grpCur)}</div>
+                        <span style={{fontFamily:"'DM Mono',monospace",fontSize:".76rem",color:grp.color,fontWeight:600}}>{fmtGrpCr(grpCur)}</span>
+                        {isUSGrp
+                          ? <div style={{fontFamily:"'DM Mono',monospace",fontSize:".68rem",color:"rgba(201,168,76,.75)",fontWeight:600}}>≈ {fmtCrINR(grpCurINR)}</div>
+                          : null}
                       </td>
                       <td className="r" style={{padding:".7rem .65rem",borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`}}>
-                        <span className={`mono${grpG>=0?" gain":" loss"}`} style={{fontSize:".72rem",fontWeight:600}}>{grpG>=0?"+":""}{fmtCr(grpG)} ({fmtPct(grpP)})</span>
+                        <span className={`mono${grpG>=0?" gain":" loss"}`} style={{fontSize:".72rem",fontWeight:600}}>{grpG>=0?"+":""}{fmtGrpCr(grpG)} ({fmtPct(grpP)})</span>
                       </td>
                       <td style={{borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`}}/>
                     </tr>,
@@ -307,14 +317,20 @@ export default function HoldingsTab({
               {key:"other",label:"Other Assets",icon:"📦",color:"#c9a84c",items:visH.filter(h=>!US_T.has(h.type)&&!IN_T.has(h.type)&&h.type!=="CASH")},
             ].filter(g=>g.items.length>0);
             return groups.map((grp,gi)=>{
-              const grpCur=grp.items.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
-              const grpInv=grp.items.reduce((s,h)=>{ const v=invINRCache.get(h.id); return v==null?s:s+v; },0);
+              const isUSGrp=grp.key==="us";
+              const grpCur=isUSGrp
+                ?grp.items.reduce((s,h)=>s+(valNativeCache.get(h.id)||0),0)
+                :grp.items.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
+              const grpInv=isUSGrp
+                ?grp.items.reduce((s,h)=>{ const v=invNativeCache.get(h.id); return v==null?s:s+v; },0)
+                :grp.items.reduce((s,h)=>{ const v=invINRCache.get(h.id); return v==null?s:s+v; },0);
               const grpG=grpCur-grpInv;
               const grpP=grpInv>0?(grpG/grpInv)*100:0;
+              const fmtGrpCr=n=>isUSGrp?fmtCrNative(n,{currency:"USD"}):fmtCr(n);
               return(<div key={grp.key} style={gi>0?{marginTop:"1rem"}:{}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:".6rem .5rem",marginBottom:".35rem",borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`,background:`${grp.color}0D`,borderRadius:"4px 4px 0 0"}}>
                   <span style={{fontSize:".76rem",letterSpacing:".1em",textTransform:"uppercase",color:grp.color,fontWeight:700}}>{grp.icon} {grp.label} <span style={{color:"var(--text-muted)",fontWeight:400}}>{grp.items.length}</span></span>
-                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:grp.color,fontWeight:600}}>{fmtCr(grpCur)} <span className={grpG>=0?"gain":"loss"} style={{fontSize:".62rem"}}>{grpG>=0?"+":""}{fmtPct(grpP)}</span></span>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:grp.color,fontWeight:600}}>{fmtGrpCr(grpCur)} <span className={grpG>=0?"gain":"loss"} style={{fontSize:".62rem"}}>{grpG>=0?"+":""}{fmtPct(grpP)}</span></span>
                 </div>
                 {grp.items.map(h=>{
                   const cur=valNativeCache.get(h.id)||0,inv=invNativeCache.get(h.id),hasInv=inv!=null&&inv>0,g=hasInv?cur-inv:null,p=hasInv?(g/inv)*100:null;
