@@ -22,6 +22,7 @@ export default function OverviewTab({
   mSum,
   wealthSnapshots,
   benchmark,
+  nriMetrics,
   // Controls
   bmPeriod,
   setBmPeriod,
@@ -33,7 +34,9 @@ export default function OverviewTab({
   fmt,
   fmtCr,
   fmtCrINR,
+  fmtCrUSD,
   fmtINR,
+  fmtUSD,
   fmtPct,
   // Actions
   exitDemoMode,
@@ -139,25 +142,102 @@ export default function OverviewTab({
           </div>
         </div>
       )}
-      <div className="mg">
-        {[
-          {label:"Portfolio Value",val:fmtCr(totCur),sub2:fmtCrINR(totCur),sub:`${holdings.length} holdings`},
-          {label:"Amount Invested",val:fmtCr(totInv),sub2:fmtCrINR(totInv)},
-          {label:"Total Gains",val:(totGain>=0?"+":"")+fmtCr(totGain),sub2:(totGain>=0?"+":"")+fmtCrINR(Math.abs(totGain)),sub:fmtPct(totPct),c:totGain>=0?"gain":"loss"},
-          {label:"Return",val:fmtPct(totPct),c:totPct>=0?"gain":"loss",sub:"P&L %"}
-        ].map(m=>(
-          <div key={m.label} className="mc">
-            <div className="mclbl">{m.label}</div>
-            <div className={`mcval${m.c?" "+m.c:""}`}>{m.val}</div>
-            {m.sub2&&<div style={{fontFamily:"'DM Mono',monospace",fontSize:".82rem",color:"rgba(201,168,76,.85)",marginTop:".25rem",fontWeight:600}}>≈ {m.sub2}</div>}
-            {m.sub&&<div className={`mcsub${m.c?" "+m.c:""}`}>{m.sub}</div>}
+      {/* ── NRI Portfolio Summary — 3-panel view ── */}
+      {(()=>{
+        const nm = nriMetrics || {};
+        const hasIndia = nm.india_cur > 0;
+        const hasUS    = nm.us_cur > 0;
+        const panelStyle = {
+          flex:1, minWidth:0,
+          background:"var(--bg-muted)",
+          border:"1px solid var(--border)",
+          borderRadius:10, padding:".9rem 1rem",
+        };
+        const labelStyle = {fontSize:".65rem",color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:".3rem",display:"flex",alignItems:"center",gap:".3rem"};
+        const bigVal = {fontFamily:"'DM Mono',monospace",fontSize:"1.25rem",fontWeight:700,color:"var(--text)",lineHeight:1};
+        const secVal = {fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:"var(--text-dim)",marginTop:".2rem"};
+        const rowVal = {display:"flex",justifyContent:"space-between",alignItems:"baseline",marginTop:".55rem",fontSize:".78rem"};
+        const gainColor = g => g >= 0 ? "#4caf9a" : "#e07c5a";
+        const sign     = g => g >= 0 ? "+" : "−";
+        return (
+          <div style={{display:"flex",gap:".6rem",marginBottom:"1rem",flexWrap:"wrap"}}>
+            {/* India panel */}
+            {hasIndia&&(
+              <div style={panelStyle}>
+                <div style={labelStyle}>🇮🇳 <span>India Portfolio</span></div>
+                <div style={bigVal}>{fmtCrINR(nm.india_cur)}</div>
+                <div style={secVal}>≈ {fmtCrUSD(nm.india_cur / nm.liveRate)}</div>
+                <div style={rowVal}>
+                  <span style={{color:"var(--text-dim)"}}>Invested</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",color:"var(--text)"}}>{fmtCrINR(nm.india_inv)}</span>
+                </div>
+                <div style={rowVal}>
+                  <span style={{color:"var(--text-dim)"}}>Gain</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontWeight:600,color:gainColor(nm.india_gain)}}>
+                    {sign(nm.india_gain)}{fmtCrINR(Math.abs(nm.india_gain))}
+                    <span style={{fontSize:".68rem",marginLeft:".3rem"}}>({fmtPct(nm.india_pct)})</span>
+                  </span>
+                </div>
+              </div>
+            )}
+            {/* US panel */}
+            {hasUS&&(
+              <div style={panelStyle}>
+                <div style={labelStyle}>🇺🇸 <span>US Portfolio</span></div>
+                <div style={bigVal}>{fmtCrUSD(nm.us_cur)}</div>
+                <div style={secVal}>≈ {fmtCrINR(nm.us_cur * nm.liveRate)}</div>
+                <div style={rowVal}>
+                  <span style={{color:"var(--text-dim)"}}>Invested</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",color:"var(--text)"}}>{fmtCrUSD(nm.us_inv)}</span>
+                </div>
+                <div style={rowVal}>
+                  <span style={{color:"var(--text-dim)"}}>Gain</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontWeight:600,color:gainColor(nm.us_gain)}}>
+                    {sign(nm.us_gain)}{fmtCrUSD(Math.abs(nm.us_gain))}
+                    <span style={{fontSize:".68rem",marginLeft:".3rem"}}>({fmtPct(nm.us_pct)})</span>
+                  </span>
+                </div>
+              </div>
+            )}
+            {/* Combined panel — always shown */}
+            <div style={{...panelStyle, border:"1px solid rgba(201,168,76,.3)", background:"rgba(201,168,76,.03)"}}>
+              <div style={labelStyle}>📊 <span>Combined (₹)</span></div>
+              <div style={bigVal}>{fmtCrINR(nm.combined_cur || totCur)}</div>
+              <div style={secVal}>≈ {fmtCrUSD((nm.combined_cur || totCur) / (nm.liveRate||94.5))} · {holdings.length} holdings</div>
+              <div style={rowVal}>
+                <span style={{color:"var(--text-dim)"}}>Invested</span>
+                <span style={{fontFamily:"'DM Mono',monospace",color:"var(--text)"}}>{fmtCrINR(nm.combined_inv || totInv)}</span>
+              </div>
+              <div style={rowVal}>
+                <span style={{color:"var(--text-dim)"}}>Gain</span>
+                <span style={{fontFamily:"'DM Mono',monospace",fontWeight:600,color:gainColor(nm.combined_gain || totGain)}}>
+                  {sign(nm.combined_gain || totGain)}{fmtCrINR(Math.abs(nm.combined_gain || totGain))}
+                  <span style={{fontSize:".68rem",marginLeft:".3rem"}}>({fmtPct(nm.combined_pct || totPct)})</span>
+                </span>
+              </div>
+              {/* FX impact strip — only shown when there are US holdings */}
+              {hasUS && nm.fx_gain != null && Math.abs(nm.fx_gain) > 100 && (
+                <div style={{marginTop:".55rem",paddingTop:".45rem",borderTop:"1px solid var(--border)",fontSize:".65rem",color:"var(--text-muted)",display:"flex",justifyContent:"space-between"}}>
+                  <span>FX impact (₹/$)</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",color:gainColor(nm.fx_gain)}}>
+                    {sign(nm.fx_gain)}{fmtCrINR(Math.abs(nm.fx_gain))}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
-        ))}
-      </div>
+        );
+      })()}
       <div className="sg">
         <div className="card"><div className="ctitle">Asset Allocation</div>
           {byType.length===0&&<div className="empty">No holdings</div>}
-          {byType.map(row=>{const a=AT[row.t],g=row.v-row.i;return(<div key={row.t} className="arow"><div className="aicon">{a.icon}</div><div className="ainfo"><div className="aname">{a.label}</div><div className="abg"><div className="afill" style={{width:`${row.pct}%`,background:a.color}}/></div></div><div className="argt"><div className="aval">{fmt(row.v)}</div><div className={`apct${g>=0?" gain":" loss"}`}>{row.pct.toFixed(1)}% · {fmtPct(row.i>0?(g/row.i)*100:0)}</div></div></div>);})}
+          {byType.map(row=>{
+            const a=AT[row.t],g=row.v-row.i;
+            // US asset types: show $ value; Indian/other: show ₹ value
+            const isUS=["US_STOCK","US_ETF","US_BOND","CRYPTO","CASH"].includes(row.t);
+            const dispVal=isUS?fmtCrUSD(row.v/(nriMetrics?.liveRate||94.5)):fmtCrINR(row.v);
+            return(<div key={row.t} className="arow"><div className="aicon">{a.icon}</div><div className="ainfo"><div className="aname">{a.label}</div><div className="abg"><div className="afill" style={{width:`${row.pct}%`,background:a.color}}/></div></div><div className="argt"><div className="aval">{dispVal}</div><div className={`apct${g>=0?" gain":" loss"}`}>{row.pct.toFixed(1)}% · {fmtPct(row.i>0?(g/row.i)*100:0)}</div></div></div>);
+          })}
         </div>
         <div className="card"><div className="ctitle">Member Breakdown</div>
           {mSum.map(m=>{const share=totCur>0?(m.cur/totCur)*100:0;return(<div key={m.id} className="msrow">

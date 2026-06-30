@@ -17,9 +17,9 @@ import {
   fmt, fmtCr, fmtINR, fmtUSD, fmtPct,
   fmtCrINR, fmtCrUSD, fmtNative, fmtCrNative, fmtSec, fmtCrSec,
   uid, ago, fmtSize,
-  getVal, getInv, getValINR, getInvINR,
+  getVal, getInv, getValINR, getInvINR, getInvINRHist,
   xirr, getXIRR, isUSDHolding, toINR, toUSD, fxFor,
-  calcFD, calcAccr, setLiveUsdInr,
+  calcFD, calcAccr, setLiveUsdInr, getLiveUsdInr,
 } from './utils.js';
 import { AT, BF, BT, BG, BA, SEED } from './constants.js';
 import './styles.css';
@@ -249,15 +249,54 @@ export default function App() {
     () => allHoldings.reduce((s, h) => s + (valINRCache.get(h.id) || 0), 0),
     [allHoldings, valINRCache]
   );
+  // allInv excludes holdings with unknown cost basis (null) — prevents gain % distortion
   const allInv = useMemo(
-    () => allHoldings.reduce((s, h) => s + (invINRCache.get(h.id) || 0), 0),
+    () => allHoldings.reduce((s, h) => { const v=invINRCache.get(h.id); return v==null ? s : s+v; }, 0),
     [allHoldings, invINRCache]
   );
 
   const totCur  = useMemo(() => visH.reduce((s, h) => s + (valINRCache.get(h.id) || 0), 0), [visH, valINRCache]);
-  const totInv  = useMemo(() => visH.reduce((s, h) => s + (invINRCache.get(h.id) || 0), 0), [visH, invINRCache]);
+  const totInv  = useMemo(() => visH.reduce((s, h) => { const v=invINRCache.get(h.id); return v==null ? s : s+v; }, 0), [visH, invINRCache]);
   const totGain = totCur - totInv;
   const totPct  = totInv > 0 ? ((totCur - totInv) / totInv) * 100 : 0;
+
+  // ── NRI split: Indian (₹ native) vs US ($ native) ────────────────
+  const nriMetrics = useMemo(() => {
+    const liveRate = getLiveUsdInr();
+    let india_cur = 0, india_inv = 0;
+    let us_cur = 0,    us_inv = 0;
+    let us_inv_hist_inr = 0; // US invested at purchase-time rate (for FX impact)
+    for (const h of visH) {
+      const natVal = valNativeCache.get(h.id) || 0;
+      const natInv = invNativeCache.get(h.id); // may be null
+      if (isUSDHolding(h)) {
+        us_cur += natVal;
+        if (natInv != null) us_inv += natInv;
+        const hist = getInvINRHist(h);
+        if (hist != null) us_inv_hist_inr += hist;
+      } else {
+        india_cur += natVal;
+        if (natInv != null) india_inv += natInv;
+      }
+    }
+    const india_gain = india_cur - india_inv;
+    const india_pct  = india_inv > 0 ? (india_gain / india_inv) * 100 : 0;
+    const us_gain    = us_cur - us_inv;
+    const us_pct     = us_inv > 0 ? (us_gain / us_inv) * 100 : 0;
+    // Combined in ₹ (US converted at live rate — pure price gain, no FX noise)
+    const combined_cur  = india_cur + us_cur * liveRate;
+    const combined_inv  = india_inv + us_inv * liveRate;
+    const combined_gain = combined_cur - combined_inv;
+    const combined_pct  = combined_inv > 0 ? (combined_gain / combined_inv) * 100 : 0;
+    // FX impact = what exchange-rate movement added/removed on US invested amount
+    const fx_gain = us_inv * liveRate - us_inv_hist_inr;
+    return {
+      india_cur, india_inv, india_gain, india_pct,
+      us_cur,    us_inv,    us_gain,    us_pct,
+      combined_cur, combined_inv, combined_gain, combined_pct,
+      fx_gain, liveRate,
+    };
+  }, [visH, valNativeCache, invNativeCache]);
 
   const byType = useMemo(() => {
     const map = {};
@@ -443,7 +482,8 @@ ${alertsText}`;
     loaded, demoMode, wealthSnapshots, benchmark, sharedWithMe,
     valINRCache, invINRCache, valNativeCache, invNativeCache, xirrCache,
     totCur, totInv, totGain, totPct, allCur, allInv, byType, mSum, trigAlerts,
-    fmt, fmtCr, fmtINR, fmtCrINR, fmtCrUSD, fmtNative, fmtCrNative, fmtPct, ago, fmtSize,
+    nriMetrics,
+    fmt, fmtCr, fmtINR, fmtUSD, fmtCrINR, fmtCrUSD, fmtNative, fmtCrNative, fmtPct, ago, fmtSize,
     AT, BF, BT, BG, BA,
     DonutChart, Overlay, FG, MA, FmtInput,
     isUSDHolding, api,

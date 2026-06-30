@@ -135,7 +135,7 @@ export default function HoldingsTab({
 
                 return groups.map((grp, gi) => {
                   const grpCur = grp.items.reduce((s, h) => s + (valINRCache.get(h.id)||0), 0);
-                  const grpInv = grp.items.reduce((s, h) => s + (invINRCache.get(h.id)||0), 0);
+                  const grpInv = grp.items.reduce((s, h) => { const v=invINRCache.get(h.id); return v==null?s:s+v; }, 0);
                   const grpG = grpCur - grpInv;
                   const grpP = grpInv > 0 ? (grpG / grpInv) * 100 : 0;
                   return [
@@ -160,7 +160,7 @@ export default function HoldingsTab({
                     </tr>,
                     // Holdings rows within this group
                     ...grp.items.map(h => {
-                  const cur=valNativeCache.get(h.id)||0,inv=invNativeCache.get(h.id)||0,g=cur-inv,p=inv>0?(g/inv)*100:0;
+                  const cur=valNativeCache.get(h.id)||0,inv=invNativeCache.get(h.id),hasInv=inv!=null&&inv>0,g=hasInv?cur-inv:null,p=hasInv?(g/inv)*100:null;
                   const _a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
                   const a = h.type==="CASH" ? {..._a, label: isUSDHolding(h)?"Cash USD":"Cash INR", icon: isUSDHolding(h)?"💵":"₹"} : _a;
                   const mn=allMembers.find(m=>m.id===h.member_id)?.name||"";
@@ -240,8 +240,13 @@ export default function HoldingsTab({
                         <div style={{fontFamily:"'DM Mono',monospace",fontWeight:500,fontSize:".78rem"}}>{fmtCrNative(cur, h)}</div>
                       </td>
                       <td className="r">
-                        <div className={`mono${g>=0?" gain":" loss"}`} style={{fontSize:".78rem"}}>{g>=0?"+":""}{fmtNative(Math.abs(g), h)}</div>
-                        <div className={`mono${p>=0?" gain":" loss"}`} style={{fontSize:".65rem",marginTop:1}}>{fmtPct(p)}</div>
+                        {g===null
+                          ? <div style={{fontSize:".7rem",color:"var(--text-muted)"}}>— <span style={{fontSize:".6rem"}}>no cost basis</span></div>
+                          : <>
+                            <div className={`mono${g>=0?" gain":" loss"}`} style={{fontSize:".78rem"}}>{g>=0?"+":""}{fmtNative(Math.abs(g), h)}</div>
+                            <div className={`mono${p>=0?" gain":" loss"}`} style={{fontSize:".65rem",marginTop:1}}>{fmtPct(p)}</div>
+                          </>
+                        }
                       </td>
                       <td>
                         <div style={{display:"flex",gap:3}}>
@@ -266,7 +271,7 @@ export default function HoldingsTab({
             </tbody>
             {/* Totals footer row */}
             {visH.length>0&&(()=>{
-              const totI=visH.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);
+              const totI=visH.reduce((s,h)=>{ const v=invINRCache.get(h.id); return v==null?s:s+v; },0);
               const totC=visH.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
               const totG=totC-totI;
               const totP=totI>0?(totG/totI)*100:0;
@@ -303,7 +308,7 @@ export default function HoldingsTab({
             ].filter(g=>g.items.length>0);
             return groups.map((grp,gi)=>{
               const grpCur=grp.items.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
-              const grpInv=grp.items.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);
+              const grpInv=grp.items.reduce((s,h)=>{ const v=invINRCache.get(h.id); return v==null?s:s+v; },0);
               const grpG=grpCur-grpInv;
               const grpP=grpInv>0?(grpG/grpInv)*100:0;
               return(<div key={grp.key} style={gi>0?{marginTop:"1rem"}:{}}>
@@ -312,7 +317,7 @@ export default function HoldingsTab({
                   <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:grp.color,fontWeight:600}}>{fmtCr(grpCur)} <span className={grpG>=0?"gain":"loss"} style={{fontSize:".62rem"}}>{grpG>=0?"+":""}{fmtPct(grpP)}</span></span>
                 </div>
                 {grp.items.map(h=>{
-                  const cur=valNativeCache.get(h.id)||0,inv=invNativeCache.get(h.id)||0,g=cur-inv,p=inv>0?(g/inv)*100:0;
+                  const cur=valNativeCache.get(h.id)||0,inv=invNativeCache.get(h.id),hasInv=inv!=null&&inv>0,g=hasInv?cur-inv:null,p=hasInv?(g/inv)*100:null;
                   const _a=AT[h.type]||{label:h.type||"Other",color:"#888",icon:"📦"};
                   const a=h.type==="CASH"?{..._a,label:isUSDHolding(h)?"Cash USD":"Cash INR",icon:isUSDHolding(h)?"💵":"₹"}:_a;
                   const mn=allMembers.find(m=>m.id===h.member_id)?.name||"";
@@ -339,9 +344,12 @@ export default function HoldingsTab({
                       </div>
                       <div className="m-hc-cell" style={{textAlign:"right"}}>
                         <span className="m-hc-lbl">P&L</span>
-                        <span className={`m-hc-val ${g>=0?"gain":"loss"}`} style={{fontWeight:600}}>
-                          {g>=0?"+":""}{fmtNative(Math.abs(g),h)} ({fmtPct(p)})
-                        </span>
+                        {g===null
+                          ? <span className="m-hc-val" style={{color:"var(--text-muted)",fontSize:".7rem"}}>— no cost basis</span>
+                          : <span className={`m-hc-val ${g>=0?"gain":"loss"}`} style={{fontWeight:600}}>
+                              {g>=0?"+":""}{fmtNative(Math.abs(g),h)} ({fmtPct(p)})
+                            </span>
+                        }
                       </div>
                       {isExp&&<>
                         <div className="m-hc-cell">
@@ -350,7 +358,7 @@ export default function HoldingsTab({
                         </div>
                         <div className="m-hc-cell" style={{textAlign:"right"}}>
                           <span className="m-hc-lbl">Invested</span>
-                          <span className="m-hc-val">{fmtCrNative(inv,h)}</span>
+                          <span className="m-hc-val">{inv==null?"— (CAS import)":fmtCrNative(inv,h)}</span>
                         </div>
                         <div className="m-hc-cell">
                           <span className="m-hc-lbl">Cur. Price</span>
