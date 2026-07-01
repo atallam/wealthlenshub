@@ -6,6 +6,7 @@ import { sanitizeDates, enrichHoldings } from "./portfolio.js";
 import { yahooPrice, stockPrice } from "../lib/prices.js";
 import { validate, holdingSchema, validateRows } from "../lib/validate.js";
 import { auditImport } from "../lib/importLogger.js";
+import { takeSnapshot } from "../lib/snapshot.js";
 
 const router = Router();
 
@@ -71,10 +72,12 @@ router.post("/import", auth, auditImport("HOLDINGS_IMPORT"), async (req, res) =>
   await supabase.from("holdings").delete().eq("user_id", req.user.id).like("notes", "%__demo__%");
 
   const inserted = [], updated = [], skipped = [], errors = [];
+  const toInsert = [], toInsertTxns = [];
+  const toUpdate = []; // { id, payload }
+
   for (const h of holdings) {
     const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
     const existingId = !isCASImport ? existingMap[key] : null;
-
     if (existingId && h._dupAction === "skip") { skipped.push(h.name); continue; }
 
     const isMF = (h.type || "IN_STOCK") === "MF";
@@ -97,28 +100,38 @@ router.post("/import", auth, auditImport("HOLDINGS_IMPORT"), async (req, res) =>
     });
 
     if (existingId) {
-      const { error } = await supabase.from("holdings").update(payload).eq("id", existingId);
-      if (error) { errors.push(`${h.name}: ${error.message}`); continue; }
-      updated.push(h.name);
+      toUpdate.push({ id: existingId, payload, name: h.name });
     } else {
       const id = "h_" + randomUUID().replace(/-/g, "").slice(0, 16);
-      const { error } = await supabase.from("holdings").insert({ ...payload, id, user_id: req.user.id });
-      if (error) { errors.push(`${h.name}: ${error.message}`); continue; }
+      toInsert.push({ ...payload, id, user_id: req.user.id });
       inserted.push(h.name);
       const price = h.purchase_price || h.purchase_nav || 0;
       if (h.units && price) {
-        await supabase.from("transactions").insert({ id: "t_" + randomUUID().replace(/-/g, "").slice(0, 16), holding_id: id, user_id: req.user.id, txn_type: "BUY", units: h.units, price, txn_date: h.start_date || new Date().toISOString().slice(0, 10), notes: "Imported from CSV" });
+        toInsertTxns.push({ id: "t_" + randomUUID().replace(/-/g, "").slice(0, 16), holding_id: id, user_id: req.user.id, txn_type: "BUY", units: h.units, price, txn_date: h.start_date || new Date().toISOString().slice(0, 10), notes: "Imported from CSV" });
       }
     }
   }
 
+  // Batch insert all new holdings in one DB call
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from("holdings").insert(toInsert);
+    if (error) { errors.push(`Batch insert error: ${error.message}`); inserted.length = 0; }
+  }
+  // Batch insert initial transactions in one DB call
+  if (toInsertTxns.length > 0) {
+    await supabase.from("transactions").insert(toInsertTxns);
+  }
+  // Updates must still be individual (each has a different payload + different id)
+  for (const { id, payload, name } of toUpdate) {
+    const { error } = await supabase.from("holdings").update(payload).eq("id", id);
+    if (error) { errors.push(`${name}: ${error.message}`); } else { updated.push(name); }
+  }
+
   res.json({ ok: true, inserted_count: inserted.length, updated_count: updated.length, skipped_count: skipped.length, error_count: errors.length, inserted, updated, skipped, errors, needs_price_refresh: inserted.length > 0 || updated.length > 0 });
 
-  // Auto-snapshot
-  try {
-    const proto = req.headers["x-forwarded-proto"] || req.protocol;
-    fetch(`${proto}://${req.get("host")}/api/snapshots`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": req.headers.authorization }, body: JSON.stringify({ source: "cas_import", cas_statement_date: cas_statement_date || null }) }).catch(e => console.error("Auto-snapshot failed:", e.message));
-  } catch {}
+  // Auto-snapshot (direct call — no self-HTTP round-trip)
+  takeSnapshot(req.user.id, { source: "cas_import", cas_statement_date: cas_statement_date || null })
+    .catch(e => console.error("Auto-snapshot failed:", e.message));
 
   // Background price fetch
   (async () => {

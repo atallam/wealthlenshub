@@ -2,6 +2,7 @@ import { Router } from "express";
 import { supabase } from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
 import { fetchUsdInr, fetchAllFxRates, fetchMfNav, fetchMfNavByIsin, getAmfiList, scoreMf, stockSearch, stockPrice, yahooPrice, timedFetch, TWELVE_KEY, twelveQuote, mfNav } from "../lib/prices.js";
+import { takeSnapshot } from "../lib/snapshot.js";
 
 const router = Router();
 
@@ -101,85 +102,105 @@ router.get("/stock/info", auth, async (req, res) => {
   res.json({ found: false });
 });
 
-router.post("/prices/refresh", auth, async (req, res) => {
-  // Fetch purchase_nav + start_date so we can detect and repair implausible values
-  const { data: holdings } = await supabase.from("holdings").select("id, type, ticker, scheme_code, units, usd_inr_rate, purchase_nav, purchase_value, start_date").eq("user_id", req.user.id);
-  if (!holdings?.length) return res.json({ updated: 0 });
-  const { rate: usdInr, source: fxSource } = await fetchUsdInr();
-  const updates = [];
-  for (let fetchIdx = 0; fetchIdx < holdings.length; fetchIdx++) {
-    const h = holdings[fetchIdx];
-    let patch = null;
-    try {
-      if (h.type === "MF") {
-        // Resolve scheme_code via ISIN if missing
-        let sc = h.scheme_code;
-        if (!sc && h.ticker?.startsWith("INF")) {
-          const resolved = await fetchMfNavByIsin(h.ticker);
-          if (resolved?.scheme_code) {
-            sc = resolved.scheme_code;
-            // Will be included in patch below
-          }
-        }
-        if (sc) {
-          const nav = await mfNav(sc);
-          if (nav) {
-            patch = { scheme_code: sc, current_nav: nav, current_value: (h.units||0)*nav, price_fetched_at: new Date().toISOString() };
-
-            // ── Repair implausible purchase_nav ───────────────────────────────
-            // A purchase_nav > 10× current means the fund would have dropped >90%,
-            // which is impossible for a normal equity/debt MF. This indicates a
-            // CAS parser error (e.g. JioBlackRock showing ₹451 when NAV is ₹9.86).
-            // Fix strategy: look up the historical NAV from MFAPI at start_date;
-            // if that fails, null out purchase_nav so the UI shows "—" rather than
-            // a catastrophically wrong gain/loss figure.
-            const pNav = h.purchase_nav || 0;
-            const navRatio = pNav > 0 ? pNav / nav : 0;
-            if (navRatio > 10 || (navRatio > 0 && navRatio < 0.05)) {
-              let fixedPurchaseNav = null;
-              if (h.start_date) {
-                try {
-                  const r = await timedFetch(`https://api.mfapi.in/mf/${sc}`, {}, 8000);
-                  if (r.ok) {
-                    const data = await r.json();
-                    const navHistory = data?.data || [];
-                    // CAS dates come as "DD-MMM-YYYY" or "YYYY-MM-DD"; normalise to Date
-                    const target = new Date(h.start_date);
-                    let bestNav = null, bestDiff = Infinity;
-                    for (const entry of navHistory) {
-                      // MFAPI returns dates as "DD-Mon-YYYY"
-                      const parts = entry.date.split("-");
-                      const entryDate = parts.length === 3
-                        ? new Date(`${parts[2]}-${parts[1]}-${parts[0]}`)
-                        : new Date(entry.date);
-                      const diff = Math.abs(entryDate - target);
-                      if (diff < bestDiff) { bestDiff = diff; bestNav = parseFloat(entry.nav); }
-                    }
-                    // Only trust if within 30 days of start_date
-                    if (bestNav && bestDiff < 30 * 86400000) fixedPurchaseNav = bestNav;
-                  }
-                } catch { /* fall through */ }
-              }
-              // Apply fix: historical NAV if found, else null (shows "—" in UI)
-              patch.purchase_nav = fixedPurchaseNav;
-              patch.purchase_value = fixedPurchaseNav != null ? (h.units||0) * fixedPurchaseNav : null;
-            }
-          }
-        }
-      }
-      else if ((h.type === "IN_STOCK" || h.type === "IN_ETF") && h.ticker) { const q = await stockPrice(`${h.ticker.toUpperCase()}.NS`, "NSE"); const price = q?.price ?? await yahooPrice(`${h.ticker.toUpperCase()}.BO`); if (price) patch = { current_price: price, current_value: (h.units||0)*price, price_fetched_at: new Date().toISOString() }; }
-      else if ((h.type === "US_STOCK" || h.type === "US_ETF" || h.type === "US_BOND") && h.ticker) { const q = await stockPrice(h.ticker.toUpperCase()); if (q?.price) patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() }; }
-      else if (h.type === "CRYPTO" && h.ticker) { const sym = h.ticker.toUpperCase().includes("-") ? h.ticker.toUpperCase() : `${h.ticker.toUpperCase()}-USD`; const q = await stockPrice(sym); if (q?.price) patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() }; }
-      else if (h.type === "CASH" && h.usd_inr_rate && Math.abs(h.usd_inr_rate - usdInr) > 0.01) { patch = { usd_inr_rate: usdInr, price_fetched_at: new Date().toISOString() }; }
-    } catch { /* skip */ }
-    if (patch) { await supabase.from("holdings").update(patch).eq("id", h.id); updates.push({ id: h.id, ...patch }); }
-    if (fetchIdx < holdings.length - 1) await new Promise(r => setTimeout(r, 800));
+// ── Concurrency helper: run async tasks with a max concurrency cap ────────────
+async function pLimit(fns, concurrency = 5) {
+  const results = [];
+  let i = 0;
+  async function worker() {
+    while (i < fns.length) {
+      const idx = i++;
+      results[idx] = await fns[idx]().catch(e => ({ _err: e.message }));
+    }
   }
+  await Promise.all(Array.from({ length: Math.min(concurrency, fns.length) }, worker));
+  return results;
+}
+
+// ── Fetch patch for a single MF holding (with implausible NAV repair) ─────────
+async function fetchMfPatch(h) {
+  let sc = h.scheme_code;
+  if (!sc && h.ticker?.startsWith("INF")) {
+    const resolved = await fetchMfNavByIsin(h.ticker);
+    if (resolved?.scheme_code) sc = resolved.scheme_code;
+  }
+  if (!sc) return null;
+  const nav = await mfNav(sc);
+  if (!nav) return null;
+  const patch = { scheme_code: sc, current_nav: nav, current_value: (h.units||0)*nav, price_fetched_at: new Date().toISOString() };
+  // Repair implausible purchase_nav (CAS parser error guard — ratio >10x or <0.05x)
+  const pNav = h.purchase_nav || 0;
+  const ratio = pNav > 0 ? pNav / nav : 0;
+  if (ratio > 10 || (ratio > 0 && ratio < 0.05)) {
+    let fixedNav = null;
+    if (h.start_date) {
+      try {
+        const r = await timedFetch(`https://api.mfapi.in/mf/${sc}`, {}, 8000);
+        if (r.ok) {
+          const { data: history } = await r.json();
+          const target = new Date(h.start_date);
+          let best = null, bestDiff = Infinity;
+          for (const entry of (history || [])) {
+            const parts = entry.date.split("-");
+            const d = parts.length === 3 ? new Date(`${parts[2]}-${parts[1]}-${parts[0]}`) : new Date(entry.date);
+            const diff = Math.abs(d - target);
+            if (diff < bestDiff) { bestDiff = diff; best = parseFloat(entry.nav); }
+          }
+          if (best && bestDiff < 30 * 86400000) fixedNav = best;
+        }
+      } catch { /* fall through */ }
+    }
+    patch.purchase_nav  = fixedNav;
+    patch.purchase_value = fixedNav != null ? (h.units||0) * fixedNav : null;
+  }
+  return patch;
+}
+
+router.post("/prices/refresh", auth, async (req, res) => {
+  const { data: holdings } = await supabase.from("holdings")
+    .select("id, type, ticker, scheme_code, units, usd_inr_rate, purchase_nav, purchase_value, start_date")
+    .eq("user_id", req.user.id);
+  if (!holdings?.length) return res.json({ updated: 0 });
+
+  const { rate: usdInr, source: fxSource } = await fetchUsdInr();
+  const now = new Date().toISOString();
+
+  // Build fetch tasks — grouped so MF (AMFI cache warm) runs first, then equities in parallel
+  const tasks = holdings.map(h => async () => {
+    let patch = null;
+    if (h.type === "MF") {
+      patch = await fetchMfPatch(h);
+    } else if ((h.type === "IN_STOCK" || h.type === "IN_ETF") && h.ticker) {
+      const q = await stockPrice(`${h.ticker.toUpperCase()}.NS`, "NSE");
+      const price = q?.price ?? await yahooPrice(`${h.ticker.toUpperCase()}.BO`);
+      if (price) patch = { current_price: price, current_value: (h.units||0)*price, price_fetched_at: now };
+    } else if ((h.type === "US_STOCK" || h.type === "US_ETF" || h.type === "US_BOND") && h.ticker) {
+      const q = await stockPrice(h.ticker.toUpperCase());
+      if (q?.price) patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: now };
+    } else if (h.type === "CRYPTO" && h.ticker) {
+      const sym = h.ticker.toUpperCase().includes("-") ? h.ticker.toUpperCase() : `${h.ticker.toUpperCase()}-USD`;
+      const q = await stockPrice(sym);
+      if (q?.price) patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: now };
+    } else if (h.type === "CASH" && h.usd_inr_rate && Math.abs(h.usd_inr_rate - usdInr) > 0.01) {
+      patch = { usd_inr_rate: usdInr, price_fetched_at: now };
+    }
+    return { h, patch };
+  });
+
+  // Run all fetches concurrently (max 5 at once to respect API rate limits)
+  const results = await pLimit(tasks, 5);
+
+  // Batch DB writes (sequential to avoid Supabase write conflicts, but no sleep needed)
+  const updates = [];
+  for (const item of results) {
+    if (!item || item._err || !item.patch) continue;
+    await supabase.from("holdings").update(item.patch).eq("id", item.h.id);
+    updates.push({ id: item.h.id, ...item.patch });
+  }
+
   res.json({ updated: updates.length, usdInr, fxSource, results: updates });
-  try {
-    const proto = req.headers["x-forwarded-proto"] || req.protocol;
-    fetch(`${proto}://${req.get("host")}/api/snapshots`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": req.headers.authorization }, body: JSON.stringify({ source: "price_refresh" }) }).catch(e => console.error("Auto-snapshot failed:", e.message));
-  } catch {}
+  // Auto-snapshot (direct call — no self-HTTP round-trip)
+  takeSnapshot(req.user.id, { source: "price_refresh" })
+    .catch(e => console.error("Auto-snapshot failed:", e.message));
 });
 
 // Benchmark overlay

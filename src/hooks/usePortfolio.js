@@ -1,27 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../supabase.js';
+import { uid, setLiveUsdInr, getLiveUsdInr } from '../utils.js';
+import { BF, BG, BA, BT } from '../constants.js';
+import { api } from '../lib/api.js';
+import { useToast } from '../components/shared/Toast.jsx';
 
-// These helper constants/functions are duplicated here from App.jsx as they are needed by usePortfolio logic.
-// Ideally move them to a shared utils.js.
-const uid = () => "x" + Date.now() + Math.random().toString(36).slice(2, 6);
-let _liveUsdInr = 94.5; // module-level FX rate, overwritten on load
+// api() imported from src/lib/api.js above
 
-async function api(path, opts = {}) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token || "";
-  const isForm = opts.body instanceof FormData;
-  const headers = { Authorization: `Bearer ${token}`, ...(isForm ? {} : { "Content-Type": "application/json" }), ...(opts.headers || {}) };
-  const res = await fetch(path, { ...opts, headers });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.statusText); }
-  return res.json();
-}
-
-const BF = { member_id: "", type: "US_STOCK", name: "", ticker: "", scheme_code: "", interest_rate: "", start_date: "", maturity_date: "", purchase_value: "", current_value: "", principal: "", usd_inr_rate: "" };
-const BG = { name: "", targetAmount: "", targetDate: "", linkedMembers: ["all"], linkedTypes: [], category: "Retirement", color: "#c9a84c", notes: "", priority: 1, monthlyContribution: "" };
-const BA = { type: "ALLOCATION_DRIFT", assetType: "IN_STOCK", threshold: "", label: "", active: true };
-const BT = { holding_id: "", txn_type: "BUY", units: "", price: "", price_usd: "", txn_date: new Date().toISOString().slice(0, 10), notes: "" };
+// BF, BG, BA, BT imported from constants.js above
 
 export function usePortfolio(user) {
+  const toast = useToast();
   const [members,  setMembers]  = useState([]);
   const [holdings, setHoldings] = useState([]);
   const [goals,    setGoals]    = useState([]);
@@ -65,7 +54,7 @@ export function usePortfolio(user) {
         const fetched = (hlds || []).filter(h => h.price_fetched_at).map(h => new Date(h.price_fetched_at));
         if (fetched.length) setLastPriceRefresh(new Date(Math.max(...fetched)));
         if (prof) { setProfile(prof); }
-        try { const fxData = await api("/api/forex/usdinr"); if (fxData?.rate) _liveUsdInr = fxData.rate; } catch {}
+        try { const fxData = await api("/api/forex/usdinr"); if (fxData?.rate) setLiveUsdInr(fxData.rate); } catch {}
         if (ats?.length) setAssetTypes(ats);
       } catch (e) { console.error("Load error", e); }
       setLoaded(true);
@@ -103,7 +92,7 @@ export function usePortfolio(user) {
       setHoldings(hlds || []);
       setLastPriceRefresh(new Date());
       setPriceCount(result.updated || 0);
-    } catch (e) { alert("Price refresh failed: " + e.message); }
+    } catch (e) { toast.error("Price refresh failed: " + e.message); }
     setPriceRefreshing(false);
   }
 
@@ -116,7 +105,7 @@ export function usePortfolio(user) {
       interest_rate:  +form.interest_rate || null,
       purchase_value: +form.purchase_value || null,
       current_value:  +form.current_value || null,
-      usd_inr_rate:   +form.usd_inr_rate || _liveUsdInr,
+      usd_inr_rate:   +form.usd_inr_rate || getLiveUsdInr(),
     };
     try {
       if (editHolding) {
@@ -127,23 +116,23 @@ export function usePortfolio(user) {
       const hlds = await api("/api/holdings");
       setHoldings(hlds || []);
       if (onSuccess) onSuccess(hlds, h, !editHolding);
-    } catch (e) { alert("Save failed: " + e.message); }
+    } catch (e) { toast.error("Save failed: " + e.message); }
   }
 
   async function addTransaction(txnForm, globalMfAmount, globalMfNav, txnHolding, txnSavingRef) {
-    if (!txnForm.holding_id) { alert("Select a holding"); return; }
+    if (!txnForm.holding_id) { toast.error("Select a holding first"); return; }
     const selH = holdings.find(h => h.id === txnForm.holding_id);
     const isMFGlobal = selH?.type === "MF";
     let finalUnits = +txnForm.units;
     let finalPrice = +txnForm.price;
     if (isMFGlobal) {
-      if (!globalMfAmount || !globalMfNav?.nav) { alert("Enter amount and fetch NAV first"); return; }
+      if (!globalMfAmount || !globalMfNav?.nav) { toast.error("Enter amount and fetch NAV first"); return; }
       finalUnits = +(+globalMfAmount / globalMfNav.nav).toFixed(4);
       finalPrice = +globalMfNav.nav;
     } else {
-      if (!txnForm.units || !txnForm.price) { alert("Fill in units and price"); return; }
+      if (!txnForm.units || !txnForm.price) { toast.error("Fill in units and price"); return; }
     }
-    if (!txnForm.txn_date) { alert("Select a date"); return; }
+    if (!txnForm.txn_date) { toast.error("Select a date for the transaction"); return; }
     if (txnSavingRef && txnSavingRef.current) return;
     if (txnSavingRef) txnSavingRef.current = true;
     try {
@@ -161,7 +150,7 @@ export function usePortfolio(user) {
       const hlds = await api("/api/holdings");
       setHoldings(hlds || []);
       return { hlds };
-    } catch (e) { alert("Failed: " + e.message); }
+    } catch (e) { toast.error("Transaction failed: " + e.message); }
     finally { if (txnSavingRef) txnSavingRef.current = false; }
   }
 
@@ -172,7 +161,8 @@ export function usePortfolio(user) {
   }
 
   async function deleteTransaction(txnId, holdingId) {
-    if (!confirm("Delete this transaction?")) return;
+    const ok = await toast.confirm("Delete this transaction? This cannot be undone.", { confirmLabel: "Delete", danger: true });
+    if (!ok) return;
     await api(`/api/transactions/${txnId}`, { method: "DELETE" });
     const hlds = await api("/api/holdings");
     setHoldings(hlds || []);
@@ -180,7 +170,8 @@ export function usePortfolio(user) {
   }
 
   async function deleteHolding(id) {
-    if (!confirm("Delete this holding?")) return;
+    const ok = await toast.confirm("Delete this holding and all its transactions? This cannot be undone.", { confirmLabel: "Delete", danger: true });
+    if (!ok) return;
     await api(`/api/holdings/${id}`, { method: "DELETE" });
     setHoldings(p => p.filter(x => x.id !== id));
   }

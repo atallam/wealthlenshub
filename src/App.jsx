@@ -6,6 +6,7 @@ import {
   AlertTriangle, Download,
 } from 'lucide-react';
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
+import { api } from './lib/api.js';
 import SnapTradeImport from './SnapTradeImport.jsx';
 import KiteImport from './KiteImport.jsx';
 import BreezeImport from './BreezeImport.jsx';
@@ -44,6 +45,7 @@ import AdvisorTab from './components/tabs/AdvisorTab.jsx';
 
 // ── Shared components ────────────────────────────────────────────
 import LoginScreen from './components/shared/LoginScreen.jsx';
+import LoadingSkeleton from './components/shared/LoadingSkeleton.jsx';
 import TransactionPanel from './components/shared/TransactionPanel.jsx';
 import ArtifactPanel from './components/shared/ArtifactPanel.jsx';
 import { Overlay, FG, MA } from './components/shared/Overlay.jsx';
@@ -56,16 +58,7 @@ import FDScanSheet from './components/shared/FDScanSheet.jsx';
 import GoalPlanModal from './components/modals/GoalPlanModal.jsx';
 import ImportModal from './components/modals/ImportModal.jsx';
 
-// ── API helper (attaches Supabase JWT) ───────────────────────────
-async function api(path, opts = {}) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token || "";
-  const isForm = opts.body instanceof FormData;
-  const headers = { Authorization: `Bearer ${token}`, ...(isForm ? {} : { "Content-Type": "application/json" }), ...(opts.headers || {}) };
-  const res = await fetch(path, { ...opts, headers });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.statusText); }
-  return res.json();
-}
+// ── API helper imported from lib/api.js (see top imports) ────────
 
 const TABS = [
   { key: 'overview',  label: 'Overview',  Icon: LayoutDashboard },
@@ -593,7 +586,10 @@ ${alertsText}`;
       {/* ── MAIN CONTENT ───────────────────────────────────────── */}
       <main className="main">
 
-        {tab === 'overview' && (
+        {/* Loading skeleton shown while portfolio data fetches after auth */}
+        {!loaded && <LoadingSkeleton />}
+
+        {loaded && tab === 'overview' && (
           <OverviewTab
             {...sharedPortfolioProps}
             bmPeriod={bmPeriod} setBmPeriod={setBmPeriod}
@@ -602,7 +598,7 @@ ${alertsText}`;
           />
         )}
 
-        {tab === 'holdings' && (
+        {loaded && tab === 'holdings' && (
           <HoldingsTab
             {...sharedPortfolioProps}
             visH={visH}
@@ -618,7 +614,7 @@ ${alertsText}`;
           />
         )}
 
-        {tab === 'goals' && (
+        {loaded && tab === 'goals' && (
           <GoalsTab
             {...sharedPortfolioProps}
             setGoals={portfolio.setGoals}
@@ -627,7 +623,7 @@ ${alertsText}`;
           />
         )}
 
-        {tab === 'strategy' && (
+        {loaded && tab === 'strategy' && (
           <StrategyTab
             {...sharedPortfolioProps}
             targetAlloc={targetAlloc} setTargetAlloc={setTargetAlloc}
@@ -639,7 +635,7 @@ ${alertsText}`;
           />
         )}
 
-        {tab === 'members' && (
+        {loaded && tab === 'members' && (
           <MembersTab
             {...sharedPortfolioProps}
             openMemberModal={openMemberModal}
@@ -650,7 +646,7 @@ ${alertsText}`;
           />
         )}
 
-        {tab === 'budget' && (
+        {loaded && tab === 'budget' && (
           <BudgetTab
             {...budget}
             allCur={allCur} allInv={allInv} totInv={totInv}
@@ -659,14 +655,14 @@ ${alertsText}`;
           />
         )}
 
-        {tab === 'calendar' && (
+        {loaded && tab === 'calendar' && (
           <CalendarTab
             holdings={holdings} goals={goals}
             calMonth={calMonth} setCalMonth={setCalMonth}
           />
         )}
 
-        {tab === 'advisor' && (
+        {loaded && tab === 'advisor' && (
           <AdvisorTab
             aiMessages={ai.aiMessages}
             setAiMessages={ai.setAiMessages}

@@ -65,7 +65,7 @@ You need:
 | `VITE_SUPABASE_URL` | same as SUPABASE_URL |
 | `VITE_SUPABASE_ANON_KEY` | your anon key |
 | `ALLOWED_EMAILS` | `avinash@gmail.com,priya@gmail.com` |
-| `VITE_ANTHROPIC_KEY` | your Anthropic key (for AI PDF reports) |
+| `ANTHROPIC_KEY` | your Anthropic key (server-side only — AI calls go through /api/ai/chat proxy, never exposed to browser) |
 
 3. In Supabase: **Authentication → URL Configuration**
    - Site URL: your Replit URL (e.g. `https://wealthlens.yourusername.repl.co`)

@@ -1,15 +1,13 @@
 // AdvisorTab.jsx — lines 4580–4685 of App.jsx
 
 export default function AdvisorTab({
-  // Chat state
   aiMessages,
   setAiMessages,
   aiInput,
   setAiInput,
   aiLoading,
-  // Action
-  askAI,
-  // Scroll ref
+  askAI,         // (portfolioContext, aiBottomRef, overrideInput?) => void
+  portfolioContext,
   aiBottomRef,
 }) {
   return (
@@ -38,7 +36,7 @@ export default function AdvisorTab({
               "What percentage of my portfolio is in equity?",
               "Which is my largest single holding?",
             ].map(q=>(
-              <button key={q} onClick={()=>{setAiInput(q);}}
+              <button key={q} onClick={()=>{ askAI(portfolioContext, aiBottomRef, q); }}
                 style={{background:"var(--bg-muted)",border:"1px solid var(--border)",color:"var(--text-dim)",padding:".38rem .8rem",borderRadius:20,cursor:"pointer",fontSize:".74rem",fontFamily:"'DM Sans',sans-serif",transition:"all .2s",textAlign:"left"}}
                 onMouseEnter={e=>{e.target.style.background="rgba(201,168,76,.1)";e.target.style.color="#c9a84c";e.target.style.borderColor="rgba(201,168,76,.3)";}}
                 onMouseLeave={e=>{e.target.style.background="var(--bg-muted)";e.target.style.color="var(--text-dim)";e.target.style.borderColor="var(--border)";}}>
@@ -96,10 +94,10 @@ export default function AdvisorTab({
           placeholder="Ask anything about your portfolio… e.g. 'Which MF has the best return?' or 'How much has Arjun invested?'"
           value={aiInput}
           onChange={e=>setAiInput(e.target.value)}
-          onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askAI();}}}
+          onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askAI(portfolioContext, aiBottomRef);}}}
           style={{flex:1,resize:"none",lineHeight:1.5,fontSize:".82rem",padding:".65rem .9rem"}}
         />
-        <button className="btns" onClick={askAI} disabled={!aiInput.trim()||aiLoading}
+        <button className="btns" onClick={()=>askAI(portfolioContext, aiBottomRef)} disabled={!aiInput.trim()||aiLoading}
           style={{padding:".65rem 1.2rem",whiteSpace:"nowrap",alignSelf:"stretch"}}>
           {aiLoading?"…":"Send ↵"}
         </button>
