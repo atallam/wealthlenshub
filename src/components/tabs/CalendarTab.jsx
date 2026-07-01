@@ -47,34 +47,18 @@ export default function CalendarTab({
         addEvent(d,{type:"Premium Due",label:premLabel,color:"#e07b8c",icon:"🛡️"});
       }
     }
-    // Detect truly active SIPs with strict checks
-    if(h.type==="MF"&&h.transactions?.length>=3){
-      const buyTxns=[...h.transactions]
-        .filter(t=>t.txn_type==="BUY")
-        .sort((a,b)=>b.txn_date.localeCompare(a.txn_date));
-      if(buyTxns.length>=3){
-        const lastMo=buyTxns[0].txn_date.slice(0,7);
-        const nowMo=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
-        const prev=new Date(now.getFullYear(),now.getMonth()-1,1);
-        const prevMo=`${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,"0")}`;
-        if(lastMo===nowMo||lastMo===prevMo){
-          const cutoff=new Date(now.getFullYear(),now.getMonth()-6,1).toISOString().slice(0,7);
-          const activeMos=new Set(buyTxns.filter(t=>t.txn_date.slice(0,7)>=cutoff).map(t=>t.txn_date.slice(0,7)));
-          if(activeMos.size>=3){
-            const freq={};
-            buyTxns.slice(0,6).forEach(t=>{const d=+t.txn_date.slice(8,10);freq[d]=(freq[d]||0)+1;});
-            const sipDay=+Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0];
-            const viewedMo=`${calY}-${String(calMo).padStart(2,"0")}`;
-            if(viewedMo>=nowMo){
-              const daysInCalMo=new Date(calY,calMo,0).getDate();
-              const day=Math.min(sipDay,daysInCalMo);
-              const ds=`${calY}-${String(calMo).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-              const avgAmt=buyTxns.slice(0,3).reduce((s,t)=>s+(+t.units)*(+t.price),0)/3;
-              const lbl=`${h.name.length>22?h.name.slice(0,22)+"...":h.name} (₹${Math.round(avgAmt/1000)}K)`;
-              addEvent(ds,{type:"SIP Due",label:lbl,color:"#4caf9a",icon:"📈"});
-            }
-          }
-        }
+    // Detect active SIPs using pre-computed server-side sip_day field
+    // (avoids iterating raw transactions on the client — see computeSipFields in routes/holdings.js)
+    if(h.type==="MF"&&h.sip_active&&h.sip_day){
+      const nowMo=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+      const viewedMo=`${calY}-${String(calMo).padStart(2,"0")}`;
+      if(viewedMo>=nowMo){
+        const daysInCalMo=new Date(calY,calMo,0).getDate();
+        const day=Math.min(h.sip_day,daysInCalMo);
+        const ds=`${calY}-${String(calMo).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+        const avgAmt=h.sip_avg_amount||0;
+        const lbl=`${h.name.length>22?h.name.slice(0,22)+"...":h.name}${avgAmt?` (₹${Math.round(avgAmt/1000)}K)`:""}`;
+        addEvent(ds,{type:"SIP Due",label:lbl,color:"#4caf9a",icon:"📈"});
       }
     }
   }

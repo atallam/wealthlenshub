@@ -10,11 +10,71 @@ import { takeSnapshot } from "../lib/snapshot.js";
 
 const router = Router();
 
+// ── Compute SIP signal fields from transaction list ───────────────
+// Returns { sip_day, sip_active, sip_avg_amount, transaction_count }
+// so CalendarTab can detect active SIPs without iterating raw transactions client-side.
+function computeSipFields(transactions = []) {
+  const transaction_count = transactions.length;
+  const buyTxns = transactions
+    .filter(t => t.txn_type === "BUY" && t.txn_date)
+    .sort((a, b) => b.txn_date.localeCompare(a.txn_date));
+
+  if (buyTxns.length < 3) return { transaction_count, sip_day: null, sip_active: false, sip_avg_amount: null };
+
+  const now = new Date();
+  const nowMo = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMo = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
+  const lastMo = buyTxns[0].txn_date.slice(0, 7);
+  const isRecent = lastMo === nowMo || lastMo === prevMo;
+
+  if (!isRecent) return { transaction_count, sip_day: null, sip_active: false, sip_avg_amount: null };
+
+  const cutoff = new Date(now.getFullYear(), now.getMonth() - 6, 1).toISOString().slice(0, 7);
+  const activeMos = new Set(buyTxns.filter(t => t.txn_date.slice(0, 7) >= cutoff).map(t => t.txn_date.slice(0, 7)));
+  if (activeMos.size < 3) return { transaction_count, sip_day: null, sip_active: false, sip_avg_amount: null };
+
+  // Most common day-of-month from recent buys
+  const freq = {};
+  buyTxns.slice(0, 6).forEach(t => { const d = +t.txn_date.slice(8, 10); freq[d] = (freq[d] || 0) + 1; });
+  const sip_day = +Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
+
+  // Average amount (units × price) for last 3 buys
+  const sip_avg_amount = buyTxns.slice(0, 3).reduce((s, t) => s + (+t.units) * (+t.price), 0) / 3;
+
+  return { transaction_count, sip_day, sip_active: true, sip_avg_amount };
+}
+
 router.get("/", auth, async (req, res) => {
-  let { data, error } = await supabase.from("holdings").select("*, artifacts(id,file_name,file_type,file_size,description,uploaded_at), transactions(id,txn_type,units,price,txn_date,notes,created_at)").eq("user_id", req.user.id).order("created_at", { ascending: true });
+  let { data, error } = await supabase
+    .from("holdings")
+    .select("*, artifacts(id,file_name,file_type,file_size,description,uploaded_at), transactions(id,txn_type,units,price,txn_date,notes,created_at)")
+    .eq("user_id", req.user.id)
+    .order("created_at", { ascending: true });
   if (error) ({ data, error } = await supabase.from("holdings").select("*, artifacts(id,file_name,file_type,file_size,description,uploaded_at)").eq("user_id", req.user.id).order("created_at", { ascending: true }));
   if (error) return res.status(500).json({ error: error.message });
-  res.json(enrichHoldings(data));
+
+  // Inject SIP signal fields — lets CalendarTab detect SIPs without iterating transactions client-side
+  const enriched = enrichHoldings(data).map(h => {
+    if (h.type === "MF") {
+      return { ...h, ...computeSipFields(h.transactions || []) };
+    }
+    return { ...h, transaction_count: (h.transactions || []).length };
+  });
+  res.json(enriched);
+});
+
+// ── Per-holding transaction fetch (lazy load) ─────────────────────
+// Used by TransactionPanel to fetch fresh transactions on open
+// instead of relying on possibly-stale inline data.
+router.get("/:id/transactions", auth, async (req, res) => {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("id,txn_type,units,price,price_usd,txn_date,notes,created_at")
+    .eq("holding_id", req.params.id)
+    .order("txn_date", { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
 });
 
 router.post("/import", auth, auditImport("HOLDINGS_IMPORT"), async (req, res) => {

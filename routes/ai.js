@@ -24,22 +24,26 @@ const ALLOWED_MODELS = new Set([
   "claude-sonnet-4-6",
 ]);
 
-router.post("/chat", auth, aiLimiter, async (req, res) => {
+// ── Shared model/token validation ────────────────────────────────
+function validateAiRequest(req, res) {
   const key = process.env.ANTHROPIC_KEY;
-  if (!key) return res.status(500).json({ error: "ANTHROPIC_KEY not set on server" });
-
-  // Enforce model restriction — prevent client from requesting opus or future expensive models.
+  if (!key) { res.status(500).json({ error: "ANTHROPIC_KEY not set on server" }); return null; }
   const requestedModel = req.body?.model;
   if (requestedModel && !ALLOWED_MODELS.has(requestedModel)) {
-    return res.status(400).json({ error: `Model '${requestedModel}' is not permitted. Use a claude-haiku or claude-sonnet variant.` });
+    res.status(400).json({ error: `Model '${requestedModel}' is not permitted. Use a claude-haiku or claude-sonnet variant.` });
+    return null;
   }
-
-  // Cap max_tokens to prevent runaway usage.
-  const body = {
-    ...req.body,
-    max_tokens: Math.min(req.body?.max_tokens || 1024, 2048),
+  return {
+    key,
+    body: { ...req.body, max_tokens: Math.min(req.body?.max_tokens || 1024, 2048) },
   };
+}
 
+// ── Non-streaming endpoint (kept for compatibility) ───────────────
+router.post("/chat", auth, aiLimiter, async (req, res) => {
+  const validated = validateAiRequest(req, res);
+  if (!validated) return;
+  const { key, body } = validated;
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -55,6 +59,53 @@ router.post("/chat", auth, aiLimiter, async (req, res) => {
   } catch (e) {
     console.error("AI chat error:", e.message);
     sendError(res, e);
+  }
+});
+
+// ── Streaming SSE endpoint ────────────────────────────────────────
+// Returns text/event-stream. The Anthropic streaming protocol is forwarded
+// directly — client parses content_block_delta events for text chunks.
+router.post("/chat/stream", auth, aiLimiter, async (req, res) => {
+  const validated = validateAiRequest(req, res);
+  if (!validated) return;
+  const { key, body } = validated;
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  try {
+    const upstream = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": "messages-2023-06-01",
+      },
+      body: JSON.stringify({ ...body, stream: true }),
+    });
+
+    if (!upstream.ok) {
+      const errData = await upstream.json().catch(() => ({}));
+      res.write(`data: ${JSON.stringify({ type: "error", error: errData?.error?.message || "Anthropic API error" })}\n\n`);
+      return res.end();
+    }
+
+    // Pipe Anthropic SSE stream directly to client
+    const reader = upstream.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(decoder.decode(value, { stream: true }));
+    }
+    res.end();
+  } catch (e) {
+    console.error("AI stream error:", e.message);
+    res.write(`data: ${JSON.stringify({ type: "error", error: e.message })}\n\n`);
+    res.end();
   }
 });
 

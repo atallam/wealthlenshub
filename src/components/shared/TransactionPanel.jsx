@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../supabase.js';
 import MFTransactionForm from './MFTransactionForm.jsx';
 import { FG } from './Overlay.jsx';
@@ -10,7 +10,30 @@ import { FG } from './Overlay.jsx';
 const USD_TYPES = new Set(["US_STOCK","US_ETF","US_BOND","CRYPTO"]);
 
 export default function TransactionPanel({ holding, onAddTxn, onReload, onDeleteTxn, txnForm, setTxnForm, onClose, onFetchFx, fxRate, fxLoading }) {
-  const txns = (holding.transactions || []).slice().sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
+  // Lazy-fetch fresh transactions on panel open so we never show stale inline data
+  const [freshTxns, setFreshTxns] = useState(null); // null = loading, [] = empty
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token || "";
+        const res = await fetch(`/api/holdings/${holding.id}/transactions`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        if (!cancelled) setFreshTxns(data);
+      } catch {
+        // Fall back to inline transactions on network error
+        if (!cancelled) setFreshTxns(holding.transactions || []);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [holding.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Use fresh fetched data; fall back to inline while loading
+  const txns = (freshTxns ?? holding.transactions ?? []).slice().sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
   const buys  = txns.filter(t=>t.txn_type==="BUY");
   const sells = txns.filter(t=>t.txn_type==="SELL");
   const netUnits = buys.reduce((s,t)=>s+Number(t.units),0) - sells.reduce((s,t)=>s+Number(t.units),0);
@@ -84,6 +107,11 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
           })});
       }
       await onReload(holding.id);
+      // Refresh local transaction list
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
+      const res = await fetch(`/api/holdings/${holding.id}/transactions`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setFreshTxns(await res.json());
       setSipMode(false); setSipPreview([]);
     }catch(e){ setSipError(e.message); }
     setSipImporting(false);
@@ -217,7 +245,7 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
         )}
 
         {/* Summary bar */}
-        {!sipMode&&txns.length>0&&(
+        {!sipMode&&freshTxns!==null&&txns.length>0&&(
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(90px,1fr))",gap:".6rem",marginBottom:"1.2rem"}}>
             {[
               {label:"Net Units", val:netUnits.toFixed(4)},
@@ -233,7 +261,10 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
         )}
 
         {/* Transaction list */}
-        {!sipMode&&(txns.length===0
+        {!sipMode&&freshTxns===null&&(
+          <div style={{textAlign:"center",padding:"1.5rem",color:"var(--text-muted)",fontSize:".78rem"}}>Loading transactions…</div>
+        )}
+        {!sipMode&&freshTxns!==null&&(txns.length===0
           ? <div className="empty" style={{padding:"1.5rem"}}>No transactions yet — add one below or use 📅 Add SIP History</div>
           : <div style={{maxHeight:220,overflowY:"auto",overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:"1.2rem"}}>
               <table className="ht" style={{fontSize:".75rem",minWidth:420}}>

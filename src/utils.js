@@ -7,7 +7,15 @@ export function setLiveUsdInr(rate) { _liveUsdInr = rate; }
 export function getLiveUsdInr() { return _liveUsdInr; }
 
 const USD_TYPES = new Set(["US_STOCK","US_ETF","US_BOND","CRYPTO"]);
-const PPF_R=7.1, EPF_R=8.15;
+
+// PPF/EPF rates — overwritten from user profile settings on load
+// Call setPpfRate()/setEpfRate() after fetching profile to use user-configured values.
+let _ppfRate = 7.1;
+let _epfRate = 8.15;
+export function setPpfRate(r) { if (r > 0 && r < 30) _ppfRate = r; }
+export function setEpfRate(r) { if (r > 0 && r < 30) _epfRate = r; }
+export function getPpfRate() { return _ppfRate; }
+export function getEpfRate() { return _epfRate; }
 
 // ── Math ─────────────────────────────────────────────────────────
 export function calcFD(p,r,s,mat){const start=new Date(s),now=new Date(),m=new Date(mat);const end=now<m?now:m;const y=Math.max(0,(end-start)/(864e5*365.25));return p*Math.pow(1+r/400,y*4);}
@@ -26,8 +34,8 @@ export function getVal(h){
   const units = h.net_units!=null ? h.net_units : (h.units||0);
   switch(h.type){
     case"FD":          return calcFD(h.principal,h.interest_rate,h.start_date,h.maturity_date);
-    case"PPF":         return calcAccr(h.principal,PPF_R,h.start_date);
-    case"EPF":         return calcAccr(h.principal,EPF_R,h.start_date);
+    case"PPF":         return calcAccr(h.principal,_ppfRate,h.start_date);
+    case"EPF":         return calcAccr(h.principal,_epfRate,h.start_date);
     case"MF":          return units*(h.current_nav||h.purchase_nav||0);
     case"IN_STOCK":
     case"IN_ETF":      return units*(h.current_price||h.purchase_price||0);

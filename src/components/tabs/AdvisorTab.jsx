@@ -60,7 +60,7 @@ export default function AdvisorTab({
               maxWidth:"80%",
               padding:".75rem 1rem",
               borderRadius: m.role==="user"?"12px 12px 2px 12px":"12px 12px 12px 2px",
-              background: m.role==="user"?"rgba(201,168,76,.14)":"var(--text-muted)",
+              background: m.role==="user"?"rgba(201,168,76,.14)":"var(--bg-muted)",
               border: m.role==="user"?"1px solid rgba(201,168,76,.3)":"1px solid var(--border)",
               fontSize:".82rem",
               lineHeight:1.65,
@@ -68,21 +68,22 @@ export default function AdvisorTab({
               whiteSpace:"pre-wrap",
               fontFamily:"'DM Sans',sans-serif",
             }}>
-              {m.content}
+              {/* Show dots only when streaming and content is still empty */}
+              {m.streaming && !m.content ? (
+                <span style={{display:"inline-flex",gap:".3rem",alignItems:"center"}}>
+                  {[0,1,2].map(i=>(
+                    <span key={i} style={{width:6,height:6,borderRadius:"50%",background:"rgba(201,168,76,.5)",display:"inline-block",animation:`bounce 1.2s ${i*0.2}s infinite`}}/>
+                  ))}
+                </span>
+              ) : (
+                <>
+                  {m.content}
+                  {m.streaming&&<span style={{display:"inline-block",width:"2px",height:"1em",background:"#c9a84c",marginLeft:"2px",verticalAlign:"text-bottom",animation:"blink .9s step-end infinite"}}/>}
+                </>
+              )}
             </div>
           </div>
         ))}
-        {/* Typing indicator */}
-        {aiLoading&&(
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start"}}>
-            <div style={{fontSize:".62rem",color:"var(--text-muted)",marginBottom:".3rem",letterSpacing:".06em",textTransform:"uppercase"}}>✦ Advisor</div>
-            <div style={{padding:".75rem 1rem",borderRadius:"12px 12px 12px 2px",background:"var(--bg-muted)",border:"1px solid var(--border)",display:"flex",gap:".35rem",alignItems:"center"}}>
-              {[0,1,2].map(i=>(
-                <div key={i} style={{width:6,height:6,borderRadius:"50%",background:"rgba(201,168,76,.5)",animation:`bounce 1.2s ${i*0.2}s infinite`}}/>
-              ))}
-            </div>
-          </div>
-        )}
         <div ref={aiBottomRef}/>
       </div>
 
@@ -105,7 +106,7 @@ export default function AdvisorTab({
       <div style={{fontSize:".65rem",color:"var(--text-muted)",marginTop:".4rem",textAlign:"center"}}>
         Press Enter to send · Shift+Enter for new line · Conversation context is maintained across messages
       </div>
-      <style>{`@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}`}</style>
+      <style>{`@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}} @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}`}</style>
     </div>
   );
 }

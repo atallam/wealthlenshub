@@ -20,7 +20,7 @@ import {
   uid, ago, fmtSize,
   getVal, getInv, getValINR, getInvINR, getInvINRHist,
   xirr, getXIRR, isUSDHolding, toINR, toUSD, fxFor,
-  calcFD, calcAccr, setLiveUsdInr, getLiveUsdInr,
+  calcFD, calcAccr, setLiveUsdInr, getLiveUsdInr, setPpfRate, setEpfRate,
 } from './utils.js';
 import { AT, BF, BT, BG, BA, SEED } from './constants.js';
 import './styles.css';
@@ -1121,6 +1121,39 @@ ${alertsText}`;
               <Download size={13} strokeWidth={2}/> Import Holdings
             </button>
           </div>
+
+          {/* ── PPF / EPF rate config ── */}
+          <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',marginBottom:'1rem'}}>
+            <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Government Scheme Rates</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'.6rem',marginBottom:'.6rem'}}>
+              {[
+                { key:'ppf_rate', label:'PPF Rate (%)', default: 7.1 },
+                { key:'epf_rate', label:'EPF Rate (%)', default: 8.15 },
+              ].map(({key, label, default: def}) => (
+                <div key={key}>
+                  <div style={{fontSize:'.68rem',color:'var(--text-muted)',marginBottom:'.25rem'}}>{label}</div>
+                  <input
+                    type="number" step="0.05" min="1" max="25"
+                    className="fi"
+                    defaultValue={(portfolio.profile?.settings?.[key]) ?? def}
+                    style={{width:'100%',fontSize:'.82rem'}}
+                    onBlur={async e => {
+                      const val = parseFloat(e.target.value);
+                      if (!val || val <= 0 || val > 25) return;
+                      const newSettings = { ...(portfolio.profile?.settings || {}), [key]: val };
+                      try {
+                        await api('/api/profile', { method: 'PUT', body: JSON.stringify({ settings: newSettings }) });
+                        if (key === 'ppf_rate') setPpfRate(val);
+                        if (key === 'epf_rate') setEpfRate(val);
+                      } catch {}
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:'.65rem',color:'var(--text-muted)'}}>RBI/EPFO rates change annually. Update here to reflect current returns on your PPF and EPF holdings.</div>
+          </div>
+
           <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem'}}>
             <button className="btn-o" style={{color:'var(--loss)',borderColor:'rgba(220,38,38,.25)'}}
               onClick={() => { if (confirm('Sign out?')) signOut(); }}>

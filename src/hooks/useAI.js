@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api } from '../lib/api.js';
+import { supabase } from '../supabase.js';
 
 export function useAI() {
   const [aiMessages, setAiMessages] = useState([]);
@@ -12,16 +12,25 @@ export function useAI() {
     const q = (overrideInput ?? aiInput).trim();
     if (!q || aiLoading) return;
     setAiInput("");
-    const userMsg = { role: "user", content: q, ts: new Date() };
-    setAiMessages(p => [...p, userMsg]);
     setAiLoading(true);
-    if (aiBottomRef?.current) setTimeout(() => aiBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
 
+    const userMsg = { role: "user", content: q, ts: new Date() };
     const history = [...aiMessages, userMsg].map(m => ({ role: m.role, content: m.content }));
 
+    // Append user message + empty streaming assistant placeholder
+    setAiMessages(p => [...p, userMsg, { role: "assistant", content: "", ts: new Date(), streaming: true }]);
+    if (aiBottomRef?.current) setTimeout(() => aiBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+
     try {
-      const data = await api("/api/ai/chat", {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
+
+      const response = await fetch("/api/ai/chat/stream", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 1000,
@@ -29,13 +38,77 @@ export function useAI() {
           messages: history,
         }),
       });
-      const reply = data.content?.find(c => c.type === "text")?.text || "Sorry, I couldn't process that.";
-      setAiMessages(p => [...p, { role: "assistant", content: reply, ts: new Date() }]);
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || response.statusText);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullText = "";
+
+      const scroll = () => { if (aiBottomRef?.current) aiBottomRef.current.scrollIntoView({ behavior: "smooth" }); };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE lines
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? ""; // keep trailing incomplete line
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6).trim();
+          if (payload === "[DONE]" || !payload) continue;
+
+          let event;
+          try { event = JSON.parse(payload); } catch { continue; }
+
+          // Anthropic streaming event types
+          if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+            fullText += event.delta.text;
+            setAiMessages(p => {
+              const msgs = [...p];
+              msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: fullText };
+              return msgs;
+            });
+            scroll();
+          }
+
+          if (event.type === "error") {
+            throw new Error(event.error?.message || "Stream error");
+          }
+        }
+      }
+
+      // Mark streaming complete (removes blinking cursor)
+      setAiMessages(p => {
+        const msgs = [...p];
+        const last = msgs[msgs.length - 1];
+        if (last?.streaming) msgs[msgs.length - 1] = { ...last, streaming: false };
+        return msgs;
+      });
+
     } catch (e) {
-      setAiMessages(p => [...p, { role: "assistant", content: "Something went wrong: " + e.message, ts: new Date() }]);
+      setAiMessages(p => {
+        const msgs = [...p];
+        const last = msgs[msgs.length - 1];
+        if (last?.streaming) {
+          // Replace empty placeholder with error
+          msgs[msgs.length - 1] = { role: "assistant", content: "Something went wrong: " + e.message, ts: new Date() };
+        } else {
+          msgs.push({ role: "assistant", content: "Something went wrong: " + e.message, ts: new Date() });
+        }
+        return msgs;
+      });
     }
+
     setAiLoading(false);
-    if (aiBottomRef?.current) setTimeout(() => aiBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    if (aiBottomRef?.current) setTimeout(() => aiBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   }
 
   return { aiMessages, setAiMessages, aiInput, setAiInput, aiLoading, askAI };

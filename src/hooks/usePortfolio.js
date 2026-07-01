@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../supabase.js';
-import { uid, setLiveUsdInr, getLiveUsdInr } from '../utils.js';
+import { uid, setLiveUsdInr, getLiveUsdInr, setPpfRate, setEpfRate } from '../utils.js';
 import { BF, BG, BA, BT } from '../constants.js';
 import { api } from '../lib/api.js';
 import { useToast } from '../components/shared/Toast.jsx';
@@ -53,7 +53,12 @@ export function usePortfolio(user) {
         setHoldings(hlds || []);
         const fetched = (hlds || []).filter(h => h.price_fetched_at).map(h => new Date(h.price_fetched_at));
         if (fetched.length) setLastPriceRefresh(new Date(Math.max(...fetched)));
-        if (prof) { setProfile(prof); }
+        if (prof) {
+          setProfile(prof);
+          // Apply user-configured rates so PPF/EPF values update immediately
+          if (prof.settings?.ppf_rate) setPpfRate(prof.settings.ppf_rate);
+          if (prof.settings?.epf_rate) setEpfRate(prof.settings.epf_rate);
+        }
         try { const fxData = await api("/api/forex/usdinr"); if (fxData?.rate) setLiveUsdInr(fxData.rate); } catch {}
         if (ats?.length) setAssetTypes(ats);
       } catch (e) { console.error("Load error", e); }

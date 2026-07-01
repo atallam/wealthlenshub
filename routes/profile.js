@@ -16,12 +16,14 @@ router.get("/", auth, async (req, res) => {
 });
 
 router.put("/", auth, async (req, res) => {
-  const { display_name, currency, pan, dob } = req.body;
+  const { display_name, currency, pan, dob, settings } = req.body;
   const update = { id: req.user.id, updated_at: new Date().toISOString() };
   if (display_name !== undefined) update.display_name = display_name;
   if (currency !== undefined) update.currency = currency;
   if (pan !== undefined) update.encrypted_pan = pan ? encrypt(pan.toUpperCase().trim()) : null;
   if (dob !== undefined) update.encrypted_dob = dob ? encrypt(dob.trim()) : null;
+  // settings is a JSONB column for user preferences (ppf_rate, epf_rate, etc.)
+  if (settings !== undefined) update.settings = settings;
   const { error } = await supabase.from("profiles").upsert(update);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
