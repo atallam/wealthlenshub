@@ -1,7 +1,7 @@
 // routes/fd.js — FD certificate OCR scan endpoint
 import { Router } from "express";
 import multer from "multer";
-import { auth, sendError } from "../lib/auth.js";
+import { auth, sendError, strictLimiter } from "../lib/auth.js";
 
 const router = Router();
 const upload = multer({
@@ -34,7 +34,7 @@ Rules:
 - tenure in years → multiply by 12 for tenure_months.
 - Return ONLY the JSON object. No markdown fences, no explanation.`;
 
-router.post("/scan", auth, upload.single("file"), async (req, res) => {
+router.post("/scan", auth, strictLimiter, upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const key = process.env.ANTHROPIC_KEY;
   if (!key) return res.status(500).json({ error: "ANTHROPIC_KEY not configured" });
@@ -50,7 +50,8 @@ router.post("/scan", auth, upload.single("file"), async (req, res) => {
       : { type: "image",    source: { type: "base64", media_type: mime, data: b64 } };
 
     const body = {
-      model: "claude-3-5-sonnet-20241022",
+      // Configurable; defaults to a current Sonnet. Override with FD_MODEL if needed.
+      model: process.env.FD_MODEL || "claude-sonnet-4-5",
       max_tokens: 1024,
       messages: [{ role: "user", content: [docBlock, { type: "text", text: FD_PROMPT }] }],
     };

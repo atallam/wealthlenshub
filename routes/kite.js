@@ -1,8 +1,9 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { supabase } from "../lib/db.js";
-import { auth, sendError } from "../lib/auth.js";
+import { auth, sendError, strictLimiter } from "../lib/auth.js";
 import { encrypt, decrypt } from "../lib/crypto.js";
+import { takeSnapshot } from "../lib/snapshot.js";
 
 const router = Router();
 const KITE_BASE = "https://api.kite.trade";
@@ -72,7 +73,7 @@ router.get("/status", auth, async (req, res) => {
   } catch { res.json({ connected: false }); }
 });
 
-router.post("/sync", auth, async (req, res) => {
+router.post("/sync", auth, strictLimiter, async (req, res) => {
   try {
     const { member_id } = req.body;
     const conn = await getKiteConn(req.user.id);
@@ -95,7 +96,8 @@ router.post("/sync", auth, async (req, res) => {
     const { error } = await supabase.from("holdings").upsert(rows, { onConflict: "id" });
     if (error) throw new Error(error.message);
     await supabase.from("kite_connections").update({ last_synced_at: now }).eq("user_id", req.user.id);
-    fetch(`${req.protocol}://${req.get("host")}/api/snapshots`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": req.headers.authorization }, body: JSON.stringify({ source: "kite_sync" }) }).catch(() => {});
+    // Snapshot directly (no fragile self-HTTP call reconstructed from the Host header).
+    takeSnapshot(req.user.id, { source: "kite_sync" }).catch(e => console.error("Kite snapshot:", e.message));
     res.json({ synced: rows.length, equity_count: rows.filter(r => r.type !== "MF").length, mf_count: rows.filter(r => r.type === "MF").length });
   } catch (e) {
     console.error("Kite sync:", e.message);
