@@ -188,10 +188,14 @@ async function execTool(name, input, userId) {
       }
 
       case "get_transactions": {
+        // IDOR guard: scope to the caller's own transactions. Without this,
+        // a user could ask the advisor for another user's holding_id and
+        // exfiltrate their transactions through the model.
         const { data: t } = await supabase
           .from("transactions")
           .select("txn_type, units, price, txn_date, notes")
           .eq("holding_id", input.holding_id)
+          .eq("user_id", userId)
           .order("txn_date", { ascending: false })
           .limit(25);
         return { transactions: t || [], count: t?.length || 0 };

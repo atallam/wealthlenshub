@@ -1,7 +1,9 @@
 import express from "express";
+import helmet from "helmet";
+import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
-import { apiLimiter } from "./lib/auth.js";
+import { apiLimiter, IS_PROD } from "./lib/auth.js";
 
 // ── Route modules ────────────────────────────────────────────────────────────
 import portfolioRouter    from "./routes/portfolio.js";
@@ -29,6 +31,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 
 const app = express();
+
+// ── Security headers ─────────────────────────────────────────────────────────
+// Helmet sets HSTS, X-Content-Type-Options, frameguard, etc. The default CSP is
+// left OFF because it can break the Vite-built SPA (inline styles/module scripts);
+// tighten it once the exact asset origins are pinned. See AUDIT_REPORT.md P1-3.
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+
+// CORS: same-origin by default (the SPA is served from this server). Set
+// CORS_ORIGINS (comma-separated) only if a separate frontend origin needs access.
+const corsOrigins = (process.env.CORS_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
+if (corsOrigins.length) {
+  app.use(cors({ origin: corsOrigins, credentials: true }));
+}
 
 // ── Middleware ───────────────────────────────────────────────────────────────
 app.use(express.json({ limit: "10mb" }));
@@ -65,7 +80,10 @@ app.use((err, req, res, next) => {
   if (req.path.startsWith("/api/")) {
     console.error("Global API error:", req.method, req.path, err.message, err.stack);
     if (res.headersSent) return next(err);
-    return res.status(err.status || 500).json({ error: err.message || "Internal server error" });
+    const status = err.status || 500;
+    // Don't leak internal error messages/stack details to clients on 5xx in prod.
+    const message = (status >= 500 && IS_PROD) ? "Internal server error" : (err.message || "Internal server error");
+    return res.status(status).json({ error: message });
   }
   next(err);
 });

@@ -126,8 +126,12 @@ if (!SETU_ENABLED) {
   });
 
   router.post("/webhook", async (req, res) => {
+    // Require the shared secret unconditionally. Previously, if CRON_SECRET was
+    // unset the webhook accepted unauthenticated consent-status writes.
+    const expected = process.env.SETU_WEBHOOK_SECRET || process.env.CRON_SECRET;
+    if (!expected) return res.status(503).json({ error: "Webhook secret not configured" });
     const webhookSecret = req.headers["x-webhook-secret"] || req.headers["x-cron-secret"];
-    if (process.env.CRON_SECRET && webhookSecret !== process.env.CRON_SECRET) return res.status(401).json({ error: "Unauthorized webhook" });
+    if (webhookSecret !== expected) return res.status(401).json({ error: "Unauthorized webhook" });
     const { type, consentId, status } = req.body;
     if (type === "CONSENT_STATUS_UPDATE" && consentId) await supabase.from("setu_consents").update({ status, updated_at: new Date().toISOString() }).eq("consent_id", consentId);
     if (type === "FI_DATA_READY" && consentId) await supabase.from("setu_consents").update({ fi_data_status: status, last_fetched_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("consent_id", consentId);

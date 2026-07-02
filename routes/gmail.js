@@ -1,4 +1,5 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { google } from "googleapis";
 import { supabase } from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
@@ -6,6 +7,27 @@ import { encrypt, decrypt } from "../lib/crypto.js";
 import { pdfjsLib, _pdfjsFontPath, parseNSDLCASStatement } from "../lib/parsers.js";
 
 const router = Router();
+
+// ── OAuth state signing ──────────────────────────────────────────────────────
+// The `state` param round-trips through Google, so it must be tamper-proof:
+// an unsigned state would let an attacker bind a Gmail account to any userId.
+// Sign it with HMAC (secret derived from the OAuth client secret) + a short TTL.
+const STATE_SECRET = process.env.GMAIL_STATE_SECRET || process.env.GMAIL_CLIENT_SECRET || "";
+function signState(userId) {
+  const payload = Buffer.from(JSON.stringify({ userId, ts: Date.now() })).toString("base64url");
+  const sig = crypto.createHmac("sha256", STATE_SECRET).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+function verifyState(state, maxAgeMs = 10 * 60 * 1000) {
+  const [payload, sig] = String(state).split(".");
+  if (!payload || !sig) throw new Error("Malformed OAuth state");
+  const expected = crypto.createHmac("sha256", STATE_SECRET).update(payload).digest("base64url");
+  const a = Buffer.from(sig), b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new Error("Invalid OAuth state signature");
+  const { userId, ts } = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  if (!userId || !ts || Date.now() - ts > maxAgeMs) throw new Error("Expired OAuth state");
+  return { userId };
+}
 
 const GMAIL_ENABLED = !!(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET);
 
@@ -186,7 +208,7 @@ router.get("/auth", auth, async (req, res) => {
   const url = oauth2.generateAuthUrl({
     access_type: "offline", prompt: "consent",
     scope: ["https://www.googleapis.com/auth/gmail.readonly"],
-    state: Buffer.from(JSON.stringify({ userId: req.user.id })).toString("base64"),
+    state: signState(req.user.id),
   });
   res.json({ url });
 });
@@ -196,8 +218,13 @@ router.get("/callback", async (req, res) => {
   const { code, state, error: oauthError } = req.query;
   if (oauthError) return res.redirect(`/?gmail_error=${encodeURIComponent(oauthError)}`);
   if (!code || !state) return res.status(400).send("Missing code or state");
+  let userId;
   try {
-    const { userId } = JSON.parse(Buffer.from(state, "base64").toString("utf8"));
+    ({ userId } = verifyState(state));
+  } catch (e) {
+    return res.redirect(`/?gmail_error=${encodeURIComponent(e.message)}`);
+  }
+  try {
     const oauth2 = makeGmailOAuth2Client();
     const { tokens } = await oauth2.getToken(code);
     oauth2.setCredentials(tokens);

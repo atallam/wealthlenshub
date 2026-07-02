@@ -1,8 +1,9 @@
 import { Router } from "express";
 import multer from "multer";
 import { supabase } from "../lib/db.js";
-import { auth } from "../lib/auth.js";
+import { auth, sendError, strictLimiter } from "../lib/auth.js";
 import { hashFile } from "../lib/crypto.js";
+import { assertOwnsHolding, assertOwnsArtifact } from "../lib/guards.js";
 
 // Allowed MIME types for uploaded documents.
 const ALLOWED_MIME = new Set([
@@ -24,6 +25,10 @@ const upload = multer({
 });
 
 router.get("/:holdingId", auth, async (req, res) => {
+  try {
+    // IDOR guard: only the holding's owner may list its artifacts.
+    await assertOwnsHolding(req.user.id, req.params.holdingId);
+  } catch (e) { return sendError(res, e, e.status || 403); }
   const { data, error } = await supabase
     .from("artifacts")
     .select("*")
@@ -33,10 +38,15 @@ router.get("/:holdingId", auth, async (req, res) => {
   res.json(data || []);
 });
 
-router.post("/upload", auth, upload.single("file"), async (req, res) => {
+router.post("/upload", auth, strictLimiter, upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const { holdingId, description } = req.body;
   if (!holdingId) return res.status(400).json({ error: "holdingId required" });
+
+  // IDOR guard: only the holding's owner may attach files to it.
+  try {
+    await assertOwnsHolding(req.user.id, holdingId);
+  } catch (e) { return sendError(res, e, e.status || 403); }
 
   // Compute SHA-256 hash of the file for integrity tracking.
   const sha256 = hashFile(req.file.buffer);
@@ -52,6 +62,7 @@ router.post("/upload", auth, upload.single("file"), async (req, res) => {
 
   const { error: dbErr } = await supabase.from("artifacts").insert({
     id,
+    user_id: req.user.id,        // stamp owner (see schema reconciliation in Phase 2)
     holding_id: holdingId,
     file_name: req.file.originalname,
     storage_path: storagePath,
@@ -66,12 +77,11 @@ router.post("/upload", auth, upload.single("file"), async (req, res) => {
 });
 
 router.get("/download/:id", auth, async (req, res) => {
-  const { data, error } = await supabase
-    .from("artifacts")
-    .select("storage_path, file_name, sha256")
-    .eq("id", req.params.id)
-    .single();
-  if (error || !data) return res.status(404).json({ error: "Not found" });
+  let data;
+  try {
+    // IDOR guard: only the owner (via parent holding) gets a signed URL.
+    data = await assertOwnsArtifact(req.user.id, req.params.id);
+  } catch (e) { return sendError(res, e, e.status || 403); }
   const { data: signed } = await supabase.storage
     .from("artifacts")
     .createSignedUrl(data.storage_path, 300);

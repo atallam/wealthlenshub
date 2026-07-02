@@ -72,6 +72,7 @@ router.get("/:id/transactions", auth, async (req, res) => {
     .from("transactions")
     .select("id,txn_type,units,price,price_usd,txn_date,notes,created_at")
     .eq("holding_id", req.params.id)
+    .eq("user_id", req.user.id)        // IDOR guard: scope to caller (transactions has user_id)
     .order("txn_date", { ascending: true });
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
@@ -187,7 +188,21 @@ router.post("/import", auth, auditImport("HOLDINGS_IMPORT"), async (req, res) =>
     if (error) { errors.push(`${name}: ${error.message}`); } else { updated.push(name); }
   }
 
-  res.json({ ok: true, inserted_count: inserted.length, updated_count: updated.length, skipped_count: skipped.length, error_count: errors.length, inserted, updated, skipped, errors, needs_price_refresh: inserted.length > 0 || updated.length > 0 });
+  res.json({
+    ok: true,
+    inserted_count: inserted.length, updated_count: updated.length,
+    skipped_count: skipped.length, error_count: errors.length,
+    inserted, updated, skipped, errors,
+    // Import is intentionally LENIENT (rows failing schema validation are still
+    // imported, because parser output is often partial/enriched). We now surface
+    // what failed validation so the client can flag data-quality issues instead
+    // of the failures being silently log-only. See AUDIT_REPORT.md P2-5.
+    validation: {
+      invalid_count: invalid.length,
+      invalid_sample: invalid.slice(0, 10).map(r => ({ row: r.index, errors: r.errors })),
+    },
+    needs_price_refresh: inserted.length > 0 || updated.length > 0,
+  });
 
   // Auto-snapshot (direct call — no self-HTTP round-trip)
   takeSnapshot(req.user.id, { source: "cas_import", cas_statement_date: cas_statement_date || null })
