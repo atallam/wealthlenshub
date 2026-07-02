@@ -107,9 +107,7 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
           })});
       }
       await onReload(holding.id);
-      // Refresh local transaction list
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token || "";
+      // Refresh local transaction list — reuse token already obtained above
       const res = await fetch(`/api/holdings/${holding.id}/transactions`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setFreshTxns(await res.json());
       setSipMode(false); setSipPreview([]);
