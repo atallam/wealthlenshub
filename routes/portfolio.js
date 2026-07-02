@@ -74,7 +74,7 @@ router.get("/", auth, async (req, res) => {
 });
 
 router.post("/", auth, async (req, res) => {
-  const { members, goals, alerts } = req.body;
+  const { members, goals, alerts, liabilities } = req.body;
   const safeMembers = (members || []).map(m => {
     const out = { ...m };
     if (out.pan && !out.pan.includes(":")) { out.encrypted_pan = encrypt(out.pan.toUpperCase().trim()); delete out.pan; }
@@ -82,7 +82,9 @@ router.post("/", auth, async (req, res) => {
     delete out.pan_masked; delete out.has_dob;
     return out;
   });
-  const { error } = await supabase.from("portfolio").upsert({ id: req.user.id, user_id: req.user.id, members: safeMembers, goals, alerts, updated_at: new Date().toISOString() });
+  const upsertData = { id: req.user.id, user_id: req.user.id, members: safeMembers, goals, alerts, updated_at: new Date().toISOString() };
+  if (liabilities !== undefined) upsertData.liabilities = liabilities;
+  const { error } = await supabase.from("portfolio").upsert(upsertData);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });

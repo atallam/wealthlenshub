@@ -1,11 +1,22 @@
-import { Router } from "express";
-import rateLimit from "express-rate-limit";
+/**
+ * routes/ai.js — AI Advisor with tool use + streaming agentic loop
+ *
+ * SSE event protocol (sent to client):
+ *   { type:"text_delta",       text:"..." }
+ *   { type:"tool_call_start",  name:"get_holdings", id:"toolu_xxx" }
+ *   { type:"tool_result_start",name:"get_holdings", id:"toolu_xxx" }
+ *   { type:"tool_result_end",  name:"get_holdings", id:"toolu_xxx" }
+ *   { type:"done" }
+ *   { type:"error",            error:"..." }
+ */
+
+import { Router }    from "express";
+import rateLimit     from "express-rate-limit";
 import { auth, sendError } from "../lib/auth.js";
+import { supabase }  from "../lib/db.js";
 
 const router = Router();
 
-// Rate limit: 20 requests/minute per authenticated user.
-// Keyed on user ID (set by auth middleware) so limits are per-account, not per-IP.
 const aiLimiter = rateLimit({
   windowMs: 60_000,
   max: 20,
@@ -15,60 +26,360 @@ const aiLimiter = rateLimit({
   message: { error: "Too many AI requests — please wait a minute before trying again." },
 });
 
-// Allowed models — restrict to cost-appropriate tiers only.
 const ALLOWED_MODELS = new Set([
-  "claude-haiku-4-5-20251001",
-  "claude-haiku-4-5",
-  "claude-sonnet-4-5",
-  "claude-sonnet-4-5-20241022",
-  "claude-sonnet-4-6",
+  "claude-haiku-4-5-20251001", "claude-haiku-4-5",
+  "claude-sonnet-4-5", "claude-sonnet-4-5-20241022", "claude-sonnet-4-6",
 ]);
 
-// ── Shared model/token validation ────────────────────────────────
 function validateAiRequest(req, res) {
   const key = process.env.ANTHROPIC_KEY;
   if (!key) { res.status(500).json({ error: "ANTHROPIC_KEY not set on server" }); return null; }
-  const requestedModel = req.body?.model;
-  if (requestedModel && !ALLOWED_MODELS.has(requestedModel)) {
-    res.status(400).json({ error: `Model '${requestedModel}' is not permitted. Use a claude-haiku or claude-sonnet variant.` });
+  const m = req.body?.model;
+  if (m && !ALLOWED_MODELS.has(m)) {
+    res.status(400).json({ error: `Model '${m}' is not permitted.` });
     return null;
   }
-  return {
-    key,
-    body: { ...req.body, max_tokens: Math.min(req.body?.max_tokens || 1024, 2048) },
-  };
+  return { key, model: m || "claude-sonnet-4-6", max_tokens: Math.min(req.body?.max_tokens || 2048, 4096) };
 }
 
-// ── Non-streaming endpoint (kept for compatibility) ───────────────
-router.post("/chat", auth, aiLimiter, async (req, res) => {
-  const validated = validateAiRequest(req, res);
-  if (!validated) return;
-  const { key, body } = validated;
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify(body),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      console.error("Anthropic error:", response.status, JSON.stringify(data));
-      return res.status(response.status).json({ error: data?.error?.message || "Anthropic API error", detail: data });
+// ── Tool definitions ───────────────────────────────────────────────────────
+
+const ADVISOR_TOOLS = [
+  {
+    name: "get_portfolio_summary",
+    description: "Get high-level portfolio summary: total current value, total invested, overall gain/loss, and breakdown by asset type. Use when the user asks about their overall portfolio, net worth, or total returns.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_holdings",
+    description: "Get detailed list of holdings with values and gains. Can filter by asset type and/or family member. Use when the user asks about specific asset types (MF, stocks, FD, etc.) or a particular family member's investments.",
+    input_schema: {
+      type: "object",
+      properties: {
+        asset_type: { type: "string", description: "One of: IN_STOCK, IN_ETF, MF, US_STOCK, US_ETF, US_BOND, FD, PPF, EPF, CRYPTO, REAL_ESTATE, CASH, OTHER" },
+        member_id:  { type: "string", description: "Family member ID to filter by" },
+      },
+    },
+  },
+  {
+    name: "get_transactions",
+    description: "Get transaction history (buys/sells) for a specific holding. Use when the user asks about buy/sell history, average cost, or SIP details for a specific investment.",
+    input_schema: {
+      type: "object",
+      required: ["holding_id"],
+      properties: {
+        holding_id: { type: "string", description: "Holding ID (from get_holdings response)" },
+      },
+    },
+  },
+  {
+    name: "get_goal_progress",
+    description: "Get all financial goals with their targets, timelines, and current progress. Use when the user asks about their goals, retirement planning, or how much they need to save.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_tax_summary",
+    description: "Get LTCG/STCG capital gains tax summary for Indian equity holdings (IN_STOCK, IN_ETF, MF). Shows realized gains, estimated tax, and harvesting opportunities. Use when the user asks about taxes, capital gains, or ITR filing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        fy: { type: "string", description: "Indian FY like '2025-26'. Defaults to current FY." },
+      },
+    },
+  },
+];
+
+// ── Tax helpers ────────────────────────────────────────────────────────────
+
+function currentFYStr() {
+  const d = new Date(), y = d.getFullYear(), m = d.getMonth();
+  const s = m >= 3 ? y : y - 1;
+  return `${s}-${String(s + 1).slice(-2)}`;
+}
+function fyRangeStr(fyStr) {
+  const s = parseInt(fyStr.split("-")[0], 10);
+  return { start: `${s}-04-01`, end: `${s + 1}-03-31` };
+}
+function monthsApart(a, b) {
+  const da = new Date(a), db = new Date(b);
+  return (db.getFullYear() - da.getFullYear()) * 12 + (db.getMonth() - da.getMonth());
+}
+function fifoGains(txns, fyStart, fyEnd) {
+  const sorted = [...txns].sort((a, b) => new Date(a.txn_date) - new Date(b.txn_date));
+  const lots = []; let stcg = 0, ltcg = 0;
+  for (const t of sorted) {
+    const u = Math.abs(+t.units || 0), p = +t.price || 0;
+    if (t.txn_type === "BUY") { lots.push({ date: t.txn_date, price: p, remaining: u }); }
+    else if (t.txn_type === "SELL" || t.txn_type === "REDEEM") {
+      const inFY = t.txn_date >= fyStart && t.txn_date <= fyEnd;
+      let toSell = u;
+      while (toSell > 1e-6 && lots.length > 0) {
+        const lot = lots[0];
+        const used = Math.min(lot.remaining, toSell);
+        lot.remaining -= used; toSell -= used;
+        if (inFY) {
+          const gain = (p - lot.price) * used;
+          if (monthsApart(lot.date, t.txn_date) >= 12) ltcg += gain; else stcg += gain;
+        }
+        if (lot.remaining < 1e-6) lots.shift();
+      }
     }
-    res.json(data);
-  } catch (e) {
-    console.error("AI chat error:", e.message);
-    sendError(res, e);
   }
+  return { stcg, ltcg };
+}
+
+// ── Tool executors ─────────────────────────────────────────────────────────
+
+async function execTool(name, input, userId) {
+  try {
+    switch (name) {
+
+      case "get_portfolio_summary": {
+        const { data: h } = await supabase
+          .from("holdings")
+          .select("type, current_value, invested_value, member_name")
+          .eq("user_id", userId);
+        if (!h?.length) return { message: "No holdings found." };
+
+        const cur = h.reduce((s, x) => s + (+x.current_value || 0), 0);
+        const inv = h.reduce((s, x) => s + (+x.invested_value || 0), 0);
+        const byType = {}, byMember = {};
+        for (const x of h) {
+          byType[x.type]     = (byType[x.type] || 0) + (+x.current_value || 0);
+          byMember[x.member_name || "Unknown"] = (byMember[x.member_name || "Unknown"] || 0) + (+x.current_value || 0);
+        }
+        return {
+          total_current_value_inr: Math.round(cur),
+          total_invested_inr:      Math.round(inv),
+          total_gain_inr:          Math.round(cur - inv),
+          gain_pct:                inv > 0 ? +((cur - inv) / inv * 100).toFixed(2) : 0,
+          holding_count:           h.length,
+          by_asset_type:           Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, Math.round(v)])),
+          by_member:               Object.fromEntries(Object.entries(byMember).map(([k, v]) => [k, Math.round(v)])),
+        };
+      }
+
+      case "get_holdings": {
+        let q = supabase.from("holdings")
+          .select("id, name, symbol, type, units, current_price, current_nav, current_value, invested_value, member_name")
+          .eq("user_id", userId)
+          .order("current_value", { ascending: false })
+          .limit(40);
+        if (input.asset_type) q = q.eq("type", input.asset_type);
+        if (input.member_id)  q = q.eq("member_id", input.member_id);
+        const { data: h } = await q;
+        if (!h?.length) return { holdings: [], count: 0 };
+        return {
+          count: h.length,
+          holdings: h.map(x => ({
+            id:                  x.id,
+            name:                x.name,
+            symbol:              x.symbol,
+            type:                x.type,
+            units:               x.units,
+            current_price_inr:   x.current_price || x.current_nav,
+            current_value_inr:   Math.round(+x.current_value || 0),
+            invested_value_inr:  Math.round(+x.invested_value || 0),
+            gain_inr:            Math.round((+x.current_value || 0) - (+x.invested_value || 0)),
+            gain_pct:            +x.invested_value > 0 ? +(((+x.current_value - +x.invested_value) / +x.invested_value) * 100).toFixed(1) : 0,
+            member:              x.member_name,
+          })),
+        };
+      }
+
+      case "get_transactions": {
+        const { data: t } = await supabase
+          .from("transactions")
+          .select("txn_type, units, price, txn_date, notes")
+          .eq("holding_id", input.holding_id)
+          .order("txn_date", { ascending: false })
+          .limit(25);
+        return { transactions: t || [], count: t?.length || 0 };
+      }
+
+      case "get_goal_progress": {
+        const { data: p } = await supabase
+          .from("portfolio").select("goals").eq("user_id", userId).single();
+        return { goals: p?.goals || [], count: p?.goals?.length || 0 };
+      }
+
+      case "get_tax_summary": {
+        const fy = input.fy || currentFYStr();
+        const { start, end } = fyRangeStr(fy);
+        const { data: holdings } = await supabase
+          .from("holdings").select("id, name, type").eq("user_id", userId)
+          .in("type", ["IN_STOCK", "IN_ETF", "MF"]);
+        if (!holdings?.length) return { fy, stcg: 0, ltcg: 0, estimated_tax: 0 };
+        const { data: txns } = await supabase
+          .from("transactions").select("holding_id, txn_type, units, price, txn_date")
+          .in("holding_id", holdings.map(h => h.id));
+        const txnMap = {};
+        for (const t of (txns || [])) (txnMap[t.holding_id] ||= []).push(t);
+        let stcg = 0, ltcg = 0;
+        for (const h of holdings) {
+          const g = fifoGains(txnMap[h.id] || [], start, end);
+          stcg += g.stcg; ltcg += g.ltcg;
+        }
+        const taxable = Math.max(0, ltcg - 125000);
+        return {
+          fy, stcg: Math.round(stcg), ltcg: Math.round(ltcg),
+          ltcg_exemption: 125000, ltcg_taxable: Math.round(taxable),
+          estimated_tax: Math.round(Math.max(0, stcg) * 0.20 + taxable * 0.125),
+        };
+      }
+
+      default: return { error: `Unknown tool: ${name}` };
+    }
+  } catch (e) {
+    console.error(`Tool exec error [${name}]:`, e.message);
+    return { error: e.message };
+  }
+}
+
+// ── SSE helper ─────────────────────────────────────────────────────────────
+const sse = (res, obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+// ── Agentic loop ───────────────────────────────────────────────────────────
+
+async function runAgenticLoop(req, res, key, model, maxTokens, systemPrompt, initMessages) {
+  let messages = [...initMessages];
+  const MAX_TURNS = 6;
+
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    // ── Call Anthropic (streaming) ─────────────────────────────────
+    const upstream = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({ model, max_tokens: maxTokens, system: systemPrompt, tools: ADVISOR_TOOLS, messages, stream: true }),
+    });
+
+    if (!upstream.ok) {
+      const err = await upstream.json().catch(() => ({}));
+      sse(res, { type: "error", error: err?.error?.message || "Anthropic API error" });
+      return;
+    }
+
+    // ── Parse the stream ───────────────────────────────────────────
+    const reader  = upstream.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+
+    // Accumulate the assistant's full content array for message history
+    const contentBlocks = [];
+    let textBlockIdx = null;
+    let toolBlock    = null;
+    let toolInput    = "";
+    let stopReason   = "end_turn";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const payload = line.slice(6).trim();
+        if (!payload || payload === "[DONE]") continue;
+        let ev; try { ev = JSON.parse(payload); } catch { continue; }
+
+        switch (ev.type) {
+          case "content_block_start":
+            if (ev.content_block?.type === "text") {
+              textBlockIdx = contentBlocks.length;
+              contentBlocks.push({ type: "text", text: "" });
+            } else if (ev.content_block?.type === "tool_use") {
+              toolBlock = { id: ev.content_block.id, name: ev.content_block.name };
+              toolInput = "";
+              contentBlocks.push({ type: "tool_use", id: toolBlock.id, name: toolBlock.name, input: {} });
+              sse(res, { type: "tool_call_start", name: toolBlock.name, id: toolBlock.id });
+            }
+            break;
+
+          case "content_block_delta":
+            if (ev.delta?.type === "text_delta") {
+              const t = ev.delta.text;
+              if (textBlockIdx !== null) contentBlocks[textBlockIdx].text += t;
+              sse(res, { type: "text_delta", text: t });
+            } else if (ev.delta?.type === "input_json_delta") {
+              toolInput += ev.delta.partial_json;
+            }
+            break;
+
+          case "content_block_stop":
+            if (toolBlock) {
+              let parsed = {};
+              try { parsed = JSON.parse(toolInput || "{}"); } catch {}
+              const idx = contentBlocks.findIndex(b => b.type === "tool_use" && b.id === toolBlock.id);
+              if (idx >= 0) contentBlocks[idx].input = parsed;
+              toolBlock  = null;
+              toolInput  = "";
+            }
+            break;
+
+          case "message_delta":
+            if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
+            break;
+
+          case "error":
+            sse(res, { type: "error", error: ev.error?.message || "Stream error" });
+            return;
+        }
+      }
+    }
+
+    // ── No tool calls → done ───────────────────────────────────────
+    const toolUseBlocks = contentBlocks.filter(b => b.type === "tool_use");
+    if (stopReason !== "tool_use" || toolUseBlocks.length === 0) break;
+
+    // ── Execute tools ──────────────────────────────────────────────
+    const toolResults = [];
+    for (const tb of toolUseBlocks) {
+      sse(res, { type: "tool_result_start", name: tb.name, id: tb.id });
+      const result = await execTool(tb.name, tb.input, req.user.id);
+      sse(res, { type: "tool_result_end",   name: tb.name, id: tb.id });
+      toolResults.push({ type: "tool_result", tool_use_id: tb.id, content: JSON.stringify(result) });
+    }
+
+    // Append turn to message history
+    messages = [
+      ...messages,
+      { role: "assistant", content: contentBlocks },
+      { role: "user",      content: toolResults  },
+    ];
+  }
+
+  sse(res, { type: "done" });
+  res.end();
+}
+
+// ── Routes ─────────────────────────────────────────────────────────────────
+
+// Non-streaming (kept for compatibility)
+router.post("/chat", auth, aiLimiter, async (req, res) => {
+  const v = validateAiRequest(req, res);
+  if (!v) return;
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": v.key, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ ...req.body, max_tokens: v.max_tokens }),
+    });
+    const d = await r.json();
+    if (!r.ok) return res.status(r.status).json({ error: d?.error?.message || "Anthropic API error" });
+    res.json(d);
+  } catch (e) { sendError(res, e); }
 });
 
-// ── Streaming SSE endpoint ────────────────────────────────────────
-// Returns text/event-stream. The Anthropic streaming protocol is forwarded
-// directly — client parses content_block_delta events for text chunks.
+// Streaming + agentic loop
 router.post("/chat/stream", auth, aiLimiter, async (req, res) => {
-  const validated = validateAiRequest(req, res);
-  if (!validated) return;
-  const { key, body } = validated;
+  const v = validateAiRequest(req, res);
+  if (!v) return;
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -76,35 +387,15 @@ router.post("/chat/stream", auth, aiLimiter, async (req, res) => {
   res.flushHeaders();
 
   try {
-    const upstream = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "messages-2023-06-01",
-      },
-      body: JSON.stringify({ ...body, stream: true }),
-    });
-
-    if (!upstream.ok) {
-      const errData = await upstream.json().catch(() => ({}));
-      res.write(`data: ${JSON.stringify({ type: "error", error: errData?.error?.message || "Anthropic API error" })}\n\n`);
-      return res.end();
-    }
-
-    // Pipe Anthropic SSE stream directly to client
-    const reader = upstream.body.getReader();
-    const decoder = new TextDecoder();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      res.write(decoder.decode(value, { stream: true }));
-    }
-    res.end();
+    await runAgenticLoop(
+      req, res,
+      v.key, v.model, v.max_tokens,
+      req.body.system || "You are a personal wealth advisor. Help the user understand their portfolio.",
+      req.body.messages || [],
+    );
   } catch (e) {
     console.error("AI stream error:", e.message);
-    res.write(`data: ${JSON.stringify({ type: "error", error: e.message })}\n\n`);
+    sse(res, { type: "error", error: e.message });
     res.end();
   }
 });

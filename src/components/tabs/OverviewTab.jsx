@@ -1,6 +1,8 @@
 // OverviewTab.jsx — lines 2480–2865 of App.jsx
 // Props: all from parent App component (no local-only state to extract)
 
+import LiabilitiesPanel from '../shared/LiabilitiesPanel.jsx';
+
 export default function OverviewTab({
   // Data
   demoMode,
@@ -38,6 +40,9 @@ export default function OverviewTab({
   fmtINR,
   fmtUSD,
   fmtPct,
+  // Liabilities
+  liabilities,
+  setLiabilities,
   // Actions
   exitDemoMode,
   setModal,
@@ -224,10 +229,38 @@ export default function OverviewTab({
                   </span>
                 </div>
               )}
+              {/* Net worth strip — shown when liabilities exist */}
+              {(liabilities||[]).length>0&&(()=>{
+                const totalLiab=(liabilities||[]).reduce((s,l)=>s+(+l.outstanding_amount||0),0);
+                const assets=nm.combined_cur||totCur;
+                const netWorth=assets-totalLiab;
+                return(
+                  <div style={{marginTop:".55rem",paddingTop:".45rem",borderTop:"1px solid rgba(224,124,90,.3)"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:".65rem",color:"var(--text-muted)",marginBottom:".2rem"}}>
+                      <span>Total Liabilities</span>
+                      <span style={{fontFamily:"'DM Mono',monospace",color:"#e07c5a"}}>−{fmtCrINR(totalLiab)}</span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:".72rem",fontWeight:600}}>
+                      <span style={{color:"var(--text)"}}>True Net Worth</span>
+                      <span style={{fontFamily:"'DM Mono',monospace",color:netWorth>=0?"#4caf9a":"#e07c5a"}}>{fmtCrINR(netWorth)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         );
       })()}
+
+      {/* Liabilities tracking */}
+      {setLiabilities&&(
+        <LiabilitiesPanel
+          liabilities={liabilities||[]}
+          setLiabilities={setLiabilities}
+          fmtCrINR={fmtCrINR}
+        />
+      )}
+
       <div className="sg">
         <div className="card"><div className="ctitle">Asset Allocation</div>
           {byType.length===0&&<div className="empty">No holdings</div>}

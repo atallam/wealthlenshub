@@ -11,10 +11,11 @@ import { useToast } from '../components/shared/Toast.jsx';
 
 export function usePortfolio(user) {
   const toast = useToast();
-  const [members,  setMembers]  = useState([]);
-  const [holdings, setHoldings] = useState([]);
-  const [goals,    setGoals]    = useState([]);
-  const [alerts,   setAlerts]   = useState([]);
+  const [members,     setMembers]     = useState([]);
+  const [holdings,    setHoldings]    = useState([]);
+  const [goals,       setGoals]       = useState([]);
+  const [alerts,      setAlerts]      = useState([]);
+  const [liabilities, setLiabilities] = useState([]);
   const [loaded,   setLoaded]   = useState(false);
   const [assetTypes, setAssetTypes] = useState([]);
   const [syncSt,   setSyncSt]   = useState("idle");
@@ -45,10 +46,12 @@ export function usePortfolio(user) {
           setMembers(portfolio.members || []);
           setGoals(portfolio.goals || []);
           setAlerts(portfolio.alerts || []);
+          setLiabilities(portfolio.liabilities || []);
         } else {
           setMembers([]);
           setGoals([]);
           setAlerts([]);
+          setLiabilities([]);
         }
         setHoldings(hlds || []);
         const fetched = (hlds || []).filter(h => h.price_fetched_at).map(h => new Date(h.price_fetched_at));
@@ -69,12 +72,12 @@ export function usePortfolio(user) {
   }, [user]);
 
   // ── Persist portfolio config (debounced) ── Lines 1328–1347
-  const savePortfolio = useCallback((m, g, a) => {
+  const savePortfolio = useCallback((m, g, a, l) => {
     setSyncSt("saving");
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
-        await api("/api/portfolio", { method: "POST", body: JSON.stringify({ members: m, goals: g, alerts: a }) });
+        await api("/api/portfolio", { method: "POST", body: JSON.stringify({ members: m, goals: g, alerts: a, liabilities: l }) });
         setSyncSt("saved");
       } catch { setSyncSt("error"); }
     }, 1000);
@@ -83,9 +86,9 @@ export function usePortfolio(user) {
   useEffect(() => {
     if (loaded && user) {
       if (!initialLoadDone.current) { initialLoadDone.current = true; return; }
-      savePortfolio(members, goals, alerts);
+      savePortfolio(members, goals, alerts, liabilities);
     }
-  }, [members, goals, alerts, loaded, user, savePortfolio]);
+  }, [members, goals, alerts, liabilities, loaded, user, savePortfolio]);
 
   // ── Real-time price refresh ── Lines 1351–1363
   async function refreshPrices() {
@@ -338,6 +341,7 @@ export function usePortfolio(user) {
     members,  setMembers,
     goals,    setGoals,
     alerts,   setAlerts,
+    liabilities, setLiabilities,
     loaded,
     assetTypes,
     syncSt,

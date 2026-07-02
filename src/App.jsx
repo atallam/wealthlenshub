@@ -3,7 +3,7 @@ import {
   LayoutDashboard, BarChart2, Target, Compass,
   Users, Wallet, CalendarDays, MessageSquare,
   RefreshCw, Settings, LogOut, Eye, X, MoreHorizontal,
-  AlertTriangle, Download,
+  AlertTriangle, Download, Receipt,
 } from 'lucide-react';
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
 import { api } from './lib/api.js';
@@ -42,10 +42,12 @@ import MembersTab from './components/tabs/MembersTab.jsx';
 import BudgetTab from './components/tabs/BudgetTab.jsx';
 import CalendarTab from './components/tabs/CalendarTab.jsx';
 import AdvisorTab from './components/tabs/AdvisorTab.jsx';
+import TaxTab from './components/tabs/TaxTab.jsx';
 
 // ── Shared components ────────────────────────────────────────────
 import LoginScreen from './components/shared/LoginScreen.jsx';
 import LoadingSkeleton from './components/shared/LoadingSkeleton.jsx';
+import LiabilitiesPanel from './components/shared/LiabilitiesPanel.jsx';
 import TransactionPanel from './components/shared/TransactionPanel.jsx';
 import ArtifactPanel from './components/shared/ArtifactPanel.jsx';
 import { Overlay, FG, MA } from './components/shared/Overlay.jsx';
@@ -68,6 +70,7 @@ const TABS = [
   { key: 'members',   label: 'Members',   Icon: Users },
   { key: 'budget',    label: 'Budget',    Icon: Wallet },
   { key: 'calendar',  label: 'Calendar',  Icon: CalendarDays },
+  { key: 'tax',       label: 'Tax',       Icon: Receipt },
   { key: 'advisor',   label: 'Advisor',   Icon: MessageSquare },
 ];
 
@@ -181,7 +184,7 @@ export default function App() {
 
   // ── Destructure hook state ────────────────────────────────────
   const {
-    holdings, setHoldings, members, goals, alerts, loaded,
+    holdings, setHoldings, members, goals, alerts, liabilities, setLiabilities, loaded,
     assetTypes, syncSt, priceRefreshing, lastPriceRefresh, priceCount,
     profile, wealthSnapshots, benchmark, demoMode,
   } = portfolio;
@@ -471,7 +474,7 @@ ${alertsText}`;
 
   // ── Props bundle shared across most tabs ──────────────────────
   const sharedPortfolioProps = {
-    holdings, sharedHoldings, allHoldings, allMembers, members, goals, alerts,
+    holdings, sharedHoldings, allHoldings, allMembers, members, goals, alerts, liabilities, setLiabilities,
     loaded, demoMode, wealthSnapshots, benchmark, sharedWithMe,
     valINRCache, invINRCache, valNativeCache, invNativeCache, xirrCache,
     totCur, totInv, totGain, totPct, allCur, allInv, byType, mSum, trigAlerts,
@@ -659,6 +662,13 @@ ${alertsText}`;
           <CalendarTab
             holdings={holdings} goals={goals}
             calMonth={calMonth} setCalMonth={setCalMonth}
+          />
+        )}
+
+        {loaded && tab === 'tax' && (
+          <TaxTab
+            members={members}
+            selMember={selMember}
           />
         )}
 

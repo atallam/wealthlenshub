@@ -68,11 +68,31 @@ export default function AdvisorTab({
               whiteSpace:"pre-wrap",
               fontFamily:"'DM Sans',sans-serif",
             }}>
-              {/* Show dots only when streaming and content is still empty */}
-              {m.streaming && !m.content ? (
+              {/* Tool call indicators — shown for assistant messages */}
+              {m.role==="assistant" && m.toolCalls?.length>0 && (
+                <div style={{display:"flex",flexWrap:"wrap",gap:".35rem",marginBottom: m.content?".55rem":0}}>
+                  {m.toolCalls.map(tc=>(
+                    <span key={tc.id} style={{
+                      display:"inline-flex",alignItems:"center",gap:".3rem",
+                      padding:"2px 8px",borderRadius:20,fontSize:".65rem",
+                      background: tc.status==="running"?"rgba(201,168,76,.12)":tc.status==="error"?"rgba(224,124,90,.12)":"rgba(76,175,154,.10)",
+                      border: `1px solid ${tc.status==="running"?"rgba(201,168,76,.3)":tc.status==="error"?"rgba(224,124,90,.3)":"rgba(76,175,154,.3)"}`,
+                      color: tc.status==="running"?"#c9a84c":tc.status==="error"?"#e07c5a":"#4caf9a",
+                      transition:"all .3s",
+                    }}>
+                      {tc.status==="running"
+                        ? <span style={{animation:"spin .8s linear infinite",display:"inline-block"}}>⟳</span>
+                        : tc.status==="done" ? "✓" : "✕"}
+                      {tc.label}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* Show dots only when streaming, no tool calls yet, and content is still empty */}
+              {m.streaming && !m.content && !m.toolCalls?.length ? (
                 <span style={{display:"inline-flex",gap:".3rem",alignItems:"center"}}>
-                  {[0,1,2].map(i=>(
-                    <span key={i} style={{width:6,height:6,borderRadius:"50%",background:"rgba(201,168,76,.5)",display:"inline-block",animation:`bounce 1.2s ${i*0.2}s infinite`}}/>
+                  {[0,1,2].map(j=>(
+                    <span key={j} style={{width:6,height:6,borderRadius:"50%",background:"rgba(201,168,76,.5)",display:"inline-block",animation:`bounce 1.2s ${j*0.2}s infinite`}}/>
                   ))}
                 </span>
               ) : (
@@ -106,7 +126,7 @@ export default function AdvisorTab({
       <div style={{fontSize:".65rem",color:"var(--text-muted)",marginTop:".4rem",textAlign:"center"}}>
         Press Enter to send · Shift+Enter for new line · Conversation context is maintained across messages
       </div>
-      <style>{`@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}} @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}`}</style>
+      <style>{`@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}} @keyframes blink{0%,100%{opacity:1}50%{opacity:0}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
