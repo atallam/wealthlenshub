@@ -59,6 +59,24 @@
 
 ---
 
+## 0b. Phase 3 & 4 status (2026-07-02)
+
+**Applied (verifiable by reading; run `npm test` locally to confirm):**
+- **P3-1 — tax dedupe:** new `lib/tax.js` is the single FIFO/FY implementation. `routes/tax.js` and `routes/ai.js` both import it; their private copies are deleted. Behavior preserved.
+- **P3-4 — tooling:** `eslint.config.js` (flat, Node+React), `.prettierrc.json`, `.prettierignore`, `package.json` scripts (`lint`, `format`, `test`), devDeps, and `tests/tax.test.js` + `tests/guards.test.js` (Vitest).
+- **P4-1 — accessibility:** `src/components/shared/Overlay.jsx` now renders `role="dialog"` + `aria-modal`, traps Tab focus, closes on Esc, and restores focus to the trigger on close. Every modal built on `Overlay` inherits this.
+- **P4-3 — mobile:** **already implemented in the codebase** (bottom nav, FAB, mobile holding cards, bottom-sheet modals, 44px+ touch targets, 900/600/400px breakpoints in `styles.css`). The original "verify mobile" flag was based on a truncated file read; on full inspection it's comprehensive. No change needed. *(Correction to §6.6.)*
+
+**Deferred to a build-enabled session — see `RESTRUCTURE_PLAN.md`:**
+- **P3-2** full service-layer migration across all ~20 routes,
+- **P3-3** broker-sync consolidation (kite/breeze/snaptrade),
+- **P3-5** splitting the 1,126-line / 56-`useState` `App.jsx` into feature folders,
+- **P4-2** unified import hub + consistent loading/empty states.
+
+These four are large, cross-file, and carry real regression risk that I can't validate here (the sandbox can't build against your OneDrive files). `RESTRUCTURE_PLAN.md` gives exact, ordered, file-by-file steps so they can be done safely with a running `npm run dev`/`npm test` loop.
+
+---
+
 ## 1. Executive Summary
 
 The app is functionally rich (multi-source imports: CAS, Kite, Breeze, SnapTrade, Plaid, Gmail; budgeting; tax; AI advisor) and already has good bones: a shared `auth` middleware, Zod validation helpers, field-level AES-256-GCM encryption for PII, and route modularization. Most write endpoints correctly scope to `req.user.id`.

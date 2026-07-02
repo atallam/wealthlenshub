@@ -9,7 +9,12 @@
   "scripts": {
     "start": "node server.js",
     "build": "npx vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{js,jsx,json,css,md}\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
@@ -30,6 +35,15 @@
     "snaptrade-typescript-sdk": "^10.0.17",
     "vite": "^8.1.0",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "eslint": "^9.13.0",
+    "eslint-plugin-react": "^7.37.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "globals": "^15.11.0",
+    "prettier": "^3.3.3",
+    "vitest": "^2.1.0"
   },
   "overrides": {
     "axios": "^1.18.1",

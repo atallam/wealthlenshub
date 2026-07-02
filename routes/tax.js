@@ -13,116 +13,9 @@
 import { Router } from "express";
 import { supabase } from "../lib/db.js";
 import { auth } from "../lib/auth.js";
+import { fyRange, currentFY, computeGains, summarizeRealized } from "../lib/tax.js";
 
 const router = Router();
-
-// ── helpers ────────────────────────────────────────────────────────────────
-
-/** "2024-25" → { start:"2024-04-01", end:"2025-03-31" } */
-function fyRange(fyStr) {
-  const startY = parseInt(fyStr.split("-")[0], 10);
-  return {
-    start: `${startY}-04-01`,
-    end:   `${startY + 1}-03-31`,
-  };
-}
-
-/** Current Indian FY string, e.g. "2026-27" */
-function currentFY() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = d.getMonth(); // 0-indexed; April = 3
-  const startY = m >= 3 ? y : y - 1;
-  return `${startY}-${String(startY + 1).slice(-2)}`;
-}
-
-/** Whole months between two ISO date strings */
-function monthsBetween(buyDate, sellDate) {
-  const a = new Date(buyDate);
-  const b = new Date(sellDate);
-  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
-}
-
-/**
- * FIFO lot matching.
- *
- * Returns:
- *   realized  — gains from SELLs within [fyStart, fyEnd]
- *   unrealized — open lots valued at currentPrice
- */
-function computeGains(transactions, fyStart, fyEnd, currentPrice) {
-  const sorted = [...transactions].sort(
-    (a, b) => new Date(a.txn_date) - new Date(b.txn_date)
-  );
-
-  // Mutable FIFO queue: { date, units, price, remaining }
-  const lots = [];
-  const realized  = [];
-  const today = new Date().toISOString().slice(0, 10);
-
-  for (const txn of sorted) {
-    const units = Math.abs(+txn.units || 0);
-    const price = +txn.price || 0;
-
-    if (txn.txn_type === "BUY") {
-      lots.push({ date: txn.txn_date, units, price, remaining: units });
-
-    } else if (txn.txn_type === "SELL" || txn.txn_type === "REDEEM") {
-      let toSell = units;
-      const sellPrice = price;
-      const sellDate  = txn.txn_date;
-      const inFY = sellDate >= fyStart && sellDate <= fyEnd;
-
-      // Consume oldest lots first (FIFO)
-      while (toSell > 1e-6 && lots.length > 0) {
-        const lot = lots[0];
-        const used = Math.min(lot.remaining, toSell);
-        lot.remaining -= used;
-        toSell        -= used;
-
-        if (inFY) {
-          const holdMonths = monthsBetween(lot.date, sellDate);
-          const isLtcg     = holdMonths >= 12;
-          const gain        = (sellPrice - lot.price) * used;
-          realized.push({
-            buy_date:    lot.date,
-            sell_date:   sellDate,
-            units:       used,
-            buy_price:   lot.price,
-            sell_price:  sellPrice,
-            gain,
-            is_ltcg:     isLtcg,
-            hold_months: holdMonths,
-          });
-        }
-
-        if (lot.remaining < 1e-6) lots.shift();
-      }
-    }
-  }
-
-  // Open (unrealized) lots
-  const unrealized = [];
-  if (currentPrice > 0) {
-    for (const lot of lots) {
-      if (lot.remaining < 1e-6) continue;
-      const holdMonths = monthsBetween(lot.date, today);
-      const isLtcg     = holdMonths >= 12;
-      const gain        = (currentPrice - lot.price) * lot.remaining;
-      unrealized.push({
-        buy_date:      lot.date,
-        units:         lot.remaining,
-        buy_price:     lot.price,
-        current_price: currentPrice,
-        gain,
-        is_ltcg:       isLtcg,
-        hold_months:   holdMonths,
-      });
-    }
-  }
-
-  return { realized, unrealized };
-}
 
 // ── route ──────────────────────────────────────────────────────────────────
 
@@ -190,35 +83,15 @@ router.get("/gains", auth, async (req, res) => {
     for (const u of unrealized) unrealizedAll.push({ ...meta, ...u });
   }
 
-  // 5. Aggregate
-  const stcg = realizedAll.filter(d => !d.is_ltcg).reduce((s, d) => s + d.gain, 0);
-  const ltcg = realizedAll.filter(d =>  d.is_ltcg).reduce((s, d) => s + d.gain, 0);
-
-  const LTCG_EXEMPTION = 125000;
-  const ltcgTaxable    = Math.max(0, ltcg - LTCG_EXEMPTION);
-  const stcgTax        = Math.max(0, stcg) * 0.20;
-  const ltcgTax        = ltcgTaxable * 0.125;
-
+  // 5. Aggregate (shared math in lib/tax.js)
+  const summary = summarizeRealized(realizedAll);
   const stcgUR = unrealizedAll.filter(d => !d.is_ltcg).reduce((s, d) => s + d.gain, 0);
   const ltcgUR = unrealizedAll.filter(d =>  d.is_ltcg).reduce((s, d) => s + d.gain, 0);
 
   res.json({
     fy,
-    realized: {
-      stcg,
-      ltcg,
-      ltcg_exemption: LTCG_EXEMPTION,
-      ltcg_taxable:   ltcgTaxable,
-      stcg_tax:       stcgTax,
-      ltcg_tax:       ltcgTax,
-      total_tax:      stcgTax + ltcgTax,
-      details:        realizedAll,
-    },
-    unrealized: {
-      stcg: stcgUR,
-      ltcg: ltcgUR,
-      details: unrealizedAll,
-    },
+    realized: { ...summary, details: realizedAll },
+    unrealized: { stcg: stcgUR, ltcg: ltcgUR, details: unrealizedAll },
   });
 });
 

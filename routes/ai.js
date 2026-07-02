@@ -14,6 +14,7 @@ import { Router }    from "express";
 import rateLimit     from "express-rate-limit";
 import { auth, sendError } from "../lib/auth.js";
 import { supabase }  from "../lib/db.js";
+import { currentFY, fyRange, computeGains, summarizeRealized } from "../lib/tax.js";
 
 const router = Router();
 
@@ -89,44 +90,8 @@ const ADVISOR_TOOLS = [
   },
 ];
 
-// ── Tax helpers ────────────────────────────────────────────────────────────
-
-function currentFYStr() {
-  const d = new Date(), y = d.getFullYear(), m = d.getMonth();
-  const s = m >= 3 ? y : y - 1;
-  return `${s}-${String(s + 1).slice(-2)}`;
-}
-function fyRangeStr(fyStr) {
-  const s = parseInt(fyStr.split("-")[0], 10);
-  return { start: `${s}-04-01`, end: `${s + 1}-03-31` };
-}
-function monthsApart(a, b) {
-  const da = new Date(a), db = new Date(b);
-  return (db.getFullYear() - da.getFullYear()) * 12 + (db.getMonth() - da.getMonth());
-}
-function fifoGains(txns, fyStart, fyEnd) {
-  const sorted = [...txns].sort((a, b) => new Date(a.txn_date) - new Date(b.txn_date));
-  const lots = []; let stcg = 0, ltcg = 0;
-  for (const t of sorted) {
-    const u = Math.abs(+t.units || 0), p = +t.price || 0;
-    if (t.txn_type === "BUY") { lots.push({ date: t.txn_date, price: p, remaining: u }); }
-    else if (t.txn_type === "SELL" || t.txn_type === "REDEEM") {
-      const inFY = t.txn_date >= fyStart && t.txn_date <= fyEnd;
-      let toSell = u;
-      while (toSell > 1e-6 && lots.length > 0) {
-        const lot = lots[0];
-        const used = Math.min(lot.remaining, toSell);
-        lot.remaining -= used; toSell -= used;
-        if (inFY) {
-          const gain = (p - lot.price) * used;
-          if (monthsApart(lot.date, t.txn_date) >= 12) ltcg += gain; else stcg += gain;
-        }
-        if (lot.remaining < 1e-6) lots.shift();
-      }
-    }
-  }
-  return { stcg, ltcg };
-}
+// ── Tax helpers ──────────────────────────────────────────────────────────────
+// FIFO/FY math lives in lib/tax.js (shared with routes/tax.js so they can't drift).
 
 // ── Tool executors ─────────────────────────────────────────────────────────
 
@@ -208,8 +173,8 @@ async function execTool(name, input, userId) {
       }
 
       case "get_tax_summary": {
-        const fy = input.fy || currentFYStr();
-        const { start, end } = fyRangeStr(fy);
+        const fy = input.fy || currentFY();
+        const { start, end } = fyRange(fy);
         const { data: holdings } = await supabase
           .from("holdings").select("id, name, type").eq("user_id", userId)
           .in("type", ["IN_STOCK", "IN_ETF", "MF"]);
@@ -219,16 +184,17 @@ async function execTool(name, input, userId) {
           .in("holding_id", holdings.map(h => h.id));
         const txnMap = {};
         for (const t of (txns || [])) (txnMap[t.holding_id] ||= []).push(t);
-        let stcg = 0, ltcg = 0;
+        // Shared FIFO math (lib/tax.js) — aggregate realized rows across holdings.
+        const realizedAll = [];
         for (const h of holdings) {
-          const g = fifoGains(txnMap[h.id] || [], start, end);
-          stcg += g.stcg; ltcg += g.ltcg;
+          const { realized } = computeGains(txnMap[h.id] || [], start, end, 0);
+          realizedAll.push(...realized);
         }
-        const taxable = Math.max(0, ltcg - 125000);
+        const s = summarizeRealized(realizedAll);
         return {
-          fy, stcg: Math.round(stcg), ltcg: Math.round(ltcg),
-          ltcg_exemption: 125000, ltcg_taxable: Math.round(taxable),
-          estimated_tax: Math.round(Math.max(0, stcg) * 0.20 + taxable * 0.125),
+          fy, stcg: Math.round(s.stcg), ltcg: Math.round(s.ltcg),
+          ltcg_exemption: s.ltcg_exemption, ltcg_taxable: Math.round(s.ltcg_taxable),
+          estimated_tax: Math.round(s.total_tax),
         };
       }
 
