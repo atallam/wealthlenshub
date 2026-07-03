@@ -37,10 +37,15 @@ export function useCASImport(user, onSuccess) {
   function fuzzyMemberMatch(name, members) {
     if (!name || name.length < 2) return null;
     const lower = name.toLowerCase().trim();
+    const compact = lower.replace(/\s+/g, "");   // "T V Rao" → "tvrao"
     for (const m of members) {
       const ml = m.name.toLowerCase().trim();
+      const compactMl = ml.replace(/\s+/g, "");
       if (ml === lower) return m;
+      if (compactMl === compact) return m;        // "tvrao" === "tvrao"
       if (ml.includes(lower) || lower.includes(ml)) return m;
+      // Compact-form substring: "tvrao" inside "tvraopillai" etc.
+      if (compact.length > 3 && (compactMl.includes(compact) || compact.includes(compactMl))) return m;
       const words = lower.split(/\s+/);
       const mWords = ml.split(/\s+/);
       const overlap = words.filter(w => w.length > 2 && mWords.some(mw => mw.includes(w) || w.includes(mw)));
@@ -130,9 +135,15 @@ export function useCASImport(user, onSuccess) {
         ...h,
         _dupAction: h._duplicate ? (casDupAction[h.name] || "update") : undefined,
       }));
+      // Resolve the member for single-holder CAS.
+      // Priority: (1) server/fuzzy-matched map entry for the holder name,
+      //           (2) user manually picked from dropdown (stored under "__default__"),
+      //           (3) first member only when there is exactly ONE member (unambiguous).
+      // Never silently fall back to members[0] when there are multiple members — that
+      // caused TVRAO's CAS to be imported under Avinash.
       const singleMember = casHolderNames.length <= 1 && members.length > 0
-        ? (casHolderMap[casHolderNames[0]] || members[0]?.id)
-        : members[0]?.id;
+        ? (casHolderMap[casHolderNames[0]] || casHolderMap["__default__"] || (members.length === 1 ? members[0]?.id : undefined))
+        : undefined;   // multi-holder: always use account_map on the server side
       const res = await fetch("/api/holdings/import", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },

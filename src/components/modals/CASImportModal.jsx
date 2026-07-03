@@ -199,10 +199,11 @@ export default function CASImportModal({
                   <span style={{ fontSize: ".72rem", color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
                   <span style={{ fontSize: ".65rem", color: "var(--text)" }}>{"->"}</span>
                   <select className="fi fs"
-                    style={{ padding: ".22rem .5rem", fontSize: ".7rem", width: "auto", minWidth: 130 }}
+                    style={{ padding: ".22rem .5rem", fontSize: ".7rem", width: "auto", minWidth: 130,
+                      borderColor: casHolderMap[name] ? undefined : "rgba(224,124,90,.6)" }}
                     value={casHolderMap[name] || ""}
                     onChange={e => setCasHolderMap(prev => ({ ...prev, [name]: e.target.value || null }))}>
-                    <option value="">Auto (first member)</option>
+                    <option value="">— Select member —</option>
                     {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                   </select>
                 </div>
@@ -210,17 +211,30 @@ export default function CASImportModal({
             </div>
           )}
 
-          {!hasMultiHolder && casHolderNames.length <= 1 && members.length > 1 && (
-            <div style={{ marginBottom: ".9rem", display: "flex", gap: ".6rem", alignItems: "center" }}>
-              <span style={{ fontSize: ".72rem", color: "var(--text)" }}>Assign holdings to:</span>
-              <select className="fi fs" style={{ padding: ".25rem .5rem", fontSize: ".72rem", width: "auto" }}
-                value={casHolderMap[casHolderNames[0]] || ""}
-                onChange={e => setCasHolderMap(prev => ({ ...prev, [casHolderNames[0] || "__default__"]: e.target.value || null }))}>
-                <option value="">Auto (first member)</option>
-                {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            </div>
-          )}
+          {!hasMultiHolder && casHolderNames.length <= 1 && members.length > 1 && (() => {
+            const resolvedId = casHolderMap[casHolderNames[0]] || casHolderMap["__default__"] || "";
+            const autoMatched = !!(casHolderMap[casHolderNames[0]]);
+            return (
+              <div style={{ marginBottom: ".9rem" }}>
+                <div style={{ display: "flex", gap: ".6rem", alignItems: "center" }}>
+                  <span style={{ fontSize: ".72rem", color: "var(--text)" }}>Assign holdings to:</span>
+                  <select className="fi fs" style={{ padding: ".25rem .5rem", fontSize: ".72rem", width: "auto",
+                    borderColor: resolvedId ? undefined : "rgba(224,124,90,.6)" }}
+                    value={resolvedId}
+                    onChange={e => setCasHolderMap(prev => ({ ...prev, [casHolderNames[0] || "__default__"]: e.target.value || null }))}>
+                    <option value="">— Select member —</option>
+                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                  {autoMatched && <span style={{ fontSize: ".65rem", color: "#4caf9a" }}>✓ auto-matched</span>}
+                </div>
+                {!resolvedId && (
+                  <div style={{ fontSize: ".68rem", color: "#e07c5a", marginTop: ".3rem" }}>
+                    ⚠ No member auto-matched for "{casHolderNames[0] || "this CAS"}". Please select one above.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {casHoldings.length > 0 && (
             <div style={{ overflowX: "auto", maxHeight: 320, overflowY: "auto", borderRadius: 8, border: "1px solid var(--border)", marginBottom: ".9rem" }}>
@@ -261,14 +275,22 @@ export default function CASImportModal({
             </div>
           )}
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".6rem" }}>
-            <button className="btnc" onClick={() => { resetCASDownloader(); onClose(); }}>Cancel</button>
-            <button className="btns"
-              disabled={casHoldings.length === 0}
-              onClick={() => executeCASImport(members, onPriceRefresh)}>
-              Import {casHoldings.length} Holding{casHoldings.length !== 1 ? "s" : ""}
-            </button>
-          </div>
+          {(() => {
+            // Block import if multi-member and single-holder CAS has no member selected.
+            const needsMemberPick = !hasMultiHolder && casHolderNames.length <= 1 && members.length > 1
+              && !(casHolderMap[casHolderNames[0]] || casHolderMap["__default__"]);
+            return (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".6rem" }}>
+                <button className="btnc" onClick={() => { resetCASDownloader(); onClose(); }}>Cancel</button>
+                <button className="btns"
+                  disabled={casHoldings.length === 0 || needsMemberPick}
+                  title={needsMemberPick ? "Select a family member above before importing" : undefined}
+                  onClick={() => executeCASImport(members, onPriceRefresh)}>
+                  Import {casHoldings.length} Holding{casHoldings.length !== 1 ? "s" : ""}
+                </button>
+              </div>
+            );
+          })()}
         </>
       )}
 
