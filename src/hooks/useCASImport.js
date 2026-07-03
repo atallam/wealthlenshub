@@ -240,6 +240,127 @@ export function useCASImport(user, onSuccess) {
     setCasUploading(false);
   }
 
+  // ── CAS V2 (casparser): upload + parse CAS PDF ───────────────────────────────
+  async function handleCASUploadV2(file, members) {
+    setCasUploading(true);
+    setCasWarnings([]);
+    setCasHoldings([]);
+    setCasHolderNames([]);
+    setCasHolderPans([]);
+    setCasStep("uploading");
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
+
+      const fd = new FormData();
+      fd.append("file", file);
+
+      const res = await fetch("/api/import/detect-casparser", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+
+      if (data.error === "password_required" || data.error === "password_incorrect") {
+        setCasWarnings(data.error === "password_incorrect"
+          ? ["Smart Parser: Incorrect password — check your PAN (uppercase, 10 chars)"]
+          : ["This CAS PDF is password-protected. Enter your PAN to unlock."]);
+        setCasStep("password_v2");
+        setCasUploading(false);
+        setCasPendingFile(file);
+        return;
+      }
+
+      if (data.error) {
+        setCasWarnings([data.error]);
+        setCasStep("intro");
+        setCasUploading(false);
+        return;
+      }
+
+      const holdings    = data.holdings      || [];
+      const holderNames = data.holder_names  || [];
+      const holderPans  = data.holder_pans   || [];
+
+      setCasHoldings(holdings);
+      setCasHolderNames(holderNames);
+      setCasHolderPans(holderPans);
+      setCasWarnings(data.warnings    || []);
+      setCasFormat(data.format        || "");
+      setCasStatementDate(data.statement_date || null);
+      setCasPeriodStart(data.period_start    || null);
+      setCasPeriodEnd(data.period_end        || null);
+      setCasDepository(data.depository       || "");
+
+      const autoMap = autoMapCASHolders(holderNames, holderPans, members, data.holder_member_map || {});
+      setCasHolderMap(autoMap);
+      setCasStep("matching");
+    } catch (e) {
+      setCasWarnings([`Smart Parser upload failed: ${e.message}`]);
+      setCasStep("intro");
+    }
+    setCasUploading(false);
+  }
+
+  // ── CAS V2: retry with manually entered PAN ───────────────────────────────
+  async function retryCASWithPasswordV2(members) {
+    if (!casPendingFile || !casPanInput.trim()) return;
+    const pan = casPanInput.trim().toUpperCase();
+    setCasStep("uploading");
+    setCasWarnings([]);
+    setCasUploading(true);
+
+    if (casSavePan) {
+      api("/api/profile", { method: "PUT", body: JSON.stringify({ pan }) }).catch(() => {});
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
+
+      const fd = new FormData();
+      fd.append("file", casPendingFile);
+      fd.append("password", pan);
+
+      const res = await fetch("/api/import/detect-casparser", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+
+      if (data.error === "password_incorrect") {
+        setCasWarnings(["Smart Parser: Incorrect password — check your PAN (uppercase, e.g. ABCDE1234F)"]);
+        setCasStep("password_v2");
+        setCasUploading(false);
+        return;
+      }
+
+      if (data.error) {
+        setCasWarnings([data.error]);
+        setCasStep("password_v2");
+        setCasUploading(false);
+        return;
+      }
+
+      setCasHoldings(data.holdings || []);
+      setCasHolderNames(data.holder_names || []);
+      setCasHolderPans(data.holder_pans   || []);
+      setCasWarnings(data.warnings        || []);
+      setCasFormat(data.format            || "");
+      const autoMap = autoMapCASHolders(data.holder_names || [], data.holder_pans || [], members, data.holder_member_map || {});
+      setCasHolderMap(autoMap);
+      setCasStep("matching");
+      setCasPendingFile(null);
+    } catch (e) {
+      setCasWarnings([`Smart Parser upload failed: ${e.message}`]);
+      setCasStep("password_v2");
+    }
+    setCasUploading(false);
+  }
+
   // ── Reset CAS ── Lines 1691–1712
   function resetCASDownloader() {
     setCasModal(false);
@@ -290,5 +411,8 @@ export function useCASImport(user, onSuccess) {
     retryCASWithPassword,
     resetCASDownloader,
     autoMapCASHolders,
+    // V2 — casparser parallel path (new button, existing flow untouched)
+    handleCASUploadV2,
+    retryCASWithPasswordV2,
   };
 }

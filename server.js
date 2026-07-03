@@ -18,6 +18,7 @@ import snaptradeRouter    from "./routes/snaptrade.js";
 import plaidRouter        from "./routes/plaid.js";
 import setuRouter         from "./routes/setu.js";
 import importRouter       from "./routes/import.js";
+import importV2Router     from "./routes/import_v2.js";    // casparser parallel path
 import budgetRouter       from "./routes/budget.js";
 import snapshotsRouter    from "./routes/snapshots.js";
 import kiteRouter         from "./routes/kite.js";
@@ -65,6 +66,7 @@ app.use("/api/snaptrade",     snaptradeRouter);
 app.use("/api/plaid",         plaidRouter);
 app.use("/api/setu",          setuRouter);
 app.use("/api/import",        importRouter);
+app.use("/api/import",        importV2Router);   // casparser route: POST /detect-casparser
 app.use("/api/budget",        budgetRouter);
 app.use("/api/snapshots",     snapshotsRouter);
 app.use("/api/kite",          kiteRouter);
