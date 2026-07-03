@@ -13,7 +13,7 @@ const LIABILITY_TYPES = [
   { key: "OTHER",          label: "Other",             icon: "📋" },
 ];
 
-const BLANK = { name: "", type: "HOME_LOAN", outstanding_amount: "", interest_rate: "", emi: "", currency: "INR", start_date: "", tenure_months: "" };
+const BLANK = { name: "", type: "HOME_LOAN", outstanding_amount: "", interest_rate: "", emi: "", currency: "INR", start_date: "", tenure_months: "", member_id: "" };
 
 function uid() { return "lb_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
@@ -32,7 +32,7 @@ function todayYM() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-export default function LiabilitiesPanel({ liabilities, setLiabilities, fmtCrINR }) {
+export default function LiabilitiesPanel({ liabilities, setLiabilities, fmtCrINR, members = [] }) {
   const [adding, setAdding] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(BLANK);
@@ -95,6 +95,7 @@ export default function LiabilitiesPanel({ liabilities, setLiabilities, fmtCrINR
             const auto = isAutoCalc(l);
             const currentBalance = computeOutstanding(l, now);
             const payoff = auto ? payoffLabel(l, now) : null;
+            const owner = members.find(m => m.id === l.member_id);
 
             return (
               <div key={l.id} style={{
@@ -104,7 +105,14 @@ export default function LiabilitiesPanel({ liabilities, setLiabilities, fmtCrINR
               }}>
                 <span style={{ fontSize: "1rem", flexShrink: 0 }}>{ti.icon}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: ".8rem", color: "var(--text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name}</div>
+                  <div style={{ fontSize: ".8rem", color: "var(--text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {l.name}
+                    {owner && (
+                      <span style={{ marginLeft: 6, fontSize: ".65rem", fontWeight: 400, color: "var(--text-muted)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px" }}>
+                        {owner.name}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ fontSize: ".65rem", color: "var(--text-muted)" }}>
                     {ti.label}
                     {l.interest_rate ? ` · ${l.interest_rate}% p.a.` : ""}
@@ -185,6 +193,17 @@ export default function LiabilitiesPanel({ liabilities, setLiabilities, fmtCrINR
               <div style={{ fontSize: ".68rem", color: "var(--text-muted)", marginBottom: ".25rem" }}>Tenure (months, optional)</div>
               <input className="fi" type="number" placeholder="e.g. 240" value={form.tenure_months} onChange={e => set("tenure_months", e.target.value)} style={{ width: "100%" }} />
             </div>
+            {members.length > 0 && (
+              <div style={{ gridColumn: "1 / -1" }}>
+                <div style={{ fontSize: ".68rem", color: "var(--text-muted)", marginBottom: ".25rem" }}>
+                  Borrower <span style={{ fontWeight: 400, opacity: .7 }}>(optional — for per-person tracking)</span>
+                </div>
+                <select className="fi fs" value={form.member_id || ""} onChange={e => set("member_id", e.target.value)} style={{ width: "100%" }}>
+                  <option value="">— Family (unassigned) —</option>
+                  {members.map(m => <option key={m.id} value={m.id}>{m.name}{m.relation ? ` (${m.relation})` : ""}</option>)}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Live preview of auto-calc if enough data is entered */}
