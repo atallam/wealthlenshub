@@ -32,6 +32,9 @@ import { useBudget } from './hooks/useBudget.js';
 import { useImport } from './hooks/useImport.js';
 import { useCASImport } from './hooks/useCASImport.js';
 import { useAI } from './hooks/useAI.js';
+import { useBrokerSearch } from './hooks/useBrokerSearch.js';
+import { useUiState } from './hooks/useUiState.js';
+import { useHoldingsView } from './hooks/useHoldingsView.js';
 
 // ── Tab components ───────────────────────────────────────────────
 import OverviewTab from './components/tabs/OverviewTab.jsx';
@@ -83,17 +86,7 @@ export default function App() {
   // ── Cross-tab UI state ────────────────────────────────────────
   const [tab,              setTab]              = useState('overview');
   const [selMember,        setSelMember]        = useState('all');
-  const [modal,            setModal]            = useState(null);
-  const [fdScanOpen,       setFdScanOpen]       = useState(false);
-  const [showSettings,     setShowSettings]     = useState(false);
-  const [showImportHub,    setShowImportHub]    = useState(false);
-  const [showSnapTrade,    setShowSnapTrade]    = useState(false);
-  const [showKite,         setShowKite]         = useState(false);
-  const [showBreeze,       setShowBreeze]       = useState(false);
-  const [moreSheetOpen,    setMoreSheetOpen]     = useState(false);
-  const [expandedHolding,  setExpandedHolding]  = useState(null);
-  const [showQuietAlerts,  setShowQuietAlerts]  = useState(false);
-  const [showSharedDropdown, setShowSharedDropdown] = useState(false);
+  // Modal/sheet/dropdown UI toggles now live in useUiState().
 
   // ── Holding / member form state ───────────────────────────────
   const [form,            setForm]            = useState(BF);
@@ -106,33 +99,12 @@ export default function App() {
   const [editGoalId,      setEditGoalId]      = useState(null);
   const [alertForm,       setAlertForm]       = useState(BA);
 
-  // ── Broker search state ───────────────────────────────────────
-  const [mfSearch,       setMfSearch]       = useState('');
-  const [mfResults,      setMfResults]      = useState([]);
-  const [mfSearching,    setMfSearching]    = useState(false);
-  const [mfNav,          setMfNav]          = useState(null);
-  const [stockSearch,    setStockSearch]    = useState('');
-  const [stockResults,   setStockResults]   = useState([]);
-  const [stockSearching, setStockSearching] = useState(false);
-  const [stockInfo,      setStockInfo]      = useState(null);
-  const [stockLooking,   setStockLooking]   = useState(false);
-  const [etfSearch,      setEtfSearch]      = useState('');
-  const [etfResults,     setEtfResults]     = useState([]);
-  const [etfSearching,   setEtfSearching]   = useState(false);
-  const [etfInfo,        setEtfInfo]        = useState(null);
-  const [usSearch,       setUsSearch]       = useState('');
-  const [usResults,      setUsResults]      = useState([]);
-  const [usSearching,    setUsSearching]    = useState(false);
-  const [usdInrRate,     setUsdInrRate]     = useState(94.5);
-  const [usdInrLoading,  setUsdInrLoading]  = useState(false);
+  // ── Broker search state now lives in useBrokerSearch() (see below) ──
 
   // ── Misc state ────────────────────────────────────────────────
   const [txnHolding,      setTxnHolding]      = useState(null);
   const [txnForm,         setTxnForm]         = useState(BT);
   const [artifactHolding, setArtifactHolding] = useState(null);
-  const [filterType,      setFilterType]      = useState('ALL');
-  const [sortCol,         setSortCol]         = useState(null);
-  const [sortDir,         setSortDir]         = useState('asc');
   const [targetAlloc, setTargetAlloc] = useState({
     IN_STOCK:35,MF:25,IN_ETF:5,US_STOCK:10,US_ETF:5,US_BOND:0,
     CRYPTO:3,CASH:0,FD:5,PPF:5,EPF:5,REAL_ESTATE:2,OTHER:0,
@@ -150,10 +122,6 @@ export default function App() {
   const importFileRef    = useRef();
   const txnSaving        = useRef(false);
   const aiBottomRef      = useRef();
-  const stockSearchTimer = useRef();
-  const usSearchTimer    = useRef();
-  const mfSearchTimer    = useRef();
-  const etfSearchTimer   = useRef();
 
   // ── Hooks ─────────────────────────────────────────────────────
   const portfolio  = usePortfolio(user);
@@ -162,6 +130,25 @@ export default function App() {
   const importHook = useImport(user, () => portfolio.reloadHoldings());
   const casImport  = useCASImport(user, () => portfolio.reloadHoldings());
   const ai         = useAI();
+  const brokerSearch = useBrokerSearch();
+  const {
+    mfSearch, setMfSearch, mfResults, setMfResults, mfSearching, setMfSearching, mfNav, setMfNav,
+    stockSearch, setStockSearch, stockResults, setStockResults, stockSearching, setStockSearching,
+    stockInfo, setStockInfo, stockLooking, setStockLooking,
+    etfSearch, setEtfSearch, etfResults, setEtfResults, etfSearching, setEtfSearching, etfInfo, setEtfInfo,
+    usSearch, setUsSearch, usResults, setUsResults, usSearching, setUsSearching,
+    usdInrRate, setUsdInrRate, usdInrLoading, setUsdInrLoading,
+    handleMfSearch, handleStockSearch, handleEtfSearch, handleUsSearch, fetchUsdInr,
+  } = brokerSearch;
+  const ui = useUiState();
+  const {
+    modal, setModal, fdScanOpen, setFdScanOpen, showSettings, setShowSettings,
+    showImportHub, setShowImportHub, showSnapTrade, setShowSnapTrade,
+    showKite, setShowKite, showBreeze, setShowBreeze, moreSheetOpen, setMoreSheetOpen,
+    expandedHolding, setExpandedHolding, showQuietAlerts, setShowQuietAlerts,
+    showSharedDropdown, setShowSharedDropdown,
+  } = ui;
+  const { filterType, setFilterType, sortCol, setSortCol, sortDir, setSortDir, toggleSort } = useHoldingsView();
 
   // ── Auth listener ─────────────────────────────────────────────
   useEffect(() => {
@@ -376,11 +363,6 @@ ${alertsText}`;
   }
 
   // ── Shared helpers ────────────────────────────────────────────
-  function toggleSort(col) {
-    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortCol(col); setSortDir('asc'); }
-  }
-
   function openMemberModal(memberId) {
     if (memberId) {
       const m = members.find(x => x.id === memberId);
@@ -413,60 +395,7 @@ ${alertsText}`;
   }
 
   // ── Broker search handlers ────────────────────────────────────
-  function handleMfSearch(v) {
-    setMfSearch(v); setMfNav(null);
-    clearTimeout(mfSearchTimer.current);
-    if (!v.trim()) { setMfResults([]); return; }
-    setMfSearching(true);
-    mfSearchTimer.current = setTimeout(async () => {
-      try { const d = await api(`/api/mf/search?q=${encodeURIComponent(v)}`); setMfResults(d?.funds || []); }
-      catch { setMfResults([]); }
-      setMfSearching(false);
-    }, 350);
-  }
-
-  function handleStockSearch(v) {
-    setStockSearch(v); setStockInfo(null);
-    clearTimeout(stockSearchTimer.current);
-    if (!v.trim()) { setStockResults([]); return; }
-    setStockSearching(true);
-    stockSearchTimer.current = setTimeout(async () => {
-      try { const d = await api(`/api/stocks/search?q=${encodeURIComponent(v)}&exchange=NSE`); setStockResults(d?.results || []); }
-      catch { setStockResults([]); }
-      setStockSearching(false);
-    }, 350);
-  }
-
-  function handleEtfSearch(v) {
-    setEtfSearch(v); setEtfInfo(null);
-    clearTimeout(etfSearchTimer.current);
-    if (!v.trim()) { setEtfResults([]); return; }
-    setEtfSearching(true);
-    etfSearchTimer.current = setTimeout(async () => {
-      try { const d = await api(`/api/stocks/search?q=${encodeURIComponent(v)}&exchange=NSE`); setEtfResults(d?.results || []); }
-      catch { setEtfResults([]); }
-      setEtfSearching(false);
-    }, 350);
-  }
-
-  function handleUsSearch(v) {
-    setUsSearch(v);
-    clearTimeout(usSearchTimer.current);
-    if (!v.trim()) { setUsResults([]); return; }
-    setUsSearching(true);
-    usSearchTimer.current = setTimeout(async () => {
-      try { const d = await api(`/api/stocks/search?q=${encodeURIComponent(v)}&exchange=US`); setUsResults(d?.results || []); }
-      catch { setUsResults([]); }
-      setUsSearching(false);
-    }, 350);
-  }
-
-  async function fetchUsdInr() {
-    setUsdInrLoading(true);
-    try { const d = await api('/api/forex/usdinr'); if (d?.rate) { setUsdInrRate(d.rate); setLiveUsdInr(d.rate); } }
-    catch {}
-    setUsdInrLoading(false);
-  }
+  // Broker-search handlers now provided by useBrokerSearch().
 
   // ── Auth guards ───────────────────────────────────────────────
   if (authLoading) return <div className="splash">Loading…</div>;

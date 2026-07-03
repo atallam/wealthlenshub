@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { supabase } from "../lib/db.js";
 import { auth, sendError, strictLimiter } from "../lib/auth.js";
 import { encrypt, decrypt } from "../lib/crypto.js";
-import { takeSnapshot } from "../lib/snapshot.js";
+import { persistBrokerSync } from "../services/brokers/persistSync.js";
 
 const router = Router();
 const KITE_BASE = "https://api.kite.trade";
@@ -92,13 +92,8 @@ router.post("/sync", auth, strictLimiter, async (req, res) => {
       if (!h.folio || (h.quantity || 0) <= 0) continue;
       rows.push({ id: `kite_mf_${req.user.id.slice(0,8)}_${h.folio}`.replace(/[^a-zA-Z0-9_-]/g,"_"), user_id: req.user.id, member_id: member_id || null, type: "MF", name: h.fund || h.tradingsymbol || h.folio, ticker: "", scheme_code: h.tradingsymbol || "", units: h.quantity, purchase_nav: h.average_price||0, current_nav: h.last_price||0, purchase_price: h.average_price||0, current_price: h.last_price||0, purchase_value: (h.average_price||0)*h.quantity, current_value: (h.last_price||0)*h.quantity, currency: "INR", source: "kite", brokerage_name: "Zerodha Coin", last_synced: now, price_fetched_at: now, start_date: today });
     }
-    if (!rows.length) return res.json({ synced: 0, message: "No holdings found." });
-    const { error } = await supabase.from("holdings").upsert(rows, { onConflict: "id" });
-    if (error) throw new Error(error.message);
-    await supabase.from("kite_connections").update({ last_synced_at: now }).eq("user_id", req.user.id);
-    // Snapshot directly (no fragile self-HTTP call reconstructed from the Host header).
-    takeSnapshot(req.user.id, { source: "kite_sync" }).catch(e => console.error("Kite snapshot:", e.message));
-    res.json({ synced: rows.length, equity_count: rows.filter(r => r.type !== "MF").length, mf_count: rows.filter(r => r.type === "MF").length });
+    const result = await persistBrokerSync(req.user.id, rows, { connTable: "kite_connections", source: "kite_sync" });
+    res.json(result);
   } catch (e) {
     console.error("Kite sync:", e.message);
     if (e.message.includes("TokenException") || e.message.includes("Invalid")) return res.status(401).json({ error: "Token invalid.", needs_reauth: true });

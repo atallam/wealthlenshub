@@ -1,0 +1,1633 @@
+diff --git a/lib/holdings-utils.js b/lib/holdings-utils.js
+new file mode 100644
+index 0000000..58df1f4
+--- /dev/null
++++ b/lib/holdings-utils.js
+@@ -0,0 +1,37 @@
++/**
++ * lib/holdings-utils.js — pure holding transforms shared across routes/services.
++ * (Previously defined inside routes/portfolio.js; moved here to decouple them
++ * from the route layer.)
++ */
++
++/** Null out empty date strings so Postgres doesn't reject them. */
++export function sanitizeDates(obj) {
++  const dateFields = ["start_date", "maturity_date"];
++  const result = { ...obj };
++  for (const field of dateFields) {
++    if (result[field] === "" || result[field] === undefined) result[field] = null;
++  }
++  return result;
++}
++
++/** Derive net units / average cost / purchase value from a holding's transactions. */
++export function enrichHoldings(holdings) {
++  return (holdings || []).map((h) => {
++    const txns = h.transactions || [];
++    if (txns.length === 0) return h;
++    const buys = txns.filter((t) => t.txn_type === "BUY");
++    const sells = txns.filter((t) => t.txn_type === "SELL");
++    const buyUnits = buys.reduce((s, t) => s + Number(t.units || 0), 0);
++    const sellUnits = sells.reduce((s, t) => s + Number(t.units || 0), 0);
++    const netUnits = Math.max(0, buyUnits - sellUnits);
++    const avgCost = buyUnits > 0
++      ? buys.reduce((s, t) => s + Number(t.units || 0) * Number(t.price || 0), 0) / buyUnits
++      : 0;
++    const sortedTxns = [...txns].sort((a, b) => new Date(a.txn_date) - new Date(b.txn_date));
++    return {
++      ...h, net_units: netUnits, avg_cost: avgCost, units: netUnits,
++      purchase_price: avgCost, purchase_nav: avgCost, purchase_value: avgCost * netUnits,
++      start_date: h.start_date || sortedTxns[0]?.txn_date || null,
++    };
++  });
++}
+diff --git a/routes/artifacts.js b/routes/artifacts.js
+index 8c27326..9a29178 100644
+--- a/routes/artifacts.js
++++ b/routes/artifacts.js
+@@ -1,9 +1,7 @@
+ import { Router } from "express";
+ import multer from "multer";
+-import { supabase } from "../lib/db.js";
+ import { auth, sendError, strictLimiter } from "../lib/auth.js";
+-import { hashFile } from "../lib/crypto.js";
+-import { assertOwnsHolding, assertOwnsArtifact } from "../lib/guards.js";
++import * as artifacts from "../services/artifacts.service.js";
+ 
+ // Allowed MIME types for uploaded documents.
+ const ALLOWED_MIME = new Set([
+@@ -26,86 +24,30 @@ const upload = multer({
+ 
+ router.get("/:holdingId", auth, async (req, res) => {
+   try {
+-    // IDOR guard: only the holding's owner may list its artifacts.
+-    await assertOwnsHolding(req.user.id, req.params.holdingId);
+-  } catch (e) { return sendError(res, e, e.status || 403); }
+-  const { data, error } = await supabase
+-    .from("artifacts")
+-    .select("*")
+-    .eq("holding_id", req.params.holdingId)
+-    .order("uploaded_at", { ascending: false });
+-  if (error) return res.status(500).json({ error: error.message });
+-  res.json(data || []);
++    res.json(await artifacts.listForHolding(req.user.id, req.params.holdingId));
++  } catch (e) { sendError(res, e, e.status || 403); }
+ });
+ 
+ router.post("/upload", auth, strictLimiter, upload.single("file"), async (req, res) => {
+   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+   const { holdingId, description } = req.body;
+   if (!holdingId) return res.status(400).json({ error: "holdingId required" });
+-
+-  // IDOR guard: only the holding's owner may attach files to it.
+   try {
+-    await assertOwnsHolding(req.user.id, holdingId);
+-  } catch (e) { return sendError(res, e, e.status || 403); }
+-
+-  // Compute SHA-256 hash of the file for integrity tracking.
+-  const sha256 = hashFile(req.file.buffer);
+-
+-  const id = "art_" + Date.now() + Math.random().toString(36).slice(2, 6);
+-  const ext = req.file.originalname.split(".").pop().toLowerCase();
+-  const storagePath = `holdings/${holdingId}/${id}.${ext}`;
+-
+-  const { error: upErr } = await supabase.storage
+-    .from("artifacts")
+-    .upload(storagePath, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+-  if (upErr) return res.status(500).json({ error: upErr.message });
+-
+-  const { error: dbErr } = await supabase.from("artifacts").insert({
+-    id,
+-    user_id: req.user.id,        // stamp owner (see schema reconciliation in Phase 2)
+-    holding_id: holdingId,
+-    file_name: req.file.originalname,
+-    storage_path: storagePath,
+-    file_type: req.file.mimetype,
+-    file_size: req.file.size,
+-    description: description || "",
+-    sha256,                      // stored for integrity verification
+-  });
+-  if (dbErr) return res.status(500).json({ error: dbErr.message });
+-
+-  res.json({ ok: true, id, file_name: req.file.originalname, sha256 });
++    const result = await artifacts.create(req.user.id, holdingId, req.file, description);
++    res.json({ ok: true, ...result });
++  } catch (e) { sendError(res, e, e.status || 403); }
+ });
+ 
+ router.get("/download/:id", auth, async (req, res) => {
+-  let data;
+   try {
+-    // IDOR guard: only the owner (via parent holding) gets a signed URL.
+-    data = await assertOwnsArtifact(req.user.id, req.params.id);
+-  } catch (e) { return sendError(res, e, e.status || 403); }
+-  const { data: signed } = await supabase.storage
+-    .from("artifacts")
+-    .createSignedUrl(data.storage_path, 300);
+-  // Return sha256 so the client can verify the download if needed.
+-  res.json({ url: signed?.signedUrl, file_name: data.file_name, sha256: data.sha256 || null });
++    res.json(await artifacts.getSignedUrl(req.user.id, req.params.id));
++  } catch (e) { sendError(res, e, e.status || 403); }
+ });
+ 
+ router.delete("/:id", auth, async (req, res) => {
+-  const { data } = await supabase
+-    .from("artifacts")
+-    .select("storage_path, holding_id")
+-    .eq("id", req.params.id)
+-    .single();
+-  if (!data) return res.status(404).json({ error: "Not found" });
+-  const { data: holding } = await supabase
+-    .from("holdings")
+-    .select("id")
+-    .eq("id", data.holding_id)
+-    .eq("user_id", req.user.id)
+-    .single();
+-  if (!holding) return res.status(403).json({ error: "Not authorized" });
+-  if (data.storage_path) await supabase.storage.from("artifacts").remove([data.storage_path]);
+-  await supabase.from("artifacts").delete().eq("id", req.params.id);
+-  res.json({ ok: true });
++  try {
++    res.json(await artifacts.remove(req.user.id, req.params.id));
++  } catch (e) { sendError(res, e, e.status || 403); }
+ });
+ 
+ export default router;
+diff --git a/routes/breeze.js b/routes/breeze.js
+index 2b7da72..6ab7b64 100644
+--- a/routes/breeze.js
++++ b/routes/breeze.js
+@@ -3,7 +3,7 @@ import crypto from "crypto";
+ import { supabase } from "../lib/db.js";
+ import { auth, sendError, strictLimiter } from "../lib/auth.js";
+ import { encrypt, decrypt } from "../lib/crypto.js";
+-import { takeSnapshot } from "../lib/snapshot.js";
++import { persistBrokerSync } from "../services/brokers/persistSync.js";
+ 
+ const router = Router();
+ const BREEZE_BASE = "https://api.icicidirect.com/breezeapi/api/v1";
+@@ -101,13 +101,8 @@ router.post("/sync", auth, strictLimiter, async (req, res) => {
+       const avgNav = parseFloat(h.average_price||0); const curNav = parseFloat(h.ltp||0);
+       rows.push({ id: `breeze_mf_${req.user.id.slice(0,8)}_${(h.folio_number||h.scheme_name||"").slice(0,20)}`.replace(/[^a-zA-Z0-9_-]/g,"_"), user_id: req.user.id, member_id: member_id||null, type: "MF", name: h.scheme_name||"", ticker: "", scheme_code: h.isin||"", units, purchase_nav: avgNav, current_nav: curNav, purchase_price: avgNav, current_price: curNav, purchase_value: avgNav*units, current_value: curNav*units, currency: "INR", source: "breeze", brokerage_name: "ICICI Direct MF", last_synced: now, price_fetched_at: now, start_date: today });
+     }
+-    if (!rows.length) return res.json({ synced: 0, message: "No holdings found." });
+-    const { error } = await supabase.from("holdings").upsert(rows, { onConflict: "id" });
+-    if (error) throw new Error(error.message);
+-    await supabase.from("breeze_connections").update({ last_synced_at: now }).eq("user_id", req.user.id);
+-    // Snapshot directly (no fragile self-HTTP call reconstructed from the Host header).
+-    takeSnapshot(req.user.id, { source: "breeze_sync" }).catch(e => console.error("Breeze snapshot:", e.message));
+-    res.json({ synced: rows.length, equity_count: rows.filter(r => r.type === "IN_STOCK").length, mf_count: rows.filter(r => r.type === "MF").length });
++    const result = await persistBrokerSync(req.user.id, rows, { connTable: "breeze_connections", source: "breeze_sync" });
++    res.json(result);
+   } catch (e) {
+     console.error("Breeze sync:", e.message);
+     if (e.message.includes("401") || e.message.includes("session")) return res.status(401).json({ error: "Session expired.", needs_reauth: true });
+diff --git a/routes/holdings.js b/routes/holdings.js
+index 8ccb44f..f95fe72 100644
+--- a/routes/holdings.js
++++ b/routes/holdings.js
+@@ -1,261 +1,45 @@
+ import { Router } from "express";
+-import { randomUUID } from "crypto";
+-import { supabase } from "../lib/db.js";
+ import { auth, sendError } from "../lib/auth.js";
+-import { sanitizeDates, enrichHoldings } from "./portfolio.js";
+-import { yahooPrice, stockPrice } from "../lib/prices.js";
+-import { validate, holdingSchema, validateRows } from "../lib/validate.js";
+ import { auditImport } from "../lib/importLogger.js";
+-import { takeSnapshot } from "../lib/snapshot.js";
++import * as holdings from "../services/holdings.service.js";
+ 
+ const router = Router();
+ 
+-// ── Compute SIP signal fields from transaction list ───────────────
+-// Returns { sip_day, sip_active, sip_avg_amount, transaction_count }
+-// so CalendarTab can detect active SIPs without iterating raw transactions client-side.
+-function computeSipFields(transactions = []) {
+-  const transaction_count = transactions.length;
+-  const buyTxns = transactions
+-    .filter(t => t.txn_type === "BUY" && t.txn_date)
+-    .sort((a, b) => b.txn_date.localeCompare(a.txn_date));
+-
+-  if (buyTxns.length < 3) return { transaction_count, sip_day: null, sip_active: false, sip_avg_amount: null };
+-
+-  const now = new Date();
+-  const nowMo = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+-  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+-  const prevMo = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
+-  const lastMo = buyTxns[0].txn_date.slice(0, 7);
+-  const isRecent = lastMo === nowMo || lastMo === prevMo;
+-
+-  if (!isRecent) return { transaction_count, sip_day: null, sip_active: false, sip_avg_amount: null };
+-
+-  const cutoff = new Date(now.getFullYear(), now.getMonth() - 6, 1).toISOString().slice(0, 7);
+-  const activeMos = new Set(buyTxns.filter(t => t.txn_date.slice(0, 7) >= cutoff).map(t => t.txn_date.slice(0, 7)));
+-  if (activeMos.size < 3) return { transaction_count, sip_day: null, sip_active: false, sip_avg_amount: null };
+-
+-  // Most common day-of-month from recent buys
+-  const freq = {};
+-  buyTxns.slice(0, 6).forEach(t => { const d = +t.txn_date.slice(8, 10); freq[d] = (freq[d] || 0) + 1; });
+-  const sip_day = +Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
+-
+-  // Average amount (units × price) for last 3 buys
+-  const sip_avg_amount = buyTxns.slice(0, 3).reduce((s, t) => s + (+t.units) * (+t.price), 0) / 3;
+-
+-  return { transaction_count, sip_day, sip_active: true, sip_avg_amount };
+-}
+-
+ router.get("/", auth, async (req, res) => {
+-  let { data, error } = await supabase
+-    .from("holdings")
+-    .select("*, artifacts(id,file_name,file_type,file_size,description,uploaded_at), transactions(id,txn_type,units,price,txn_date,notes,created_at)")
+-    .eq("user_id", req.user.id)
+-    .order("created_at", { ascending: true });
+-  if (error) ({ data, error } = await supabase.from("holdings").select("*, artifacts(id,file_name,file_type,file_size,description,uploaded_at)").eq("user_id", req.user.id).order("created_at", { ascending: true }));
+-  if (error) return res.status(500).json({ error: error.message });
+-
+-  // Inject SIP signal fields — lets CalendarTab detect SIPs without iterating transactions client-side
+-  const enriched = enrichHoldings(data).map(h => {
+-    if (h.type === "MF") {
+-      return { ...h, ...computeSipFields(h.transactions || []) };
+-    }
+-    return { ...h, transaction_count: (h.transactions || []).length };
+-  });
+-  res.json(enriched);
++  try { res.json(await holdings.list(req.user.id)); }
++  catch (e) { sendError(res, e); }
+ });
+ 
+-// ── Per-holding transaction fetch (lazy load) ─────────────────────
+-// Used by TransactionPanel to fetch fresh transactions on open
+-// instead of relying on possibly-stale inline data.
++// Per-holding transaction fetch (lazy load), scoped to the caller.
+ router.get("/:id/transactions", auth, async (req, res) => {
+-  const { data, error } = await supabase
+-    .from("transactions")
+-    .select("id,txn_type,units,price,price_usd,txn_date,notes,created_at")
+-    .eq("holding_id", req.params.id)
+-    .eq("user_id", req.user.id)        // IDOR guard: scope to caller (transactions has user_id)
+-    .order("txn_date", { ascending: true });
+-  if (error) return res.status(500).json({ error: error.message });
+-  res.json(data || []);
++  try { res.json(await holdings.listTransactions(req.user.id, req.params.id)); }
++  catch (e) { sendError(res, e); }
+ });
+ 
+ router.post("/import", auth, auditImport("HOLDINGS_IMPORT"), async (req, res) => {
+-  const { holdings, member_id, account_map, cas_statement_date, cas_period_start, cas_period_end } = req.body;
+-  if (!holdings?.length) return res.status(400).json({ error: "No holdings to import" });
+-
+-  // Validate each row before touching the database.
+-  const { valid, invalid } = validateRows(holdingSchema.partial(), holdings);
+-  if (invalid.length > 0) {
+-    console.warn(`[import] ${invalid.length} invalid row(s) rejected:`, invalid.slice(0, 5));
+-    // Warn but don't block — import may include partial/enriched data from parsers.
+-    // Full rejection would break CAS imports. Log for audit purposes only.
+-  }
+-
+-  let effectiveMemberId = member_id || null;
+-  if (!effectiveMemberId) {
+-    const { data: portfolio } = await supabase.from("portfolio").select("members").eq("user_id", req.user.id).single();
+-    const pMembers = portfolio?.members || [];
+-    if (pMembers.length > 0) effectiveMemberId = pMembers[0].id;
+-  }
+-
+-  // CAS imports are flush-and-fill: delete only the CAS holdings belonging to
+-  // the member(s) in this statement — never touch manual or other-source holdings.
+-  const isCASImport = !!cas_statement_date;
+-  if (isCASImport) {
+-    // Collect member IDs present in this CAS (via account_map + single member fallback).
+-    const affectedMemberIds = new Set();
+-    if (account_map) {
+-      for (const mid of Object.values(account_map)) { if (mid) affectedMemberIds.add(mid); }
+-    }
+-    if (effectiveMemberId) affectedMemberIds.add(effectiveMemberId);
+-
+-    // Delete CAS holdings for affected members.
+-    // We run TWO deletes: one for matched member_ids, one for member_id IS NULL.
+-    // The IS NULL case catches legacy imports from before member tracking was added —
+-    // those holdings have source='cas' but no member_id and would survive an IN filter,
+-    // leaving stale wrong-NAV records that re-import can't overwrite.
+-    if (affectedMemberIds.size > 0) {
+-      await supabase.from("holdings").delete().eq("user_id", req.user.id).eq("source", "cas").in("member_id", [...affectedMemberIds]);
+-    }
+-    // Always clear null-member CAS holdings (legacy or unmatched).
+-    await supabase.from("holdings").delete().eq("user_id", req.user.id).eq("source", "cas").is("member_id", null);
+-  }
+-
+-  // For non-CAS imports, build an existingMap to support update-vs-insert.
+-  const existingMap = {};
+-  if (!isCASImport) {
+-    const { data: existing } = await supabase.from("holdings").select("id, name, ticker, scheme_code, type").eq("user_id", req.user.id);
+-    for (const h of (existing || [])) {
+-      const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
+-      existingMap[key] = h.id;
+-    }
+-  }
+-
+-  await supabase.from("holdings").delete().eq("user_id", req.user.id).like("notes", "%__demo__%");
+-
+-  const inserted = [], updated = [], skipped = [], errors = [];
+-  const toInsert = [], toInsertTxns = [];
+-  const toUpdate = []; // { id, payload }
+-
+-  for (const h of holdings) {
+-    const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
+-    const existingId = !isCASImport ? existingMap[key] : null;
+-    if (existingId && h._dupAction === "skip") { skipped.push(h.name); continue; }
+-
+-    const isMF = (h.type || "IN_STOCK") === "MF";
+-    const resolvedMember = (account_map && h._account_name && account_map[h._account_name]) || effectiveMemberId || h.member_id || null;
+-    const payload = sanitizeDates({
+-      member_id: resolvedMember, type: h.type || "IN_STOCK", name: h.name,
+-      ticker: h.ticker || "", scheme_code: h.scheme_code || "",
+-      units: h.units || 0, purchase_price: h.purchase_price || 0, current_price: h.current_price || 0,
+-      ...(isMF ? { purchase_nav: h.purchase_nav || 0, current_nav: h.current_nav || 0 } : {}),
+-      purchase_value: h.purchase_value || 0, current_value: h.current_value || 0,
+-      principal: h.principal || 0, interest_rate: h.interest_rate || 0,
+-      start_date: h.start_date || null, maturity_date: h.maturity_date || null,
+-      usd_inr_rate: h.usd_inr_rate || null,
+-      ...(h.source ? { source: h.source } : {}),
+-      ...(h.brokerage_name ? { brokerage_name: h.brokerage_name } : {}),
+-      ...(h.currency ? { currency: h.currency } : {}),
+-      ...(cas_statement_date ? { source_date: cas_statement_date } : {}),
+-      ...(cas_period_start ? { cas_period_start } : {}),
+-      ...(cas_period_end ? { cas_period_end } : {}),
+-    });
+-
+-    if (existingId) {
+-      toUpdate.push({ id: existingId, payload, name: h.name });
+-    } else {
+-      const id = "h_" + randomUUID().replace(/-/g, "").slice(0, 16);
+-      toInsert.push({ ...payload, id, user_id: req.user.id });
+-      inserted.push(h.name);
+-      const price = h.purchase_price || h.purchase_nav || 0;
+-      if (h.units && price) {
+-        toInsertTxns.push({ id: "t_" + randomUUID().replace(/-/g, "").slice(0, 16), holding_id: id, user_id: req.user.id, txn_type: "BUY", units: h.units, price, txn_date: h.start_date || new Date().toISOString().slice(0, 10), notes: "Imported from CSV" });
+-      }
+-    }
+-  }
+-
+-  // Batch insert all new holdings in one DB call
+-  if (toInsert.length > 0) {
+-    const { error } = await supabase.from("holdings").insert(toInsert);
+-    if (error) { errors.push(`Batch insert error: ${error.message}`); inserted.length = 0; }
+-  }
+-  // Batch insert initial transactions in one DB call
+-  if (toInsertTxns.length > 0) {
+-    await supabase.from("transactions").insert(toInsertTxns);
+-  }
+-  // Updates must still be individual (each has a different payload + different id)
+-  for (const { id, payload, name } of toUpdate) {
+-    const { error } = await supabase.from("holdings").update(payload).eq("id", id);
+-    if (error) { errors.push(`${name}: ${error.message}`); } else { updated.push(name); }
+-  }
+-
+-  res.json({
+-    ok: true,
+-    inserted_count: inserted.length, updated_count: updated.length,
+-    skipped_count: skipped.length, error_count: errors.length,
+-    inserted, updated, skipped, errors,
+-    // Import is intentionally LENIENT (rows failing schema validation are still
+-    // imported, because parser output is often partial/enriched). We now surface
+-    // what failed validation so the client can flag data-quality issues instead
+-    // of the failures being silently log-only. See AUDIT_REPORT.md P2-5.
+-    validation: {
+-      invalid_count: invalid.length,
+-      invalid_sample: invalid.slice(0, 10).map(r => ({ row: r.index, errors: r.errors })),
+-    },
+-    needs_price_refresh: inserted.length > 0 || updated.length > 0,
+-  });
+-
+-  // Auto-snapshot (direct call — no self-HTTP round-trip)
+-  takeSnapshot(req.user.id, { source: "cas_import", cas_statement_date: cas_statement_date || null })
+-    .catch(e => console.error("Auto-snapshot failed:", e.message));
+-
+-  // Background price fetch
+-  (async () => {
+-    try {
+-      const { data: freshHoldings } = await supabase.from("holdings").select("id, type, ticker, scheme_code, units").eq("user_id", req.user.id).in("type", ["IN_STOCK", "IN_ETF"]).or("current_price.eq.0,current_price.is.null");
+-      if (!freshHoldings?.length) return;
+-      for (const h of freshHoldings) {
+-        if (!h.ticker || h.ticker.startsWith("INE")) continue;
+-        try {
+-          const q = await stockPrice(`${h.ticker.toUpperCase()}.NS`, "NSE");
+-          const price = q?.price ?? await yahooPrice(`${h.ticker.toUpperCase()}.BO`);
+-          if (price && price > 0) {
+-            const cv = (h.units || 0) * price;
+-            await supabase.from("holdings").update({ current_price: price, current_value: cv, price_fetched_at: new Date().toISOString() }).eq("id", h.id);
+-          }
+-        } catch {}
+-        await new Promise(r => setTimeout(r, 1200));
+-      }
+-    } catch (e) { console.log(`Post-import price fetch error: ${e.message}`); }
+-  })();
++  const { holdings: rows } = req.body;
++  if (!rows?.length) return res.status(400).json({ error: "No holdings to import" });
++  try {
++    const { _cas_statement_date, ...result } = await holdings.importHoldings(req.user.id, req.body);
++    res.json(result);
++    // Fire-and-forget after responding (snapshot + background price backfill).
++    holdings.runPostImport(req.user.id, _cas_statement_date);
++  } catch (e) { sendError(res, e); }
+ });
+ 
+ router.post("/", auth, async (req, res) => {
+-  const { first_transaction, purchase_nav, current_nav, ...holdingData } = req.body;
+-  const isMF = holdingData.type === "MF";
+-  if (!holdingData.notes?.includes("__demo__"))
+-    await supabase.from("holdings").delete().eq("user_id", req.user.id).like("notes", "%__demo__%");
+-  const insertData = { ...holdingData, user_id: req.user.id, ...(isMF ? { purchase_nav: purchase_nav || 0, current_nav: current_nav || 0 } : {}) };
+-  const { error } = await supabase.from("holdings").insert(sanitizeDates(insertData));
+-  if (error) return res.status(500).json({ error: error.message });
+-  if (first_transaction && first_transaction.units && first_transaction.price) {
+-    await supabase.from("transactions").insert({ id: "t_" + randomUUID().replace(/-/g, "").slice(0, 16), holding_id: holdingData.id, txn_type: first_transaction.txn_type || "BUY", units: Number(first_transaction.units), price: Number(first_transaction.price), txn_date: first_transaction.txn_date || holdingData.start_date || new Date().toISOString().slice(0,10), notes: first_transaction.notes || "" });
+-  }
+-  res.json({ ok: true });
++  try { res.json(await holdings.create(req.user.id, req.body)); }
++  catch (e) { sendError(res, e); }
+ });
+ 
+ router.put("/:id", auth, async (req, res) => {
+-  const { artifacts, transactions, net_units, avg_cost, purchase_nav, current_nav, purchase_price, ...holdingData } = req.body;
+-  const isMF = holdingData.type === "MF";
+-  const updateData = { ...holdingData, ...(isMF ? { purchase_nav: purchase_nav || 0, current_nav: current_nav || 0 } : {}) };
+-  const { error } = await supabase.from("holdings").update(sanitizeDates(updateData)).eq("id", req.params.id).eq("user_id", req.user.id);
+-  if (error) return res.status(500).json({ error: error.message });
+-  res.json({ ok: true });
++  try { res.json(await holdings.update(req.user.id, req.params.id, req.body)); }
++  catch (e) { sendError(res, e); }
+ });
+ 
+ router.delete("/:id", auth, async (req, res) => {
+-  const { error } = await supabase.from("holdings").delete().eq("id", req.params.id).eq("user_id", req.user.id);
+-  if (error) return res.status(500).json({ error: error.message });
+-  res.json({ ok: true });
++  try { res.json(await holdings.remove(req.user.id, req.params.id)); }
++  catch (e) { sendError(res, e); }
+ });
+ 
+ export default router;
+diff --git a/routes/import.js b/routes/import.js
+index 5965187..6627122 100644
+--- a/routes/import.js
++++ b/routes/import.js
+@@ -10,6 +10,26 @@ import {
+ } from "../lib/parsers.js";
+ import { getAmfiList, yahooSearch, yahooPrice } from "../lib/prices.js";
+ import { auditImport } from "../lib/importLogger.js";
++import { decrypt } from "../lib/crypto.js";
++
++/**
++ * Resolve the password used to unlock a password-protected CAS PDF.
++ * Preference order:
++ *   1. A password the user typed for THIS request (transient, user-supplied).
++ *   2. The user's stored PAN, decrypted SERVER-SIDE — so the plaintext PAN
++ *      never travels to the browser (fixes P1-2). NSDL/CDSL CAS password = PAN.
++ */
++async function resolveCasPassword(req) {
++  const typed = req.body?.password || "";
++  if (typed) return typed;
++  const { data: prof } = await supabase
++    .from("profiles").select("encrypted_pan").eq("id", req.user.id).single();
++  if (prof?.encrypted_pan) {
++    const pan = decrypt(prof.encrypted_pan);
++    if (pan && pan !== "[encrypted]") return pan.toUpperCase().trim();
++  }
++  return "";
++}
+ 
+ const router = Router();
+ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+@@ -28,7 +48,8 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"),
+       return res.status(400).json({ error: "Legacy .xls format is not supported. Please open in Excel and save as .xlsx, then retry." });
+     } else if (ext === "pdf") {
+       try {
+-        const pdfPassword = req.body?.password || "";
++        // Server-side unlock: falls back to the stored PAN without sending it to the client.
++        const pdfPassword = await resolveCasPassword(req);
+         let pdf;
+         try {
+           const loadingTask = pdfjsLib.getDocument({
+diff --git a/routes/kite.js b/routes/kite.js
+index 2901e74..30f7bf9 100644
+--- a/routes/kite.js
++++ b/routes/kite.js
+@@ -3,7 +3,7 @@ import crypto from "crypto";
+ import { supabase } from "../lib/db.js";
+ import { auth, sendError, strictLimiter } from "../lib/auth.js";
+ import { encrypt, decrypt } from "../lib/crypto.js";
+-import { takeSnapshot } from "../lib/snapshot.js";
++import { persistBrokerSync } from "../services/brokers/persistSync.js";
+ 
+ const router = Router();
+ const KITE_BASE = "https://api.kite.trade";
+@@ -92,13 +92,8 @@ router.post("/sync", auth, strictLimiter, async (req, res) => {
+       if (!h.folio || (h.quantity || 0) <= 0) continue;
+       rows.push({ id: `kite_mf_${req.user.id.slice(0,8)}_${h.folio}`.replace(/[^a-zA-Z0-9_-]/g,"_"), user_id: req.user.id, member_id: member_id || null, type: "MF", name: h.fund || h.tradingsymbol || h.folio, ticker: "", scheme_code: h.tradingsymbol || "", units: h.quantity, purchase_nav: h.average_price||0, current_nav: h.last_price||0, purchase_price: h.average_price||0, current_price: h.last_price||0, purchase_value: (h.average_price||0)*h.quantity, current_value: (h.last_price||0)*h.quantity, currency: "INR", source: "kite", brokerage_name: "Zerodha Coin", last_synced: now, price_fetched_at: now, start_date: today });
+     }
+-    if (!rows.length) return res.json({ synced: 0, message: "No holdings found." });
+-    const { error } = await supabase.from("holdings").upsert(rows, { onConflict: "id" });
+-    if (error) throw new Error(error.message);
+-    await supabase.from("kite_connections").update({ last_synced_at: now }).eq("user_id", req.user.id);
+-    // Snapshot directly (no fragile self-HTTP call reconstructed from the Host header).
+-    takeSnapshot(req.user.id, { source: "kite_sync" }).catch(e => console.error("Kite snapshot:", e.message));
+-    res.json({ synced: rows.length, equity_count: rows.filter(r => r.type !== "MF").length, mf_count: rows.filter(r => r.type === "MF").length });
++    const result = await persistBrokerSync(req.user.id, rows, { connTable: "kite_connections", source: "kite_sync" });
++    res.json(result);
+   } catch (e) {
+     console.error("Kite sync:", e.message);
+     if (e.message.includes("TokenException") || e.message.includes("Invalid")) return res.status(401).json({ error: "Token invalid.", needs_reauth: true });
+diff --git a/routes/portfolio.js b/routes/portfolio.js
+index e9c840d..cfa1e6f 100644
+--- a/routes/portfolio.js
++++ b/routes/portfolio.js
+@@ -1,93 +1,17 @@
+ import { Router } from "express";
+-import { supabase } from "../lib/db.js";
+-import { auth } from "../lib/auth.js";
+-import { encrypt, decrypt } from "../lib/crypto.js";
++import { auth, sendError } from "../lib/auth.js";
++import * as portfolio from "../services/portfolio.service.js";
+ 
+ const router = Router();
+ 
+-function sanitizeDates(obj) {
+-  const dateFields = ["start_date", "maturity_date"];
+-  const result = { ...obj };
+-  for (const field of dateFields) {
+-    if (result[field] === "" || result[field] === undefined) result[field] = null;
+-  }
+-  return result;
+-}
+-
+-function enrichHoldings(holdings) {
+-  return (holdings || []).map(h => {
+-    const txns = h.transactions || [];
+-    if (txns.length === 0) return h;
+-    const buys  = txns.filter(t => t.txn_type === "BUY");
+-    const sells = txns.filter(t => t.txn_type === "SELL");
+-    const buyUnits  = buys.reduce((s, t) => s + Number(t.units || 0), 0);
+-    const sellUnits = sells.reduce((s, t) => s + Number(t.units || 0), 0);
+-    const netUnits  = Math.max(0, buyUnits - sellUnits);
+-    const avgCost   = buyUnits > 0
+-      ? buys.reduce((s, t) => s + Number(t.units || 0) * Number(t.price || 0), 0) / buyUnits : 0;
+-    const sortedTxns = [...txns].sort((a, b) => new Date(a.txn_date) - new Date(b.txn_date));
+-    return { ...h, net_units: netUnits, avg_cost: avgCost, units: netUnits, purchase_price: avgCost, purchase_nav: avgCost, purchase_value: avgCost * netUnits, start_date: h.start_date || sortedTxns[0]?.txn_date || null };
+-  });
+-}
+-
+ router.get("/", auth, async (req, res) => {
+-  const { data, error } = await supabase.from("portfolio").select("*").eq("user_id", req.user.id).single();
+-  if (error && error.code !== "PGRST116") return res.status(500).json({ error: error.message });
+-  const getDisplayName = async () => {
+-    const { data: profile } = await supabase.from("profiles").select("display_name").eq("id", req.user.id).single();
+-    return profile?.display_name || req.user.email?.split("@")[0] || "Me";
+-  };
+-  if (!data) {
+-    try {
+-      const displayName = await getDisplayName();
+-      const defaultMember = { id: "m_" + Date.now().toString(36), name: displayName, relation: "Self", email: req.user.email || "" };
+-      const newPortfolio = { id: req.user.id, user_id: req.user.id, members: [defaultMember], goals: [], alerts: [], updated_at: new Date().toISOString() };
+-      const { error: insertErr } = await supabase.from("portfolio").upsert(newPortfolio);
+-      if (insertErr) console.error(`Auto-provision failed for ${req.user.email}:`, insertErr.message);
+-      return res.json(newPortfolio);
+-    } catch (e) {
+-      const displayName = req.user.email?.split("@")[0] || "Me";
+-      return res.json({ id: req.user.id, user_id: req.user.id, members: [{ id: "m_" + Date.now().toString(36), name: displayName, relation: "Self", email: req.user.email || "" }], goals: [], alerts: [] });
+-    }
+-  }
+-  if (data && (!data.members || data.members.length === 0 || !data.members.find(m => m.relation === "Self"))) {
+-    try {
+-      const displayName = await getDisplayName();
+-      const selfMember = { id: "m_" + Date.now().toString(36), name: displayName, relation: "Self", email: req.user.email || "" };
+-      const repairedMembers = [...(data.members || []), selfMember];
+-      await supabase.from("portfolio").update({ members: repairedMembers, updated_at: new Date().toISOString() }).eq("user_id", req.user.id);
+-      data.members = repairedMembers;
+-    } catch (e) { console.error(`Self-repair failed for ${req.user.email}:`, e.message); }
+-  }
+-  if (data?.members) {
+-    data.members = data.members.map(m => {
+-      const out = { ...m };
+-      if (out.encrypted_pan) {
+-        try { const raw = decrypt(out.encrypted_pan); out.pan_masked = raw.length >= 10 ? raw.slice(0,5) + "****" + raw.slice(-1) : "****"; } catch { out.pan_masked = "****"; }
+-        delete out.encrypted_pan;
+-      }
+-      if (out.encrypted_dob) { out.has_dob = true; delete out.encrypted_dob; }
+-      return out;
+-    });
+-  }
+-  res.json(data);
++  try { res.json(await portfolio.get(req.user)); }
++  catch (e) { sendError(res, e); }
+ });
+ 
+ router.post("/", auth, async (req, res) => {
+-  const { members, goals, alerts, liabilities } = req.body;
+-  const safeMembers = (members || []).map(m => {
+-    const out = { ...m };
+-    if (out.pan && !out.pan.includes(":")) { out.encrypted_pan = encrypt(out.pan.toUpperCase().trim()); delete out.pan; }
+-    if (out.dob && !out.dob.includes(":")) { out.encrypted_dob = encrypt(out.dob.trim()); delete out.dob; }
+-    delete out.pan_masked; delete out.has_dob;
+-    return out;
+-  });
+-  const upsertData = { id: req.user.id, user_id: req.user.id, members: safeMembers, goals, alerts, updated_at: new Date().toISOString() };
+-  if (liabilities !== undefined) upsertData.liabilities = liabilities;
+-  const { error } = await supabase.from("portfolio").upsert(upsertData);
+-  if (error) return res.status(500).json({ error: error.message });
+-  res.json({ ok: true });
++  try { res.json(await portfolio.save(req.user.id, req.body)); }
++  catch (e) { sendError(res, e); }
+ });
+ 
+-export { sanitizeDates, enrichHoldings };
+ export default router;
+diff --git a/routes/profile.js b/routes/profile.js
+index 5133899..830b6bd 100644
+--- a/routes/profile.js
++++ b/routes/profile.js
+@@ -36,9 +36,10 @@ router.get("/cas-credentials", auth, async (req, res) => {
+   const dob = data?.encrypted_dob ? decrypt(data.encrypted_dob) : null;
+   if (!pan || pan === "[encrypted]") return res.json({ pan: null, dob: null, has_credentials: false });
+   const maskedPan = pan.length >= 10 ? pan.slice(0, 4) + "****" + pan.slice(-1) : "****";
+-  // pan_for_cas_unlock is intentionally returned: used by CAS PDF import to unlock
+-  // password-protected CAS statements. Endpoint is auth-scoped to req.user.id only.
+-  res.json({ pan_masked: maskedPan, dob, has_credentials: true, pan_for_cas_unlock: pan });
++  // P1-2: never return the plaintext PAN/DOB to the client. CAS PDF unlock now
++  // happens server-side (routes/import.js → resolveCasPassword). This endpoint
++  // only reports whether credentials exist, plus a masked PAN for display.
++  res.json({ pan_masked: maskedPan, has_credentials: true });
+ });
+ 
+ // Asset types
+diff --git a/routes/shares.js b/routes/shares.js
+index ef7b523..b570791 100644
+--- a/routes/shares.js
++++ b/routes/shares.js
+@@ -1,7 +1,7 @@
+ import { Router } from "express";
+ import { supabase } from "../lib/db.js";
+ import { auth, sendError } from "../lib/auth.js";
+-import { enrichHoldings } from "./portfolio.js";
++import { enrichHoldings } from "../lib/holdings-utils.js";
+ 
+ const router = Router();
+ 
+diff --git a/routes/transactions.js b/routes/transactions.js
+index 0bf8876..9ceab1b 100644
+--- a/routes/transactions.js
++++ b/routes/transactions.js
+@@ -1,70 +1,29 @@
+ import { Router } from "express";
+-import { randomUUID } from "crypto";
+-import { supabase } from "../lib/db.js";
+-import { auth } from "../lib/auth.js";
++import { auth, sendError } from "../lib/auth.js";
++import * as txns from "../services/transactions.service.js";
+ 
+ const router = Router();
+ 
+ router.get("/:holdingId", auth, async (req, res) => {
+-  const { data, error } = await supabase.from("transactions")
+-    .select("*").eq("holding_id", req.params.holdingId).eq("user_id", req.user.id).order("txn_date", { ascending: false });
+-  if (error) return res.status(500).json({ error: error.message });
+-  res.json(data || []);
++  try { res.json(await txns.listForHolding(req.user.id, req.params.holdingId)); }
++  catch (e) { sendError(res, e, e.status); }
+ });
+ 
+ router.post("/import", auth, async (req, res) => {
+   const { transactions } = req.body;
+   if (!transactions?.length) return res.status(400).json({ error: "No transactions to import" });
+-
+-  const { data: userHoldings } = await supabase.from("holdings").select("id, name, ticker, scheme_code, type").eq("user_id", req.user.id);
+-  const holdingMap = {};
+-  for (const h of (userHoldings || [])) {
+-    if (h.ticker) holdingMap[h.ticker.toLowerCase()] = h.id;
+-    if (h.scheme_code) holdingMap[h.scheme_code.toLowerCase()] = h.id;
+-    holdingMap[h.name.toLowerCase()] = h.id;
+-  }
+-
+-  const imported = [], unmatched = [], errors = [];
+-  for (const t of transactions) {
+-    const sym = (t._symbol || "").toLowerCase();
+-    const holdingId = holdingMap[sym] || holdingMap[sym.replace(/\s+/g, "")] || Object.entries(holdingMap).find(([k]) => k.includes(sym))?.[1];
+-    if (!holdingId) { unmatched.push(t._symbol); continue; }
+-    const { error } = await supabase.from("transactions").insert({
+-      id: "t_" + randomUUID().replace(/-/g, "").slice(0, 16),
+-      holding_id: holdingId, user_id: req.user.id,
+-      txn_type: t.txn_type || "BUY", units: Number(t.units) || 0, price: Number(t.price) || 0,
+-      txn_date: t.txn_date || new Date().toISOString().slice(0, 10), notes: t.notes || "Bulk import",
+-    });
+-    if (error) errors.push(`${t._symbol}: ${error.message}`);
+-    else imported.push(t._symbol);
+-  }
+-  res.json({ ok: true, imported_count: imported.length, unmatched_count: unmatched.length, error_count: errors.length, unmatched: [...new Set(unmatched)], errors });
++  try { res.json(await txns.importRows(req.user.id, transactions)); }
++  catch (e) { sendError(res, e, e.status); }
+ });
+ 
+ router.post("/", auth, async (req, res) => {
+-  const { holding_id, txn_type, units, price, price_usd, txn_date, notes } = req.body;
+-  if (!holding_id) return res.status(400).json({ error: "holding_id is required" });
+-  // Verify the holding belongs to the requesting user before inserting
+-  const { data: holding } = await supabase.from("holdings").select("id").eq("id", holding_id).eq("user_id", req.user.id).single();
+-  if (!holding) return res.status(403).json({ error: "Holding not found or access denied" });
+-  const { error } = await supabase.from("transactions").insert({
+-    id: "t_" + randomUUID().replace(/-/g, "").slice(0, 16),
+-    holding_id, user_id: req.user.id,
+-    txn_type: txn_type || "BUY",
+-    units: Number(units) || 0,
+-    price: Number(price) || 0,
+-    ...(price_usd !== undefined ? { price_usd: Number(price_usd) } : {}),
+-    txn_date: txn_date || new Date().toISOString().slice(0, 10),
+-    notes: notes || "",
+-  });
+-  if (error) return res.status(500).json({ error: error.message });
+-  res.json({ ok: true });
++  try { res.json(await txns.add(req.user.id, req.body)); }
++  catch (e) { sendError(res, e, e.status || 403); }
+ });
+ 
+ router.delete("/:id", auth, async (req, res) => {
+-  const { error } = await supabase.from("transactions").delete().eq("id", req.params.id).eq("user_id", req.user.id);
+-  if (error) return res.status(500).json({ error: error.message });
+-  res.json({ ok: true });
++  try { res.json(await txns.remove(req.user.id, req.params.id)); }
++  catch (e) { sendError(res, e, e.status); }
+ });
+ 
+ export default router;
+diff --git a/services/artifacts.service.js b/services/artifacts.service.js
+new file mode 100644
+index 0000000..5d12a54
+--- /dev/null
++++ b/services/artifacts.service.js
+@@ -0,0 +1,64 @@
++/**
++ * services/artifacts.service.js — all DB/storage access for artifacts.
++ *
++ * Routes call these; they never touch supabase directly. Ownership is enforced
++ * here via lib/guards.js (the service key bypasses RLS, so this is the only
++ * authorization boundary).
++ */
++import { randomUUID } from "crypto";
++import { supabase } from "../lib/db.js";
++import { hashFile } from "../lib/crypto.js";
++import { assertOwnsHolding, assertOwnsArtifact } from "../lib/guards.js";
++
++const BUCKET = "artifacts";
++
++/** List artifacts for a holding the user owns. */
++export async function listForHolding(userId, holdingId) {
++  await assertOwnsHolding(userId, holdingId);
++  const { data, error } = await supabase
++    .from("artifacts").select("*")
++    .eq("holding_id", holdingId)
++    .order("uploaded_at", { ascending: false });
++  if (error) throw new Error(error.message);
++  return data || [];
++}
++
++/** Upload a file to storage + insert the artifact row (owner-checked). */
++export async function create(userId, holdingId, file, description = "") {
++  await assertOwnsHolding(userId, holdingId);
++  const sha256 = hashFile(file.buffer);
++  const id = "art_" + Date.now() + randomUUID().replace(/-/g, "").slice(0, 4);
++  const ext = file.originalname.split(".").pop().toLowerCase();
++  const storagePath = `holdings/${holdingId}/${id}.${ext}`;
++
++  const { error: upErr } = await supabase.storage
++    .from(BUCKET)
++    .upload(storagePath, file.buffer, { contentType: file.mimetype, upsert: false });
++  if (upErr) throw new Error(upErr.message);
++
++  const { error: dbErr } = await supabase.from("artifacts").insert({
++    id, user_id: userId, holding_id: holdingId,
++    file_name: file.originalname, storage_path: storagePath,
++    file_type: file.mimetype, file_size: file.size,
++    description: description || "", sha256,
++  });
++  if (dbErr) throw new Error(dbErr.message);
++  return { id, file_name: file.originalname, sha256 };
++}
++
++/** Return a short-lived signed download URL (owner-checked). */
++export async function getSignedUrl(userId, artifactId) {
++  const art = await assertOwnsArtifact(userId, artifactId);
++  const { data: signed } = await supabase.storage
++    .from(BUCKET).createSignedUrl(art.storage_path, 300);
++  return { url: signed?.signedUrl, file_name: art.file_name, sha256: art.sha256 || null };
++}
++
++/** Delete an artifact and its stored object (owner-checked). */
++export async function remove(userId, artifactId) {
++  const art = await assertOwnsArtifact(userId, artifactId);
++  if (art.storage_path) await supabase.storage.from(BUCKET).remove([art.storage_path]);
++  const { error } = await supabase.from("artifacts").delete().eq("id", artifactId);
++  if (error) throw new Error(error.message);
++  return { ok: true };
++}
+diff --git a/services/brokers/persistSync.js b/services/brokers/persistSync.js
+new file mode 100644
+index 0000000..f7870f7
+--- /dev/null
++++ b/services/brokers/persistSync.js
+@@ -0,0 +1,30 @@
++/**
++ * services/brokers/persistSync.js — shared tail for broker syncs that use
++ * upsert-on-id semantics (Kite, Breeze). Dedupes the identical
++ * "upsert holdings → mark connection synced → snapshot → count" sequence.
++ *
++ * NOTE: SnapTrade is intentionally NOT routed through here — it uses per-account
++ * flush-and-insert with a different response shape, so it stays in its own route.
++ */
++import { supabase } from "../../lib/db.js";
++import { takeSnapshot } from "../../lib/snapshot.js";
++
++/**
++ * @param {string} userId
++ * @param {Array}  rows       holdings rows to upsert (id is the conflict key)
++ * @param {object} opts       { connTable, source }
++ * @returns {{ synced, equity_count?, mf_count?, message? }}
++ */
++export async function persistBrokerSync(userId, rows, { connTable, source }) {
++  if (!rows.length) return { synced: 0, message: "No holdings found." };
++  const { error } = await supabase.from("holdings").upsert(rows, { onConflict: "id" });
++  if (error) throw new Error(error.message);
++  await supabase.from(connTable).update({ last_synced_at: new Date().toISOString() }).eq("user_id", userId);
++  // Snapshot directly (no fragile self-HTTP). Fire-and-forget.
++  takeSnapshot(userId, { source }).catch((e) => console.error(`${source} snapshot:`, e.message));
++  return {
++    synced: rows.length,
++    equity_count: rows.filter((r) => r.type !== "MF").length,
++    mf_count: rows.filter((r) => r.type === "MF").length,
++  };
++}
+diff --git a/services/holdings.service.js b/services/holdings.service.js
+new file mode 100644
+index 0000000..72fbb5f
+--- /dev/null
++++ b/services/holdings.service.js
+@@ -0,0 +1,216 @@
++/**
++ * services/holdings.service.js — all DB access for holdings + their CSV/CAS import.
++ * Behavior is a verbatim move from the old routes/holdings.js; the route is now
++ * a thin controller.
++ */
++import { randomUUID } from "crypto";
++import { supabase } from "../lib/db.js";
++import { sanitizeDates, enrichHoldings } from "../lib/holdings-utils.js";
++import { yahooPrice, stockPrice } from "../lib/prices.js";
++import { holdingSchema, validateRows } from "../lib/validate.js";
++import { takeSnapshot } from "../lib/snapshot.js";
++
++const hId = () => "h_" + randomUUID().replace(/-/g, "").slice(0, 16);
++const tId = () => "t_" + randomUUID().replace(/-/g, "").slice(0, 16);
++
++// SIP signal fields so CalendarTab can detect active SIPs without client-side iteration.
++function computeSipFields(transactions = []) {
++  const transaction_count = transactions.length;
++  const buyTxns = transactions
++    .filter((t) => t.txn_type === "BUY" && t.txn_date)
++    .sort((a, b) => b.txn_date.localeCompare(a.txn_date));
++  if (buyTxns.length < 3) return { transaction_count, sip_day: null, sip_active: false, sip_avg_amount: null };
++  const now = new Date();
++  const nowMo = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
++  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
++  const prevMo = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
++  const lastMo = buyTxns[0].txn_date.slice(0, 7);
++  if (!(lastMo === nowMo || lastMo === prevMo)) return { transaction_count, sip_day: null, sip_active: false, sip_avg_amount: null };
++  const cutoff = new Date(now.getFullYear(), now.getMonth() - 6, 1).toISOString().slice(0, 7);
++  const activeMos = new Set(buyTxns.filter((t) => t.txn_date.slice(0, 7) >= cutoff).map((t) => t.txn_date.slice(0, 7)));
++  if (activeMos.size < 3) return { transaction_count, sip_day: null, sip_active: false, sip_avg_amount: null };
++  const freq = {};
++  buyTxns.slice(0, 6).forEach((t) => { const d = +t.txn_date.slice(8, 10); freq[d] = (freq[d] || 0) + 1; });
++  const sip_day = +Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
++  const sip_avg_amount = buyTxns.slice(0, 3).reduce((s, t) => s + (+t.units) * (+t.price), 0) / 3;
++  return { transaction_count, sip_day, sip_active: true, sip_avg_amount };
++}
++
++/** List holdings with artifacts + transactions, enriched with SIP/net-unit fields. */
++export async function list(userId) {
++  let { data, error } = await supabase
++    .from("holdings")
++    .select("*, artifacts(id,file_name,file_type,file_size,description,uploaded_at), transactions(id,txn_type,units,price,txn_date,notes,created_at)")
++    .eq("user_id", userId)
++    .order("created_at", { ascending: true });
++  if (error) ({ data, error } = await supabase.from("holdings").select("*, artifacts(id,file_name,file_type,file_size,description,uploaded_at)").eq("user_id", userId).order("created_at", { ascending: true }));
++  if (error) throw new Error(error.message);
++  return enrichHoldings(data).map((h) =>
++    h.type === "MF"
++      ? { ...h, ...computeSipFields(h.transactions || []) }
++      : { ...h, transaction_count: (h.transactions || []).length }
++  );
++}
++
++/** Transactions for one holding (lazy load), scoped to the caller. */
++export async function listTransactions(userId, holdingId) {
++  const { data, error } = await supabase
++    .from("transactions")
++    .select("id,txn_type,units,price,price_usd,txn_date,notes,created_at")
++    .eq("holding_id", holdingId)
++    .eq("user_id", userId)
++    .order("txn_date", { ascending: true });
++  if (error) throw new Error(error.message);
++  return data || [];
++}
++
++/** CSV/CAS import (flush-and-fill for CAS, update-vs-insert for manual). */
++export async function importHoldings(userId, body) {
++  const { holdings, member_id, account_map, cas_statement_date, cas_period_start, cas_period_end } = body;
++
++  const { invalid } = validateRows(holdingSchema.partial(), holdings);
++  if (invalid.length > 0) console.warn(`[import] ${invalid.length} invalid row(s) flagged (kept — lenient import).`);
++
++  let effectiveMemberId = member_id || null;
++  if (!effectiveMemberId) {
++    const { data: portfolio } = await supabase.from("portfolio").select("members").eq("user_id", userId).single();
++    const pMembers = portfolio?.members || [];
++    if (pMembers.length > 0) effectiveMemberId = pMembers[0].id;
++  }
++
++  const isCASImport = !!cas_statement_date;
++  if (isCASImport) {
++    const affectedMemberIds = new Set();
++    if (account_map) for (const mid of Object.values(account_map)) if (mid) affectedMemberIds.add(mid);
++    if (effectiveMemberId) affectedMemberIds.add(effectiveMemberId);
++    if (affectedMemberIds.size > 0) {
++      await supabase.from("holdings").delete().eq("user_id", userId).eq("source", "cas").in("member_id", [...affectedMemberIds]);
++    }
++    await supabase.from("holdings").delete().eq("user_id", userId).eq("source", "cas").is("member_id", null);
++  }
++
++  const existingMap = {};
++  if (!isCASImport) {
++    const { data: existing } = await supabase.from("holdings").select("id, name, ticker, scheme_code, type").eq("user_id", userId);
++    for (const h of (existing || [])) {
++      const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
++      existingMap[key] = h.id;
++    }
++  }
++
++  await supabase.from("holdings").delete().eq("user_id", userId).like("notes", "%__demo__%");
++
++  const inserted = [], updated = [], skipped = [], errors = [];
++  const toInsert = [], toInsertTxns = [], toUpdate = [];
++
++  for (const h of holdings) {
++    const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
++    const existingId = !isCASImport ? existingMap[key] : null;
++    if (existingId && h._dupAction === "skip") { skipped.push(h.name); continue; }
++    const isMF = (h.type || "IN_STOCK") === "MF";
++    const resolvedMember = (account_map && h._account_name && account_map[h._account_name]) || effectiveMemberId || h.member_id || null;
++    const payload = sanitizeDates({
++      member_id: resolvedMember, type: h.type || "IN_STOCK", name: h.name,
++      ticker: h.ticker || "", scheme_code: h.scheme_code || "",
++      units: h.units || 0, purchase_price: h.purchase_price || 0, current_price: h.current_price || 0,
++      ...(isMF ? { purchase_nav: h.purchase_nav || 0, current_nav: h.current_nav || 0 } : {}),
++      purchase_value: h.purchase_value || 0, current_value: h.current_value || 0,
++      principal: h.principal || 0, interest_rate: h.interest_rate || 0,
++      start_date: h.start_date || null, maturity_date: h.maturity_date || null,
++      usd_inr_rate: h.usd_inr_rate || null,
++      ...(h.source ? { source: h.source } : {}),
++      ...(h.brokerage_name ? { brokerage_name: h.brokerage_name } : {}),
++      ...(h.currency ? { currency: h.currency } : {}),
++      ...(cas_statement_date ? { source_date: cas_statement_date } : {}),
++      ...(cas_period_start ? { cas_period_start } : {}),
++      ...(cas_period_end ? { cas_period_end } : {}),
++    });
++    if (existingId) {
++      toUpdate.push({ id: existingId, payload, name: h.name });
++    } else {
++      const id = hId();
++      toInsert.push({ ...payload, id, user_id: userId });
++      inserted.push(h.name);
++      const price = h.purchase_price || h.purchase_nav || 0;
++      if (h.units && price) {
++        toInsertTxns.push({ id: tId(), holding_id: id, user_id: userId, txn_type: "BUY", units: h.units, price, txn_date: h.start_date || new Date().toISOString().slice(0, 10), notes: "Imported from CSV" });
++      }
++    }
++  }
++
++  if (toInsert.length > 0) {
++    const { error } = await supabase.from("holdings").insert(toInsert);
++    if (error) { errors.push(`Batch insert error: ${error.message}`); inserted.length = 0; }
++  }
++  if (toInsertTxns.length > 0) await supabase.from("transactions").insert(toInsertTxns);
++  for (const { id, payload, name } of toUpdate) {
++    const { error } = await supabase.from("holdings").update(payload).eq("id", id);
++    if (error) errors.push(`${name}: ${error.message}`); else updated.push(name);
++  }
++
++  return {
++    ok: true,
++    inserted_count: inserted.length, updated_count: updated.length,
++    skipped_count: skipped.length, error_count: errors.length,
++    inserted, updated, skipped, errors,
++    validation: { invalid_count: invalid.length, invalid_sample: invalid.slice(0, 10).map((r) => ({ row: r.index, errors: r.errors })) },
++    needs_price_refresh: inserted.length > 0 || updated.length > 0,
++    _cas_statement_date: cas_statement_date || null,
++  };
++}
++
++/** Fire-and-forget after import: snapshot + best-effort price backfill. */
++export function runPostImport(userId, casStatementDate) {
++  takeSnapshot(userId, { source: "cas_import", cas_statement_date: casStatementDate || null })
++    .catch((e) => console.error("Auto-snapshot failed:", e.message));
++  (async () => {
++    try {
++      const { data: fresh } = await supabase.from("holdings").select("id, type, ticker, scheme_code, units")
++        .eq("user_id", userId).in("type", ["IN_STOCK", "IN_ETF"]).or("current_price.eq.0,current_price.is.null");
++      if (!fresh?.length) return;
++      for (const h of fresh) {
++        if (!h.ticker || h.ticker.startsWith("INE")) continue;
++        try {
++          const q = await stockPrice(`${h.ticker.toUpperCase()}.NS`, "NSE");
++          const price = q?.price ?? await yahooPrice(`${h.ticker.toUpperCase()}.BO`);
++          if (price && price > 0) {
++            await supabase.from("holdings").update({ current_price: price, current_value: (h.units || 0) * price, price_fetched_at: new Date().toISOString() }).eq("id", h.id);
++          }
++        } catch { /* skip */ }
++        await new Promise((r) => setTimeout(r, 1200));
++      }
++    } catch (e) { console.log(`Post-import price fetch error: ${e.message}`); }
++  })();
++}
++
++/** Create a manual holding (+ optional first transaction). */
++export async function create(userId, body) {
++  const { first_transaction, purchase_nav, current_nav, ...holdingData } = body;
++  const isMF = holdingData.type === "MF";
++  if (!holdingData.notes?.includes("__demo__"))
++    await supabase.from("holdings").delete().eq("user_id", userId).like("notes", "%__demo__%");
++  const insertData = { ...holdingData, user_id: userId, ...(isMF ? { purchase_nav: purchase_nav || 0, current_nav: current_nav || 0 } : {}) };
++  const { error } = await supabase.from("holdings").insert(sanitizeDates(insertData));
++  if (error) throw new Error(error.message);
++  if (first_transaction && first_transaction.units && first_transaction.price) {
++    await supabase.from("transactions").insert({ id: tId(), holding_id: holdingData.id, txn_type: first_transaction.txn_type || "BUY", units: Number(first_transaction.units), price: Number(first_transaction.price), txn_date: first_transaction.txn_date || holdingData.start_date || new Date().toISOString().slice(0, 10), notes: first_transaction.notes || "" });
++  }
++  return { ok: true };
++}
++
++/** Update one of the user's holdings. */
++export async function update(userId, id, body) {
++  const { artifacts, transactions, net_units, avg_cost, purchase_nav, current_nav, purchase_price, ...holdingData } = body;
++  const isMF = holdingData.type === "MF";
++  const updateData = { ...holdingData, ...(isMF ? { purchase_nav: purchase_nav || 0, current_nav: current_nav || 0 } : {}) };
++  const { error } = await supabase.from("holdings").update(sanitizeDates(updateData)).eq("id", id).eq("user_id", userId);
++  if (error) throw new Error(error.message);
++  return { ok: true };
++}
++
++/** Delete one of the user's holdings. */
++export async function remove(userId, id) {
++  const { error } = await supabase.from("holdings").delete().eq("id", id).eq("user_id", userId);
++  if (error) throw new Error(error.message);
++  return { ok: true };
++}
+diff --git a/services/portfolio.service.js b/services/portfolio.service.js
+new file mode 100644
+index 0000000..1463622
+--- /dev/null
++++ b/services/portfolio.service.js
+@@ -0,0 +1,73 @@
++/**
++ * services/portfolio.service.js — portfolio doc (members/goals/alerts/liabilities).
++ * Handles auto-provisioning, "Self" member self-repair, and PAN/DOB masking so
++ * plaintext PII never leaves the service boundary.
++ */
++import { supabase } from "../lib/db.js";
++import { encrypt, decrypt } from "../lib/crypto.js";
++
++const newMemberId = () => "m_" + Date.now().toString(36);
++
++async function displayNameFor(user) {
++  const { data: profile } = await supabase.from("profiles").select("display_name").eq("id", user.id).single();
++  return profile?.display_name || user.email?.split("@")[0] || "Me";
++}
++
++function maskMembers(members) {
++  return (members || []).map((m) => {
++    const out = { ...m };
++    if (out.encrypted_pan) {
++      try {
++        const raw = decrypt(out.encrypted_pan);
++        out.pan_masked = raw.length >= 10 ? raw.slice(0, 5) + "****" + raw.slice(-1) : "****";
++      } catch { out.pan_masked = "****"; }
++      delete out.encrypted_pan;
++    }
++    if (out.encrypted_dob) { out.has_dob = true; delete out.encrypted_dob; }
++    return out;
++  });
++}
++
++/** Get the user's portfolio, auto-provisioning + self-repairing as needed. */
++export async function get(user) {
++  const { data, error } = await supabase.from("portfolio").select("*").eq("user_id", user.id).single();
++  if (error && error.code !== "PGRST116") throw new Error(error.message);
++
++  if (!data) {
++    const name = await displayNameFor(user).catch(() => user.email?.split("@")[0] || "Me");
++    const member = { id: newMemberId(), name, relation: "Self", email: user.email || "" };
++    const created = { id: user.id, user_id: user.id, members: [member], goals: [], alerts: [], updated_at: new Date().toISOString() };
++    const { error: insErr } = await supabase.from("portfolio").upsert(created);
++    if (insErr) console.error(`Auto-provision failed for ${user.email}:`, insErr.message);
++    return created;
++  }
++
++  if (!data.members || data.members.length === 0 || !data.members.find((m) => m.relation === "Self")) {
++    try {
++      const name = await displayNameFor(user);
++      const repaired = [...(data.members || []), { id: newMemberId(), name, relation: "Self", email: user.email || "" }];
++      await supabase.from("portfolio").update({ members: repaired, updated_at: new Date().toISOString() }).eq("user_id", user.id);
++      data.members = repaired;
++    } catch (e) { console.error(`Self-repair failed for ${user.email}:`, e.message); }
++  }
++
++  if (data.members) data.members = maskMembers(data.members);
++  return data;
++}
++
++/** Upsert the portfolio, encrypting any new PAN/DOB the client submitted. */
++export async function save(userId, body) {
++  const { members, goals, alerts, liabilities } = body;
++  const safeMembers = (members || []).map((m) => {
++    const out = { ...m };
++    if (out.pan && !out.pan.includes(":")) { out.encrypted_pan = encrypt(out.pan.toUpperCase().trim()); delete out.pan; }
++    if (out.dob && !out.dob.includes(":")) { out.encrypted_dob = encrypt(out.dob.trim()); delete out.dob; }
++    delete out.pan_masked; delete out.has_dob;
++    return out;
++  });
++  const upsertData = { id: userId, user_id: userId, members: safeMembers, goals, alerts, updated_at: new Date().toISOString() };
++  if (liabilities !== undefined) upsertData.liabilities = liabilities;
++  const { error } = await supabase.from("portfolio").upsert(upsertData);
++  if (error) throw new Error(error.message);
++  return { ok: true };
++}
+diff --git a/services/transactions.service.js b/services/transactions.service.js
+new file mode 100644
+index 0000000..fad82cc
+--- /dev/null
++++ b/services/transactions.service.js
+@@ -0,0 +1,72 @@
++/**
++ * services/transactions.service.js — all DB access for transactions.
++ * Every query is scoped to the owning user (service key bypasses RLS).
++ */
++import { randomUUID } from "crypto";
++import { supabase } from "../lib/db.js";
++import { assertOwnsHolding } from "../lib/guards.js";
++
++const txnId = () => "t_" + randomUUID().replace(/-/g, "").slice(0, 16);
++
++/** Transactions for one holding, newest first, scoped to the user. */
++export async function listForHolding(userId, holdingId) {
++  const { data, error } = await supabase.from("transactions")
++    .select("*").eq("holding_id", holdingId).eq("user_id", userId)
++    .order("txn_date", { ascending: false });
++  if (error) throw new Error(error.message);
++  return data || [];
++}
++
++/** Insert a single transaction after verifying the parent holding is owned. */
++export async function add(userId, body) {
++  const { holding_id, txn_type, units, price, price_usd, txn_date, notes } = body;
++  if (!holding_id) { const e = new Error("holding_id is required"); e.status = 400; throw e; }
++  await assertOwnsHolding(userId, holding_id);
++  const { error } = await supabase.from("transactions").insert({
++    id: txnId(), holding_id, user_id: userId,
++    txn_type: txn_type || "BUY",
++    units: Number(units) || 0, price: Number(price) || 0,
++    ...(price_usd !== undefined ? { price_usd: Number(price_usd) } : {}),
++    txn_date: txn_date || new Date().toISOString().slice(0, 10),
++    notes: notes || "",
++  });
++  if (error) throw new Error(error.message);
++  return { ok: true };
++}
++
++/** Bulk import, matching rows to the user's holdings by symbol/scheme/name. */
++export async function importRows(userId, transactions) {
++  const { data: userHoldings } = await supabase.from("holdings")
++    .select("id, name, ticker, scheme_code, type").eq("user_id", userId);
++  const holdingMap = {};
++  for (const h of (userHoldings || [])) {
++    if (h.ticker) holdingMap[h.ticker.toLowerCase()] = h.id;
++    if (h.scheme_code) holdingMap[h.scheme_code.toLowerCase()] = h.id;
++    holdingMap[h.name.toLowerCase()] = h.id;
++  }
++  const imported = [], unmatched = [], errors = [];
++  for (const t of transactions) {
++    const sym = (t._symbol || "").toLowerCase();
++    const holdingId = holdingMap[sym] || holdingMap[sym.replace(/\s+/g, "")]
++      || Object.entries(holdingMap).find(([k]) => k.includes(sym))?.[1];
++    if (!holdingId) { unmatched.push(t._symbol); continue; }
++    const { error } = await supabase.from("transactions").insert({
++      id: txnId(), holding_id: holdingId, user_id: userId,
++      txn_type: t.txn_type || "BUY", units: Number(t.units) || 0, price: Number(t.price) || 0,
++      txn_date: t.txn_date || new Date().toISOString().slice(0, 10), notes: t.notes || "Bulk import",
++    });
++    if (error) errors.push(`${t._symbol}: ${error.message}`);
++    else imported.push(t._symbol);
++  }
++  return {
++    ok: true, imported_count: imported.length, unmatched_count: unmatched.length,
++    error_count: errors.length, unmatched: [...new Set(unmatched)], errors,
++  };
++}
++
++/** Delete one of the user's own transactions. */
++export async function remove(userId, id) {
++  const { error } = await supabase.from("transactions").delete().eq("id", id).eq("user_id", userId);
++  if (error) throw new Error(error.message);
++  return { ok: true };
++}
+diff --git a/src/App.jsx b/src/App.jsx
+index 0800d90..c1ce8e6 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -32,6 +32,9 @@ import { useBudget } from './hooks/useBudget.js';
+ import { useImport } from './hooks/useImport.js';
+ import { useCASImport } from './hooks/useCASImport.js';
+ import { useAI } from './hooks/useAI.js';
++import { useBrokerSearch } from './hooks/useBrokerSearch.js';
++import { useUiState } from './hooks/useUiState.js';
++import { useHoldingsView } from './hooks/useHoldingsView.js';
+ 
+ // ── Tab components ───────────────────────────────────────────────
+ import OverviewTab from './components/tabs/OverviewTab.jsx';
+@@ -83,17 +86,7 @@ export default function App() {
+   // ── Cross-tab UI state ────────────────────────────────────────
+   const [tab,              setTab]              = useState('overview');
+   const [selMember,        setSelMember]        = useState('all');
+-  const [modal,            setModal]            = useState(null);
+-  const [fdScanOpen,       setFdScanOpen]       = useState(false);
+-  const [showSettings,     setShowSettings]     = useState(false);
+-  const [showImportHub,    setShowImportHub]    = useState(false);
+-  const [showSnapTrade,    setShowSnapTrade]    = useState(false);
+-  const [showKite,         setShowKite]         = useState(false);
+-  const [showBreeze,       setShowBreeze]       = useState(false);
+-  const [moreSheetOpen,    setMoreSheetOpen]     = useState(false);
+-  const [expandedHolding,  setExpandedHolding]  = useState(null);
+-  const [showQuietAlerts,  setShowQuietAlerts]  = useState(false);
+-  const [showSharedDropdown, setShowSharedDropdown] = useState(false);
++  // Modal/sheet/dropdown UI toggles now live in useUiState().
+ 
+   // ── Holding / member form state ───────────────────────────────
+   const [form,            setForm]            = useState(BF);
+@@ -106,33 +99,12 @@ export default function App() {
+   const [editGoalId,      setEditGoalId]      = useState(null);
+   const [alertForm,       setAlertForm]       = useState(BA);
+ 
+-  // ── Broker search state ───────────────────────────────────────
+-  const [mfSearch,       setMfSearch]       = useState('');
+-  const [mfResults,      setMfResults]      = useState([]);
+-  const [mfSearching,    setMfSearching]    = useState(false);
+-  const [mfNav,          setMfNav]          = useState(null);
+-  const [stockSearch,    setStockSearch]    = useState('');
+-  const [stockResults,   setStockResults]   = useState([]);
+-  const [stockSearching, setStockSearching] = useState(false);
+-  const [stockInfo,      setStockInfo]      = useState(null);
+-  const [stockLooking,   setStockLooking]   = useState(false);
+-  const [etfSearch,      setEtfSearch]      = useState('');
+-  const [etfResults,     setEtfResults]     = useState([]);
+-  const [etfSearching,   setEtfSearching]   = useState(false);
+-  const [etfInfo,        setEtfInfo]        = useState(null);
+-  const [usSearch,       setUsSearch]       = useState('');
+-  const [usResults,      setUsResults]      = useState([]);
+-  const [usSearching,    setUsSearching]    = useState(false);
+-  const [usdInrRate,     setUsdInrRate]     = useState(94.5);
+-  const [usdInrLoading,  setUsdInrLoading]  = useState(false);
++  // ── Broker search state now lives in useBrokerSearch() (see below) ──
+ 
+   // ── Misc state ────────────────────────────────────────────────
+   const [txnHolding,      setTxnHolding]      = useState(null);
+   const [txnForm,         setTxnForm]         = useState(BT);
+   const [artifactHolding, setArtifactHolding] = useState(null);
+-  const [filterType,      setFilterType]      = useState('ALL');
+-  const [sortCol,         setSortCol]         = useState(null);
+-  const [sortDir,         setSortDir]         = useState('asc');
+   const [targetAlloc, setTargetAlloc] = useState({
+     IN_STOCK:35,MF:25,IN_ETF:5,US_STOCK:10,US_ETF:5,US_BOND:0,
+     CRYPTO:3,CASH:0,FD:5,PPF:5,EPF:5,REAL_ESTATE:2,OTHER:0,
+@@ -150,10 +122,6 @@ export default function App() {
+   const importFileRef    = useRef();
+   const txnSaving        = useRef(false);
+   const aiBottomRef      = useRef();
+-  const stockSearchTimer = useRef();
+-  const usSearchTimer    = useRef();
+-  const mfSearchTimer    = useRef();
+-  const etfSearchTimer   = useRef();
+ 
+   // ── Hooks ─────────────────────────────────────────────────────
+   const portfolio  = usePortfolio(user);
+@@ -162,6 +130,25 @@ export default function App() {
+   const importHook = useImport(user, () => portfolio.reloadHoldings());
+   const casImport  = useCASImport(user, () => portfolio.reloadHoldings());
+   const ai         = useAI();
++  const brokerSearch = useBrokerSearch();
++  const {
++    mfSearch, setMfSearch, mfResults, setMfResults, mfSearching, setMfSearching, mfNav, setMfNav,
++    stockSearch, setStockSearch, stockResults, setStockResults, stockSearching, setStockSearching,
++    stockInfo, setStockInfo, stockLooking, setStockLooking,
++    etfSearch, setEtfSearch, etfResults, setEtfResults, etfSearching, setEtfSearching, etfInfo, setEtfInfo,
++    usSearch, setUsSearch, usResults, setUsResults, usSearching, setUsSearching,
++    usdInrRate, setUsdInrRate, usdInrLoading, setUsdInrLoading,
++    handleMfSearch, handleStockSearch, handleEtfSearch, handleUsSearch, fetchUsdInr,
++  } = brokerSearch;
++  const ui = useUiState();
++  const {
++    modal, setModal, fdScanOpen, setFdScanOpen, showSettings, setShowSettings,
++    showImportHub, setShowImportHub, showSnapTrade, setShowSnapTrade,
++    showKite, setShowKite, showBreeze, setShowBreeze, moreSheetOpen, setMoreSheetOpen,
++    expandedHolding, setExpandedHolding, showQuietAlerts, setShowQuietAlerts,
++    showSharedDropdown, setShowSharedDropdown,
++  } = ui;
++  const { filterType, setFilterType, sortCol, setSortCol, sortDir, setSortDir, toggleSort } = useHoldingsView();
+ 
+   // ── Auth listener ─────────────────────────────────────────────
+   useEffect(() => {
+@@ -376,11 +363,6 @@ ${alertsText}`;
+   }
+ 
+   // ── Shared helpers ────────────────────────────────────────────
+-  function toggleSort(col) {
+-    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+-    else { setSortCol(col); setSortDir('asc'); }
+-  }
+-
+   function openMemberModal(memberId) {
+     if (memberId) {
+       const m = members.find(x => x.id === memberId);
+@@ -413,60 +395,7 @@ ${alertsText}`;
+   }
+ 
+   // ── Broker search handlers ────────────────────────────────────
+-  function handleMfSearch(v) {
+-    setMfSearch(v); setMfNav(null);
+-    clearTimeout(mfSearchTimer.current);
+-    if (!v.trim()) { setMfResults([]); return; }
+-    setMfSearching(true);
+-    mfSearchTimer.current = setTimeout(async () => {
+-      try { const d = await api(`/api/mf/search?q=${encodeURIComponent(v)}`); setMfResults(d?.funds || []); }
+-      catch { setMfResults([]); }
+-      setMfSearching(false);
+-    }, 350);
+-  }
+-
+-  function handleStockSearch(v) {
+-    setStockSearch(v); setStockInfo(null);
+-    clearTimeout(stockSearchTimer.current);
+-    if (!v.trim()) { setStockResults([]); return; }
+-    setStockSearching(true);
+-    stockSearchTimer.current = setTimeout(async () => {
+-      try { const d = await api(`/api/stocks/search?q=${encodeURIComponent(v)}&exchange=NSE`); setStockResults(d?.results || []); }
+-      catch { setStockResults([]); }
+-      setStockSearching(false);
+-    }, 350);
+-  }
+-
+-  function handleEtfSearch(v) {
+-    setEtfSearch(v); setEtfInfo(null);
+-    clearTimeout(etfSearchTimer.current);
+-    if (!v.trim()) { setEtfResults([]); return; }
+-    setEtfSearching(true);
+-    etfSearchTimer.current = setTimeout(async () => {
+-      try { const d = await api(`/api/stocks/search?q=${encodeURIComponent(v)}&exchange=NSE`); setEtfResults(d?.results || []); }
+-      catch { setEtfResults([]); }
+-      setEtfSearching(false);
+-    }, 350);
+-  }
+-
+-  function handleUsSearch(v) {
+-    setUsSearch(v);
+-    clearTimeout(usSearchTimer.current);
+-    if (!v.trim()) { setUsResults([]); return; }
+-    setUsSearching(true);
+-    usSearchTimer.current = setTimeout(async () => {
+-      try { const d = await api(`/api/stocks/search?q=${encodeURIComponent(v)}&exchange=US`); setUsResults(d?.results || []); }
+-      catch { setUsResults([]); }
+-      setUsSearching(false);
+-    }, 350);
+-  }
+-
+-  async function fetchUsdInr() {
+-    setUsdInrLoading(true);
+-    try { const d = await api('/api/forex/usdinr'); if (d?.rate) { setUsdInrRate(d.rate); setLiveUsdInr(d.rate); } }
+-    catch {}
+-    setUsdInrLoading(false);
+-  }
++  // Broker-search handlers now provided by useBrokerSearch().
+ 
+   // ── Auth guards ───────────────────────────────────────────────
+   if (authLoading) return <div className="splash">Loading…</div>;
+diff --git a/src/hooks/useBrokerSearch.js b/src/hooks/useBrokerSearch.js
+new file mode 100644
+index 0000000..18e0760
+--- /dev/null
++++ b/src/hooks/useBrokerSearch.js
+@@ -0,0 +1,99 @@
++import { useState, useRef } from "react";
++import { api } from "../lib/api.js";
++import { setLiveUsdInr } from "../utils.js";
++
++/**
++ * useBrokerSearch — all instrument-search state used by the "add holding" form
++ * (mutual funds, stocks, ETFs, US stocks) plus the USD/INR rate fetch.
++ * Extracted from App.jsx to shrink the god-component; behavior is unchanged.
++ */
++export function useBrokerSearch() {
++  const [mfSearch, setMfSearch]       = useState("");
++  const [mfResults, setMfResults]     = useState([]);
++  const [mfSearching, setMfSearching] = useState(false);
++  const [mfNav, setMfNav]             = useState(null);
++  const [stockSearch, setStockSearch]       = useState("");
++  const [stockResults, setStockResults]     = useState([]);
++  const [stockSearching, setStockSearching] = useState(false);
++  const [stockInfo, setStockInfo]           = useState(null);
++  const [stockLooking, setStockLooking]     = useState(false);
++  const [etfSearch, setEtfSearch]       = useState("");
++  const [etfResults, setEtfResults]     = useState([]);
++  const [etfSearching, setEtfSearching] = useState(false);
++  const [etfInfo, setEtfInfo]           = useState(null);
++  const [usSearch, setUsSearch]         = useState("");
++  const [usResults, setUsResults]       = useState([]);
++  const [usSearching, setUsSearching]   = useState(false);
++  const [usdInrRate, setUsdInrRate]     = useState(94.5);
++  const [usdInrLoading, setUsdInrLoading] = useState(false);
++
++  const stockSearchTimer = useRef();
++  const usSearchTimer    = useRef();
++  const mfSearchTimer    = useRef();
++  const etfSearchTimer   = useRef();
++
++  function handleMfSearch(v) {
++    setMfSearch(v); setMfNav(null);
++    clearTimeout(mfSearchTimer.current);
++    if (!v.trim()) { setMfResults([]); return; }
++    setMfSearching(true);
++    mfSearchTimer.current = setTimeout(async () => {
++      try { const d = await api(`/api/mf/search?q=${encodeURIComponent(v)}`); setMfResults(d?.funds || []); }
++      catch { setMfResults([]); }
++      setMfSearching(false);
++    }, 350);
++  }
++
++  function handleStockSearch(v) {
++    setStockSearch(v); setStockInfo(null);
++    clearTimeout(stockSearchTimer.current);
++    if (!v.trim()) { setStockResults([]); return; }
++    setStockSearching(true);
++    stockSearchTimer.current = setTimeout(async () => {
++      try { const d = await api(`/api/stocks/search?q=${encodeURIComponent(v)}&exchange=NSE`); setStockResults(d?.results || []); }
++      catch { setStockResults([]); }
++      setStockSearching(false);
++    }, 350);
++  }
++
++  function handleEtfSearch(v) {
++    setEtfSearch(v); setEtfInfo(null);
++    clearTimeout(etfSearchTimer.current);
++    if (!v.trim()) { setEtfResults([]); return; }
++    setEtfSearching(true);
++    etfSearchTimer.current = setTimeout(async () => {
++      try { const d = await api(`/api/stocks/search?q=${encodeURIComponent(v)}&exchange=NSE`); setEtfResults(d?.results || []); }
++      catch { setEtfResults([]); }
++      setEtfSearching(false);
++    }, 350);
++  }
++
++  function handleUsSearch(v) {
++    setUsSearch(v);
++    clearTimeout(usSearchTimer.current);
++    if (!v.trim()) { setUsResults([]); return; }
++    setUsSearching(true);
++    usSearchTimer.current = setTimeout(async () => {
++      try { const d = await api(`/api/stocks/search?q=${encodeURIComponent(v)}&exchange=US`); setUsResults(d?.results || []); }
++      catch { setUsResults([]); }
++      setUsSearching(false);
++    }, 350);
++  }
++
++  async function fetchUsdInr() {
++    setUsdInrLoading(true);
++    try { const d = await api("/api/forex/usdinr"); if (d?.rate) { setUsdInrRate(d.rate); setLiveUsdInr(d.rate); } }
++    catch { /* ignore */ }
++    setUsdInrLoading(false);
++  }
++
++  return {
++    mfSearch, setMfSearch, mfResults, setMfResults, mfSearching, setMfSearching, mfNav, setMfNav,
++    stockSearch, setStockSearch, stockResults, setStockResults, stockSearching, setStockSearching,
++    stockInfo, setStockInfo, stockLooking, setStockLooking,
++    etfSearch, setEtfSearch, etfResults, setEtfResults, etfSearching, setEtfSearching, etfInfo, setEtfInfo,
++    usSearch, setUsSearch, usResults, setUsResults, usSearching, setUsSearching,
++    usdInrRate, setUsdInrRate, usdInrLoading, setUsdInrLoading,
++    handleMfSearch, handleStockSearch, handleEtfSearch, handleUsSearch, fetchUsdInr,
++  };
++}
+diff --git a/src/hooks/useCASImport.js b/src/hooks/useCASImport.js
+index 47cda2e..b00dab4 100644
+--- a/src/hooks/useCASImport.js
++++ b/src/hooks/useCASImport.js
+@@ -79,15 +79,12 @@ export function useCASImport(user, onSuccess) {
+       const { data: { session } } = await supabase.auth.getSession();
+       const token = session?.access_token || "";
+ 
+-      let password = "";
+-      try {
+-        const creds = await api("/api/profile/cas-credentials");
+-        if (creds.has_credentials && creds.pan_for_cas_unlock) password = creds.pan_for_cas_unlock;
+-      } catch {}
+-
++      // The server unlocks password-protected CAS PDFs with the stored PAN
++      // server-side, so we no longer fetch the plaintext PAN to the browser.
++      // If the PDF still can't be opened, the server responds password_required
++      // and the user is prompted to type their PAN below.
+       const fd = new FormData();
+       fd.append("file", file);
+-      if (password) fd.append("password", password);
+ 
+       const res = await fetch("/api/import/detect", {
+         method: "POST",
+diff --git a/src/hooks/useHoldingsView.js b/src/hooks/useHoldingsView.js
+new file mode 100644
+index 0000000..3c7d834
+--- /dev/null
++++ b/src/hooks/useHoldingsView.js
+@@ -0,0 +1,18 @@
++import { useState } from "react";
++
++/**
++ * useHoldingsView — filter + sort state for the Holdings table.
++ * Extracted from App.jsx.
++ */
++export function useHoldingsView() {
++  const [filterType, setFilterType] = useState("ALL");
++  const [sortCol, setSortCol]       = useState(null);
++  const [sortDir, setSortDir]       = useState("asc");
++
++  function toggleSort(col) {
++    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
++    else { setSortCol(col); setSortDir("asc"); }
++  }
++
++  return { filterType, setFilterType, sortCol, setSortCol, sortDir, setSortDir, toggleSort };
++}
+diff --git a/src/hooks/useImport.js b/src/hooks/useImport.js
+index ecbd856..cd9afe0 100644
+--- a/src/hooks/useImport.js
++++ b/src/hooks/useImport.js
+@@ -55,14 +55,12 @@ export function useImport(user, onSuccess) {
+           }));
+           return;
+         }
+-        let savedPan = "", savedDob = "";
+-        try {
+-          const creds = await api("/api/profile/cas-credentials");
+-          if (creds.has_credentials) { savedPan = creds.pan_for_cas_unlock || ""; savedDob = creds.dob || ""; }
+-        } catch {}
++        // Server already tried the stored PAN server-side; reaching here means
++        // it didn't work (or none is stored). We no longer pull the plaintext
++        // PAN into the browser — the user types it into the prompt (P1-2).
+         setImportState(s => ({
+           ...s, step: "cas_password", needsPassword: true, pendingFile: file,
+-          casPan: savedPan, casDob: savedDob, format: "", warnings: [],
++          casPan: "", casDob: "", format: "", warnings: [],
+         }));
+         return;
+       }
+diff --git a/src/hooks/useUiState.js b/src/hooks/useUiState.js
+new file mode 100644
+index 0000000..6c96846
+--- /dev/null
++++ b/src/hooks/useUiState.js
+@@ -0,0 +1,27 @@
++import { useState } from "react";
++
++/**
++ * useUiState — cross-tab UI toggles (modals, sheets, dropdowns, expanded rows).
++ * Extracted from App.jsx. Pure view state, no data.
++ */
++export function useUiState() {
++  const [modal, setModal]                   = useState(null);
++  const [fdScanOpen, setFdScanOpen]         = useState(false);
++  const [showSettings, setShowSettings]     = useState(false);
++  const [showImportHub, setShowImportHub]   = useState(false);
++  const [showSnapTrade, setShowSnapTrade]   = useState(false);
++  const [showKite, setShowKite]             = useState(false);
++  const [showBreeze, setShowBreeze]         = useState(false);
++  const [moreSheetOpen, setMoreSheetOpen]   = useState(false);
++  const [expandedHolding, setExpandedHolding] = useState(null);
++  const [showQuietAlerts, setShowQuietAlerts] = useState(false);
++  const [showSharedDropdown, setShowSharedDropdown] = useState(false);
++
++  return {
++    modal, setModal, fdScanOpen, setFdScanOpen, showSettings, setShowSettings,
++    showImportHub, setShowImportHub, showSnapTrade, setShowSnapTrade,
++    showKite, setShowKite, showBreeze, setShowBreeze, moreSheetOpen, setMoreSheetOpen,
++    expandedHolding, setExpandedHolding, showQuietAlerts, setShowQuietAlerts,
++    showSharedDropdown, setShowSharedDropdown,
++  };
++}

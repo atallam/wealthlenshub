@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { supabase } from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
-import { enrichHoldings } from "./portfolio.js";
+import { enrichHoldings } from "../lib/holdings-utils.js";
 
 const router = Router();
 
