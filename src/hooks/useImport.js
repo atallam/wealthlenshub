@@ -55,14 +55,12 @@ export function useImport(user, onSuccess) {
           }));
           return;
         }
-        let savedPan = "", savedDob = "";
-        try {
-          const creds = await api("/api/profile/cas-credentials");
-          if (creds.has_credentials) { savedPan = creds.pan_for_cas_unlock || ""; savedDob = creds.dob || ""; }
-        } catch {}
+        // Server already tried the stored PAN server-side; reaching here means
+        // it didn't work (or none is stored). We no longer pull the plaintext
+        // PAN into the browser — the user types it into the prompt (P1-2).
         setImportState(s => ({
           ...s, step: "cas_password", needsPassword: true, pendingFile: file,
-          casPan: savedPan, casDob: savedDob, format: "", warnings: [],
+          casPan: "", casDob: "", format: "", warnings: [],
         }));
         return;
       }

@@ -79,15 +79,12 @@ export function useCASImport(user, onSuccess) {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || "";
 
-      let password = "";
-      try {
-        const creds = await api("/api/profile/cas-credentials");
-        if (creds.has_credentials && creds.pan_for_cas_unlock) password = creds.pan_for_cas_unlock;
-      } catch {}
-
+      // The server unlocks password-protected CAS PDFs with the stored PAN
+      // server-side, so we no longer fetch the plaintext PAN to the browser.
+      // If the PDF still can't be opened, the server responds password_required
+      // and the user is prompted to type their PAN below.
       const fd = new FormData();
       fd.append("file", file);
-      if (password) fd.append("password", password);
 
       const res = await fetch("/api/import/detect", {
         method: "POST",

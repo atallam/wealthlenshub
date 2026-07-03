@@ -10,6 +10,26 @@ import {
 } from "../lib/parsers.js";
 import { getAmfiList, yahooSearch, yahooPrice } from "../lib/prices.js";
 import { auditImport } from "../lib/importLogger.js";
+import { decrypt } from "../lib/crypto.js";
+
+/**
+ * Resolve the password used to unlock a password-protected CAS PDF.
+ * Preference order:
+ *   1. A password the user typed for THIS request (transient, user-supplied).
+ *   2. The user's stored PAN, decrypted SERVER-SIDE — so the plaintext PAN
+ *      never travels to the browser (fixes P1-2). NSDL/CDSL CAS password = PAN.
+ */
+async function resolveCasPassword(req) {
+  const typed = req.body?.password || "";
+  if (typed) return typed;
+  const { data: prof } = await supabase
+    .from("profiles").select("encrypted_pan").eq("id", req.user.id).single();
+  if (prof?.encrypted_pan) {
+    const pan = decrypt(prof.encrypted_pan);
+    if (pan && pan !== "[encrypted]") return pan.toUpperCase().trim();
+  }
+  return "";
+}
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -28,7 +48,8 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
       return res.status(400).json({ error: "Legacy .xls format is not supported. Please open in Excel and save as .xlsx, then retry." });
     } else if (ext === "pdf") {
       try {
-        const pdfPassword = req.body?.password || "";
+        // Server-side unlock: falls back to the stored PAN without sending it to the client.
+        const pdfPassword = await resolveCasPassword(req);
         let pdf;
         try {
           const loadingTask = pdfjsLib.getDocument({

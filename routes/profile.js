@@ -36,9 +36,10 @@ router.get("/cas-credentials", auth, async (req, res) => {
   const dob = data?.encrypted_dob ? decrypt(data.encrypted_dob) : null;
   if (!pan || pan === "[encrypted]") return res.json({ pan: null, dob: null, has_credentials: false });
   const maskedPan = pan.length >= 10 ? pan.slice(0, 4) + "****" + pan.slice(-1) : "****";
-  // pan_for_cas_unlock is intentionally returned: used by CAS PDF import to unlock
-  // password-protected CAS statements. Endpoint is auth-scoped to req.user.id only.
-  res.json({ pan_masked: maskedPan, dob, has_credentials: true, pan_for_cas_unlock: pan });
+  // P1-2: never return the plaintext PAN/DOB to the client. CAS PDF unlock now
+  // happens server-side (routes/import.js → resolveCasPassword). This endpoint
+  // only reports whether credentials exist, plus a masked PAN for display.
+  res.json({ pan_masked: maskedPan, has_credentials: true });
 });
 
 // Asset types
