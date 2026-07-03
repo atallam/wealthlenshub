@@ -100,4 +100,7 @@ app.get("*", (_, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`WealthLens Hub running on port ${P
+  console.log(`WealthLens Hub running on port ${PORT}`);
+  const SETU_ENABLED = process.env.SETU_ENABLED === "true";
+  console.log(`Setu AA: ${SETU_ENABLED ? "ENABLED" : "disabled (set SETU_ENABLED=true to activate)"}`);
+});
