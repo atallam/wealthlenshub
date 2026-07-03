@@ -2,6 +2,7 @@
 // Props: all from parent App component (no local-only state to extract)
 
 import LiabilitiesPanel from '../../components/shared/LiabilitiesPanel.jsx';
+import { computeOutstanding } from '../../lib/amortization.js';
 
 export default function OverviewTab({
   // Data
@@ -220,7 +221,7 @@ export default function OverviewTab({
               )}
               {/* Net worth strip — shown when liabilities exist */}
               {(liabilities||[]).length>0&&(()=>{
-                const totalLiab=(liabilities||[]).reduce((s,l)=>s+(+l.outstanding_amount||0),0);
+                const totalLiab=(liabilities||[]).reduce((s,l)=>s+computeOutstanding(l),0);
                 const assets=nm.combined_cur||totCur;
                 const netWorth=assets-totalLiab;
                 return(

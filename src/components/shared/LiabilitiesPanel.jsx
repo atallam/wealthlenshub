@@ -2,6 +2,7 @@
 // Shows add/edit/delete UI inline; no overlay needed.
 
 import { useState } from 'react';
+import { computeOutstanding, isAutoCalc, payoffLabel } from '../../lib/amortization.js';
 
 const LIABILITY_TYPES = [
   { key: "HOME_LOAN",      label: "Home Loan",       icon: "🏠" },
@@ -12,12 +13,12 @@ const LIABILITY_TYPES = [
   { key: "OTHER",          label: "Other",             icon: "📋" },
 ];
 
-const BLANK = { name: "", type: "HOME_LOAN", outstanding_amount: "", interest_rate: "", emi: "", currency: "INR" };
+const BLANK = { name: "", type: "HOME_LOAN", outstanding_amount: "", interest_rate: "", emi: "", currency: "INR", start_date: "", tenure_months: "" };
 
 function uid() { return "lb_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
 function fmtAmt(n, currency = "INR") {
-  if (!n) return "—";
+  if (!n && n !== 0) return "—";
   const v = +n;
   if (currency === "USD") return `$${v >= 1e7 ? (v/1e6).toFixed(2)+"M" : v >= 1e5 ? (v/1e3).toFixed(1)+"K" : v.toLocaleString("en-US")}`;
   if (v >= 1e7) return `₹${(v/1e7).toFixed(2)} Cr`;
@@ -25,23 +26,36 @@ function fmtAmt(n, currency = "INR") {
   return `₹${v.toLocaleString("en-IN")}`;
 }
 
+/** Returns today as "YYYY-MM" for the date input default */
+function todayYM() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export default function LiabilitiesPanel({ liabilities, setLiabilities, fmtCrINR }) {
   const [adding, setAdding] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(BLANK);
 
-  const totalLiabilities = liabilities.reduce((s, l) => s + (+l.outstanding_amount || 0), 0);
+  const now = new Date();
+
+  // Use computed (amortized) balance for the total, not raw outstanding_amount
+  const totalLiabilities = liabilities.reduce((s, l) => s + computeOutstanding(l, now), 0);
 
   function startAdd() { setForm(BLANK); setEditId(null); setAdding(true); }
-  function startEdit(l) { setForm({ ...l }); setEditId(l.id); setAdding(true); }
+  function startEdit(l) { setForm({ ...l, tenure_months: l.tenure_months ?? "" }); setEditId(l.id); setAdding(true); }
   function cancel() { setAdding(false); setEditId(null); setForm(BLANK); }
 
   function save() {
     if (!form.name.trim() || !form.outstanding_amount) return;
+    const entry = {
+      ...form,
+      tenure_months: form.tenure_months ? +form.tenure_months : undefined,
+    };
     if (editId) {
-      setLiabilities(p => p.map(l => l.id === editId ? { ...form, id: editId } : l));
+      setLiabilities(p => p.map(l => l.id === editId ? { ...entry, id: editId } : l));
     } else {
-      setLiabilities(p => [...p, { ...form, id: uid() }]);
+      setLiabilities(p => [...p, { ...entry, id: uid() }]);
     }
     cancel();
   }
@@ -78,6 +92,10 @@ export default function LiabilitiesPanel({ liabilities, setLiabilities, fmtCrINR
         <div style={{ display: "flex", flexDirection: "column", gap: ".4rem", marginBottom: ".5rem" }}>
           {liabilities.map(l => {
             const ti = typeInfo(l.type);
+            const auto = isAutoCalc(l);
+            const currentBalance = computeOutstanding(l, now);
+            const payoff = auto ? payoffLabel(l, now) : null;
+
             return (
               <div key={l.id} style={{
                 display: "flex", alignItems: "center", gap: ".7rem",
@@ -91,10 +109,20 @@ export default function LiabilitiesPanel({ liabilities, setLiabilities, fmtCrINR
                     {ti.label}
                     {l.interest_rate ? ` · ${l.interest_rate}% p.a.` : ""}
                     {l.emi ? ` · EMI ${fmtAmt(l.emi, l.currency)}` : ""}
+                    {payoff && (
+                      <span style={{ marginLeft: 4, color: "rgba(76,175,154,.75)" }}>· {payoff}</span>
+                    )}
                   </div>
                 </div>
-                <div style={{ fontFamily: "'DM Mono',monospace", fontSize: ".82rem", color: "#e07c5a", flexShrink: 0 }}>
-                  {fmtAmt(l.outstanding_amount, l.currency)}
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontFamily: "'DM Mono',monospace", fontSize: ".82rem", color: "#e07c5a" }}>
+                    {fmtAmt(currentBalance, l.currency)}
+                  </div>
+                  {auto && (
+                    <div style={{ fontSize: ".58rem", color: "rgba(160,132,202,.7)", marginTop: 1 }}>
+                      auto-calc
+                    </div>
+                  )}
                 </div>
                 <button onClick={() => startEdit(l)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: ".8rem", padding: "2px 4px" }}>✎</button>
                 <button onClick={() => del(l.id)} style={{ background: "none", border: "none", color: "#e07c5a", cursor: "pointer", fontSize: ".8rem", padding: "2px 4px" }}>✕</button>
@@ -132,18 +160,51 @@ export default function LiabilitiesPanel({ liabilities, setLiabilities, fmtCrINR
               </select>
             </div>
             <div>
-              <div style={{ fontSize: ".68rem", color: "var(--text-muted)", marginBottom: ".25rem" }}>Outstanding Amount</div>
+              <div style={{ fontSize: ".68rem", color: "var(--text-muted)", marginBottom: ".25rem" }}>
+                Principal / Initial Outstanding
+                <span style={{ fontWeight: 400, marginLeft: 4, opacity: .7 }}>(at EMI start date)</span>
+              </div>
               <input className="fi" type="number" placeholder="e.g. 2500000" value={form.outstanding_amount} onChange={e => set("outstanding_amount", e.target.value)} style={{ width: "100%" }} />
             </div>
             <div>
-              <div style={{ fontSize: ".68rem", color: "var(--text-muted)", marginBottom: ".25rem" }}>Interest Rate (%)</div>
+              <div style={{ fontSize: ".68rem", color: "var(--text-muted)", marginBottom: ".25rem" }}>Interest Rate (% p.a.)</div>
               <input className="fi" type="number" step="0.1" placeholder="e.g. 8.5" value={form.interest_rate} onChange={e => set("interest_rate", e.target.value)} style={{ width: "100%" }} />
             </div>
             <div>
-              <div style={{ fontSize: ".68rem", color: "var(--text-muted)", marginBottom: ".25rem" }}>Monthly EMI (optional)</div>
+              <div style={{ fontSize: ".68rem", color: "var(--text-muted)", marginBottom: ".25rem" }}>Monthly EMI</div>
               <input className="fi" type="number" placeholder="e.g. 25000" value={form.emi} onChange={e => set("emi", e.target.value)} style={{ width: "100%" }} />
             </div>
+            <div>
+              <div style={{ fontSize: ".68rem", color: "var(--text-muted)", marginBottom: ".25rem" }}>
+                EMI Start Date
+                <span style={{ fontWeight: 400, marginLeft: 4, opacity: .7 }}>(enables auto-calc)</span>
+              </div>
+              <input className="fi" type="month" value={form.start_date} max={todayYM()} onChange={e => set("start_date", e.target.value)} style={{ width: "100%" }} />
+            </div>
+            <div>
+              <div style={{ fontSize: ".68rem", color: "var(--text-muted)", marginBottom: ".25rem" }}>Tenure (months, optional)</div>
+              <input className="fi" type="number" placeholder="e.g. 240" value={form.tenure_months} onChange={e => set("tenure_months", e.target.value)} style={{ width: "100%" }} />
+            </div>
           </div>
+
+          {/* Live preview of auto-calc if enough data is entered */}
+          {isAutoCalc(form) && (() => {
+            const preview = computeOutstanding(form, now);
+            const pLabel = payoffLabel(form, now);
+            return (
+              <div style={{
+                background: "rgba(76,175,154,.07)", border: "1px solid rgba(76,175,154,.25)",
+                borderRadius: 8, padding: ".5rem .75rem", marginBottom: ".75rem",
+                fontSize: ".72rem", color: "var(--text-muted)", lineHeight: 1.7,
+              }}>
+                <span style={{ color: "#4caf9a", fontWeight: 600 }}>✓ Auto-calc active</span>
+                {" — "}current outstanding:{" "}
+                <span style={{ fontFamily: "'DM Mono',monospace", color: "#e07c5a" }}>{fmtAmt(preview, form.currency)}</span>
+                {pLabel && <span style={{ marginLeft: 6 }}>· payoff: <span style={{ color: "rgba(76,175,154,.85)" }}>{pLabel}</span></span>}
+              </div>
+            );
+          })()}
+
           <div style={{ display: "flex", gap: ".5rem", justifyContent: "flex-end" }}>
             <button className="btn-o" style={{ fontSize: ".78rem" }} onClick={cancel}>Cancel</button>
             <button className="btns" style={{ fontSize: ".78rem" }} onClick={save} disabled={!form.name.trim() || !form.outstanding_amount}>
