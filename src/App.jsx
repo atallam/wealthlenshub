@@ -62,6 +62,7 @@ import FDScanSheet from './components/shared/FDScanSheet.jsx';
 // ── Modals ───────────────────────────────────────────────────────
 import GoalPlanModal from './components/modals/GoalPlanModal.jsx';
 import ImportModal from './components/modals/ImportModal.jsx';
+import ImportHub from './components/modals/ImportHub.jsx';
 
 // ── API helper imported from lib/api.js (see top imports) ────────
 
@@ -397,6 +398,20 @@ ${alertsText}`;
   // ── Broker search handlers ────────────────────────────────────
   // Broker-search handlers now provided by useBrokerSearch().
 
+  // Map an ImportHub selection to the matching flow.
+  function handleImportSelect(key) {
+    switch (key) {
+      case 'cas':       casImport.setCasModal(true); break;
+      case 'kite':      setShowKite(true); break;
+      case 'breeze':    setShowBreeze(true); break;
+      case 'fd':        setForm(p => ({ ...p, type: 'FD' })); setModal('add'); break;
+      case 'snaptrade': setShowSnapTrade(true); break;
+      case 'csv':       setModal('import'); break;
+      case 'manual':    setModal('add'); break;
+      default: break;
+    }
+  }
+
   // ── Auth guards ───────────────────────────────────────────────
   if (authLoading) return <div className="splash">Loading…</div>;
   if (!user)       return <LoginScreen error={authErr} />;
@@ -412,7 +427,7 @@ ${alertsText}`;
     AT, BF, BT, BG, BA,
     DonutChart, Overlay, FG, MA, FmtInput,
     isUSDHolding, api,
-    setModal, setShowSettings,
+    setModal, setShowSettings, setShowImportHub,
     exitDemoMode:  portfolio.exitDemoMode,
     loadDemoData:  () => portfolio.loadDemoData(SEED),
     refreshPrices: portfolio.refreshPrices,
@@ -1104,67 +1119,7 @@ ${alertsText}`;
 
       {/* ── Import Hub ───────────────────────────────────────────── */}
       {showImportHub && (
-        <Overlay onClose={() => setShowImportHub(false)}>
-          <div className="modtitle" style={{marginBottom:'1.4rem'}}>
-            <Download size={16} strokeWidth={2} style={{display:'inline',verticalAlign:'middle',marginRight:'.45rem'}}/>
-            Import Holdings
-          </div>
-
-          {/* ── Indian brokers / mutual funds ── */}
-          <div style={{fontSize:'.65rem',letterSpacing:'.08em',textTransform:'uppercase',color:'var(--text-muted)',fontWeight:600,marginBottom:'.5rem'}}>🇮🇳 India</div>
-          <div style={{display:'flex',flexDirection:'column',gap:'.45rem',marginBottom:'1.1rem'}}>
-            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
-              onClick={() => { casImport.setCasModal(true); setShowImportHub(false); }}>
-              <span style={{fontSize:'1rem'}}>📄</span>
-              <span>
-                <span style={{fontWeight:600}}>NSDL / CDSL CAS</span>
-                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Import all mutual funds & demat holdings from your CAS PDF</span>
-              </span>
-            </button>
-<button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
-              onClick={() => { setShowImportHub(false); setForm(p => ({...p, type:'FD'})); setModal('add'); }}>
-              <span style={{fontSize:'1rem'}}>🏦</span>
-              <span>
-                <span style={{fontWeight:600}}>Fixed Deposit (FD)</span>
-                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Scan certificate with AI vision or enter details manually</span>
-              </span>
-            </button>
-          </div>
-
-          {/* ── US / Global ── */}
-          <div style={{fontSize:'.65rem',letterSpacing:'.08em',textTransform:'uppercase',color:'var(--text-muted)',fontWeight:600,marginBottom:'.5rem'}}>🇺🇸 US / Global</div>
-          <div style={{display:'flex',flexDirection:'column',gap:'.45rem',marginBottom:'1.1rem'}}>
-            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
-              onClick={() => { setShowSnapTrade(true); setShowImportHub(false); }}>
-              <span style={{fontSize:'1rem'}}>📥</span>
-              <span>
-                <span style={{fontWeight:600}}>SnapTrade — US Brokers</span>
-                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Connect TD Ameritrade, Schwab, Fidelity, Robinhood &amp; more</span>
-              </span>
-            </button>
-          </div>
-
-          {/* ── CSV / Manual ── */}
-          <div style={{fontSize:'.65rem',letterSpacing:'.08em',textTransform:'uppercase',color:'var(--text-muted)',fontWeight:600,marginBottom:'.5rem'}}>Manual / CSV</div>
-          <div style={{display:'flex',flexDirection:'column',gap:'.45rem'}}>
-            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
-              onClick={() => { setShowImportHub(false); setModal('import'); }}>
-              <span style={{fontSize:'1rem'}}>📊</span>
-              <span>
-                <span style={{fontWeight:600}}>CSV / Excel Import</span>
-                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Upload a spreadsheet of holdings or transactions</span>
-              </span>
-            </button>
-            <button className="btn-o" style={{justifyContent:'flex-start',gap:'.65rem',padding:'.55rem .9rem',fontSize:'.82rem'}}
-              onClick={() => { setShowImportHub(false); setModal('add'); }}>
-              <span style={{fontSize:'1rem'}}>✏️</span>
-              <span>
-                <span style={{fontWeight:600}}>Add Manually</span>
-                <span style={{display:'block',fontSize:'.68rem',color:'var(--text-muted)',fontWeight:400,marginTop:'.1rem'}}>Enter a single holding — stocks, MF, crypto, FD, PPF, EPF…</span>
-              </span>
-            </button>
-          </div>
-        </Overlay>
+        <ImportHub onClose={() => setShowImportHub(false)} onSelect={handleImportSelect} />
       )}
 
       {/* ── CAS Import modal ─────────────────────────────────────── */}

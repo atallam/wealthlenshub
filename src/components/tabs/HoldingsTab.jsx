@@ -27,6 +27,7 @@ export default function HoldingsTab({
   setTxnHolding,
   setArtifactHolding,
   setModal,
+  setShowImportHub,
   loadDemoData,
   // Formatting helpers
   fmt,
@@ -89,7 +90,7 @@ export default function HoldingsTab({
         <div className={`fchip${filterType==="ALL"?" act":""}`} onClick={()=>setFilterType("ALL")}>All</div>
         {Object.entries(AT).map(([k,v])=>(<div key={k} className={`fchip${filterType===k?" act":""}`} onClick={()=>setFilterType(k)}>{v.icon} {v.label}</div>))}
       </div>
-      {visH.length===0?<div className="empty">{demoMode?"No holdings match the current filter":"No holdings yet"} — <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setModal("add")}>add to portfolio</span>{!demoMode&&<>{" or "}<span style={{color:"#a084ca",cursor:"pointer",textDecoration:"underline"}} onClick={loadDemoData}>try sample data</span></>}</div>:(<>
+      {visH.length===0?<div className="empty">{demoMode?"No holdings match the current filter":"No holdings yet"} — <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setModal("add")}>add to portfolio</span>{!demoMode&&setShowImportHub&&<>{" or "}<span style={{color:"#5ea9a0",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setShowImportHub(true)}>import from a broker</span></>}{!demoMode&&<>{" or "}<span style={{color:"#a084ca",cursor:"pointer",textDecoration:"underline"}} onClick={loadDemoData}>try sample data</span></>}</div>:(<>
         <div className="ht-desktop"><div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",margin:"0 -0.9rem",padding:"0 0.9rem"}}>
           <table className="ht">
             <thead><tr>
