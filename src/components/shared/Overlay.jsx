@@ -17,12 +17,17 @@ import { useEffect, useRef } from "react";
 export function Overlay({ onClose, children, narrow, wide, label = "Dialog" }) {
   const modRef = useRef(null);
   const prevFocus = useRef(null);
+  // Keep a ref so the keydown handler always has the latest onClose
+  // without re-running the effect (which would re-focus the first input).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     prevFocus.current = document.activeElement;
     const node = modRef.current;
 
     // Move focus into the modal (first focusable, else the container itself).
+    // Runs ONLY on mount — never again — so typing in any field won't reset focus.
     const focusables = () =>
       node?.querySelectorAll(
         'a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])'
@@ -31,7 +36,7 @@ export function Overlay({ onClose, children, narrow, wide, label = "Dialog" }) {
     (first || node)?.focus?.();
 
     function onKeyDown(e) {
-      if (e.key === "Escape") { e.stopPropagation(); onClose?.(); return; }
+      if (e.key === "Escape") { e.stopPropagation(); onCloseRef.current?.(); return; }
       if (e.key !== "Tab") return;
       const items = focusables();
       if (!items.length) return;
@@ -45,7 +50,8 @@ export function Overlay({ onClose, children, narrow, wide, label = "Dialog" }) {
       document.removeEventListener("keydown", onKeyDown, true);
       prevFocus.current?.focus?.();   // restore focus to the trigger
     };
-  }, [onClose]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // mount-only — onClose is accessed via ref above
 
   return (
     <div className="ovl" onClick={(e) => e.target === e.currentTarget && onClose()}>
