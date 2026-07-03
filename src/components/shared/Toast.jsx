@@ -7,7 +7,7 @@
 //   toast.info('Refreshing...');
 //   const ok = await toast.confirm('Delete this holding?');  // returns true/false
 
-import { useState, useCallback, useRef, createContext, useContext } from 'react';
+import { useState, useCallback, useMemo, useRef, createContext, useContext } from 'react';
 
 const ToastCtx = createContext(null);
 
@@ -34,7 +34,8 @@ export function ToastProvider({ children }) {
     return id;
   }, [dismiss]);
 
-  const toast = {
+  // Memoized so consumers can safely list `toast` in hook dependency arrays.
+  const toast = useMemo(() => ({
     success: (msg, dur)  => add(msg, 'success', dur),
     error:   (msg, dur)  => add(msg, 'error', dur ?? 6000),
     info:    (msg, dur)  => add(msg, 'info', dur),
@@ -48,7 +49,7 @@ export function ToastProvider({ children }) {
         setConfirms(p => [...p, { id, message, confirmLabel, cancelLabel, danger }]);
       });
     },
-  };
+  }), [add, dismiss]);
 
   function resolveConfirm(id, value) {
     setConfirms(p => p.filter(c => c.id !== id));

@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS portfolio (
   members       jsonb DEFAULT '[]',
   goals         jsonb DEFAULT '[]',
   alerts        jsonb DEFAULT '[]',
+  liabilities   jsonb DEFAULT '[]',
   updated_at    timestamptz DEFAULT now()
 );
 ALTER TABLE portfolio ENABLE ROW LEVEL SECURITY;

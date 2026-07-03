@@ -79,9 +79,12 @@ export function usePortfolio(user) {
       try {
         await api("/api/portfolio", { method: "POST", body: JSON.stringify({ members: m, goals: g, alerts: a, liabilities: l }) });
         setSyncSt("saved");
-      } catch { setSyncSt("error"); }
+      } catch (e) {
+        setSyncSt("error");
+        toast.error("Portfolio save failed — changes are NOT persisted: " + (e?.message || "unknown error"));
+      }
     }, 1000);
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     if (loaded && user) {
