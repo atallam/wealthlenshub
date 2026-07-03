@@ -1,11 +1,10 @@
+@'
 {
   "name": "wealthlens-pro",
   "version": "2.1.0",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=20.0.0"
-  },
+  "engines": { "node": ">=20.0.0" },
   "scripts": {
     "start": "node server.js",
     "build": "npx vite build",
@@ -15,7 +14,7 @@
     "format": "prettier --write \"**/*.{js,jsx,json,css,md}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "pip install casparser casparser-isin pymupdf --break-system-packages --quiet 2>/dev/null || pip3 install casparser casparser-isin pymupdf --break-system-packages --quiet 2>/dev/null || true"
+    "postinstall": "pip install casparser casparser-isin pymupdf --break-system-packages --quiet || true"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
@@ -42,4 +41,16 @@
     "eslint": "^9.13.0",
     "eslint-plugin-react": "^7.37.0",
     "eslint-plugin-react-hooks": "^5.0.0",
-    "globals": "^1
+    "globals": "^15.11.0",
+    "prettier": "^3.3.3",
+    "vitest": "^2.1.0"
+  },
+  "overrides": {
+    "axios": "^1.18.1",
+    "form-data": "^4.0.6",
+    "uuid": "^11.1.1",
+    "path-to-regexp": "0.1.13",
+    "ws": "^8.21.0"
+  }
+}
+'@ | Set-Content package.json -Encoding UTF8
