@@ -188,11 +188,9 @@ export function usePortfolio(user) {
   }
 
   // ── CRUD: Members ── Lines 1713–1820
-  function saveMember(newMember, editingMemberId, members, shareWithFamily, sharedWithMe, user, onDone) {
+  function saveMember(newMember, editingMemberId, members, onDone) {
     if (!newMember.name.trim()) return;
     const email = (newMember.email || "").trim().toLowerCase();
-    const isSelf = newMember.relation === "Self" || (editingMemberId && members.find(m => m.id === editingMemberId)?.relation === "Self");
-    if (!isSelf && !email) return;
     const pan = (newMember.pan || "").trim().toUpperCase();
     const dob = (newMember.dob || "").trim();
     if (editingMemberId) {
@@ -206,18 +204,7 @@ export function usePortfolio(user) {
         ...(pan ? { pan } : {}), ...(dob ? { dob } : {}),
       }]);
     }
-    if (email && email !== user?.email?.toLowerCase()) {
-      api("/api/shares", { method: "POST", body: JSON.stringify({ email, role: "viewer" }) })
-        .then(() => {
-          if (shareWithFamily && sharedWithMe.length > 0) {
-            api("/api/shares/cross-link", { method: "POST", body: JSON.stringify({ email }) })
-              .then(r => { if (r.linked > 0) console.log(`Cross-linked ${email} with ${r.family_size} family member(s)`); })
-              .catch(e => console.warn("Cross-link failed:", e.message));
-          }
-          if (onDone) onDone();
-        })
-        .catch(e => console.warn("Auto-share failed:", e.message));
-    }
+    if (onDone) onDone();
   }
 
   async function deleteMember(memberId, reassignToId, holdings) {

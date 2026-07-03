@@ -14,7 +14,6 @@ import pricesRouter       from "./routes/prices.js";
 import aiRouter           from "./routes/ai.js";
 import cronRouter         from "./routes/cron.js";
 import artifactsRouter    from "./routes/artifacts.js";
-import sharesRouter       from "./routes/shares.js";
 import snaptradeRouter    from "./routes/snaptrade.js";
 import plaidRouter        from "./routes/plaid.js";
 import setuRouter         from "./routes/setu.js";
@@ -62,7 +61,6 @@ app.use("/api",               pricesRouter);       // mounts /api/forex, /api/mf
 app.use("/api/ai",            aiRouter);
 app.use("/api/cron",          cronRouter);
 app.use("/api/artifacts",     artifactsRouter);
-app.use("/api/shares",        sharesRouter);
 app.use("/api/snaptrade",     snaptradeRouter);
 app.use("/api/plaid",         plaidRouter);
 app.use("/api/setu",          setuRouter);

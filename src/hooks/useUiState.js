@@ -15,13 +15,11 @@ export function useUiState() {
   const [moreSheetOpen, setMoreSheetOpen]   = useState(false);
   const [expandedHolding, setExpandedHolding] = useState(null);
   const [showQuietAlerts, setShowQuietAlerts] = useState(false);
-  const [showSharedDropdown, setShowSharedDropdown] = useState(false);
 
   return {
     modal, setModal, fdScanOpen, setFdScanOpen, showSettings, setShowSettings,
     showImportHub, setShowImportHub, showSnapTrade, setShowSnapTrade,
     showKite, setShowKite, showBreeze, setShowBreeze, moreSheetOpen, setMoreSheetOpen,
     expandedHolding, setExpandedHolding, showQuietAlerts, setShowQuietAlerts,
-    showSharedDropdown, setShowSharedDropdown,
   };
 }

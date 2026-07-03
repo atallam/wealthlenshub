@@ -27,7 +27,6 @@ import './styles.css';
 
 // ── Hooks ────────────────────────────────────────────────────────
 import { usePortfolio } from './hooks/usePortfolio.js';
-import { useShares } from './hooks/useShares.js';
 import { useBudget } from './hooks/useBudget.js';
 import { useImport } from './hooks/useImport.js';
 import { useCASImport } from './hooks/useCASImport.js';
@@ -93,7 +92,6 @@ export default function App() {
   const [form,            setForm]            = useState(BF);
   const [editHolding,     setEditHolding]     = useState(null);
   const [newMember,       setNewMember]       = useState({ name: '', relation: '' });
-  const [shareWithFamily, setShareWithFamily] = useState(true);
   const [editingMemberId, setEditingMemberId] = useState(null);
   const [memberAction,    setMemberAction]    = useState(null);
   const [goalForm,        setGoalForm]        = useState(BG);
@@ -126,7 +124,6 @@ export default function App() {
 
   // ── Hooks ─────────────────────────────────────────────────────
   const portfolio  = usePortfolio(user);
-  const shares     = useShares(user);
   const budget     = useBudget(user);
   const importHook = useImport(user, () => portfolio.reloadHoldings());
   const casImport  = useCASImport(user, () => portfolio.reloadHoldings());
@@ -147,7 +144,6 @@ export default function App() {
     showImportHub, setShowImportHub, showSnapTrade, setShowSnapTrade,
     showKite, setShowKite, showBreeze, setShowBreeze, moreSheetOpen, setMoreSheetOpen,
     expandedHolding, setExpandedHolding, showQuietAlerts, setShowQuietAlerts,
-    showSharedDropdown, setShowSharedDropdown,
   } = ui;
   const { filterType, setFilterType, sortCol, setSortCol, sortDir, setSortDir, toggleSort } = useHoldingsView();
 
@@ -177,21 +173,10 @@ export default function App() {
     profile, wealthSnapshots, benchmark, demoMode,
   } = portfolio;
 
-  const {
-    sharedHoldings, sharedWithMe, sharedMembers, viewingShared,
-  } = shares;
-
   // ── Computed / memoized values ────────────────────────────────
 
-  const allHoldings = useMemo(
-    () => viewingShared ? sharedHoldings : [...holdings, ...sharedHoldings],
-    [holdings, sharedHoldings, viewingShared]
-  );
-
-  const allMembers = useMemo(
-    () => [...members, ...sharedMembers],
-    [members, sharedMembers]
-  );
+  const allHoldings = holdings;
+  const allMembers  = members;
 
   const visH = useMemo(() => {
     let h = selMember === 'all' ? allHoldings : allHoldings.filter(h => h.member_id === selMember);
@@ -418,8 +403,8 @@ ${alertsText}`;
 
   // ── Props bundle shared across most tabs ──────────────────────
   const sharedPortfolioProps = {
-    holdings, sharedHoldings, allHoldings, allMembers, members, goals, alerts, liabilities, setLiabilities,
-    loaded, demoMode, wealthSnapshots, benchmark, sharedWithMe,
+    holdings, allHoldings, allMembers, members, goals, alerts, liabilities, setLiabilities,
+    loaded, demoMode, wealthSnapshots, benchmark,
     valINRCache, invINRCache, valNativeCache, invNativeCache, xirrCache,
     totCur, totInv, totGain, totPct, allCur, allInv, byType, mSum, trigAlerts,
     nriMetrics,
@@ -450,35 +435,6 @@ ${alertsText}`;
         </div>
 
         <div className="hdr-right">
-          {/* Viewing shared portfolio indicator */}
-          {viewingShared && (
-            <div style={{display:'flex',alignItems:'center',gap:'.4rem',fontSize:'.72rem',color:'var(--text-dim)',background:'var(--bg-muted)',border:'1px solid var(--border)',borderRadius:6,padding:'.3rem .65rem'}}>
-              <Eye size={13} strokeWidth={2}/>
-              <span>{viewingShared.owner_name}</span>
-              <button className="delbtn" style={{minWidth:'auto',minHeight:'auto',padding:'2px 4px'}} onClick={shares.exitSharedView}><X size={12}/></button>
-            </div>
-          )}
-
-          {/* Shared portfolios dropdown */}
-          {sharedWithMe.length > 0 && !viewingShared && (
-            <div style={{position:'relative'}}>
-              <button className="btn-o" onClick={() => setShowSharedDropdown(p => !p)}>
-                <Users size={13} strokeWidth={2}/> Shared ({sharedWithMe.length})
-              </button>
-              {showSharedDropdown && (
-                <div style={{position:'absolute',right:0,top:'110%',minWidth:200,background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:8,padding:'.4rem',zIndex:999,boxShadow:'var(--shadow-lg)'}}>
-                  {sharedWithMe.map(s => (
-                    <div key={s.owner_id}
-                      onClick={() => { shares.viewSharedPortfolio(s.owner_id, s.owner_name, s.role); setShowSharedDropdown(false); }}
-                      style={{padding:'.5rem .7rem',cursor:'pointer',borderRadius:6,fontSize:'.78rem',color:'var(--text)'}}>
-                      {s.owner_name}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Sync status */}
           {syncSt === 'saving' && <span className="sync-saving">saving…</span>}
           {syncSt === 'saved'  && <span className="sync-saved">saved</span>}
@@ -514,7 +470,7 @@ ${alertsText}`;
           <button className={selMember === 'all' ? 'mbar-btn active' : 'mbar-btn'} onClick={() => setSelMember('all')}>All</button>
           {allMembers.map(m => (
             <button key={m.id} className={selMember === m.id ? 'mbar-btn active' : 'mbar-btn'} onClick={() => setSelMember(m.id)}>
-              {m.name}{m._shared ? ` (${m._shared_owner})` : ''}
+              {m.name}
             </button>
           ))}
         </div>
@@ -1043,17 +999,9 @@ ${alertsText}`;
               {['Self','Spouse','Child','Parent','Sibling','Other'].map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </FG>
-          {!editingMemberId && (
-            <FG label="">
-              <label style={{display:'flex',alignItems:'center',gap:'.5rem',fontSize:'.78rem',color:'var(--text-dim)',cursor:'pointer'}}>
-                <input type="checkbox" checked={shareWithFamily} onChange={e => setShareWithFamily(e.target.checked)}/>
-                Link as family member (share portfolio access)
-              </label>
-            </FG>
-          )}
           <MA>
             <button className="btnc" onClick={() => { setModal(null); setNewMember({ name: '', relation: '' }); setEditingMemberId(null); }}>Cancel</button>
-            <button className="btns" onClick={() => portfolio.saveMember(newMember, editingMemberId, members, shareWithFamily, sharedWithMe, user, () => {
+            <button className="btns" onClick={() => portfolio.saveMember(newMember, editingMemberId, members, () => {
               setModal(null); setNewMember({ name: '', relation: '' }); setEditingMemberId(null);
             })}>
               {editingMemberId ? 'Update' : 'Add Member'}

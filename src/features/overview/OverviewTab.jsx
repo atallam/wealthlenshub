@@ -7,12 +7,10 @@ export default function OverviewTab({
   // Data
   demoMode,
   holdings,
-  sharedHoldings,
   allHoldings,
   allMembers,
   members,
   loaded,
-  sharedWithMe,
   // Computed / cached
   valINRCache,
   invINRCache,
@@ -74,7 +72,7 @@ export default function OverviewTab({
         </div>
       )}
       {/* Empty state — Welcome Card + Import Guide */}
-      {loaded&&!demoMode&&holdings.length===0&&sharedHoldings.length===0&&(<>
+      {loaded&&!demoMode&&holdings.length===0&&(<>
         <div style={{background:"rgba(201,168,76,.03)",border:"1px solid rgba(201,168,76,.18)",borderRadius:12,padding:"1.3rem 1.5rem",marginBottom:"1rem"}}>
           <div style={{display:"flex",alignItems:"center",gap:".6rem",marginBottom:"1rem"}}>
             <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(201,168,76,.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".85rem",color:"#c9a84c",fontWeight:600}}>W</div>
@@ -138,15 +136,6 @@ export default function OverviewTab({
           ))}
         </div>
       </>)}
-      {/* User has no own holdings but has shared data */}
-      {loaded&&!demoMode&&holdings.length===0&&sharedHoldings.length>0&&(
-        <div style={{textAlign:"center",padding:"1.5rem 1rem",marginBottom:"1rem",background:"rgba(167,139,250,.04)",border:"1px solid rgba(167,139,250,.15)",borderRadius:12}}>
-          <div style={{fontSize:".85rem",color:"rgba(167,139,250,.8)",marginBottom:".3rem"}}>You're viewing shared portfolios</div>
-          <div style={{fontSize:".72rem",color:"var(--text-dim)"}}>
-            {sharedHoldings.length} holdings from {sharedWithMe.length} shared portfolio{sharedWithMe.length>1?"s":""}. Add your own holdings to see the combined family view.
-          </div>
-        </div>
-      )}
       {/* ── NRI Portfolio Summary — 3-panel view ── */}
       {(()=>{
         const nm = nriMetrics || {};
@@ -300,7 +289,7 @@ export default function OverviewTab({
         const srcMap = {};
         for (const h of allHoldings) {
           const src = h.source === "cas" ? "CAS" : h.source === "snaptrade" ? "SnapTrade" : h.source === "csv" ? "CSV" : "Manual";
-          const mem = allMembers.find(m => m.id === h.member_id)?.name || (h._shared_owner ? h._shared_owner : "Unassigned");
+          const mem = allMembers.find(m => m.id === h.member_id)?.name || "Unassigned";
           const key = `${src}|${mem}`;
           if (!srcMap[key]) srcMap[key] = { src, member: mem, date: h.source_date || null, count: 0, hasLive: src === "SnapTrade", lastRefresh: null, casPeriodStart: null, casPeriodEnd: null, importDate: null };
           srcMap[key].count++;
