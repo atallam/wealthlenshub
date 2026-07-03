@@ -3,7 +3,7 @@ services:
     name: wealthlens-hub
     runtime: node
     region: singapore
-    buildCommand: npm install --include=dev && npx vite build
+    buildCommand: pip install casparser casparser-isin pymupdf --break-system-packages --quiet && npm install --include=dev && npx vite build
     startCommand: node server.js
     healthCheckPath: /
     envVars:
