@@ -248,6 +248,7 @@ export default function OverviewTab({
           liabilities={liabilities||[]}
           setLiabilities={setLiabilities}
           fmtCrINR={fmtCrINR}
+          members={members||[]}
         />
       )}
 
