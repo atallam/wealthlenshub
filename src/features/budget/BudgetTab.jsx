@@ -428,7 +428,7 @@ export default function BudgetTab({
                   {cat.keywords&&<div style={{fontSize:".65rem",color:"var(--text-muted)",marginTop:".2rem",lineHeight:1.5}}>Keywords: {cat.keywords.slice(0,60)}{cat.keywords.length>60?"…":""}</div>}
                 </div>
                 <div style={{display:"flex",gap:".3rem"}}>
-                  <button className="delbtn" onClick={()=>setBudgetEditCat(cat)} title="Edit">✎</button>
+                  <button className="delbtn" onClick={()=>setBudgetEditCat(cat)} title="Edit" aria-label="Edit">✎</button>
                   <button className="delbtn" onClick={async()=>{
                     if(!confirm(`Delete "${cat.name}"?`))return;
                     await api(`/api/budget/categories/${cat.id}`,{method:"DELETE"});

@@ -261,15 +261,15 @@ export default function HoldingsTab({
                       </td>
                       <td>
                         <div style={{display:"flex",gap:3}}>
-                          <button className="delbtn" title="View transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transaction_count??h.transactions?.length??0)>0?"#a084ca":"var(--text-muted)"}}>
+                          <button className="delbtn" title="View transactions" aria-label="View transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transaction_count??h.transactions?.length??0)>0?"#a084ca":"var(--text-muted)"}}>
                             📋{(h.transaction_count??h.transactions?.length??0)>0?` ${(h.transaction_count??h.transactions?.length??0)}`:""}
                           </button>
                           {!isSharedH && <>
-                            <button className="delbtn" title="Attach documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)"}}>
+                            <button className="delbtn" title="Attach documents" aria-label="Attach documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)"}}>
                               📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}
                             </button>
-                            <button className="delbtn" title="Modify holding" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>editH(h)}>✎</button>
-                            <button className="delbtn" title="Delete holding" onClick={()=>deleteHolding(h.id)}>✕</button>
+                            <button className="delbtn" title="Modify holding" aria-label="Modify holding" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>editH(h)}>✎</button>
+                            <button className="delbtn" title="Delete holding" aria-label="Delete holding" onClick={()=>deleteHolding(h.id)}>✕</button>
                           </>}
                         </div>
                       </td>
@@ -401,11 +401,11 @@ export default function HoldingsTab({
                     </div>
                     {!isExp&&<div style={{textAlign:"center",marginTop:".4rem",fontSize:".56rem",color:"var(--text-muted)",letterSpacing:".08em",textTransform:"uppercase"}}>tap for details</div>}
                     {isExp&&<div className="m-hc-actions" onClick={e=>e.stopPropagation()}>
-                      <button title="Transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transaction_count??h.transactions?.length??0)>0?"#a084ca":"var(--text-muted)"}}>📋{(h.transaction_count??h.transactions?.length??0)>0?` ${(h.transaction_count??h.transactions?.length??0)}`:""}</button>
+                      <button title="Transactions" aria-label="Transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transaction_count??h.transactions?.length??0)>0?"#a084ca":"var(--text-muted)"}}>📋{(h.transaction_count??h.transactions?.length??0)>0?` ${(h.transaction_count??h.transactions?.length??0)}`:""}</button>
                       {!isSharedH&&<>
-                        <button title="Documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)"}}>📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}</button>
-                        <button title="Edit" onClick={()=>editH(h)} style={{color:"rgba(90,156,224,.5)"}}>✎</button>
-                        <button title="Delete" onClick={()=>deleteHolding(h.id)} style={{color:"rgba(224,124,90,.4)"}}>✕</button>
+                        <button title="Documents" aria-label="Documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)"}}>📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}</button>
+                        <button title="Edit" aria-label="Edit" onClick={()=>editH(h)} style={{color:"rgba(90,156,224,.5)"}}>✎</button>
+                        <button title="Delete" aria-label="Delete" onClick={()=>deleteHolding(h.id)} style={{color:"rgba(224,124,90,.4)"}}>✕</button>
                       </>}
                     </div>}
                   </div>);

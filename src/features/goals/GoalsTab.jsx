@@ -119,10 +119,10 @@ export default function GoalsTab({
             </div>
             {/* Controls — top right */}
             <div style={{position:"absolute",top:8,right:8,display:"flex",gap:".2rem"}}>
-              <button className="delbtn" title="Move up in priority" onClick={()=>setGoals(p=>{const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===0)return p;const np=[...s];[np[i-1],np[i]]=[np[i],np[i-1]];return np.map((x,j)=>({...x,priority:j+1}));})}>↑</button>
-              <button className="delbtn" title="Move down in priority" onClick={()=>setGoals(p=>{const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===s.length-1)return p;const np=[...s];[np[i],np[i+1]]=[np[i+1],np[i]];return np.map((x,j)=>({...x,priority:j+1}));})}>↓</button>
-              <button className="delbtn" title="Edit goal" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>{setGoalForm({name:g.name,targetAmount:g.targetAmount,targetDate:g.targetDate,linkedMembers:g.linkedMembers||["all"],linkedTypes:g.linkedTypes||[],category:g.category,color:g.color,notes:g.notes||"",priority:g.priority||idx+1,monthlyContribution:g.monthlyContribution||""});setEditGoalId(g.id);setModal("goal");}}>✎</button>
-              <button className="delbtn" title="Delete goal" onClick={()=>setGoals(p=>p.filter(x=>x.id!==g.id))}>✕</button>
+              <button className="delbtn" title="Move up in priority" aria-label="Move up in priority" onClick={()=>setGoals(p=>{const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===0)return p;const np=[...s];[np[i-1],np[i]]=[np[i],np[i-1]];return np.map((x,j)=>({...x,priority:j+1}));})}>↑</button>
+              <button className="delbtn" title="Move down in priority" aria-label="Move down in priority" onClick={()=>setGoals(p=>{const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===s.length-1)return p;const np=[...s];[np[i],np[i+1]]=[np[i+1],np[i]];return np.map((x,j)=>({...x,priority:j+1}));})}>↓</button>
+              <button className="delbtn" title="Edit goal" aria-label="Edit goal" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>{setGoalForm({name:g.name,targetAmount:g.targetAmount,targetDate:g.targetDate,linkedMembers:g.linkedMembers||["all"],linkedTypes:g.linkedTypes||[],category:g.category,color:g.color,notes:g.notes||"",priority:g.priority||idx+1,monthlyContribution:g.monthlyContribution||""});setEditGoalId(g.id);setModal("goal");}}>✎</button>
+              <button className="delbtn" title="Delete goal" aria-label="Delete goal" onClick={()=>setGoals(p=>p.filter(x=>x.id!==g.id))}>✕</button>
             </div>
 
             {/* Goal name */}

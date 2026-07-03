@@ -37,15 +37,15 @@ import { useUiState } from './hooks/useUiState.js';
 import { useHoldingsView } from './hooks/useHoldingsView.js';
 
 // ── Tab components ───────────────────────────────────────────────
-import OverviewTab from './components/tabs/OverviewTab.jsx';
-import HoldingsTab from './components/tabs/HoldingsTab.jsx';
-import GoalsTab from './components/tabs/GoalsTab.jsx';
-import StrategyTab from './components/tabs/StrategyTab.jsx';
-import MembersTab from './components/tabs/MembersTab.jsx';
-import BudgetTab from './components/tabs/BudgetTab.jsx';
-import CalendarTab from './components/tabs/CalendarTab.jsx';
-import AdvisorTab from './components/tabs/AdvisorTab.jsx';
-import TaxTab from './components/tabs/TaxTab.jsx';
+import OverviewTab from './features/overview/OverviewTab.jsx';
+import HoldingsTab from './features/holdings/HoldingsTab.jsx';
+import GoalsTab from './features/goals/GoalsTab.jsx';
+import StrategyTab from './features/strategy/StrategyTab.jsx';
+import MembersTab from './features/members/MembersTab.jsx';
+import BudgetTab from './features/budget/BudgetTab.jsx';
+import CalendarTab from './features/calendar/CalendarTab.jsx';
+import AdvisorTab from './features/advisor/AdvisorTab.jsx';
+import TaxTab from './features/tax/TaxTab.jsx';
 
 // ── Shared components ────────────────────────────────────────────
 import LoginScreen from './components/shared/LoginScreen.jsx';
@@ -499,11 +499,11 @@ ${alertsText}`;
             <RefreshCw size={13} strokeWidth={2} style={priceRefreshing ? {animation:'spin 1s linear infinite'} : {}}/>
           </button>
 
-          <button className="btn-o" onClick={() => setShowImportHub(true)} title="Import Holdings">
+          <button className="btn-o" onClick={() => setShowImportHub(true)} title="Import Holdings" aria-label="Import Holdings">
             <Download size={13} strokeWidth={2}/>
           </button>
-          <button className="btn-o" onClick={() => setShowSettings(true)} title="Settings"><Settings size={13} strokeWidth={2}/></button>
-          <button className="btn-o" onClick={signOut} title="Sign out"><LogOut size={13} strokeWidth={2}/></button>
+          <button className="btn-o" onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings"><Settings size={13} strokeWidth={2}/></button>
+          <button className="btn-o" onClick={signOut} title="Sign out" aria-label="Sign out"><LogOut size={13} strokeWidth={2}/></button>
         </div>
       </header>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -631,7 +631,7 @@ ${alertsText}`;
       </main>
 
       {/* ── FAB — Add Holding (mobile) ──────────────────────────── */}
-      <button className="fab" onClick={() => setModal('add')} title="Add holding">+</button>
+      <button className="fab" onClick={() => setModal('add')} title="Add holding" aria-label="Add holding">+</button>
 
       {/* ── BOTTOM NAV (mobile) ─────────────────────────────────── */}
       <nav className="bnav">

@@ -1,7 +1,7 @@
 // OverviewTab.jsx — lines 2480–2865 of App.jsx
 // Props: all from parent App component (no local-only state to extract)
 
-import LiabilitiesPanel from '../shared/LiabilitiesPanel.jsx';
+import LiabilitiesPanel from '../../components/shared/LiabilitiesPanel.jsx';
 
 export default function OverviewTab({
   // Data

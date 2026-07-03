@@ -40,12 +40,12 @@ export default function MembersTab({
             </div>
           </div>
           <div style={{display:"flex",gap:".35rem",alignItems:"center"}}>
-            <button className="delbtn" title="Edit member" onClick={()=>openMemberModal(m.id)}
+            <button className="delbtn" title="Edit member" aria-label="Edit member" onClick={()=>openMemberModal(m.id)}
               style={{color:"var(--text-muted)",fontSize:".78rem"}}>✏️</button>
-            <button className="delbtn" title="Delete member" onClick={()=>setMemberAction({type:"delete",memberId:m.id,reassignTo:""})}
+            <button className="delbtn" title="Delete member" aria-label="Delete member" onClick={()=>setMemberAction({type:"delete",memberId:m.id,reassignTo:""})}
               style={{color:"rgba(224,124,90,.5)",fontSize:".78rem"}}>🗑️</button>
             {members.length>1&&holdingCount>0&&(
-              <button className="delbtn" title="Merge into another member" onClick={()=>setMemberAction({type:"merge",memberId:m.id,reassignTo:""})}
+              <button className="delbtn" title="Merge into another member" aria-label="Merge into another member" onClick={()=>setMemberAction({type:"merge",memberId:m.id,reassignTo:""})}
                 style={{color:"rgba(160,132,202,.6)",fontSize:".78rem"}}>🔗</button>
             )}
           </div>
