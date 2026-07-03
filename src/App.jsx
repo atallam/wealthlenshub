@@ -416,6 +416,7 @@ ${alertsText}`;
     exitDemoMode:  portfolio.exitDemoMode,
     loadDemoData:  () => portfolio.loadDemoData(SEED),
     refreshPrices: portfolio.refreshPrices,
+    resetSnapshotHistory: portfolio.resetSnapshotHistory,
     deleteHolding: portfolio.deleteHolding,
   };
 

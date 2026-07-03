@@ -1,6 +1,7 @@
 // OverviewTab.jsx — lines 2480–2865 of App.jsx
 // Props: all from parent App component (no local-only state to extract)
 
+import { useState } from 'react';
 import LiabilitiesPanel from '../../components/shared/LiabilitiesPanel.jsx';
 import { computeOutstanding } from '../../lib/amortization.js';
 
@@ -47,11 +48,14 @@ export default function OverviewTab({
   setModal,
   setShowSettings,
   loadDemoData,
+  resetSnapshotHistory,
   // AT (asset types map)
   AT,
   // Sub-components
   DonutChart,
 }) {
+  const [confirmResetSnaps, setConfirmResetSnaps] = useState(false);
+
   return (
     <>
       {/* Demo data banner */}
@@ -478,6 +482,24 @@ export default function OverviewTab({
                 value={bmPeriod} onChange={e=>{setBmPeriod(e.target.value);api(`/api/benchmark?period=${e.target.value}`).then(d=>setBenchmark(d)).catch(()=>{});}}>
                 {["1Y","3Y","5Y","ALL"].map(p=><option key={p} value={p}>{p}</option>)}
               </select>
+              {/* Reset history */}
+              {!confirmResetSnaps
+                ? <button onClick={()=>setConfirmResetSnaps(true)}
+                    style={{fontSize:".62rem",padding:".2rem .5rem",background:"none",border:"1px solid rgba(224,124,90,.35)",color:"rgba(224,124,90,.7)",borderRadius:5,cursor:"pointer"}}>
+                    Reset history
+                  </button>
+                : <span style={{display:"flex",alignItems:"center",gap:".35rem"}}>
+                    <span style={{fontSize:".62rem",color:"rgba(224,124,90,.85)"}}>Keep only latest?</span>
+                    <button onClick={async()=>{await resetSnapshotHistory();setConfirmResetSnaps(false);}}
+                      style={{fontSize:".62rem",padding:".2rem .5rem",background:"rgba(224,124,90,.12)",border:"1px solid rgba(224,124,90,.5)",color:"#e07c5a",borderRadius:5,cursor:"pointer"}}>
+                      Yes, reset
+                    </button>
+                    <button onClick={()=>setConfirmResetSnaps(false)}
+                      style={{fontSize:".62rem",padding:".2rem .5rem",background:"none",border:"1px solid var(--border)",color:"var(--text-muted)",borderRadius:5,cursor:"pointer"}}>
+                      Cancel
+                    </button>
+                  </span>
+              }
             </div>
           </div>
           <div style={{display:"flex",gap:"1rem",marginBottom:".8rem",flexWrap:"wrap"}}>

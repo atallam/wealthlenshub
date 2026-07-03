@@ -93,6 +93,16 @@ export function usePortfolio(user) {
     }
   }, [members, goals, alerts, liabilities, loaded, user, savePortfolio]);
 
+  // ── Snapshot history reset ──
+  async function resetSnapshotHistory() {
+    try {
+      await api("/api/snapshots/history", { method: "DELETE" });
+      // Reload snapshots — will now contain only the most recent month
+      const data = await api("/api/snapshots?months=24");
+      setWealthSnapshots(data?.snapshots || []);
+    } catch (e) { toast.error("Reset failed: " + e.message); }
+  }
+
   // ── Real-time price refresh ── Lines 1351–1363
   async function refreshPrices() {
     if (priceRefreshing) return;
@@ -344,6 +354,7 @@ export function usePortfolio(user) {
     demoMode,
     // Handlers
     refreshPrices,
+    resetSnapshotHistory,
     saveHolding,
     addTransaction,
     reloadHoldings,

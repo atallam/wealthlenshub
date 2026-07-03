@@ -20,3 +20,30 @@ export async function remove(userId, id) {
   if (error) throw error;
   return { ok: true };
 }
+
+/**
+ * Delete all snapshots for a user except the most recent one.
+ * Used to wipe bad historical data from erroneous CAS imports.
+ */
+export async function resetHistory(userId) {
+  // Find the latest snapshot_month for this user
+  const { data: latest, error: fetchErr } = await supabase
+    .from("net_worth_snapshots")
+    .select("snapshot_month")
+    .eq("user_id", userId)
+    .order("snapshot_month", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (fetchErr || !latest) return { ok: true, deleted: 0 };
+
+  // Delete everything older than the latest month
+  const { error, count } = await supabase
+    .from("net_worth_snapshots")
+    .delete({ count: "exact" })
+    .eq("user_id", userId)
+    .lt("snapshot_month", latest.snapshot_month);
+
+  if (error) throw error;
+  return { ok: true, deleted: count ?? 0, kept: latest.snapshot_month };
+}

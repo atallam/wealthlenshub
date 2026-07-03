@@ -18,6 +18,12 @@ router.get("/", auth, async (req, res) => {
   catch (e) { console.error("Snapshots fetch error:", e); sendError(res, e); }
 });
 
+// Must be declared before /:id to avoid Express matching "history" as an id
+router.delete("/history", auth, async (req, res) => {
+  try { res.json(await snapshots.resetHistory(req.user.id)); }
+  catch (e) { sendError(res, e); }
+});
+
 router.delete("/:id", auth, async (req, res) => {
   try { res.json(await snapshots.remove(req.user.id, req.params.id)); }
   catch (e) { sendError(res, e); }
