@@ -14,7 +14,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{js,jsx,json,css,md}\"",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "postinstall": "pip install casparser casparser-isin pymupdf --break-system-packages --quiet 2>/dev/null || pip3 install casparser casparser-isin pymupdf --break-system-packages --quiet 2>/dev/null || true"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
