@@ -58,10 +58,21 @@ export async function get(user) {
 /** Upsert the portfolio, encrypting any new PAN/DOB the client submitted. */
 export async function save(userId, body) {
   const { members, goals, alerts, liabilities } = body;
+
+  // The client only ever sees masked PANs (get() strips encrypted_pan/encrypted_dob),
+  // so members echoed back on save lack those fields. Carry them over from the
+  // existing row unless the client submitted a replacement — otherwise every
+  // portfolio save would silently wipe stored member PANs.
+  const { data: existing } = await supabase.from("portfolio").select("members").eq("user_id", userId).single();
+  const prevById = new Map((existing?.members || []).map((m) => [m.id, m]));
+
   const safeMembers = (members || []).map((m) => {
     const out = { ...m };
+    const prev = prevById.get(out.id);
     if (out.pan && !out.pan.includes(":")) { out.encrypted_pan = encrypt(out.pan.toUpperCase().trim()); delete out.pan; }
+    else if (!out.encrypted_pan && prev?.encrypted_pan) out.encrypted_pan = prev.encrypted_pan;
     if (out.dob && !out.dob.includes(":")) { out.encrypted_dob = encrypt(out.dob.trim()); delete out.dob; }
+    else if (!out.encrypted_dob && prev?.encrypted_dob) out.encrypted_dob = prev.encrypted_dob;
     delete out.pan_masked; delete out.has_dob;
     return out;
   });

@@ -13,22 +13,56 @@ import { auditImport } from "../lib/importLogger.js";
 import { decrypt } from "../lib/crypto.js";
 
 /**
- * Resolve the password used to unlock a password-protected CAS PDF.
- * Preference order:
+ * Build the CAS-unlock context for this request. All PAN decryption happens
+ * SERVER-SIDE — plaintext PANs never travel to the browser (P1-2).
+ *
+ * candidates: passwords to try against a protected CAS PDF, in order:
  *   1. A password the user typed for THIS request (transient, user-supplied).
- *   2. The user's stored PAN, decrypted SERVER-SIDE — so the plaintext PAN
- *      never travels to the browser (fixes P1-2). NSDL/CDSL CAS password = PAN.
+ *   2. The user's own stored PAN (profiles.encrypted_pan).
+ *   3. Each family member's stored PAN (portfolio.members[].encrypted_pan) —
+ *      lets one account import CAS statements for every family member.
+ * panToMember: PAN → member_id map, used to auto-assign parsed holders.
  */
-async function resolveCasPassword(req) {
-  const typed = req.body?.password || "";
-  if (typed) return typed;
-  const { data: prof } = await supabase
-    .from("profiles").select("encrypted_pan").eq("id", req.user.id).single();
+async function casUnlockContext(req) {
+  const typed = (req.body?.password || "").trim();
+  const candidates = typed ? [typed] : [];
+  const panToMember = new Map();
+  const [{ data: prof }, { data: port }] = await Promise.all([
+    supabase.from("profiles").select("encrypted_pan").eq("id", req.user.id).single(),
+    supabase.from("portfolio").select("members").eq("user_id", req.user.id).single(),
+  ]);
+  const safeDecrypt = (enc) => {
+    try { const p = decrypt(enc); return p && p !== "[encrypted]" ? p.toUpperCase().trim() : ""; }
+    catch { return ""; }
+  };
   if (prof?.encrypted_pan) {
-    const pan = decrypt(prof.encrypted_pan);
-    if (pan && pan !== "[encrypted]") return pan.toUpperCase().trim();
+    const pan = safeDecrypt(prof.encrypted_pan);
+    if (pan) candidates.push(pan);
   }
-  return "";
+  for (const m of port?.members || []) {
+    if (!m?.encrypted_pan) continue;
+    const pan = safeDecrypt(m.encrypted_pan);
+    if (pan) { panToMember.set(pan, m.id); candidates.push(pan); }
+  }
+  return { candidates: [...new Set(candidates)], typed: !!typed, panToMember };
+}
+
+/** Match CAS holders to members by PAN (index-aligned with holder_names). */
+function mapHoldersByPan(holderNames = [], holderPans = [], panToMember) {
+  const map = {};
+  holderNames.forEach((name, i) => {
+    const pan = (holderPans[i] || "").toUpperCase().trim();
+    const memberId = pan && panToMember.get(pan);
+    if (memberId) map[name] = memberId;
+  });
+  // Fallback: if counts don't align, match any extracted PAN to any member.
+  if (Object.keys(map).length === 0 && holderNames.length === 1 && holderPans.length >= 1) {
+    for (const rawPan of holderPans) {
+      const memberId = panToMember.get((rawPan || "").toUpperCase().trim());
+      if (memberId) { map[holderNames[0]] = memberId; break; }
+    }
+  }
+  return map;
 }
 
 const router = Router();
@@ -48,29 +82,33 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
       return res.status(400).json({ error: "Legacy .xls format is not supported. Please open in Excel and save as .xlsx, then retry." });
     } else if (ext === "pdf") {
       try {
-        // Server-side unlock: falls back to the stored PAN without sending it to the client.
-        const pdfPassword = await resolveCasPassword(req);
-        let pdf;
-        try {
-          const loadingTask = pdfjsLib.getDocument({
-            data: new Uint8Array(req.file.buffer),
-            standardFontDataUrl: _pdfjsFontPath,
-            useSystemFonts: true,
-          });
-          let passwordAttempted = false;
-          loadingTask.onPassword = (updateCallback, reason) => {
-            if (reason === 2 || passwordAttempted) { updateCallback(new Error(pdfPassword ? "Incorrect PDF password" : "Password required")); return; }
-            if (pdfPassword) { passwordAttempted = true; updateCallback(pdfPassword); }
-            else { updateCallback(new Error("Password required")); }
-          };
-          pdf = await loadingTask.promise;
-        } catch (pdfOpenErr) {
-          const msg = (pdfOpenErr?.message || "").toLowerCase();
-          if (msg.includes("password") || msg.includes("encrypted") || pdfOpenErr?.code === 1 || pdfOpenErr?.code === 2) {
-            if (pdfPassword) return res.status(400).json({ error: "password_incorrect", message: "Incorrect password. Check your PAN number (uppercase).", needs_password: true });
-            return res.status(400).json({ error: "password_required", message: "This PDF is password-protected. Enter your PAN to unlock.", needs_password: true });
+        // Server-side unlock: tries the typed password, then the stored profile
+        // PAN, then each member's stored PAN — none of which reach the client.
+        const { candidates, typed, panToMember } = await casUnlockContext(req);
+        const isPasswordErr = (err) => {
+          const msg = (err?.message || "").toLowerCase();
+          return msg.includes("password") || msg.includes("encrypted") || err?.code === 1 || err?.code === 2;
+        };
+        let pdf = null;
+        // "" first — opens unprotected PDFs without burning a candidate.
+        for (const pw of ["", ...candidates]) {
+          try {
+            const loadingTask = pdfjsLib.getDocument({
+              data: new Uint8Array(req.file.buffer),   // fresh copy per attempt
+              standardFontDataUrl: _pdfjsFontPath,
+              useSystemFonts: true,
+              ...(pw ? { password: pw } : {}),
+            });
+            pdf = await loadingTask.promise;
+            break;
+          } catch (pdfOpenErr) {
+            if (!isPasswordErr(pdfOpenErr)) throw pdfOpenErr;
           }
-          throw pdfOpenErr;
+        }
+        if (!pdf) {
+          if (typed) return res.status(400).json({ error: "password_incorrect", message: "Incorrect password. Check the PAN number (uppercase).", needs_password: true });
+          if (candidates.length) return res.status(400).json({ error: "password_required", message: "None of your saved PANs unlock this PDF. Enter the holder's PAN.", needs_password: true });
+          return res.status(400).json({ error: "password_required", message: "This PDF is password-protected. Enter your PAN to unlock.", needs_password: true });
         }
 
         const pagePromises = [];
@@ -133,6 +171,7 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
               holdings: [], warnings: result.warnings || ["No holdings could be parsed from this CAS statement."],
               detected_type: "holdings", format: result.format || "CAS",
               holder_names: result.holder_names || [], holder_pans: result.holder_pans || [],
+              holder_member_map: mapHoldersByPan(result.holder_names, result.holder_pans, panToMember),
               accounts: [], statement_date: result.statement_date || null,
               period_start: result.period_start || null, period_end: result.period_end || null,
               depository: result.depository || "",
@@ -206,7 +245,7 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
             const { data: existingCAS } = await supabase.from("holdings").select("id").eq("user_id", req.user.id).eq("source", "cas");
             const replaceCount = (existingCAS || []).length;
             if (replaceCount > 0) result.warnings.push(`${replaceCount} existing CAS holding(s) will be replaced (flush & fill)`);
-            return res.json({ ...result, detected_type: "holdings", accounts: result.accounts || [], holder_names: result.holder_names || [], holder_pans: result.holder_pans || [], statement_date: result.statement_date || null, period_start: result.period_start || null, period_end: result.period_end || null, depository: result.depository || "" });
+            return res.json({ ...result, detected_type: "holdings", accounts: result.accounts || [], holder_names: result.holder_names || [], holder_pans: result.holder_pans || [], holder_member_map: mapHoldersByPan(result.holder_names, result.holder_pans, panToMember), statement_date: result.statement_date || null, period_start: result.period_start || null, period_end: result.period_end || null, depository: result.depository || "" });
           }
         }
 

@@ -57,9 +57,12 @@ export function useCASImport(user, onSuccess) {
     return null;
   }
 
-  function autoMapCASHolders(holderNames, holderPans, members) {
+  function autoMapCASHolders(holderNames, holderPans, members, serverMap = {}) {
     const map = {};
+    const memberIds = new Set(members.map(m => m.id));
     for (const name of holderNames) {
+      // Server matched this holder's PAN against stored (encrypted) member PANs — most reliable.
+      if (serverMap[name] && memberIds.has(serverMap[name])) { map[name] = serverMap[name]; continue; }
       const match = matchCASHolderToMember(name, holderPans, members);
       if (match) map[name] = match.id;
     }
@@ -126,7 +129,7 @@ export function useCASImport(user, onSuccess) {
       setCasPeriodEnd(data.period_end || null);
       setCasDepository(data.depository || "");
 
-      const autoMap = autoMapCASHolders(holderNames, holderPans, members);
+      const autoMap = autoMapCASHolders(holderNames, holderPans, members, data.holder_member_map || {});
       setCasHolderMap(autoMap);
       setCasStep("matching");
     } catch (e) {
@@ -226,7 +229,7 @@ export function useCASImport(user, onSuccess) {
       setCasHolderPans(data.holder_pans || []);
       setCasWarnings(data.warnings || []);
       setCasFormat(data.format || "");
-      const autoMap = autoMapCASHolders(data.holder_names || [], data.holder_pans || [], members);
+      const autoMap = autoMapCASHolders(data.holder_names || [], data.holder_pans || [], members, data.holder_member_map || {});
       setCasHolderMap(autoMap);
       setCasStep("matching");
       setCasPendingFile(null);

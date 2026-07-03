@@ -352,7 +352,7 @@ ${alertsText}`;
   function openMemberModal(memberId) {
     if (memberId) {
       const m = members.find(x => x.id === memberId);
-      setNewMember({ name: m?.name || '', relation: m?.relation || '' });
+      setNewMember({ name: m?.name || '', relation: m?.relation || '', pan: '', pan_masked: m?.pan_masked || '' });
       setEditingMemberId(memberId);
     } else {
       setNewMember({ name: '', relation: '' });
@@ -998,6 +998,15 @@ ${alertsText}`;
             <select className="fi fs" value={newMember.relation} onChange={e => setNewMember(p => ({ ...p, relation: e.target.value }))}>
               {['Self','Spouse','Child','Parent','Sibling','Other'].map(r => <option key={r} value={r}>{r}</option>)}
             </select>
+          </FG>
+          <FG label="PAN (optional)">
+            <input className="fi" style={{textTransform:'uppercase'}} maxLength={10}
+              placeholder={newMember.pan_masked ? `Saved: ${newMember.pan_masked} — type to replace` : 'e.g. ABCDE1234F'}
+              value={newMember.pan || ''}
+              onChange={e => setNewMember(p => ({ ...p, pan: e.target.value.toUpperCase() }))}/>
+            <div style={{fontSize:'.62rem',color:'var(--text-muted)',marginTop:'.25rem'}}>
+              Used to unlock this member's CAS PDFs and auto-assign imported holdings. Stored encrypted.
+            </div>
           </FG>
           <MA>
             <button className="btnc" onClick={() => { setModal(null); setNewMember({ name: '', relation: '' }); setEditingMemberId(null); }}>Cancel</button>
