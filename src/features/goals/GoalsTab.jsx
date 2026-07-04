@@ -100,6 +100,77 @@ function ConflictBanner({ conflict, onResolve }) {
   );
 }
 
+// ── Double-allocation warning ────────────────────────────────────────────────
+function DoubleAllocWarning({ rows, AT, fmtCr }) {
+  const [open, setOpen] = useState(true);
+  const totalOverlap = rows.reduce((s, r) => s + r.typeVal * (r.gs.length - 1), 0);
+
+  return (
+    <div style={{ marginBottom: '1rem', background: 'rgba(224,124,90,.04)', border: '1px solid rgba(224,124,90,.25)', borderRadius: 8, overflow: 'hidden' }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '.5rem .85rem', cursor: 'pointer' }}
+        onClick={() => setOpen(p => !p)}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', fontSize: '.72rem', color: '#e07c5a' }}>
+          <span>⚠</span>
+          <span><strong>{rows.length} asset type{rows.length > 1 ? 's' : ''}</strong> double-counted across goals</span>
+          {totalOverlap > 0 && (
+            <span style={{ background: 'rgba(224,124,90,.15)', border: '1px solid rgba(224,124,90,.3)', borderRadius: 4, padding: '1px 7px', fontFamily: "'DM Mono',monospace", fontSize: '.68rem' }}>
+              ~{fmtCr(totalOverlap)} inflated
+            </span>
+          )}
+        </div>
+        <span style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>{open ? '▲' : '▼'}</span>
+      </div>
+
+      {/* Expanded detail */}
+      {open && (
+        <div style={{ borderTop: '1px solid rgba(224,124,90,.15)', padding: '.6rem .85rem', display: 'flex', flexDirection: 'column', gap: '.55rem' }}>
+          {rows.map(({ t, gs, typeVal }) => {
+            const a = AT[t] || { icon: '📦', label: t, color: '#888' };
+            const overlapVal = typeVal * (gs.length - 1); // extra times this corpus is counted
+            return (
+              <div key={t} style={{ display: 'flex', gap: '.75rem', alignItems: 'flex-start' }}>
+                {/* Type pill */}
+                <span style={{ fontSize: '.68rem', background: `${a.color}18`, border: `1px solid ${a.color}44`, borderRadius: 4, padding: '2px 8px', color: a.color, fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  {a.icon} {a.label}
+                </span>
+                <div style={{ flex: 1 }}>
+                  {/* Goals claiming it */}
+                  <div style={{ fontSize: '.7rem', color: 'var(--text)', marginBottom: '.2rem' }}>
+                    Claimed by:{' '}
+                    {gs.map((g, i) => (
+                      <span key={i}>
+                        <span style={{ color: g.color, fontWeight: 500 }}>{g.name}</span>
+                        {i < gs.length - 1 && <span style={{ color: 'var(--text-muted)' }}> & </span>}
+                      </span>
+                    ))}
+                  </div>
+                  {/* Overlap detail */}
+                  <div style={{ fontSize: '.67rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                    {typeVal > 0
+                      ? <>Total {a.label} corpus: <span style={{ fontFamily: "'DM Mono',monospace", color: 'var(--text)' }}>{fmtCr(typeVal)}</span> — each goal sees the full amount, inflating funded % by <span style={{ color: '#e07c5a', fontFamily: "'DM Mono',monospace" }}>{fmtCr(overlapVal)}</span></>
+                      : <>No holdings of this type yet — no inflation today, but will double-count once added</>
+                    }
+                  </div>
+                  {/* Fix hint */}
+                  <div style={{ marginTop: '.25rem', fontSize: '.65rem', color: 'rgba(224,124,90,.7)' }}>
+                    Fix: remove <em>{a.label}</em> from one goal, or filter each goal to a different family member
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Summary fix note */}
+          <div style={{ marginTop: '.1rem', paddingTop: '.5rem', borderTop: '1px solid rgba(224,124,90,.12)', fontSize: '.65rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            💡 <strong>Phase 2</strong> (coming): assign specific holdings to specific goals to eliminate double-counting precisely.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function GoalsTab({
@@ -165,13 +236,20 @@ export default function GoalsTab({
       .sort((a, b) => b._val - a._val);
   }
 
-  // Double-allocation detection
+  // Double-allocation detection — with actual INR overlap per type
   const typeGoalMap = {};
   goals.forEach(g => (g.linkedTypes || []).forEach(t => {
     if (!typeGoalMap[t]) typeGoalMap[t] = [];
-    typeGoalMap[t].push(g.name);
+    typeGoalMap[t].push({ name: g.name, color: g.color, priority: g.priority });
   }));
-  const doubleAllocated = Object.entries(typeGoalMap).filter(([, gs]) => gs.length > 1);
+  const doubleAllocated = Object.entries(typeGoalMap)
+    .filter(([, gs]) => gs.length > 1)
+    .map(([t, gs]) => {
+      const typeVal = allHoldings
+        .filter(h => h.type === t)
+        .reduce((s, h) => s + (valINRCache.get(h.id) || 0), 0);
+      return { t, gs, typeVal };
+    });
 
   // Conflict detection
   const conflict = detectConflicts();
@@ -305,12 +383,7 @@ export default function GoalsTab({
       })()}
 
       {/* ── Double-allocation warning ───────────────────────────────────────── */}
-      {doubleAllocated.length > 0 && (
-        <div style={{ marginBottom: '1rem', padding: '.55rem .85rem', background: 'rgba(224,124,90,.06)', border: '1px solid rgba(224,124,90,.2)', borderRadius: 8, fontSize: '.72rem', color: '#e07c5a', lineHeight: 1.6 }}>
-          ⚠ Double-counted: {doubleAllocated.map(([t, gs]) => `${AT[t]?.icon || ''} ${AT[t]?.label || t} → ${gs.join(' & ')}`).join(' · ')}
-          <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>Same asset type in multiple goals inflates funded %</span>
-        </div>
-      )}
+      {doubleAllocated.length > 0 && <DoubleAllocWarning rows={doubleAllocated} AT={AT} fmtCr={fmtCr} />}
 
       {/* ── AI Nudges ──────────────────────────────────────────────────────── */}
       {goals.length > 0 && (
@@ -430,7 +503,7 @@ export default function GoalsTab({
                 <span style={{ fontSize: '.65rem', background: 'var(--bg-muted)', border: '1px solid var(--border)', borderRadius: 12, padding: '2px 9px', color: 'var(--text-dim)' }}>👤 {memberNames}</span>
                 {(g.linkedTypes || []).length > 0 ? g.linkedTypes.map(t => {
                   const a = AT[t] || { icon: '📦', color: '#888', label: t };
-                  const isDouble = typeGoalMap[t]?.length > 1;
+                  const isDouble = (typeGoalMap[t]?.length || 0) > 1;
                   return (
                     <span key={t} style={{ fontSize: '.6rem', background: `${a.color}15`, border: `1px solid ${a.color}${isDouble ? '88' : '44'}`, borderRadius: 4, padding: '2px 7px', color: a.color, fontWeight: 500 }}>
                       {a.icon} {a.label}{isDouble && <span style={{ color: '#e07c5a', marginLeft: 3 }}>⚠</span>}

@@ -168,38 +168,75 @@ Keep the response practical, specific to the numbers, and formatted clearly with
         </div>
 
         {/* Summary table — uses same goalStatusCalc as GoalsTab */}
-        <div style={{ marginBottom:'1rem', overflowX:'auto', border:'1px solid var(--border)', borderRadius:6 }}>
-          <table style={{ width:'100%', fontSize:'.7rem', borderCollapse:'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom:'1px solid var(--border)' }}>
-                {['Goal', 'Status', 'Funded', 'Gap', 'Monthly Needed'].map(h => (
-                  <th key={h} style={{ padding:'.4rem .55rem', textAlign:'left', color:'var(--text)', fontWeight:500, fontSize:'.6rem', letterSpacing:'.06em', textTransform:'uppercase' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map(g => {
-                const cur          = goalCurVal(g);
-                const rem          = Math.max(0, g.targetAmount - cur);
-                const yLeft        = Math.max(0.1, (new Date(g.targetDate) - new Date()) / (864e5 * 365.25));
-                const monthlyNeeded = rem / (yLeft * 12); // simple estimate for table
-                const pct          = g.targetAmount > 0 ? (cur / g.targetAmount * 100) : 0;
-                const st           = goalStatusCalc(g, cur);           // ← shared function
-                return (
-                  <tr key={g.id} style={{ borderBottom:'1px solid var(--border)' }}>
-                    <td style={{ padding:'.4rem .55rem', color:g.color, fontWeight:500 }}>{g.name}</td>
-                    <td style={{ padding:'.4rem .55rem' }}>
-                      <span style={{ color:st.color, fontSize:'.62rem', background:`${st.color}15`, border:`1px solid ${st.color}33`, borderRadius:8, padding:'1px 7px' }}>{st.label}</span>
-                    </td>
-                    <td style={{ padding:'.4rem .55rem', fontFamily:"'DM Mono',monospace" }}>{pct.toFixed(0)}%</td>
-                    <td style={{ padding:'.4rem .55rem', fontFamily:"'DM Mono',monospace" }}>{fmtCr(rem)}</td>
-                    <td style={{ padding:'.4rem .55rem', fontFamily:"'DM Mono',monospace" }}>₹{Math.round(monthlyNeeded).toLocaleString('en-IN')}/mo</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        {(() => {
+          // Detect double-allocated types for warning in table
+          const typeGoalMap = {};
+          sorted.forEach(g => (g.linkedTypes || []).forEach(t => {
+            if (!typeGoalMap[t]) typeGoalMap[t] = [];
+            typeGoalMap[t].push(g.id);
+          }));
+          const doubledTypes = new Set(
+            Object.entries(typeGoalMap).filter(([, ids]) => ids.length > 1).map(([t]) => t)
+          );
+          // Which goal IDs have at least one doubled type
+          const doubledGoalIds = new Set(
+            sorted.filter(g => (g.linkedTypes || []).some(t => doubledTypes.has(t))).map(g => g.id)
+          );
+
+          return (
+            <>
+              {doubledGoalIds.size > 0 && (
+                <div style={{ marginBottom:'.6rem', padding:'.4rem .75rem', background:'rgba(224,124,90,.06)', border:'1px solid rgba(224,124,90,.2)', borderRadius:6, fontSize:'.68rem', color:'#e07c5a', display:'flex', alignItems:'center', gap:'.5rem' }}>
+                  <span>⚠</span>
+                  <span>Goals marked <strong>⚠</strong> share asset types — funded % may be inflated. See Goals tab for details.</span>
+                </div>
+              )}
+              <div style={{ marginBottom:'1rem', overflowX:'auto', border:'1px solid var(--border)', borderRadius:6 }}>
+                <table style={{ width:'100%', fontSize:'.7rem', borderCollapse:'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom:'1px solid var(--border)' }}>
+                      {['Goal', 'Status', 'Funded', 'Gap', 'Monthly Needed'].map(h => (
+                        <th key={h} style={{ padding:'.4rem .55rem', textAlign:'left', color:'var(--text)', fontWeight:500, fontSize:'.6rem', letterSpacing:'.06em', textTransform:'uppercase' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map(g => {
+                      const cur           = goalCurVal(g);
+                      const rem           = Math.max(0, g.targetAmount - cur);
+                      const yLeft         = Math.max(0.1, (new Date(g.targetDate) - new Date()) / (864e5 * 365.25));
+                      const monthlyNeeded = rem / (yLeft * 12);
+                      const pct           = g.targetAmount > 0 ? (cur / g.targetAmount * 100) : 0;
+                      const st            = goalStatusCalc(g, cur);
+                      const isDoubled     = doubledGoalIds.has(g.id);
+                      return (
+                        <tr key={g.id} style={{ borderBottom:'1px solid var(--border)', background: isDoubled ? 'rgba(224,124,90,.03)' : '' }}>
+                          <td style={{ padding:'.4rem .55rem', color:g.color, fontWeight:500 }}>
+                            {g.name}
+                            {isDoubled && <span title="Funded % may be inflated — shares asset types with another goal" style={{ marginLeft:5, color:'#e07c5a', fontSize:'.7rem' }}>⚠</span>}
+                          </td>
+                          <td style={{ padding:'.4rem .55rem' }}>
+                            <span style={{ color:st.color, fontSize:'.62rem', background:`${st.color}15`, border:`1px solid ${st.color}33`, borderRadius:8, padding:'1px 7px' }}>{st.label}</span>
+                          </td>
+                          <td style={{ padding:'.4rem .55rem', fontFamily:"'DM Mono',monospace", color: isDoubled && pct > 100 ? '#e07c5a' : 'inherit' }}>
+                            {pct.toFixed(0)}%{isDoubled && pct > 80 && <span style={{ fontSize:'.6rem', marginLeft:3, color:'#e07c5a' }}>*</span>}
+                          </td>
+                          <td style={{ padding:'.4rem .55rem', fontFamily:"'DM Mono',monospace" }}>{fmtCr(rem)}</td>
+                          <td style={{ padding:'.4rem .55rem', fontFamily:"'DM Mono',monospace" }}>₹{Math.round(monthlyNeeded).toLocaleString('en-IN')}/mo</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {doubledGoalIds.size > 0 && (
+                  <div style={{ padding:'.3rem .55rem', fontSize:'.62rem', color:'var(--text-muted)', borderTop:'1px solid var(--border)' }}>
+                    * Funded % marked with ⚠ may be overstated due to shared asset types
+                  </div>
+                )}
+              </div>
+            </>
+          );
+        })()}
 
         {/* Plan content — streaming-aware */}
         <div style={{ background:'rgba(160,132,202,.04)', border:'1px solid rgba(160,132,202,.14)', borderRadius:8, padding:'1rem 1.2rem', maxHeight:440, overflowY:'auto', minHeight:180, display:'flex', alignItems: loading && !plan ? 'center' : 'flex-start', justifyContent: loading && !plan ? 'center' : 'flex-start' }}>
