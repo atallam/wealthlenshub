@@ -50,6 +50,7 @@ import TaxTab from './features/tax/TaxTab.jsx';
 import LoginScreen from './components/shared/LoginScreen.jsx';
 import LoadingSkeleton from './components/shared/LoadingSkeleton.jsx';
 import LiabilitiesPanel from './components/shared/LiabilitiesPanel.jsx';
+import HoldingsPicker from './components/shared/HoldingsPicker.jsx';
 import TransactionPanel from './components/shared/TransactionPanel.jsx';
 import ArtifactPanel from './components/shared/ArtifactPanel.jsx';
 import { Overlay, FG, MA } from './components/shared/Overlay.jsx';
@@ -941,6 +942,21 @@ ${alertsText}`;
                 </button>
               ))}
             </div>
+          </FG>
+          <FG label="Earmark Specific Holdings (optional)">
+            <div style={{fontSize:'.68rem',color:'var(--text-muted)',marginBottom:'.4rem',lineHeight:1.5}}>
+              Selected holdings are always counted toward this goal — on top of any linked asset types above. Useful for FDs, PPF accounts, or specific stocks you've mentally set aside.
+            </div>
+            <HoldingsPicker
+              allHoldings={allHoldings}
+              valINRCache={valINRCache}
+              AT={AT}
+              members={members}
+              selected={goalForm.linkedHoldingIds || []}
+              onChange={ids => setGoalForm(p => ({ ...p, linkedHoldingIds: ids }))}
+              goals={goals}
+              currentGoalId={editGoalId}
+            />
           </FG>
           <FG label="Notes (optional)">
             <input className="fi" placeholder="Notes about this goal…" value={goalForm.notes}

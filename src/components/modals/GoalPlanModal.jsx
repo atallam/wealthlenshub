@@ -39,14 +39,20 @@ export default function GoalPlanModal({ open, onClose, goals, members, holdings,
   };
 
   function goalCurVal(g) {
-    const lt = g.linkedTypes  || [];
-    const lm = g.linkedMembers || ['all'];
-    const memberH = lm.includes('all') || lm.length === 0 ? holdings : holdings.filter(h => lm.includes(h.member_id));
-    if (lt.length > 0) {
-      const typeSet = new Set(lt);
-      return memberH.filter(h => typeSet.has(h.type)).reduce((s, h) => s + getValINR(h), 0);
-    }
-    return memberH.reduce((s, h) => s + getValINR(h), 0);
+    const lt = g.linkedTypes    || [];
+    const lm = g.linkedMembers  || ['all'];
+    const lh = new Set(g.linkedHoldingIds || []);
+    const memberH = lm.includes('all') || lm.length === 0
+      ? holdings
+      : holdings.filter(h => lm.includes(h.member_id));
+    const typeSet = new Set(lt);
+    const typeMatched = new Set(
+      (lt.length > 0 ? memberH.filter(h => typeSet.has(h.type)) : memberH).map(h => h.id)
+    );
+    const matched = new Set([...typeMatched, ...lh]);
+    return holdings
+      .filter(h => matched.has(h.id))
+      .reduce((s, h) => s + getValINR(h), 0);
   }
 
   useEffect(() => {

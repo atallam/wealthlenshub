@@ -214,25 +214,37 @@ export default function GoalsTab({
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function goalCur(g) {
-    const lt = g.linkedTypes  || [];
-    const lm = g.linkedMembers || ['all'];
+    const lt = g.linkedTypes    || [];
+    const lm = g.linkedMembers  || ['all'];
+    const lh = new Set(g.linkedHoldingIds || []);
     const memberH = lm.includes('all') || lm.length === 0
       ? allHoldings
       : allHoldings.filter(h => lm.includes(h.member_id));
-    const filtered = lt.length > 0
-      ? memberH.filter(h => new Set(lt).has(h.type))
-      : memberH;
-    return filtered.reduce((s, h) => s + (valINRCache.get(h.id) || 0), 0);
+    const typeSet = new Set(lt);
+    const typeMatched = new Set(
+      (lt.length > 0 ? memberH.filter(h => typeSet.has(h.type)) : memberH).map(h => h.id)
+    );
+    const matched = new Set([...typeMatched, ...lh]);
+    return allHoldings
+      .filter(h => matched.has(h.id))
+      .reduce((s, h) => s + (valINRCache.get(h.id) || 0), 0);
   }
 
   function goalHoldings(g) {
-    const lt = g.linkedTypes  || [];
-    const lm = g.linkedMembers || ['all'];
+    const lt = g.linkedTypes    || [];
+    const lm = g.linkedMembers  || ['all'];
+    const lh = new Set(g.linkedHoldingIds || []);
     const memberH = lm.includes('all') || lm.length === 0
       ? allHoldings
       : allHoldings.filter(h => lm.includes(h.member_id));
-    return (lt.length > 0 ? memberH.filter(h => new Set(lt).has(h.type)) : memberH)
-      .map(h => ({ ...h, _val: valINRCache.get(h.id) || 0 }))
+    const typeSet = new Set(lt);
+    const typeMatched = new Set(
+      (lt.length > 0 ? memberH.filter(h => typeSet.has(h.type)) : memberH).map(h => h.id)
+    );
+    const matched = new Set([...typeMatched, ...lh]);
+    return allHoldings
+      .filter(h => matched.has(h.id))
+      .map(h => ({ ...h, _val: valINRCache.get(h.id) || 0, _earmarked: lh.has(h.id) }))
       .sort((a, b) => b._val - a._val);
   }
 
@@ -489,7 +501,7 @@ export default function GoalsTab({
                 <button className="delbtn" title="Move up"   onClick={() => setGoals(p => { const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===0)return p;const np=[...s];[np[i-1],np[i]]=[np[i],np[i-1]];return np.map((x,j)=>({...x,priority:j+1})); })}>↑</button>
                 <button className="delbtn" title="Move down" onClick={() => setGoals(p => { const s=[...p].sort((a,b)=>(a.priority||99)-(b.priority||99));const i=s.findIndex(x=>x.id===g.id);if(i===s.length-1)return p;const np=[...s];[np[i],np[i+1]]=[np[i+1],np[i]];return np.map((x,j)=>({...x,priority:j+1})); })}>↓</button>
                 <button className="delbtn" title="Edit goal" style={{ color: 'rgba(90,156,224,.5)' }}
-                  onClick={() => { setGoalForm({ name:g.name, targetAmount:g.targetAmount, targetDate:g.targetDate, linkedMembers:g.linkedMembers||['all'], linkedTypes:g.linkedTypes||[], category:g.category, color:g.color, notes:g.notes||'', priority:g.priority||idx+1, monthlyContribution:g.monthlyContribution||'' }); setEditGoalId(g.id); setModal('goal'); }}>✎</button>
+                  onClick={() => { setGoalForm({ name:g.name, targetAmount:g.targetAmount, targetDate:g.targetDate, linkedMembers:g.linkedMembers||['all'], linkedTypes:g.linkedTypes||[], linkedHoldingIds:g.linkedHoldingIds||[], category:g.category, color:g.color, notes:g.notes||'', priority:g.priority||idx+1, monthlyContribution:g.monthlyContribution||'' }); setEditGoalId(g.id); setModal('goal'); }}>✎</button>
                 <button className="delbtn" title="Delete" onClick={() => setGoals(p => p.filter(x => x.id !== g.id))}>✕</button>
               </div>
 
