@@ -1151,6 +1151,7 @@ ${alertsText}`;
           allInv={allInv}
           AT={AT}
           getValINR={getValINR}
+          usdInr={usdInrRate}
         />
       )}
 
