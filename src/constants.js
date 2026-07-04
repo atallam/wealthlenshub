@@ -23,7 +23,7 @@ export const BF={member_id:"",type:"US_STOCK",name:"",ticker:"",scheme_code:"",i
 // Transaction form
 export const BT={holding_id:"",txn_type:"BUY",units:"",price:"",price_usd:"",txn_date:new Date().toISOString().slice(0,10),notes:""};
 // Goal form blank
-export const BG={name:"",targetAmount:"",targetDate:"",linkedMembers:["all"],linkedTypes:[],category:"Retirement",color:"#c9a84c",notes:"",priority:1,monthlyContribution:""};
+export const BG={name:"",targetAmount:"",targetDate:"",linkedMembers:["all"],linkedTypes:[],linkedHoldingIds:[],category:"Retirement",color:"#c9a84c",notes:"",priority:1,monthlyContribution:""};
 // Alert form blank
 export const BA={type:"ALLOCATION_DRIFT",assetType:"IN_STOCK",threshold:"",label:"",active:true};
 
