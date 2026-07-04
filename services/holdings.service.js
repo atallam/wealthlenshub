@@ -72,7 +72,10 @@ export async function importHoldings(userId, body) {
   if (invalid.length > 0) console.warn(`[import] ${invalid.length} invalid row(s) flagged (kept — lenient import).`);
 
   let effectiveMemberId = member_id || null;
-  if (!effectiveMemberId) {
+  // Only fall back to first portfolio member for non-CAS imports (CSV etc.).
+  // For CAS imports the member must be explicit — the pMembers[0] fallback was
+  // silently assigning imports to the wrong member (e.g. Avinash instead of TV RAO).
+  if (!effectiveMemberId && !account_map) {
     const { data: portfolio } = await supabase.from("portfolio").select("members").eq("user_id", userId).single();
     const pMembers = portfolio?.members || [];
     if (pMembers.length > 0) effectiveMemberId = pMembers[0].id;
@@ -108,7 +111,10 @@ export async function importHoldings(userId, body) {
     const existingId = !isCASImport ? existingMap[key] : null;
     if (existingId && h._dupAction === "skip") { skipped.push(h.name); continue; }
     const isMF = (h.type || "IN_STOCK") === "MF";
-    const resolvedMember = (account_map && h._account_name && account_map[h._account_name]) || effectiveMemberId || h.member_id || null;
+    // account_map keys are holder names (e.g. "TV RAO").
+    // _holder_name is set by the CAS parser; _account_name is a legacy alias.
+    const holderKey = h._holder_name || h._account_name;
+    const resolvedMember = (account_map && holderKey && account_map[holderKey]) || effectiveMemberId || h.member_id || null;
     const payload = sanitizeDates({
       member_id: resolvedMember, type: h.type || "IN_STOCK", name: h.name,
       ticker: h.ticker || "", scheme_code: h.scheme_code || "",

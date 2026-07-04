@@ -103,6 +103,12 @@ def parse_nsdl(d: dict) -> tuple:
 
         pan = holder_pans[0] if holder_pans else ""
 
+        # Primary owner of this account (used for multi-holder account_map lookup)
+        acc_owner_name = (acc.get("owners") or [{}])[0].get("name", "").strip() if acc.get("owners") else ""
+        acc_owner_pan  = (acc.get("owners") or [{}])[0].get("PAN",  "").strip().upper() if acc.get("owners") else ""
+        if not acc_owner_name and holder_names:
+            acc_owner_name = holder_names[0]  # Fall back to first holder
+
         # ── Equities ───────────────────────────────────────────────────────
         for eq in (acc.get("equities") or []):
             isin = eq.get("isin", "")
@@ -137,7 +143,8 @@ def parse_nsdl(d: dict) -> tuple:
                 "brokerage_name": broker,
                 "currency":       "INR",
                 "_folio":         folio,
-                "_pan":           pan,
+                "_pan":           acc_owner_pan or pan,
+                "_holder_name":   acc_owner_name,
             })
 
         # ── Mutual Funds ───────────────────────────────────────────────────
@@ -168,7 +175,8 @@ def parse_nsdl(d: dict) -> tuple:
                 "brokerage_name": broker,
                 "currency":       "INR",
                 "_folio":         folio,
-                "_pan":           pan,
+                "_pan":           acc_owner_pan or pan,
+                "_holder_name":   acc_owner_name,
             })
 
     return holdings, warnings, holder_names, holder_pans, period_from, period_to, "NSDL"
@@ -222,6 +230,7 @@ def parse_cams(d: dict) -> tuple:
                 "currency":       "INR",
                 "_folio":         folio_num,
                 "_pan":           pan,
+                "_holder_name":   inv_name,  # CAMS is always single-holder
             })
 
     cas_type = str(d.get("cas_type", "CAMS"))

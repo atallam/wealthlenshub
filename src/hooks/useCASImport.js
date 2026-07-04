@@ -49,7 +49,10 @@ export function useCASImport(user, onSuccess) {
       const words = lower.split(/\s+/);
       const mWords = ml.split(/\s+/);
       const overlap = words.filter(w => w.length > 2 && mWords.some(mw => mw.includes(w) || w.includes(mw)));
-      if (overlap.length > 0 && (overlap.length >= words.length * 0.5 || overlap.length >= mWords.length * 0.5)) return m;
+      // Require at least 2 overlapping words, OR full coverage of the shorter name.
+      // A single shared word like "rao" is too loose — e.g. "TV RAO" must not match "Avinash Rao".
+      const minRequired = Math.min(words.length, mWords.length) >= 2 ? 2 : 1;
+      if (overlap.length >= minRequired && (overlap.length >= words.length * 0.7 || overlap.length >= mWords.length * 0.7)) return m;
     }
     return null;
   }
