@@ -295,10 +295,14 @@ export default function App() {
 
   const trigAlerts = useMemo(() => {
     const triggered = [];
+    // Derive current USD/INR rate from any USD holding
+    const usdInrRate = allHoldings.find(h => (h.usd_inr_rate || 0) > 0)?.usd_inr_rate || 0;
     for (const a of alerts) {
       if (!a.active) continue;
       if (a.type === 'RETURN_TARGET') {
         if (totPct < a.threshold) triggered.push(a);
+      } else if (a.type === 'USD_INR_RATE') {
+        if (usdInrRate > 0 && usdInrRate > +a.threshold) triggered.push(a);
       } else {
         const typeVal = allHoldings
           .filter(h => h.type === a.assetType)
@@ -979,18 +983,21 @@ ${alertsText}`;
             <select className="fi fs" value={alertForm.type} onChange={e => setAlertForm(p => ({ ...p, type: e.target.value }))}>
               <option value="ALLOCATION_DRIFT">Allocation over threshold</option>
               <option value="CONCENTRATION">Allocation under threshold</option>
-              <option value="RETURN_TARGET">Return below target</option>
+              <option value="RETURN_TARGET">Return below target %</option>
+              <option value="USD_INR_RATE">USD/INR rate above ₹</option>
             </select>
           </FG>
-          {alertForm.type !== 'RETURN_TARGET' && (
+          {alertForm.type !== 'RETURN_TARGET' && alertForm.type !== 'USD_INR_RATE' && (
             <FG label="Asset Type">
               <select className="fi fs" value={alertForm.assetType} onChange={e => setAlertForm(p => ({ ...p, assetType: e.target.value }))}>
                 {Object.entries(AT).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
               </select>
             </FG>
           )}
-          <FG label="Threshold %">
-            <input type="number" className="fi" placeholder="e.g. 60" value={alertForm.threshold}
+          <FG label={alertForm.type === 'USD_INR_RATE' ? 'Rate threshold (₹ per USD)' : 'Threshold %'}>
+            <input type="number" className="fi"
+              placeholder={alertForm.type === 'USD_INR_RATE' ? 'e.g. 90' : 'e.g. 60'}
+              value={alertForm.threshold}
               onChange={e => setAlertForm(p => ({ ...p, threshold: e.target.value }))}/>
           </FG>
           <FG label="Label">
