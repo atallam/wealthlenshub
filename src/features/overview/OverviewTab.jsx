@@ -1,19 +1,28 @@
 // OverviewTab.jsx — lines 2480–2865 of App.jsx
 // Props: all from parent App component (no local-only state to extract)
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import LiabilitiesPanel from '../../components/shared/LiabilitiesPanel.jsx';
 import { computeOutstanding } from '../../lib/amortization.js';
 import { supabase } from '../../supabase.js';
 import { readSSEStream } from '../../hooks/useGoalAI.js';
 
 // ─── AI Portfolio Morning Brief ───────────────────────────────────────────────
+const BRIEF_KEY = 'wl_portfolio_brief';
+
 function PortfolioBrief({ allHoldings, allCur, allInv, totPct, members, mSum,
   goals, trigAlerts, valINRCache, invINRCache, fmtCr, AT }) {
-  const [text,    setText]    = useState('');
+  const cached = sessionStorage.getItem(BRIEF_KEY) || '';
+  const [text,    setText]    = useState(cached);
   const [loading, setLoading] = useState(false);
-  const [open,    setOpen]    = useState(false);
-  const abortRef = useRef(null);
+  const [open,    setOpen]    = useState(!!cached);
+  const abortRef  = useRef(null);
+  const fullTextRef = useRef(cached); // accumulates chunks for sessionStorage write
+
+  // Auto-trigger once per session if no cached brief exists
+  useEffect(() => {
+    if (!sessionStorage.getItem(BRIEF_KEY)) generate();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function generate() {
     abortRef.current?.abort();
@@ -22,6 +31,7 @@ function PortfolioBrief({ allHoldings, allCur, allInv, totPct, members, mSum,
     setLoading(true);
     setText('');
     setOpen(true);
+    fullTextRef.current = '';
 
     // Top 5 holdings by value
     const topH = [...allHoldings]
@@ -85,7 +95,11 @@ Cover: (1) overall portfolio health in one sentence, (2) one standout performer 
       });
       if (!res.ok) throw new Error(res.statusText);
       setLoading(false);
-      await readSSEStream(res, chunk => setText(p => p + chunk), ctrl.signal);
+      await readSSEStream(res, chunk => {
+        fullTextRef.current += chunk;
+        setText(p => p + chunk);
+      }, ctrl.signal);
+      sessionStorage.setItem(BRIEF_KEY, fullTextRef.current);
     } catch (e) {
       if (e.name === 'AbortError') return;
       setText(`⚠ ${e.message}`);
@@ -107,10 +121,7 @@ Cover: (1) overall portfolio health in one sentence, (2) one standout performer 
           padding: '.5rem .85rem', cursor: 'pointer',
           fontFamily: "'DM Sans',sans-serif", fontSize: '.72rem', color: '#c9a84c',
         }}>
-        <span>
-          ✦ Portfolio Brief
-          {!hasContent && <span style={{ fontSize: '.62rem', color: 'rgba(201,168,76,.5)', marginLeft: '.5rem' }}>AI · on demand</span>}
-        </span>
+        <span>✦ Portfolio Brief</span>
         <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
           {hasContent && !loading && (
             <span onClick={e => { e.stopPropagation(); generate(); }}
