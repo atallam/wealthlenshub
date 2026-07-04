@@ -16,7 +16,7 @@ function heldYears(h) {
   return sd ? (new Date() - new Date(sd)) / (864e5 * 365.25) : null;
 }
 
-// ─── Alert rule description (fixes "Under-weight below" mis-label) ────────────
+// ─── Alert rule description ───────────────────────────────────────────────────
 function alertRuleDesc(a, AT) {
   if (!a) return '';
   if (a.type === 'RETURN_TARGET')    return `Portfolio return below ${a.threshold}% target`;
@@ -102,10 +102,10 @@ Also mention if any "Trim" action could reduce funding for a goal that uses that
         onClick={hasContent ? () => setOpen(p => !p) : explain}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: 'rgba(160,132,202,.06)', border: '1px dashed rgba(160,132,202,.3)',
+          background: 'var(--accent-2-dim)', border: '1px dashed rgba(160,132,202,.3)',
           borderRadius: open && hasContent ? '8px 8px 0 0' : 8,
           padding: '.5rem .85rem', cursor: 'pointer',
-          fontFamily: "'DM Sans',sans-serif", fontSize: '.72rem', color: '#a084ca',
+          fontSize: '.72rem', color: 'var(--accent-2)',
         }}>
         <span>
           {loading ? '✦ Analysing plan…' : '✦ Explain this rebalance plan'}
@@ -116,20 +116,20 @@ Also mention if any "Trim" action could reduce funding for a goal that uses that
             <span onClick={e => { e.stopPropagation(); explain(); }}
               style={{ fontSize: '.62rem', color: 'rgba(160,132,202,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
           )}
-          {loading && <div style={{ width: 10, height: 10, border: '1.5px solid rgba(160,132,202,.25)', borderTopColor: '#a084ca', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />}
+          {loading && <div style={{ width: 10, height: 10, border: '1.5px solid rgba(160,132,202,.25)', borderTopColor: 'var(--accent-2)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />}
           {hasContent && <span style={{ fontSize: '.6rem' }}>{open ? '▲' : '▼'}</span>}
         </div>
       </button>
 
       {open && hasContent && (
         <div style={{
-          padding: '.9rem 1rem', background: 'rgba(160,132,202,.04)',
+          padding: '.9rem 1rem', background: 'var(--accent-2-dim)',
           border: '1px solid rgba(160,132,202,.18)', borderTop: 'none',
           borderRadius: '0 0 8px 8px', fontSize: '.78rem', lineHeight: 1.8,
           color: 'var(--text)', whiteSpace: 'pre-wrap',
         }}>
           {text}
-          {loading && <span style={{ display: 'inline-block', width: 7, height: 13, background: '#a084ca', borderRadius: 1, marginLeft: 2, animation: 'blink 1s step-end infinite', verticalAlign: 'text-bottom' }} />}
+          {loading && <span style={{ display: 'inline-block', width: 7, height: 13, background: 'var(--accent-2)', borderRadius: 1, marginLeft: 2, animation: 'blink 1s step-end infinite', verticalAlign: 'text-bottom' }} />}
         </div>
       )}
     </div>
@@ -170,20 +170,20 @@ function ComputedWarnings({ allHoldings, valINRCache, goals, AT, fmtCr }) {
   return (
     <div style={{ marginBottom: '1.2rem' }}>
       {fdWarnings.length > 0 && (
-        <div style={{ marginBottom: '.65rem', padding: '.75rem .9rem', background: 'rgba(201,168,76,.06)', border: '1px solid rgba(201,168,76,.25)', borderRadius: 8 }}>
-          <div style={{ fontSize: '.68rem', color: '#c9a84c', fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: '.5rem' }}>
+        <div style={{ marginBottom: '.65rem', padding: '.75rem .9rem', background: 'var(--gold-dim)', border: '1px solid rgba(201,168,76,.25)', borderRadius: 8 }}>
+          <div style={{ fontSize: '.68rem', color: 'var(--gold)', fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: '.5rem' }}>
             🏦 FD Maturities
           </div>
           {fdWarnings.map(h => {
-            const urgency = h.days <= 14 ? '#e07c5a' : h.days <= 30 ? '#c9a84c' : 'var(--text-muted)';
+            const urgency = h.days <= 14 ? '#e07c5a' : h.days <= 30 ? 'var(--gold)' : 'var(--text-muted)';
             return (
               <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: '.8rem', padding: '.38rem 0', borderBottom: '1px solid rgba(201,168,76,.1)', fontSize: '.72rem' }}>
                 <div style={{ flex: 1 }}>
                   <span style={{ color: 'var(--text)' }}>{h.name}</span>
                   {h.interest_rate && <span style={{ marginLeft: '.4rem', color: 'var(--text-muted)', fontSize: '.62rem' }}>{h.interest_rate}% p.a.</span>}
                 </div>
-                <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '.7rem', color: 'var(--text-muted)' }}>{fmtCr(h.val)}</span>
-                <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '.7rem', color: urgency, fontWeight: 600, minWidth: 50, textAlign: 'right' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '.7rem', color: 'var(--text-muted)' }}>{fmtCr(h.val)}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '.7rem', color: urgency, fontWeight: 600, minWidth: 50, textAlign: 'right' }}>
                   {h.days === 0 ? 'Today!' : h.days === 1 ? 'Tomorrow' : `${h.days}d`}
                 </span>
               </div>
@@ -204,7 +204,7 @@ function ComputedWarnings({ allHoldings, valINRCache, goals, AT, fmtCr }) {
             <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: '.8rem', padding: '.38rem 0', borderBottom: '1px solid rgba(224,124,90,.1)', fontSize: '.72rem' }}>
               <div style={{ width: 7, height: 7, borderRadius: '50%', background: g.color, flexShrink: 0 }} />
               <div style={{ flex: 1, color: 'var(--text)' }}>{g.name}</div>
-              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '.7rem', color: 'var(--text-muted)' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '.7rem', color: 'var(--text-muted)' }}>
                 {g.fundedPct.toFixed(0)}% funded
               </span>
               <span style={{ fontSize: '.62rem', padding: '1px 8px', borderRadius: 8, background: `${g.st.color}15`, border: `1px solid ${g.st.color}33`, color: g.st.color }}>
@@ -234,7 +234,6 @@ function HoldingsDrillDown({ type, rHoldings, valINRCache, invINRCache, fmtCr, i
       return { ...h, cur, inv, gain, yrs, ltcg };
     })
     .sort((a, b) => {
-      // For sells: LTCG-eligible first (prefer selling LTCG to minimise tax), then by value desc
       if (isTrim) return (b.ltcg ? 1 : 0) - (a.ltcg ? 1 : 0) || b.cur - a.cur;
       return b.cur - a.cur;
     });
@@ -271,8 +270,8 @@ function HoldingsDrillDown({ type, rHoldings, valINRCache, invINRCache, fmtCr, i
           {h.yrs !== null && (
             <span style={{ fontSize: '.62rem', color: 'var(--text-muted)', flexShrink: 0 }}>{h.yrs.toFixed(1)}yr</span>
           )}
-          <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '.68rem', color: 'var(--text-muted)', flexShrink: 0 }}>{fmtCr(h.cur)}</span>
-          <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '.65rem', color: h.gain >= 0 ? '#4caf9a' : '#e07c5a', flexShrink: 0, minWidth: 42, textAlign: 'right' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '.68rem', color: 'var(--text-muted)', flexShrink: 0 }}>{fmtCr(h.cur)}</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '.65rem', color: h.gain >= 0 ? '#4caf9a' : '#e07c5a', flexShrink: 0, minWidth: 42, textAlign: 'right' }}>
             {h.gain >= 0 ? '+' : ''}{h.gain.toFixed(1)}%
           </span>
         </div>
@@ -302,8 +301,8 @@ export default function StrategyTab({
   // Sub-components
   FmtInput,
 }) {
-  const [undoStack,    setUndoStack]    = useState([]);       // [{ alert, tid }]
-  const [expandedRows, setExpandedRows] = useState(new Set()); // trade type keys
+  const [undoStack,    setUndoStack]    = useState([]);
+  const [expandedRows, setExpandedRows] = useState(new Set());
   const [copiedPlan,   setCopiedPlan]   = useState(false);
 
   const quietAlerts    = alerts.filter(a => a.active && !trigAlerts.find(t => t.id === a.id));
@@ -338,10 +337,8 @@ export default function StrategyTab({
   const activeTypes = new Set(trades.map(t => t.type));
   const maxPct      = Math.max(...trades.map(x => Math.max(x.curPct, x.tgtPct)), 1);
 
-  // Best redirect target for SIP (most under-weight buy)
   const bestRedirect = trades.filter(t => t.delta > 500).sort((a, b) => b.delta - a.delta)[0];
 
-  // Goal ↔ trade type conflict map
   const typeToGoals = useMemo(() => {
     const map = {};
     (goals || []).forEach(g => {
@@ -400,7 +397,6 @@ export default function StrategyTab({
     });
   }
 
-  // ── Toggle per-row drill-down ─────────────────────────────────────────────
   function toggleRow(type) {
     setExpandedRows(p => {
       const n = new Set(p);
@@ -428,6 +424,12 @@ export default function StrategyTab({
           </button>
         </div>
       ))}
+
+      {/* ═══ TAB HEADER ═══ */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', flexWrap: 'wrap', gap: '.7rem' }}>
+        <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.1rem', color: 'var(--text)' }}>Strategy & Alerts</div>
+        <button className="btn-sm" onClick={() => { setAlertForm(BA); setModal('alert'); }}>+ New Alert</button>
+      </div>
 
       {/* ═══ COMPUTED WARNINGS: FD maturity + goal behind schedule ═══ */}
       <ComputedWarnings
@@ -462,8 +464,8 @@ export default function StrategyTab({
                     {curVal !== null && ` — currently ${curVal.toFixed(1)}%`}
                   </div>
                 </div>
-                <button onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
-                  style={{ background: 'none', border: '1px solid rgba(224,124,90,.3)', borderRadius: 4, padding: '3px 10px', fontSize: '.65rem', cursor: 'pointer', color: 'rgba(224,124,90,.7)' }}>
+                <button className="btn-o" onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
+                  style={{ fontSize: '.65rem', color: 'rgba(224,124,90,.8)' }}>
                   Snooze
                 </button>
               </div>
@@ -474,9 +476,8 @@ export default function StrategyTab({
 
       {/* ═══ ALERT RULES ═══ */}
       <div style={{ marginBottom: '1.2rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.7rem' }}>
+        <div style={{ marginBottom: '.7rem' }}>
           <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.05rem', color: 'var(--text)' }}>Alert Rules</div>
-          <button className="btn-sm" onClick={() => { setAlertForm(BA); setModal('alert'); }}>+ New Alert</button>
         </div>
 
         {alerts.length === 0 ? (
@@ -494,8 +495,8 @@ export default function StrategyTab({
                   <div style={{ fontSize: '.78rem', color: '#e07c5a' }}>{a.label}</div>
                   <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginTop: 1 }}>{alertRuleDesc(a, AT)}</div>
                 </div>
-                <button onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
-                  style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 9px', fontSize: '.65rem', cursor: 'pointer', color: '#4caf9a' }}>ON</button>
+                <button className="btn-o" onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
+                  style={{ fontSize: '.65rem', color: '#4caf9a' }}>ON</button>
                 <button className="delbtn" onClick={() => deleteAlert(a.id)}>✕</button>
               </div>
             ))}
@@ -509,8 +510,8 @@ export default function StrategyTab({
                   <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginTop: 1 }}>{alertRuleDesc(a, AT)}</div>
                 </div>
                 <span style={{ fontSize: '.6rem', color: 'rgba(76,175,154,.6)', padding: '2px 7px', borderRadius: 3, background: 'rgba(76,175,154,.08)', border: '1px solid rgba(76,175,154,.15)', flexShrink: 0 }}>✓ Passing</span>
-                <button onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
-                  style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 9px', fontSize: '.65rem', cursor: 'pointer', color: '#4caf9a' }}>ON</button>
+                <button className="btn-o" onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
+                  style={{ fontSize: '.65rem', color: '#4caf9a' }}>ON</button>
                 <button className="delbtn" onClick={() => deleteAlert(a.id)}>✕</button>
               </div>
             ))}
@@ -530,8 +531,8 @@ export default function StrategyTab({
                       <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{a.label}</div>
                       <div style={{ fontSize: '.6rem', color: 'var(--text-muted)', marginTop: 1 }}>{alertRuleDesc(a, AT)}</div>
                     </div>
-                    <button onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
-                      style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 9px', fontSize: '.65rem', cursor: 'pointer', color: 'var(--text-muted)' }}>OFF</button>
+                    <button className="btn-o" onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
+                      style={{ fontSize: '.65rem' }}>OFF</button>
                     <button className="delbtn" onClick={() => deleteAlert(a.id)}>✕</button>
                   </div>
                 ))}
@@ -548,8 +549,8 @@ export default function StrategyTab({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '.8rem' }}>
         <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.05rem', color: 'var(--text)' }}>Asset Allocation</div>
         {rTotal > 0 && (
-          <button onClick={copyPlanText}
-            style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '.25rem .65rem', fontSize: '.65rem', cursor: 'pointer', color: copiedPlan ? '#4caf9a' : 'var(--text-muted)', fontFamily: 'inherit', transition: 'color .2s' }}>
+          <button className="btn-o" onClick={copyPlanText}
+            style={{ fontSize: '.65rem', color: copiedPlan ? '#4caf9a' : undefined, transition: 'color .2s' }}>
             {copiedPlan ? '✓ Copied!' : '⎘ Copy plan'}
           </button>
         )}
@@ -559,15 +560,12 @@ export default function StrategyTab({
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', marginBottom: '1rem', flexWrap: 'wrap' }}>
         <div>
           <label className="flbl">Member</label>
-          <div style={{ display: 'flex', gap: '.35rem', marginTop: '.3rem' }}>
+          {/* Change 2: fchip / fchip.act replacing inline gold chips */}
+          <div className="tbar" style={{ marginTop: '.3rem', marginBottom: 0 }}>
             {['all', ...members.map(m => m.id)].map(id => (
-              <div key={id} onClick={() => setRebalMember(id)}
-                style={{
-                  padding: '.28rem .6rem', borderRadius: 4, cursor: 'pointer', fontSize: '.72rem',
-                  background: rebalMember === id ? 'rgba(201,168,76,.16)' : 'var(--bg-muted)',
-                  border:     rebalMember === id ? '1px solid rgba(201,168,76,.4)' : '1px solid var(--border)',
-                  color:      rebalMember === id ? '#c9a84c' : 'var(--text-dim)',
-                }}>
+              <div key={id}
+                className={`fchip${rebalMember === id ? ' act' : ''}`}
+                onClick={() => setRebalMember(id)}>
                 {id === 'all' ? 'All' : members.find(m => m.id === id)?.name}
               </div>
             ))}
@@ -579,42 +577,40 @@ export default function StrategyTab({
         </div>
         <div style={{ flex: 1, textAlign: 'right' }}>
           <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', letterSpacing: '.08em', textTransform: 'uppercase' }}>Portfolio</div>
-          <div style={{ fontFamily: "'DM Mono',monospace", fontSize: '1.15rem', color: 'var(--text)' }}>{fmtCr(rTotal)}</div>
-          {cash > 0 && <div style={{ fontSize: '.65rem', color: 'rgba(201,168,76,.6)' }}>+ {fmtCr(cash)} cash</div>}
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.15rem', color: 'var(--text)' }}>{fmtCr(rTotal)}</div>
+          {cash > 0 && <div style={{ fontSize: '.65rem', color: 'var(--gold)' }}>+ {fmtCr(cash)} cash</div>}
         </div>
       </div>
 
-      {/* Strategy presets — now with inline descriptions */}
-      <div style={{ display: 'flex', gap: '.4rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '.62rem', color: 'var(--text-muted)', alignSelf: 'center', marginRight: '.2rem' }}>STRATEGY:</span>
+      {/* Strategy presets — Change 3: button.btn-o replaces inline div with hover simulation */}
+      <div style={{ display: 'flex', gap: '.4rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginRight: '.2rem' }}>STRATEGY:</span>
         {[
           { name: 'Conservative', desc: 'FD/PPF heavy, low risk',     alloc: { IN_STOCK:15, MF:20, IN_ETF:5, US_STOCK:0,  US_ETF:0,  US_BOND:5, CRYPTO:0, FD:25, PPF:15, EPF:15, REAL_ESTATE:0 } },
           { name: 'Balanced',     desc: 'Mix of equity & debt',        alloc: { IN_STOCK:25, MF:25, IN_ETF:5, US_STOCK:8,  US_ETF:5,  US_BOND:0, CRYPTO:2, FD:10, PPF:10, EPF:10, REAL_ESTATE:0 } },
           { name: 'Aggressive',   desc: 'Equity & crypto heavy',       alloc: { IN_STOCK:30, MF:25, IN_ETF:5, US_STOCK:15, US_ETF:5,  US_BOND:0, CRYPTO:5, FD:5,  PPF:5,  EPF:5,  REAL_ESTATE:0 } },
           { name: 'Global',       desc: 'Cross-border diversified',    alloc: { IN_STOCK:20, MF:15, IN_ETF:5, US_STOCK:20, US_ETF:15, US_BOND:0, CRYPTO:5, FD:5,  PPF:5,  EPF:5,  REAL_ESTATE:5 } },
         ].map(p => (
-          <div key={p.name} onClick={() => setTargetAlloc(p.alloc)}
-            style={{ padding: '.3rem .65rem', borderRadius: 4, cursor: 'pointer', background: 'var(--bg-muted)', border: '1px solid var(--border)', transition: 'all .15s' }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(201,168,76,.1)'; e.currentTarget.style.borderColor = 'rgba(201,168,76,.3)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-muted)'; e.currentTarget.style.borderColor = 'var(--border)'; }}>
-            <div style={{ fontSize: '.7rem', color: 'var(--text-dim)' }}>{p.name}</div>
-            <div style={{ fontSize: '.58rem', color: 'var(--text-muted)', marginTop: '.1rem' }}>{p.desc}</div>
-          </div>
+          <button key={p.name} className="btn-o" onClick={() => setTargetAlloc(p.alloc)}
+            style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '.35rem .7rem', gap: '.05rem' }}>
+            <span style={{ fontSize: '.7rem' }}>{p.name}</span>
+            <span style={{ fontSize: '.58rem', color: 'var(--text-muted)', fontWeight: 400 }}>{p.desc}</span>
+          </button>
         ))}
       </div>
 
-      {/* Target % progress bar — fixes silent-normalization confusion */}
+      {/* Target % progress bar */}
       {tSum > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '.65rem', marginBottom: '.85rem' }}>
           <div style={{ flex: 1, height: 5, background: 'var(--bg-muted)', borderRadius: 3, overflow: 'hidden' }}>
             <div style={{
               height: '100%', width: `${Math.min(tSum, 100)}%`,
-              background: Math.abs(tSum - 100) < 0.5 ? '#4caf9a' : tSum > 100 ? '#e07c5a' : '#c9a84c',
+              background: Math.abs(tSum - 100) < 0.5 ? '#4caf9a' : tSum > 100 ? '#e07c5a' : 'var(--gold)',
               borderRadius: 3, transition: 'width .3s',
             }} />
           </div>
-          <div style={{ fontSize: '.68rem', fontFamily: "'DM Mono',monospace", minWidth: 120, textAlign: 'right',
-            color: Math.abs(tSum - 100) < 0.5 ? '#4caf9a' : tSum > 100 ? '#e07c5a' : '#c9a84c' }}>
+          <div style={{ fontSize: '.68rem', fontFamily: 'var(--font-mono)', minWidth: 120, textAlign: 'right',
+            color: Math.abs(tSum - 100) < 0.5 ? '#4caf9a' : tSum > 100 ? '#e07c5a' : 'var(--gold)' }}>
             {tSum.toFixed(0)}% {Math.abs(tSum - 100) < 0.5
               ? '✓ totals 100'
               : tSum > 100
@@ -661,7 +657,6 @@ export default function StrategyTab({
                   const monthlySIP   = absDelta > 5000 ? Math.round(absDelta / 12) : 0;
                   const conflictGoals = isTrim ? (typeToGoals[t.type] || []) : [];
                   const isExpanded   = expandedRows.has(t.type);
-                  // Show effective % only when targets don't sum to 100
                   const showEffPct   = tSum > 0 && Math.abs(tSum - 100) > 0.5 && (normTarget[t.type] || 0) > 0;
 
                   return (
@@ -693,7 +688,7 @@ export default function StrategyTab({
                               value={targetAlloc[t.type] || 0}
                               onClick={e => e.stopPropagation()}
                               onChange={e => setTargetAlloc(p => ({ ...p, [t.type]: +e.target.value }))}
-                              style={{ width: 44, textAlign: 'right', background: 'var(--bg-muted)', border: '1px solid var(--border)', borderRadius: 3, padding: '.18rem .35rem', color: '#c9a84c', fontFamily: "'DM Mono',monospace", fontSize: '.78rem' }}
+                              style={{ width: 44, textAlign: 'right', background: 'var(--bg-muted)', border: '1px solid var(--border)', borderRadius: 3, padding: '.18rem .35rem', color: 'var(--gold)', fontFamily: 'var(--font-mono)', fontSize: '.78rem' }}
                             />
                             <span style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>%</span>
                           </div>
@@ -707,10 +702,10 @@ export default function StrategyTab({
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
                             <div style={{ flex: 1, height: 6, background: 'var(--bg-muted)', borderRadius: 3, overflow: 'visible', position: 'relative' }}>
-                              <div style={{ position: 'absolute', left: `${Math.min(t.tgtPct / maxPct * 100, 100)}%`, top: -1, width: 2, height: 8, background: 'rgba(201,168,76,.7)', borderRadius: 1, transform: 'translateX(-50%)', zIndex: 2 }} />
+                              <div style={{ position: 'absolute', left: `${Math.min(t.tgtPct / maxPct * 100, 100)}%`, top: -1, width: 2, height: 8, background: 'var(--gold-border)', borderRadius: 1, transform: 'translateX(-50%)', zIndex: 2 }} />
                               <div style={{ height: '100%', width: `${Math.min(t.curPct / maxPct * 100, 100)}%`, background: isOver ? `${at.color}cc` : isUnder ? `${at.color}55` : `${at.color}88`, borderRadius: 3, transition: 'width .4s' }} />
                             </div>
-                            <span style={{ fontSize: '.6rem', fontFamily: "'DM Mono',monospace", minWidth: 40, textAlign: 'right', color: isFlat ? 'var(--text-muted)' : isOver ? '#e07c5a' : '#4caf9a' }}>
+                            <span style={{ fontSize: '.6rem', fontFamily: 'var(--font-mono)', minWidth: 40, textAlign: 'right', color: isFlat ? 'var(--text-muted)' : isOver ? '#e07c5a' : '#4caf9a' }}>
                               {isFlat ? '—' : `${driftPct > 0 ? '+' : ''}${driftPct.toFixed(1)}%`}
                             </span>
                           </div>
@@ -720,7 +715,7 @@ export default function StrategyTab({
                             <span style={{ color: 'rgba(76,175,154,.6)', fontSize: '.68rem' }}>✓ Aligned</span>
                           ) : isBuy ? (
                             <div>
-                              <span style={{ background: 'rgba(76,175,154,.12)', color: '#4caf9a', border: '1px solid rgba(76,175,154,.3)', borderRadius: 4, padding: '3px 8px', fontSize: '.7rem', fontFamily: "'DM Mono',monospace", fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              <span style={{ background: 'rgba(76,175,154,.12)', color: '#4caf9a', border: '1px solid rgba(76,175,154,.3)', borderRadius: 4, padding: '3px 8px', fontSize: '.7rem', fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                 ▲ Invest {fmtCr(absDelta)}
                               </span>
                               {monthlySIP > 0 && (
@@ -731,7 +726,7 @@ export default function StrategyTab({
                             </div>
                           ) : (
                             <div>
-                              <span style={{ background: 'rgba(224,124,90,.12)', color: '#e07c5a', border: '1px solid rgba(224,124,90,.3)', borderRadius: 4, padding: '3px 8px', fontSize: '.7rem', fontFamily: "'DM Mono',monospace", fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              <span style={{ background: 'rgba(224,124,90,.12)', color: '#e07c5a', border: '1px solid rgba(224,124,90,.3)', borderRadius: 4, padding: '3px 8px', fontSize: '.7rem', fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                 ▼ Trim {fmtCr(absDelta)}
                               </span>
                               <div style={{ fontSize: '.58rem', color: 'rgba(224,124,90,.45)', marginTop: 3 }}>
@@ -747,8 +742,8 @@ export default function StrategyTab({
                       {/* Goal-conflict warning row */}
                       {isTrim && conflictGoals.length > 0 && (
                         <tr>
-                          <td colSpan={5} style={{ padding: '.3rem .75rem', background: 'rgba(201,168,76,.04)', borderBottom: '1px solid rgba(201,168,76,.15)' }}>
-                            <span style={{ fontSize: '.65rem', color: '#c9a84c' }}>
+                          <td colSpan={5} style={{ padding: '.3rem .75rem', background: 'var(--gold-dim)', borderBottom: '1px solid rgba(201,168,76,.15)' }}>
+                            <span style={{ fontSize: '.65rem', color: 'var(--gold)' }}>
                               ⚠ {at.label} is earmarked by{' '}
                               <strong>{conflictGoals.map(g => g.name).join(', ')}</strong>
                               {' '}— trimming may reduce {conflictGoals.length > 1 ? 'their' : 'its'} funded %.
@@ -788,12 +783,12 @@ export default function StrategyTab({
 
             <div style={{ marginTop: '.6rem', fontSize: '.65rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>
               ℹ️ Click any non-aligned row to see individual holdings. "Trim" = redeem or redirect future SIPs. Selling may have tax implications — consult your CA.
-              {cash > 0 && <span style={{ color: 'rgba(201,168,76,.5)' }}> Fresh cash of {fmtCr(cash)} is factored into Invest amounts.</span>}
+              {cash > 0 && <span style={{ color: 'var(--gold)' }}> Fresh cash of {fmtCr(cash)} is factored into Invest amounts.</span>}
             </div>
 
             {/* Legend */}
             <div style={{ marginTop: '.5rem', display: 'flex', gap: '.8rem', fontSize: '.6rem', color: 'var(--text-muted)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '.25rem' }}><div style={{ width: 8, height: 2, background: 'rgba(201,168,76,.7)' }} /> Target</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '.25rem' }}><div style={{ width: 8, height: 2, background: 'var(--gold-border)' }} /> Target</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '.25rem' }}><div style={{ width: 8, height: 6, background: 'rgba(76,175,154,.5)', borderRadius: 1 }} /> Under</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '.25rem' }}><div style={{ width: 8, height: 6, background: 'rgba(224,124,90,.5)', borderRadius: 1 }} /> Over</div>
             </div>
@@ -801,16 +796,17 @@ export default function StrategyTab({
         )}
       </div>
 
-      {/* Show hidden asset types */}
+      {/* Show hidden asset types — Change 5: div → button.btn-sm */}
       {Object.keys(AT).filter(t => !activeTypes.has(t) && (+targetAlloc[t] || 0) === 0).length > 0 && (
-        <div
-          style={{ fontSize: '.68rem', color: 'var(--text-muted)', cursor: 'pointer', textAlign: 'center', padding: '.4rem', border: '1px dashed var(--border)', borderRadius: 6 }}
+        <button
+          className="btn-sm"
+          style={{ width: '100%' }}
           onClick={() => {
             const missing = Object.keys(AT).filter(t => !activeTypes.has(t) && (+targetAlloc[t] || 0) === 0);
             if (missing.length) setTargetAlloc(p => { const n = { ...p }; missing.forEach(t => n[t] = 0); return n; });
           }}>
           + Show all asset types ({Object.keys(AT).filter(t => !activeTypes.has(t) && (+targetAlloc[t] || 0) === 0).length} hidden)
-        </div>
+        </button>
       )}
     </>
   );
