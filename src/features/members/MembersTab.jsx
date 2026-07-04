@@ -2,7 +2,118 @@
 // NOTE: memberAction state (delete/merge confirmation dialog) is kept in parent
 // because deleteMember and mergeMembers are async functions with API calls defined there.
 
+import { useState, useRef } from 'react';
 import { computeOutstanding } from '../../lib/amortization.js';
+import { supabase } from '../../supabase.js';
+import { readSSEStream } from '../../hooks/useGoalAI.js';
+
+// ─── AI Family Allocation Narrative ──────────────────────────────────────────
+function FamilyNarrative({ mSum, allHoldings, valINRCache, AT, fmt }) {
+  const [text,    setText]    = useState('');
+  const [loading, setLoading] = useState(false);
+  const [open,    setOpen]    = useState(false);
+  const abortRef = useRef(null);
+
+  async function generate() {
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setLoading(true);
+    setText('');
+    setOpen(true);
+
+    const memberLines = mSum.map(m => {
+      const hs = allHoldings.filter(h => h.member_id === m.id);
+      const byT = Object.entries(
+        hs.reduce((acc, h) => {
+          acc[h.type] = (acc[h.type] || 0) + (valINRCache.get(h.id) || 0);
+          return acc;
+        }, {})
+      ).sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([t, v]) => `${AT[t]?.label || t}: ${fmt(v)}`).join(', ');
+      const gainSign = m.gain >= 0 ? '+' : '−';
+      return `  ${m.name} (${m.relation || 'member'}): ${fmt(m.cur)} total · ${gainSign}${Math.abs(m.pct).toFixed(1)}% gain · Top: ${byT || 'no holdings'}`;
+    }).join('\n');
+
+    const totalCur = mSum.reduce((s, m) => s + m.cur, 0);
+
+    const prompt = `You are a concise Indian wealth advisor. Write a 3-sentence family allocation narrative — no headers, no bullets, flowing prose. Under 80 words.
+
+FAMILY PORTFOLIO:
+Total: ${fmt(totalCur)} across ${mSum.length} member${mSum.length > 1 ? 's' : ''}
+
+MEMBERS:\n${memberLines}
+
+Cover: (1) Who is most diversified or concentrated and why it matters, (2) any imbalance or risk worth flagging (concentration, single-member dependence), (3) one concrete rebalancing or diversification suggestion. Keep it under 80 words.`;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || '';
+      const res = await fetch('/api/ai/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 200,
+          system: 'You are a concise Indian wealth advisor. Flowing prose only, no bullets. Under 80 words.',
+          messages: [{ role: 'user', content: prompt }],
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(res.statusText);
+      setLoading(false);
+      await readSSEStream(res, chunk => setText(p => p + chunk), ctrl.signal);
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      setText(`⚠ ${e.message}`);
+      setLoading(false);
+    }
+  }
+
+  const hasContent = text || loading;
+
+  return (
+    <div style={{ marginBottom: '1.2rem' }}>
+      <button
+        onClick={hasContent ? () => setOpen(p => !p) : generate}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: open && hasContent ? 'rgba(76,175,154,.08)' : 'rgba(76,175,154,.04)',
+          border: `1px ${hasContent ? 'solid' : 'dashed'} rgba(76,175,154,.3)`,
+          borderRadius: open && hasContent ? '8px 8px 0 0' : 8,
+          padding: '.5rem .85rem', cursor: 'pointer',
+          fontFamily: "'DM Sans',sans-serif", fontSize: '.72rem', color: '#4caf9a',
+        }}>
+        <span>
+          ✦ Family Allocation Narrative
+          {!hasContent && <span style={{ fontSize: '.62rem', color: 'rgba(76,175,154,.5)', marginLeft: '.5rem' }}>AI · on demand</span>}
+        </span>
+        <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
+          {hasContent && !loading && (
+            <span onClick={e => { e.stopPropagation(); generate(); }}
+              style={{ fontSize: '.62rem', color: 'rgba(76,175,154,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
+          )}
+          {loading && <div style={{ width: 10, height: 10, border: '1.5px solid rgba(76,175,154,.25)', borderTopColor: '#4caf9a', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />}
+          {hasContent && <span style={{ fontSize: '.6rem' }}>{open ? '▲' : '▼'}</span>}
+        </div>
+      </button>
+
+      {open && hasContent && (
+        <div style={{
+          padding: '.85rem 1rem', background: 'rgba(76,175,154,.03)',
+          border: '1px solid rgba(76,175,154,.2)', borderTop: 'none',
+          borderRadius: '0 0 8px 8px', fontSize: '.8rem', lineHeight: 1.8,
+          color: 'var(--text)', whiteSpace: 'pre-wrap',
+        }}>
+          {text}
+          {loading && <span style={{ display: 'inline-block', width: 7, height: 13, background: '#4caf9a', borderRadius: 1, marginLeft: 2, animation: 'blink 1s step-end infinite', verticalAlign: 'text-bottom' }} />}
+        </div>
+      )}
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}`}</style>
+    </div>
+  );
+}
 
 function fmtAmtShort(n, currency = "INR") {
   if (!n) return "—";
@@ -44,6 +155,15 @@ export default function MembersTab({
   return (
     <>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}><div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"var(--text)"}}>Family Members</div><button className="btn-sm" onClick={()=>openMemberModal(null)}>+ Add Member</button></div>
+      {mSum.length > 1 && (
+        <FamilyNarrative
+          mSum={mSum}
+          allHoldings={allHoldings}
+          valINRCache={valINRCache}
+          AT={AT}
+          fmt={fmt}
+        />
+      )}
       {mSum.length===0&&(<div className="empty">No members yet. Add a family member to start tracking individual portfolios.</div>)}
       {mSum.map(m=>{
         const hs=allHoldings.filter(h=>h.member_id===m.id);

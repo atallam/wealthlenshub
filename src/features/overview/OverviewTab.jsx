@@ -1,9 +1,140 @@
 // OverviewTab.jsx — lines 2480–2865 of App.jsx
 // Props: all from parent App component (no local-only state to extract)
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import LiabilitiesPanel from '../../components/shared/LiabilitiesPanel.jsx';
 import { computeOutstanding } from '../../lib/amortization.js';
+import { supabase } from '../../supabase.js';
+import { readSSEStream } from '../../hooks/useGoalAI.js';
+
+// ─── AI Portfolio Morning Brief ───────────────────────────────────────────────
+function PortfolioBrief({ allHoldings, allCur, allInv, totPct, members, mSum,
+  goals, trigAlerts, valINRCache, invINRCache, fmtCr, AT }) {
+  const [text,    setText]    = useState('');
+  const [loading, setLoading] = useState(false);
+  const [open,    setOpen]    = useState(false);
+  const abortRef = useRef(null);
+
+  async function generate() {
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setLoading(true);
+    setText('');
+    setOpen(true);
+
+    // Top 5 holdings by value
+    const topH = [...allHoldings]
+      .map(h => ({
+        ...h,
+        cur: valINRCache.get(h.id) || 0,
+        inv: invINRCache.get(h.id) || 0,
+      }))
+      .sort((a, b) => b.cur - a.cur)
+      .slice(0, 5)
+      .map(h => {
+        const g = h.inv > 0 ? ((h.cur - h.inv) / h.inv * 100).toFixed(1) : '0';
+        const mem = members.find(m => m.id === h.member_id)?.name || '';
+        return `  ${h.name} (${AT[h.type]?.label || h.type}): ${fmtCr(h.cur)} · ${g >= 0 ? '+' : ''}${g}%${mem ? ` [${mem}]` : ''}`;
+      }).join('\n');
+
+    // Upcoming in 30 days
+    const now = new Date();
+    const upcoming = allHoldings
+      .filter(h => h.type === 'FD' && h.maturity_date)
+      .map(h => ({ name: h.name, days: Math.round((new Date(h.maturity_date) - now) / 864e5), val: valINRCache.get(h.id) || 0 }))
+      .filter(h => h.days >= 0 && h.days <= 30)
+      .map(h => `FD "${h.name}" matures in ${h.days}d (${fmtCr(h.val)})`);
+    const goalsDue = (goals || [])
+      .filter(g => g.targetDate)
+      .map(g => ({ name: g.name, days: Math.round((new Date(g.targetDate) - now) / 864e5) }))
+      .filter(g => g.days >= 0 && g.days <= 90)
+      .map(g => `Goal "${g.name}" target in ${g.days}d`);
+
+    const memberLines = (mSum || []).map(m =>
+      `  ${m.name}: ${fmtCr(m.cur)} (${m.pct >= 0 ? '+' : ''}${m.pct.toFixed(1)}% overall gain)`
+    ).join('\n');
+
+    const prompt = `You are a concise Indian wealth advisor. Write a 4-sentence portfolio morning brief — no headers, no bullets, flowing prose.
+
+PORTFOLIO:
+- Total value: ${fmtCr(allCur)} | Invested: ${fmtCr(allInv)} | Overall gain: ${allInv > 0 ? ((allCur - allInv) / allInv * 100).toFixed(1) : 0}%
+- Members:\n${memberLines}
+
+TOP HOLDINGS:\n${topH}
+
+TRIGGERED ALERTS: ${trigAlerts.length > 0 ? trigAlerts.map(a => a.label).join('; ') : 'None'}
+
+UPCOMING (30–90 days): ${[...upcoming, ...goalsDue].join('; ') || 'Nothing time-sensitive'}
+
+Cover: (1) overall portfolio health in one sentence, (2) one standout performer or concern, (3) any alert or risk needing action, (4) one concrete step to take this week. Keep it under 80 words.`;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || '';
+      const res = await fetch('/api/ai/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 250,
+          system: 'You are a concise Indian wealth advisor. Write in flowing prose, no bullets or headers. Under 80 words.',
+          messages: [{ role: 'user', content: prompt }],
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(res.statusText);
+      setLoading(false);
+      await readSSEStream(res, chunk => setText(p => p + chunk), ctrl.signal);
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      setText(`⚠ ${e.message}`);
+      setLoading(false);
+    }
+  }
+
+  const hasContent = text || loading;
+
+  return (
+    <div style={{ marginBottom: '1rem' }}>
+      <button
+        onClick={hasContent ? () => setOpen(p => !p) : generate}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: open && hasContent ? 'rgba(201,168,76,.08)' : 'rgba(201,168,76,.04)',
+          border: `1px ${hasContent ? 'solid' : 'dashed'} rgba(201,168,76,.3)`,
+          borderRadius: open && hasContent ? '8px 8px 0 0' : 8,
+          padding: '.5rem .85rem', cursor: 'pointer',
+          fontFamily: "'DM Sans',sans-serif", fontSize: '.72rem', color: '#c9a84c',
+        }}>
+        <span>
+          ✦ Portfolio Brief
+          {!hasContent && <span style={{ fontSize: '.62rem', color: 'rgba(201,168,76,.5)', marginLeft: '.5rem' }}>AI · on demand</span>}
+        </span>
+        <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
+          {hasContent && !loading && (
+            <span onClick={e => { e.stopPropagation(); generate(); }}
+              style={{ fontSize: '.62rem', color: 'rgba(201,168,76,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
+          )}
+          {loading && <div style={{ width: 10, height: 10, border: '1.5px solid rgba(201,168,76,.25)', borderTopColor: '#c9a84c', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />}
+          {hasContent && <span style={{ fontSize: '.6rem' }}>{open ? '▲' : '▼'}</span>}
+        </div>
+      </button>
+
+      {open && hasContent && (
+        <div style={{
+          padding: '.85rem 1rem', background: 'rgba(201,168,76,.03)',
+          border: '1px solid rgba(201,168,76,.2)', borderTop: 'none',
+          borderRadius: '0 0 8px 8px', fontSize: '.8rem', lineHeight: 1.8,
+          color: 'var(--text)', whiteSpace: 'pre-wrap',
+        }}>
+          {text}
+          {loading && <span style={{ display: 'inline-block', width: 7, height: 13, background: '#c9a84c', borderRadius: 1, marginLeft: 2, animation: 'blink 1s step-end infinite', verticalAlign: 'text-bottom' }} />}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function OverviewTab({
   // Data
@@ -52,6 +183,9 @@ export default function OverviewTab({
   resetSnapshotHistory,
   // AT (asset types map)
   AT,
+  // AI features
+  goals,
+  trigAlerts,
   // Sub-components
   DonutChart,
 }) {
@@ -142,6 +276,23 @@ export default function OverviewTab({
           ))}
         </div>
       </>)}
+      {/* ── AI Portfolio Brief — above NRI panels ── */}
+      {!demoMode && holdings.length > 0 && (
+        <PortfolioBrief
+          allHoldings={allHoldings}
+          allCur={totCur}
+          allInv={totInv}
+          totPct={totPct}
+          members={members}
+          mSum={mSum}
+          goals={goals || []}
+          trigAlerts={trigAlerts || []}
+          valINRCache={valINRCache}
+          invINRCache={invINRCache}
+          fmtCr={fmtCr}
+          AT={AT}
+        />
+      )}
       {/* ── NRI Portfolio Summary — 3-panel view ── */}
       {(()=>{
         const nm = nriMetrics || {};
@@ -561,6 +712,7 @@ export default function OverviewTab({
           </details>
         </div>);
       })()}
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}`}</style>
     </>
   );
 }

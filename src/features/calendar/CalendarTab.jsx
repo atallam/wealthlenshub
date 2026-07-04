@@ -1,5 +1,120 @@
 // CalendarTab.jsx — lines 4366–4579 of App.jsx
 
+import { useState, useRef } from 'react';
+import { supabase } from '../../supabase.js';
+import { readSSEStream } from '../../hooks/useGoalAI.js';
+
+// ─── AI Month Briefing ────────────────────────────────────────────────────────
+function MonthBrief({ monthName, upcoming, calY, calMo, goals, holdings }) {
+  const [text,    setText]    = useState('');
+  const [loading, setLoading] = useState(false);
+  const [open,    setOpen]    = useState(false);
+  const abortRef = useRef(null);
+
+  async function generate() {
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setLoading(true);
+    setText('');
+    setOpen(true);
+
+    // SIPs this month
+    const sips = upcoming.filter(e => e.type === 'SIP Due')
+      .map(e => `  ${e.label} on ${e.date.slice(8)}th`).join('\n');
+
+    // FD maturities this month
+    const fds = upcoming.filter(e => e.type === 'FD Maturity')
+      .map(e => `  ${e.label} (${Math.ceil((new Date(e.date) - new Date()) / 864e5)}d)`).join('\n');
+
+    // Goals due this month or already past
+    const goalLines = goals.filter(g => {
+      if (!g.targetDate) return false;
+      const [gy, gm] = g.targetDate.split('-').map(Number);
+      return gy === calY && gm === calMo;
+    }).map(g => `  Goal "${g.name}" target date`).join('\n');
+
+    // Tax deadlines
+    const taxEvents = upcoming.filter(e => e.type === 'Tax' || e.type === 'PPF' || e.type === '80C')
+      .map(e => `  ${e.label} (${e.date.slice(8)}th)`).join('\n');
+
+    const prompt = `You are a concise Indian wealth planner. Write a 3-sentence month brief for ${monthName} — no headers, no bullets, flowing prose. Keep it under 70 words.
+
+MONTH EVENTS:
+${sips ? `SIPs due:\n${sips}` : 'No SIPs this month.'}
+${fds  ? `FDs maturing:\n${fds}` : 'No FD maturities.'}
+${goalLines ? `Goals:\n${goalLines}` : ''}
+${taxEvents ? `Deadlines:\n${taxEvents}` : 'No major tax deadlines.'}
+
+Cover: (1) One time-sensitive action to take this month, (2) any FD renewal or goal funding to plan, (3) one proactive reminder. Max 70 words.`;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || '';
+      const res = await fetch('/api/ai/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 180,
+          system: 'You are a concise Indian wealth planner. Write flowing prose, no bullets. Under 70 words.',
+          messages: [{ role: 'user', content: prompt }],
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(res.statusText);
+      setLoading(false);
+      await readSSEStream(res, chunk => setText(p => p + chunk), ctrl.signal);
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      setText(`⚠ ${e.message}`);
+      setLoading(false);
+    }
+  }
+
+  const hasContent = text || loading;
+
+  return (
+    <div style={{ marginBottom: '1rem' }}>
+      <button
+        onClick={hasContent ? () => setOpen(p => !p) : generate}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: open && hasContent ? 'rgba(160,132,202,.08)' : 'rgba(160,132,202,.04)',
+          border: `1px ${hasContent ? 'solid' : 'dashed'} rgba(160,132,202,.3)`,
+          borderRadius: open && hasContent ? '8px 8px 0 0' : 8,
+          padding: '.5rem .85rem', cursor: 'pointer',
+          fontFamily: "'DM Sans',sans-serif", fontSize: '.72rem', color: '#a084ca',
+        }}>
+        <span>
+          ✦ {monthName} Brief
+          {!hasContent && <span style={{ fontSize: '.62rem', color: 'rgba(160,132,202,.5)', marginLeft: '.5rem' }}>AI · on demand</span>}
+        </span>
+        <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
+          {hasContent && !loading && (
+            <span onClick={e => { e.stopPropagation(); generate(); }}
+              style={{ fontSize: '.62rem', color: 'rgba(160,132,202,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
+          )}
+          {loading && <div style={{ width: 10, height: 10, border: '1.5px solid rgba(160,132,202,.25)', borderTopColor: '#a084ca', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />}
+          {hasContent && <span style={{ fontSize: '.6rem' }}>{open ? '▲' : '▼'}</span>}
+        </div>
+      </button>
+
+      {open && hasContent && (
+        <div style={{
+          padding: '.85rem 1rem', background: 'rgba(160,132,202,.03)',
+          border: '1px solid rgba(160,132,202,.2)', borderTop: 'none',
+          borderRadius: '0 0 8px 8px', fontSize: '.8rem', lineHeight: 1.8,
+          color: 'var(--text)', whiteSpace: 'pre-wrap',
+        }}>
+          {text}
+          {loading && <span style={{ display: 'inline-block', width: 7, height: 13, background: '#a084ca', borderRadius: 1, marginLeft: 2, animation: 'blink 1s step-end infinite', verticalAlign: 'text-bottom' }} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CalendarTab({
   // Holdings data (only own holdings, not shared — SIPs are personal)
   holdings,
@@ -106,6 +221,14 @@ export default function CalendarTab({
 
   return (
     <>
+      <MonthBrief
+        monthName={monthName}
+        upcoming={upcoming}
+        calY={calY}
+        calMo={calMo}
+        goals={goals}
+        holdings={holdings}
+      />
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(280px,100%),1fr))",gap:"1rem",alignItems:"start"}}>
 
         {/* Calendar grid */}
@@ -194,6 +317,7 @@ export default function CalendarTab({
           </div>
         </div>
       </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}`}</style>
     </>
   );
 }
