@@ -580,7 +580,7 @@ ${alertsText}`;
             aiInput={ai.aiInput}
             setAiInput={ai.setAiInput}
             aiLoading={ai.aiLoading}
-            askAI={() => ai.askAI(buildPortfolioContext(), aiBottomRef)}
+            askAI={(_, __, overrideInput) => ai.askAI(buildPortfolioContext(), aiBottomRef, overrideInput)}
             aiBottomRef={aiBottomRef}
           />
         )}
