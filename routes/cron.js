@@ -59,12 +59,41 @@ router.post("/refresh-all-prices", cronAuth, async (req, res) => {
 });
 
 router.post("/check-cas-email", cronAuth, async (req, res) => {
-  // Delegate to the gmail router's check-cas-email logic via internal import
   try {
     const { checkCasEmail } = await import("./gmail.js");
-    await checkCasEmail(req, res);
+
+    // Find all users with Gmail auto-import enabled and a connected Gmail account
+    const { data: profiles, error } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("gmail_auto_import", true)
+      .not("gmail_token", "is", null);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const userIds = (profiles || []).map(p => p.id);
+    console.log(`CAS email cron: checking ${userIds.length} users`);
+
+    const results = [];
+    for (const userId of userIds) {
+      try {
+        const summary = await checkCasEmail(userId);
+        results.push({ userId, ...summary });
+      } catch (e) {
+        results.push({ userId, error: e.message });
+      }
+    }
+
+    const totals = results.reduce((acc, r) => ({
+      imported: acc.imported + (r.imported || 0),
+      updated:  acc.updated  + (r.updated  || 0),
+      skipped:  acc.skipped  + (r.skipped  || 0),
+    }), { imported: 0, updated: 0, skipped: 0 });
+
+    console.log(`CAS email cron complete: ${totals.imported} added, ${totals.updated} updated across ${userIds.length} users`);
+    res.json({ users: userIds.length, ...totals, results });
   } catch (e) {
-    res.json({ checked: 0, error: e.message });
+    res.status(500).json({ users: 0, error: e.message });
   }
 });
 
