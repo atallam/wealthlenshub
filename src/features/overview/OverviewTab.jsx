@@ -26,6 +26,7 @@ export default function OverviewTab({
   benchmark,
   nriMetrics,
   // Controls
+  selMember,
   bmPeriod,
   setBmPeriod,
   api,
@@ -225,7 +226,11 @@ export default function OverviewTab({
               )}
               {/* Net worth strip — shown when liabilities exist */}
               {(liabilities||[]).length>0&&(()=>{
-                const totalLiab=(liabilities||[]).reduce((s,l)=>s+computeOutstanding(l),0);
+                // Filter to member-relevant liabilities: exact member match, or unassigned (family-level)
+                const visLiab = selMember && selMember !== 'all'
+                  ? (liabilities||[]).filter(l => l.member_id === selMember || !l.member_id)
+                  : (liabilities||[]);
+                const totalLiab=visLiab.reduce((s,l)=>s+computeOutstanding(l),0);
                 const assets=nm.combined_cur||totCur;
                 const netWorth=assets-totalLiab;
                 return(
@@ -246,10 +251,12 @@ export default function OverviewTab({
         );
       })()}
 
-      {/* Liabilities tracking */}
+      {/* Liabilities tracking — filtered to selected member (unassigned always visible) */}
       {setLiabilities&&(
         <LiabilitiesPanel
-          liabilities={liabilities||[]}
+          liabilities={selMember && selMember !== 'all'
+            ? (liabilities||[]).filter(l => l.member_id === selMember || !l.member_id)
+            : (liabilities||[])}
           setLiabilities={setLiabilities}
           fmtCrINR={fmtCrINR}
           members={members||[]}

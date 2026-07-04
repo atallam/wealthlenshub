@@ -496,6 +496,7 @@ ${alertsText}`;
         {loaded && tab === 'overview' && (
           <OverviewTab
             {...sharedPortfolioProps}
+            selMember={selMember}
             bmPeriod={bmPeriod} setBmPeriod={setBmPeriod}
             setBenchmark={portfolio.setBenchmark}
             nwMember={nwMember} setNwMember={setNwMember}
