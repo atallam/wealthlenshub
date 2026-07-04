@@ -50,13 +50,13 @@ router.get("/categories", auth, async (req, res) => {
   try { res.json(await budget.listCategories(req.user.id)); } catch (e) { sendError(res, e); }
 });
 router.post("/categories", auth, async (req, res) => {
-  const { name, keywords } = req.body;
+  const { name, keywords, icon, color, monthly_limit } = req.body;
   if (!name) return res.status(400).json({ error: "name required" });
-  try { res.json(await budget.createCategory(req.user.id, name, keywords)); } catch (e) { sendError(res, e); }
+  try { res.json(await budget.createCategory(req.user.id, name, keywords, icon, color, monthly_limit)); } catch (e) { sendError(res, e); }
 });
 router.put("/categories/:id", auth, async (req, res) => {
-  const { name, keywords } = req.body;
-  try { res.json(await budget.updateCategory(req.user.id, req.params.id, name, keywords)); } catch (e) { sendError(res, e); }
+  const { name, keywords, icon, color, monthly_limit } = req.body;
+  try { res.json(await budget.updateCategory(req.user.id, req.params.id, name, keywords, icon, color, monthly_limit)); } catch (e) { sendError(res, e); }
 });
 router.delete("/categories/:id", auth, async (req, res) => {
   try { res.json(await budget.deleteCategory(req.user.id, req.params.id)); } catch (e) { sendError(res, e); }

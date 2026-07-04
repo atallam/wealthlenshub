@@ -129,16 +129,23 @@ export async function listCategories(userId) {
   if (error) throw new Error(error.message);
   return data || [];
 }
-export async function createCategory(userId, name, keywords) {
+export async function createCategory(userId, name, keywords, icon, color, monthly_limit) {
   const id = "cat_" + Date.now().toString(36);
-  const { error } = await supabase.from("budget_categories").insert({ id, user_id: userId, name, keywords: keywords || "" });
+  const row = { id, user_id: userId, name, keywords: keywords || "" };
+  if (icon          !== undefined) row.icon          = icon;
+  if (color         !== undefined) row.color         = color;
+  if (monthly_limit !== undefined) row.monthly_limit = Number(monthly_limit) || 0;
+  const { error } = await supabase.from("budget_categories").insert(row);
   if (error) throw new Error(error.message);
   return { ok: true, id };
 }
-export async function updateCategory(userId, id, name, keywords) {
+export async function updateCategory(userId, id, name, keywords, icon, color, monthly_limit) {
   const patch = {};
-  if (name !== undefined) patch.name = name;
-  if (keywords !== undefined) patch.keywords = keywords;
+  if (name          !== undefined) patch.name          = name;
+  if (keywords      !== undefined) patch.keywords      = keywords;
+  if (icon          !== undefined) patch.icon          = icon;
+  if (color         !== undefined) patch.color         = color;
+  if (monthly_limit !== undefined) patch.monthly_limit = Number(monthly_limit) || 0;
   const { error } = await supabase.from("budget_categories").update(patch).eq("id", id).eq("user_id", userId);
   if (error) throw new Error(error.message);
   return { ok: true };

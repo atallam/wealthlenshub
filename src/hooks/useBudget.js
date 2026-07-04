@@ -168,7 +168,7 @@ export function useBudget(user) {
     budgetSelCat,     setBudgetSelCat,
     budgetSearch,     setBudgetSearch,
     budgetView,       setBudgetView,
-    budgetUploading,
+    budgetUploading,  setBudgetUploading,
     budgetUploadForm, setBudgetUploadForm,
     budgetUploadFile, setBudgetUploadFile,
     budgetUploadMsg,  setBudgetUploadMsg,
