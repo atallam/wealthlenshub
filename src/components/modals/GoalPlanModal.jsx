@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabase.js';
-// Import shared status + projection logic so GoalPlanModal always agrees with GoalsTab
-import { goalStatusCalc } from '../../features/goals/GoalsTab.jsx';
+// Shared math — avoids circular dep with GoalsTab.jsx
+import { goalStatusCalc } from '../../features/goals/goalMath.js';
+import { readSSEStream } from '../../hooks/useGoalAI.js';
 
 /* ══════════════════════════════════════════════
    GOAL PLAN MODAL — AI-generated goal fulfillment plan
@@ -108,13 +109,12 @@ Keep the response practical, specific to the numbers, and formatted clearly with
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || '';
 
-      const res = await fetch('/api/ai/chat', {
+      const res = await fetch('/api/ai/chat/stream', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body:    JSON.stringify({
-          model:      'claude-opus-4-5',
+          model:      'claude-sonnet-4-6',
           max_tokens: 2000,
-          stream:     true,
           system:     'You are a concise, practical Indian family wealth advisor. Format with clear sections. Be specific with numbers.',
           messages:   [{ role: 'user', content: prompt }],
         }),
@@ -123,67 +123,15 @@ Keep the response practical, specific to the numbers, and formatted clearly with
 
       if (!res.ok) throw new Error(`AI request failed: ${res.statusText}`);
 
-      // Handle streaming response
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
       setLoading(false); // spinner off — text will start flowing
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed === 'data: [DONE]') continue;
-          if (trimmed.startsWith('data: ')) {
-            try {
-              const json = JSON.parse(trimmed.slice(6));
-              const delta = json.delta?.text || json.choices?.[0]?.delta?.content || '';
-              if (delta) setPlan(p => p + delta);
-            } catch { /* skip malformed SSE line */ }
-          }
-        }
-      }
+      await readSSEStream(res, chunk => setPlan(p => p + chunk), controller.signal);
 
     } catch (e) {
       if (e.name === 'AbortError') return;
-      // If streaming not supported by server, fall back to non-streaming
-      if (e.message?.includes('failed') || e.message?.includes('stream')) {
-        await generateFallback(prompt);
-      } else {
-        setError(e.message);
-        setLoading(false);
-      }
-    }
-  }
-
-  /** Non-streaming fallback for servers that don't support SSE yet. */
-  async function generateFallback(prompt) {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token || '';
-      const res  = await fetch('/api/ai/chat', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body:    JSON.stringify({
-          model: 'claude-opus-4-5', max_tokens: 2000,
-          system:   'You are a concise, practical Indian family wealth advisor. Format with clear sections. Be specific with numbers.',
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
-      const data = await res.json();
-      const text = data.content?.filter(b => b.type === 'text').map(b => b.text).join('') || '';
-      setPlan(text || 'No response received');
-    } catch (e) {
       setError(e.message);
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   if (!open) return null;
