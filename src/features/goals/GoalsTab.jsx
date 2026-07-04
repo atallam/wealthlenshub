@@ -265,7 +265,7 @@ export default function GoalsTab({
             <input
               className="fi"
               style={{ flex: 1, fontSize: '.78rem' }}
-              placeholder='e.g. "I want to retire at 60 with 5 crore corpus" or "Save 50 lakh for daughter\'s education by 2035"'
+              placeholder={`e.g. "I want to retire at 60 with 5 crore corpus" or "Save 50 lakh for daughter's education by 2035"`}
               value={nlText}
               onChange={e => setNlText(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !nlLoading && nlText.trim() && handleNLParse()}
