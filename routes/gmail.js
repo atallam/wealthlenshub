@@ -262,11 +262,10 @@ router.delete("/disconnect", auth, async (req, res) => {
 router.post("/toggle-auto", auth, async (req, res) => {
   await supabase.from("profiles").update({ gmail_auto_import: !!req.body.enabled }).eq("id", req.user.id);
   res.json({ ok: true });
-});
-
 router.post("/check-now", auth, async (req, res) => {
   if (!GMAIL_ENABLED) return res.status(501).json({ error: "Gmail integration not configured" });
   res.json(await autoImportCASForUser(req.user.id));
 });
 
 export default router;
+ault router;

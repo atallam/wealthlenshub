@@ -243,4 +243,19 @@ export async function debugPdf(userId, file, body) {
         if (!date) continue;
         const debit = Math.abs(parseAmtBudget(row.debit)), credit = Math.abs(parseAmtBudget(row.credit));
         if (debit === 0 && credit === 0) continue;
-        const desc = String(row.desc || "").trim(); if (!desc
+        const desc = String(row.desc || "").trim(); if (!desc) continue;
+        const category = autoCategorise(desc, catList);
+        if (!periodStart || date < periodStart) periodStart = date;
+        if (!periodEnd || date > periodEnd) periodEnd = date;
+        txns.push({ id: txId(), statement_id: id, user_id: userId, txn_date: date, description: encrypt(desc), raw_desc: encrypt(desc), amount: debit > 0 ? debit : credit, txn_type: debit > 0 ? "DEBIT" : "CREDIT", category, balance: row.balance ? encrypt(String(row.balance)) : null, ref_number: (row.ref || "").slice(0, 50), currency: "USD" });
+      }
+      if (txns.length > 0) {
+        await supabase.from("budget_statements").delete().eq("user_id", userId).lt("upload_date", new Date(Date.now() - 365 * 24 * 3600_000).toISOString());
+        await supabase.from("budget_statements").insert({ user_id: userId, id, source: "Bank of America (debug)", statement_type: "BANK", filename: file.originalname, file_size: file.size, period_start: periodStart, period_end: periodEnd, txn_count: txns.length, notes: "Imported via debug endpoint", region: "US" });
+        for (let i = 0; i < txns.length; i += 100) { const { error } = await supabase.from("budget_transactions").insert(txns.slice(i, i + 100)); if (error) importError = error.message; }
+        imported = txns.length;
+      }
+    } catch (ie) { importError = ie.message; }
+  }
+  return { pages: undefined, totalChars: rawText.length, totalLines: lines.length, usRowsParsed: usRows.length, inRowsParsed: inRows.length, sectionHeaders, dateLines, first80Lines: sampleLines, usRowsSample: usRows.slice(0, 5), inRowsSample: inRows.slice(0, 5), imported, importError };
+}

@@ -83,7 +83,6 @@ export const SEED = {
     "h8":  [{date:"2022-11-15",units:55,price:748.18,type:"BUY"},{date:"2023-08-15",units:40,price:756.25,type:"BUY"}],
     "h9":  [{date:"2022-08-01",units:420,price:190.48,type:"BUY"}],
     "h12": [{date:"2022-04-08",units:2341.2,price:42.46,type:"BUY"},{date:"2022-10-08",units:1987.6,price:50.31,type:"BUY"},{date:"2023-04-08",units:1654.3,price:60.45,type:"BUY"},{date:"2023-10-08",units:1342.1,price:74.50,type:"BUY"}],
-    "h13": [{date:"2022-05-15",units:1876.5,price:42.63,type:"BUY"},{date:"2023-02-15",units:1432.8,price:55.84,type:"BUY"},{date:"2023-11-15",units:1123.4,price:71.21,type:"BUY"}],
     "h14": [{date:"2022-02-28",units:45,price:3888.89,type:"BUY"},{date:"2023-06-28",units:30,price:3733.33,type:"BUY"}],
     "h15": [{date:"2022-09-01",units:210,price:428.57,type:"BUY"}],
   }
