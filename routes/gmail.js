@@ -158,9 +158,13 @@ async function autoImportCASForUser(userId) {
         const pdfHolderPANs  = (parseResult.holder_pans  || []).map(p => p.toUpperCase());
         const pdfHolderNames = (parseResult.holder_names || []).map(n => n.trim().toUpperCase());
 
+        // Match on PRIMARY holder only (index 0) — joint holders are ignored intentionally.
+        // PANs and names are extracted in document order so [0] is always the first/primary holder.
         let targetMember = null;
-        for (const pan of pdfHolderPANs) { if (panMap.has(pan)) { targetMember = panMap.get(pan); break; } }
-        if (!targetMember) { for (const name of pdfHolderNames) { if (nameMap.has(name)) { targetMember = nameMap.get(name); break; } } }
+        const primaryPAN  = pdfHolderPANs[0];
+        const primaryName = pdfHolderNames[0];
+        if (primaryPAN  && panMap.has(primaryPAN))  targetMember = panMap.get(primaryPAN);
+        if (!targetMember && primaryName && nameMap.has(primaryName)) targetMember = nameMap.get(primaryName);
         if (!targetMember) { targetMember = members.find(m => (m.relation||"").toLowerCase() === "self") || members[0]; }
         const memberId = targetMember?.id || "self";
 
