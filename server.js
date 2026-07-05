@@ -26,6 +26,7 @@ import breezeRouter       from "./routes/breeze.js";
 import gmailRouter        from "./routes/gmail.js";
 import fdRouter           from "./routes/fd.js";
 import taxRouter          from "./routes/tax.js";
+import concallRouter      from "./routes/concall.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -74,6 +75,7 @@ app.use("/api/breeze",        breezeRouter);
 app.use("/api/gmail",         gmailRouter);
 app.use("/api/fd",            fdRouter);
 app.use("/api/tax",           taxRouter);
+app.use("/api/concall",       concallRouter);
 
 // ── Global API error handler ─────────────────────────────────────────────────
 app.use((err, req, res, next) => {

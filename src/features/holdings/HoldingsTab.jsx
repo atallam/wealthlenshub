@@ -1,5 +1,10 @@
 // HoldingsTab.jsx — lines 2866–3205 of App.jsx
 
+import { useState } from "react";
+import ConcallPanel from "./ConcallPanel.jsx";
+
+const CONCALL_TYPES = new Set(["IN_STOCK", "IN_ETF", "US_STOCK", "US_ETF"]);
+
 export default function HoldingsTab({
   // Data
   visH,
@@ -43,6 +48,8 @@ export default function HoldingsTab({
   // Transaction form blank
   BT,
 }) {
+  const [concallHolding, setConcallHolding] = useState(null);
+
   return (
     <div className="card">
       {/* ── Data Freshness Banner ── */}
@@ -199,7 +206,7 @@ export default function HoldingsTab({
                   const src = h.source || "manual";
                   const srcLabel = src === "snaptrade" ? "SnapTrade" : src === "csv" || src === "import" ? "CSV" : src === "cas" ? "CAS" : "Manual";
 
-                  return(
+                  return [
                     <tr key={h.id}>
                       <td>
                         <div className="hn">{h.name}</div>
@@ -259,18 +266,32 @@ export default function HoldingsTab({
                       </td>
                       <td>
                         <div style={{display:"flex",gap:3}}>
+                          {CONCALL_TYPES.has(h.type) && (
+                            <button className="delbtn" title="Earnings call analysis" aria-label="Concall analysis"
+                              onClick={()=>setConcallHolding(concallHolding?.id===h.id?null:h)}
+                              style={{color:concallHolding?.id===h.id?"#a084ca":"var(--text-muted)",fontWeight:concallHolding?.id===h.id?700:400}}>
+                              ✦
+                            </button>
+                          )}
                           <button className="delbtn" title="View transactions" aria-label="View transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transaction_count??h.transactions?.length??0)>0?"#a084ca":"var(--text-muted)"}}>
                             📋{(h.transaction_count??h.transactions?.length??0)>0?` ${(h.transaction_count??h.transactions?.length??0)}`:""}
                           </button>
                           <button className="delbtn" title="Attach documents" aria-label="Attach documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)"}}>
                             📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}
                           </button>
-                          <button className="delbtn" title="Modify holding" aria-label="Modify holding" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>editH(h)}>✎</button>
+                          {(!h.source||h.source==="manual")&&<button className="delbtn" title="Modify holding" aria-label="Modify holding" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>editH(h)}>✎</button>}
                           <button className="delbtn" title="Delete holding" aria-label="Delete holding" onClick={()=>deleteHolding(h.id)}>✕</button>
                         </div>
                       </td>
-                    </tr>
-                  );
+                    </tr>,
+                    concallHolding?.id===h.id && (
+                      <tr key={`concall_${h.id}`}>
+                        <td colSpan={11} style={{padding:"0 .65rem .65rem",background:"rgba(160,132,202,.02)"}}>
+                          <ConcallPanel holding={h} onClose={()=>setConcallHolding(null)} />
+                        </td>
+                      </tr>
+                    ),
+                  ];
                     })
                   ];
                 });
@@ -398,7 +419,7 @@ export default function HoldingsTab({
                     {isExp&&<div className="m-hc-actions" onClick={e=>e.stopPropagation()}>
                       <button title="Transactions" aria-label="Transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transaction_count??h.transactions?.length??0)>0?"#a084ca":"var(--text-muted)"}}>📋{(h.transaction_count??h.transactions?.length??0)>0?` ${(h.transaction_count??h.transactions?.length??0)}`:""}</button>
                       <button title="Documents" aria-label="Documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)"}}>📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}</button>
-                      <button title="Edit" aria-label="Edit" onClick={()=>editH(h)} style={{color:"rgba(90,156,224,.5)"}}>✎</button>
+                      {(!h.source||h.source==="manual")&&<button title="Edit" aria-label="Edit" onClick={()=>editH(h)} style={{color:"rgba(90,156,224,.5)"}}>✎</button>}
                       <button title="Delete" aria-label="Delete" onClick={()=>deleteHolding(h.id)} style={{color:"rgba(224,124,90,.4)"}}>✕</button>
                     </div>}
                   </div>);
