@@ -67,31 +67,49 @@ export async function uploadStatement(userId, file, body, isProd) {
     const desc = String(row.desc || "").trim();
     if (!desc) { skippedNoDesc++; continue; }
     const category = autoCategorise(desc, catList);
+    const amount   = debit > 0 ? debit : credit;
+    const txnType  = debit > 0 ? "DEBIT" : "CREDIT";
+    const currency = region === "US" ? "USD" : "INR";
+    // fingerprint for dedup: date|amount|type|first-30-chars-of-desc
+    const fingerprint = `${date}|${amount}|${txnType}|${desc.toLowerCase().slice(0, 30)}`;
     if (!periodStart || date < periodStart) periodStart = date;
     if (!periodEnd || date > periodEnd) periodEnd = date;
     txns.push({
       id: txId(), statement_id: id, user_id: userId, txn_date: date,
       description: encrypt(desc), raw_desc: encrypt(desc),
-      amount: debit > 0 ? debit : credit, txn_type: debit > 0 ? "DEBIT" : "CREDIT", category,
+      search_text: desc.toLowerCase(),   // plaintext index for ilike search
+      fingerprint,
+      amount, txn_type: txnType, category,
       balance: row.balance ? encrypt(String(row.balance)) : null,
       ref_number: (row.ref || "").slice(0, 50),
-      currency: region === "US" ? "USD" : region === "IN" ? "INR" : "USD",
+      currency,
     });
   }
   if (!txns.length) throw err(`Parsed ${rawRows.length} rows but none converted to transactions. Skipped: ${skippedNoDate} bad dates, ${skippedNoAmt} zero amounts, ${skippedNoDesc} empty descriptions. Region: ${region}`, 400, { rawSample: rawRows[0] || null });
+
+  // ── Dedup: skip transactions already imported for this user ──
+  const fingerprints = txns.map(t => t.fingerprint);
+  const { data: existing } = await supabase
+    .from("budget_transactions")
+    .select("fingerprint")
+    .eq("user_id", userId)
+    .in("fingerprint", fingerprints);
+  const existingFps = new Set((existing || []).map(r => r.fingerprint));
+  const newTxns     = txns.filter(t => !existingFps.has(t.fingerprint));
+  const skippedDups = txns.length - newTxns.length;
 
   await supabase.from("budget_statements").delete().eq("user_id", userId).lt("upload_date", new Date(Date.now() - 365 * 24 * 3600_000).toISOString());
   const { error: stErr } = await supabase.from("budget_statements").insert({
     user_id: userId, id, source: source || bankInfo.label || "Unknown",
     statement_type: statement_type || "BANK", filename: file.originalname, file_size: file.size,
-    period_start: periodStart, period_end: periodEnd, txn_count: txns.length, notes: notes || "", region: region || "AUTO",
+    period_start: periodStart, period_end: periodEnd, txn_count: newTxns.length, notes: notes || "", region: region || "AUTO",
   });
   if (stErr) throw new Error(stErr.message);
-  for (let i = 0; i < txns.length; i += 100) {
-    const { error: txErr } = await supabase.from("budget_transactions").insert(txns.slice(i, i + 100));
+  for (let i = 0; i < newTxns.length; i += 100) {
+    const { error: txErr } = await supabase.from("budget_transactions").insert(newTxns.slice(i, i + 100));
     if (txErr) console.error("Batch insert error:", txErr.message);
   }
-  return { ok: true, statement_id: id, txn_count: txns.length, period_start: periodStart, period_end: periodEnd, region, bank: bank_key || "auto" };
+  return { ok: true, statement_id: id, txn_count: newTxns.length, skipped_duplicates: skippedDups, period_start: periodStart, period_end: periodEnd, region, bank: bank_key || "auto" };
 }
 
 export async function listStatements(userId) {
@@ -114,13 +132,12 @@ export async function listTransactions(userId, query) {
     const lastDay = new Date(y, m, 0).getDate(); // correct last day for any month
     q = q.gte("txn_date", `${month}-01`).lte("txn_date", `${month}-${String(lastDay).padStart(2, "0")}`);
   }
-  // Note: description is AES-encrypted so server-side search isn't possible without a plaintext index.
-  // We fetch up to 500 rows and filter in-memory for the search param.
+  // search_text is a plaintext index column; supports ilike without decrypting description
+  if (search) q = q.ilike("search_text", `%${search.toLowerCase()}%`);
   q = q.limit(500);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
-  const decrypted = (data || []).map((t) => ({ ...t, description: decrypt(t.description), balance: t.balance ? decrypt(t.balance) : null }));
-  return search ? decrypted.filter((t) => t.description.toLowerCase().includes(search.toLowerCase())) : decrypted;
+  return (data || []).map((t) => ({ ...t, description: decrypt(t.description), balance: t.balance ? decrypt(t.balance) : null }));
 }
 export async function setTxnCategory(userId, id, category) {
   const { error } = await supabase.from("budget_transactions").update({ category }).eq("id", id).eq("user_id", userId);
@@ -226,19 +243,4 @@ export async function debugPdf(userId, file, body) {
         if (!date) continue;
         const debit = Math.abs(parseAmtBudget(row.debit)), credit = Math.abs(parseAmtBudget(row.credit));
         if (debit === 0 && credit === 0) continue;
-        const desc = String(row.desc || "").trim(); if (!desc) continue;
-        const category = autoCategorise(desc, catList);
-        if (!periodStart || date < periodStart) periodStart = date;
-        if (!periodEnd || date > periodEnd) periodEnd = date;
-        txns.push({ id: txId(), statement_id: id, user_id: userId, txn_date: date, description: encrypt(desc), raw_desc: encrypt(desc), amount: debit > 0 ? debit : credit, txn_type: debit > 0 ? "DEBIT" : "CREDIT", category, balance: row.balance ? encrypt(String(row.balance)) : null, ref_number: (row.ref || "").slice(0, 50), currency: "USD" });
-      }
-      if (txns.length > 0) {
-        await supabase.from("budget_statements").delete().eq("user_id", userId).lt("upload_date", new Date(Date.now() - 365 * 24 * 3600_000).toISOString());
-        await supabase.from("budget_statements").insert({ user_id: userId, id, source: "Bank of America (debug)", statement_type: "BANK", filename: file.originalname, file_size: file.size, period_start: periodStart, period_end: periodEnd, txn_count: txns.length, notes: "Imported via debug endpoint", region: "US" });
-        for (let i = 0; i < txns.length; i += 100) { const { error } = await supabase.from("budget_transactions").insert(txns.slice(i, i + 100)); if (error) importError = error.message; }
-        imported = txns.length;
-      }
-    } catch (ie) { importError = ie.message; }
-  }
-  return { pages: undefined, totalChars: rawText.length, totalLines: lines.length, usRowsParsed: usRows.length, inRowsParsed: inRows.length, sectionHeaders, dateLines, first80Lines: sampleLines, usRowsSample: usRows.slice(0, 5), inRowsSample: inRows.slice(0, 5), imported, importError };
-}
+        const desc = String(row.desc || "").trim(); if (!desc

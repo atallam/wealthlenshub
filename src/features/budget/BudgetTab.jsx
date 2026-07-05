@@ -12,17 +12,26 @@ function SpendInsights({ analytics, catData, monthlyData, domCur, selMonth, fmtA
   const [text,    setText]    = useState('');
   const [loading, setLoading] = useState(false);
   const [open,    setOpen]    = useState(false);
-  const abortRef = useRef(null);
+  const abortRef  = useRef(null);
+  const prevKey   = useRef(null);
+  const autoFired = useRef(false);  // prevent double-fire on strict-mode double-mount
 
-  // Re-run when analytics or month selection changes
+  // Auto-generate on first analytics load; reset + re-generate when month changes
   const analyticsKey = analytics ? `${analytics.totalDebit}-${selMonth}` : null;
-  const prevKey = useRef(null);
   useEffect(() => {
-    if (analyticsKey && analyticsKey !== prevKey.current) {
-      prevKey.current = analyticsKey;
-      setText('');
-      setOpen(false);
+    if (!analyticsKey) return;
+    if (analyticsKey === prevKey.current) return;
+    prevKey.current = analyticsKey;
+    setText('');
+    setOpen(false);
+    // Auto-fire only once per analytics key (no button click required)
+    if (!autoFired.current || analyticsKey !== prevKey.current) {
+      autoFired.current = true;
+      // Small delay so the overview renders first
+      const t = setTimeout(() => generate(), 600);
+      return () => clearTimeout(t);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analyticsKey]);
 
   async function generate() {
@@ -120,7 +129,7 @@ Write 3 sentences: (1) overall spending health — is this sustainable or concer
             <div style={{ width: 10, height: 10, border: '1.5px solid rgba(160,132,202,.25)', borderTopColor: '#a084ca', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
           )}
           {hasContent && <span style={{ fontSize: '.6rem' }}>{open ? '▲' : '▼'}</span>}
-          {!hasContent && <span style={{ fontSize: '.65rem', color: 'rgba(160,132,202,.5)' }}>Generate →</span>}
+          {!hasContent && !loading && <span style={{ fontSize: '.65rem', color: 'rgba(160,132,202,.5)' }}>Generate →</span>}
         </div>
       </button>
 
@@ -186,10 +195,12 @@ export default function BudgetTab({
   setSelectedTxnIds,
   bulkCatTarget,
   setBulkCatTarget,
-  // Portfolio data for the spend-to-wealth bridge
+  // Portfolio data for the spend-to-wealth bridge + nudge
   allCur,
   allInv,
   totInv,
+  totPct,
+  sipHoldings = [],
   fmtCr,
   fmtPct,
   // API helper
@@ -206,6 +217,9 @@ export default function BudgetTab({
   // Wrap hook functions with current filter state so callers inside JSX don't need to pass args
   function loadBudget() { return loadBudgetHook(budgetSelMonth); }
   function loadTxns()   { return loadTxnsHook(budgetSelStmt, budgetSelCat, budgetSelMonth, budgetSearch); }
+
+  // Editable CAGR for Spend-to-Wealth Bridge (default 12%)
+  const [sipCagr, setSipCagr] = useState(12);
 
   // ── Charts ──
   const analytics=budgetAnalytics;
@@ -393,45 +407,131 @@ export default function BudgetTab({
         {/* ── Budget ↔ Investment Bridge ── */}
         {analytics&&analytics.totalDebit>0&&(
           <div className="card" style={{borderTop:"2px solid rgba(201,168,76,.3)"}}>
-            <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".85rem"}}>
+            <div style={{display:"flex",alignItems:"center",gap:".75rem",marginBottom:".85rem",flexWrap:"wrap"}}>
               <div className="ctitle" style={{margin:0}}>💡 Spend-to-Wealth Bridge</div>
               <div style={{fontSize:".68rem",color:"var(--text-muted)"}}>What if you invested more?</div>
+              {/* Editable CAGR */}
+              <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:".4rem"}}>
+                <label style={{fontSize:".68rem",color:"var(--text-muted)"}}>CAGR %</label>
+                <input
+                  type="number" min="1" max="40" step="0.5"
+                  value={sipCagr}
+                  onChange={e=>setSipCagr(Math.min(40,Math.max(1,+e.target.value||12)))}
+                  style={{width:58,padding:".2rem .4rem",fontSize:".75rem",fontFamily:"'DM Mono',monospace",
+                    background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:4,color:"#c9a84c",textAlign:"right"}}
+                />
+                {totInv>0&&allCur>allInv&&(
+                  <button
+                    onClick={()=>setSipCagr(+((allCur-allInv)/allInv*100/3).toFixed(1))}
+                    title="Use your portfolio's estimated 3Y annualised return"
+                    style={{fontSize:".65rem",color:"rgba(76,175,154,.8)",background:"none",border:"1px dashed rgba(76,175,154,.3)",
+                      borderRadius:4,padding:".15rem .45rem",cursor:"pointer"}}>
+                    Use mine ↗
+                  </button>
+                )}
+              </div>
             </div>
             {(()=>{
               const topCats = catData.filter(d=>!["Investments","Transfers","Other"].includes(d.name)).slice(0,4);
-              const CAGR = 0.12;
+              const CAGR = sipCagr / 100;
               const years = [5, 10, 15];
+              const numMonths = Math.max(Object.keys(analytics.monthly||{}).length, 1);
               return(
               <div style={{overflowX:"auto"}}>
                 <table className="ht" style={{fontSize:".75rem"}}>
                   <thead><tr>
                     <th>Category</th><th className="r">Monthly Spend</th>
-                    {years.map(y=><th key={y} className="r">SIP → {y}Y at 12%</th>)}
-                    <th className="r">vs Your Return</th>
+                    {years.map(y=><th key={y} className="r">SIP → {y}Y at {sipCagr}%</th>)}
+                    <th className="r">vs Portfolio</th>
                   </tr></thead>
                   <tbody>
                     {topCats.map(d=>{
-                      const monthly=d.value/Math.max(Object.keys(analytics.monthly||{}).length,1);
+                      const monthly=d.value/numMonths;
                       return(<tr key={d.name}>
                         <td><span style={{color:d.color}}>{d.icon}</span> {d.name}</td>
-                        <td className="r mono" style={{color:"#e07c5a"}}>₹{Math.round(monthly).toLocaleString("en-IN")}</td>
+                        <td className="r mono" style={{color:"#e07c5a"}}>{fmtAmt(Math.round(monthly),domCur)}</td>
                         {years.map(y=>{
                           const r=CAGR/12, n=y*12;
                           const fv=monthly*((Math.pow(1+r,n)-1)/r)*(1+r);
                           return <td key={y} className="r mono" style={{color:"#4caf9a"}}>{fmtCr(fv)}</td>;
                         })}
                         <td className="r" style={{fontSize:".68rem",color:"var(--text-muted)"}}>
-                          {totInv>0?`Your portfolio: ${fmtPct((allCur-allInv)/allInv*100)}`:"—"}
+                          {totInv>0?fmtPct((allCur-allInv)/allInv*100):"—"}
                         </td>
                       </tr>);
                     })}
                   </tbody>
                 </table>
-                <div style={{fontSize:".65rem",color:"var(--text-muted)",marginTop:".5rem"}}>Assumes 12% CAGR. Monthly spend estimated from {budgetSelMonth||"all imported"} data.</div>
+                <div style={{fontSize:".65rem",color:"var(--text-muted)",marginTop:".5rem"}}>
+                  SIP projection at {sipCagr}% CAGR. Monthly spend averaged over {numMonths} month{numMonths!==1?"s":""} of imported data.
+                  {totInv>0&&allCur>allInv&&<span style={{color:"rgba(76,175,154,.7)"}}> · Your portfolio: {fmtPct((allCur-allInv)/allInv*100)} total gain.</span>}
+                </div>
               </div>);
             })()}
           </div>
         )}
+
+        {/* ── Investment Nudge ── */}
+        {analytics&&budgetCategories.length>0&&sipHoldings.length>0&&(()=>{
+          // Find categories where actual spend > monthly_limit (over-budget)
+          const overBudget = catData
+            .filter(d=>{
+              const cat=budgetCategories.find(c=>c.name===d.name);
+              return cat?.monthly_limit>0 && d.value>cat.monthly_limit;
+            })
+            .map(d=>{
+              const cat=budgetCategories.find(c=>c.name===d.name);
+              const numMo=Math.max(Object.keys(analytics.monthly||{}).length,1);
+              const monthlyOver=(d.value-cat.monthly_limit)/numMo;
+              return{...d,limit:cat.monthly_limit,over:d.value-cat.monthly_limit,monthlyOver};
+            })
+            .sort((a,b)=>b.monthlyOver-a.monthlyOver)
+            .slice(0,3);
+          if(!overBudget.length) return null;
+          return(
+          <div className="card" style={{borderTop:"2px solid rgba(76,175,154,.25)",marginTop:".1rem"}}>
+            <div style={{display:"flex",alignItems:"center",gap:".5rem",marginBottom:".85rem"}}>
+              <div className="ctitle" style={{margin:0}}>🌱 Investment Nudge</div>
+              <div style={{fontSize:".68rem",color:"var(--text-muted)"}}>Redirect over-budget spend to your SIPs</div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(300px,100%),1fr))",gap:".7rem"}}>
+              {overBudget.map((d,i)=>{
+                const fund=sipHoldings[i%sipHoldings.length];
+                const r=sipCagr/100/12, n=10*12;
+                const fv10=d.monthlyOver*((Math.pow(1+r,n)-1)/r)*(1+r);
+                return(
+                <div key={d.name} style={{padding:".85rem 1rem",background:"var(--bg-muted)",
+                  border:"1px solid rgba(76,175,154,.2)",borderLeft:`3px solid ${d.color}`,borderRadius:7}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:".55rem"}}>
+                    <div>
+                      <div style={{fontSize:".82rem",color:"var(--text)",fontWeight:500}}>{d.icon} {d.name}</div>
+                      <div style={{fontSize:".68rem",color:"#e07c5a",marginTop:".1rem"}}>
+                        Over budget by {fmtAmt(d.monthlyOver,domCur)}/mo avg
+                      </div>
+                    </div>
+                    <span style={{fontSize:".65rem",padding:"2px 7px",borderRadius:3,
+                      background:"rgba(224,124,90,.12)",color:"#e07c5a",border:"1px solid rgba(224,124,90,.25)"}}>
+                      Over limit
+                    </span>
+                  </div>
+                  <div style={{fontSize:".72rem",color:"var(--text-dim)",lineHeight:1.6,
+                    padding:".5rem .65rem",background:"rgba(76,175,154,.06)",borderRadius:5,
+                    border:"1px dashed rgba(76,175,154,.2)"}}>
+                    💡 Redirect <span style={{color:"#4caf9a",fontWeight:600}}>{fmtAmt(Math.round(d.monthlyOver),domCur)}/mo</span> to{" "}
+                    <span style={{color:"var(--text)"}}>{fund.name}</span>
+                    {" "}→ grows to <span style={{color:"#4caf9a",fontWeight:600}}>{fmtCr(fv10)}</span> in 10Y at {sipCagr}% CAGR
+                  </div>
+                </div>);
+              })}
+            </div>
+            {sipHoldings.length===0&&(
+              <div style={{fontSize:".72rem",color:"var(--text-muted)"}}>
+                No mutual fund holdings found. Add MF holdings in the Holdings tab to see personalised SIP suggestions.
+              </div>
+            )}
+          </div>);
+        })()}
+
         </>);
       })()}
 
@@ -577,170 +677,4 @@ export default function BudgetTab({
                 <MA>
                   <button className="btnc" onClick={()=>setBudgetEditCat(null)}>Cancel</button>
                   <button className="btns" onClick={async()=>{
-                    if(isNew){
-                      await api("/api/budget/categories",{method:"POST",body:JSON.stringify(form)});
-                      setBudgetNewCat({name:"",color:"#c9a84c",icon:"📁",monthly_limit:0,keywords:""});
-                    } else {
-                      await api(`/api/budget/categories/${form.id}`,{method:"PUT",body:JSON.stringify({name:form.name,color:form.color,icon:form.icon,monthly_limit:form.monthly_limit,keywords:form.keywords})});
-                    }
-                    setBudgetEditCat(null);
-                    await loadBudget();
-                  }} disabled={!form.name}>Save</button>
-                </MA>
-              </>);
-            })()}
-          </Overlay>
-        )}
-      </>)}
-
-      {/* ═══ IMPORT ═══ */}
-      {budgetView==="import"&&(<>
-
-        {/* Manual Upload card */}
-        <div className="card" style={{marginBottom:"1.2rem"}}>
-          <div className="ctitle">Import Bank Statement</div>
-          <div style={{fontSize:".77rem",color:"var(--text-dim)",marginBottom:"1rem",lineHeight:1.7}}>
-            Upload CSV, Excel, or PDF statements from US banks (Chase, BofA, Wells Fargo, Citi, Capital One, Amex, Discover, US Bank) and Indian banks (HDFC, ICICI, Axis, SBI, Kotak).
-            Transactions are <span style={{color:"#4caf9a"}}>AES-256 encrypted</span> before storage. Statements older than 1 year are automatically purged.
-          </div>
-          <div className="frow">
-            <FG label="Region">
-              <select className="fi fs" value={budgetUploadForm.region}
-                onChange={e=>{setBudgetUploadForm(p=>({...p,region:e.target.value,bank_key:""})); setBudgetUploadMsg("");}}>
-                <option value="">Select region…</option>
-                <option value="US">🇺🇸 US Bank</option>
-                <option value="IN">🇮🇳 Indian Bank</option>
-                <option value="AUTO">🔍 Auto-detect</option>
-              </select>
-            </FG>
-            <FG label="Bank">
-              <select className="fi fs" value={budgetUploadForm.bank_key}
-                disabled={!budgetUploadForm.region}
-                onChange={e=>setBudgetUploadForm(p=>({...p,bank_key:e.target.value}))}>
-                {budgetUploadForm.region==="US"?(<>
-                  <option value="">Select bank…</option>
-                  <option value="chase">Chase</option>
-                  <option value="bofa">Bank of America</option>
-                  <option value="wells_fargo">Wells Fargo</option>
-                  <option value="citi">Citi</option>
-                  <option value="capital_one">Capital One</option>
-                  <option value="amex">Amex</option>
-                  <option value="discover">Discover</option>
-                  <option value="us_bank">US Bank</option>
-                  <option value="other_us">Other US Bank</option>
-                </>):budgetUploadForm.region==="IN"?(<>
-                  <option value="">Select bank…</option>
-                  <option value="hdfc">HDFC</option>
-                  <option value="icici">ICICI</option>
-                  <option value="axis">Axis</option>
-                  <option value="sbi">SBI</option>
-                  <option value="kotak">Kotak</option>
-                  <option value="other_in">Other Indian Bank</option>
-                </>):budgetUploadForm.region==="AUTO"?(<>
-                  <option value="auto">Auto-detect from file</option>
-                </>):(<option value="">Pick a region first</option>)}
-              </select>
-            </FG>
-          </div>
-          <div className="frow">
-            <FG label="Type">
-              <select className="fi fs" value={budgetUploadForm.statement_type}
-                onChange={e=>setBudgetUploadForm(p=>({...p,statement_type:e.target.value}))}>
-                <option value="BANK">🏦 Bank Account</option>
-                <option value="CREDIT_CARD">💳 Credit Card</option>
-                <option value="UPI">📲 UPI / GPay</option>
-                <option value="OTHER">📄 Other</option>
-              </select>
-            </FG>
-            <FG label="Custom Label (optional)">
-              <input className="fi" placeholder="e.g. Joint Savings, Salary Account"
-                value={budgetUploadForm.custom_label}
-                onChange={e=>setBudgetUploadForm(p=>({...p,custom_label:e.target.value}))}/>
-            </FG>
-          </div>
-          <FG label="Statement File (CSV, XLSX, or PDF)">
-            <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="fi"
-              onChange={e=>setBudgetUploadFile(e.target.files[0])}
-              style={{paddingTop:".4rem",color:"var(--text)"}}/>
-          </FG>
-          <FG label="Notes (optional)">
-            <input className="fi" placeholder="e.g. Jan–Mar 2026 statement"
-              value={budgetUploadForm.notes}
-              onChange={e=>setBudgetUploadForm(p=>({...p,notes:e.target.value}))}/>
-          </FG>
-
-          {budgetUploadMsg&&(
-            <div style={{padding:".6rem .85rem",borderRadius:6,marginBottom:".75rem",fontSize:".78rem",
-              whiteSpace:"pre-wrap",fontFamily:budgetUploadMsg.startsWith("📄")?"monospace":"inherit",
-              maxHeight:budgetUploadMsg.startsWith("📄")?"400px":"none",overflow:"auto",
-              background:budgetUploadMsg.startsWith("✓")?"rgba(76,175,154,.1)":budgetUploadMsg.startsWith("📄")?"rgba(90,156,224,.08)":"rgba(224,124,90,.1)",
-              border:`1px solid ${budgetUploadMsg.startsWith("✓")?"rgba(76,175,154,.3)":budgetUploadMsg.startsWith("📄")?"rgba(90,156,224,.2)":"rgba(224,124,90,.3)"}`,
-              color:budgetUploadMsg.startsWith("✓")?"#4caf9a":budgetUploadMsg.startsWith("📄")?"var(--text-dim)":"#e07c5a"}}>
-              {budgetUploadMsg}
-            </div>
-          )}
-
-          <button className="btns" disabled={!budgetUploadFile||!budgetUploadForm.region||budgetUploading}
-            onClick={()=>uploadBudgetStatement(budgetUploadFile, budgetUploadForm)}>
-            {budgetUploading?"Importing…":"Upload & Parse"}
-          </button>
-          {budgetUploadFile && budgetUploadFile.name.endsWith(".pdf") && (
-            <button className="btnc" style={{marginLeft:".5rem",fontSize:".7rem"}}
-              onClick={async()=>{
-                setBudgetUploadMsg("Analyzing + importing PDF...");
-                try{
-                  const fd=new FormData();
-                  fd.append("file",budgetUploadFile);
-                  fd.append("import","true");
-                  const data=await api("/api/budget/debug-pdf",{method:"POST",body:fd});
-                  let msg = `📄 ${data.pages} pages, ${data.totalLines} lines, ${data.totalChars} chars\n` +
-                    `US parser: ${data.usRowsParsed} rows | IN parser: ${data.inRowsParsed} rows\n`;
-                  if (data.imported > 0) {
-                    msg = `✓ Imported ${data.imported} transactions via debug endpoint\n` + msg;
-                    await loadBudget();
-                    setBudgetStatements(await api("/api/budget/statements") || []);
-                  } else {
-                    msg += `Import: ${data.imported} (${data.importError || "no rows to import"})\n`;
-                  }
-                  msg += `Sections: ${data.sectionHeaders?.join(" | ") || "none"}\n` +
-                    `Date lines: ${data.dateLines?.slice(0,5).join(" | ") || "none"}\n` +
-                    `--- First 15 lines ---\n${data.first80Lines?.slice(0,15).join("\n")}`;
-                  setBudgetUploadMsg(msg);
-                }catch(e){setBudgetUploadMsg("⚠ Debug: "+e.message);}
-              }}>
-              🔍 Debug + Import PDF
-            </button>
-          )}
-        </div>
-
-        {/* Statement history */}
-        <div className="card">
-          <div className="ctitle">Statement History (1-year rolling)</div>
-          {budgetStatements.length===0?<div className="empty">No statements imported yet</div>:(
-            <table className="ht">
-              <thead><tr><th>Source</th><th>Type</th><th>Period</th><th className="r">Transactions</th><th>Uploaded</th><th>Notes</th><th/></tr></thead>
-              <tbody>
-                {budgetStatements.map(s=>(
-                  <tr key={s.id}>
-                    <td style={{fontWeight:500,color:"var(--text)"}}>{s.source}</td>
-                    <td><span style={{fontSize:".68rem",padding:"2px 7px",borderRadius:3,background:`${TYPE_COLORS[s.statement_type]||"#6b6356"}22`,color:TYPE_COLORS[s.statement_type]||"#6b6356",border:`1px solid ${TYPE_COLORS[s.statement_type]||"#6b6356"}44`}}>{TYPE_ICONS[s.statement_type]} {s.statement_type}</span></td>
-                    <td className="dim" style={{fontSize:".75rem"}}>{s.period_start||"?"} → {s.period_end||"?"}</td>
-                    <td className="r mono" style={{color:"#c9a84c"}}>{s.txn_count}</td>
-                    <td className="dim" style={{fontSize:".72rem"}}>{s.upload_date?.slice(0,10)}</td>
-                    <td className="dim" style={{fontSize:".72rem",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.notes||"—"}</td>
-                    <td><button className="delbtn" onClick={async()=>{
-                      if(!confirm(`Delete "${s.source}" statement and all its transactions?`))return;
-                      await api(`/api/budget/statements/${s.id}`,{method:"DELETE"});
-                      await loadBudget(); // re-fetches statements + analytics
-                    }}>✕</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-      </>)}
-    </>
-  );
-}
+    

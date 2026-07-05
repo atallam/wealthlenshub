@@ -81,7 +81,8 @@ export function useBudget(user) {
       fd.append("notes", uploadForm.notes || "");
       const data = await api("/api/budget/upload", { method: "POST", body: fd });
       if (data.ok) {
-        setBudgetUploadMsg(`✓ Imported ${data.txn_count} transactions (${data.period_start} to ${data.period_end})`);
+        const dupNote = data.skipped_duplicates > 0 ? ` · ${data.skipped_duplicates} duplicate${data.skipped_duplicates > 1 ? "s" : ""} skipped` : "";
+        setBudgetUploadMsg(`✓ Imported ${data.txn_count} transactions (${data.period_start} to ${data.period_end})${dupNote}`);
         setBudgetUploadFile(null);
         setBudgetUploadForm({ region: "", bank_key: "", statement_type: "BANK", notes: "", custom_label: "" });
         await loadBudget(budgetSelMonth); // already re-fetches statements, categories, and analytics
@@ -185,8 +186,4 @@ export function useBudget(user) {
     debugImportPDF,
     bulkCategorize,
     categorizeTxn,
-    saveBudgetCategory,
-    deleteBudgetCategory,
-    deleteBudgetStatement,
-  };
-}
+  
