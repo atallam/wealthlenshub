@@ -186,4 +186,8 @@ export function useBudget(user) {
     debugImportPDF,
     bulkCategorize,
     categorizeTxn,
-  
+      saveBudgetCategory,
+    deleteBudgetCategory,
+    deleteBudgetStatement,
+  };
+}

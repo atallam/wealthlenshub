@@ -677,4 +677,170 @@ export default function BudgetTab({
                 <MA>
                   <button className="btnc" onClick={()=>setBudgetEditCat(null)}>Cancel</button>
                   <button className="btns" onClick={async()=>{
-    
+                    if(isNew){
+                      await api("/api/budget/categories",{method:"POST",body:JSON.stringify(form)});
+                      setBudgetNewCat({name:"",color:"#c9a84c",icon:"📁",monthly_limit:0,keywords:""});
+                    } else {
+                      await api(`/api/budget/categories/${form.id}`,{method:"PUT",body:JSON.stringify({name:form.name,color:form.color,icon:form.icon,monthly_limit:form.monthly_limit,keywords:form.keywords})});
+                    }
+                    setBudgetEditCat(null);
+                    await loadBudget();
+                  }} disabled={!form.name}>Save</button>
+                </MA>
+              </>);
+            })()}
+          </Overlay>
+        )}
+      </>)}
+
+      {/* ═══ IMPORT ═══ */}
+      {budgetView==="import"&&(<>
+
+        {/* Manual Upload card */}
+        <div className="card" style={{marginBottom:"1.2rem"}}>
+          <div className="ctitle">Import Bank Statement</div>
+          <div style={{fontSize:".77rem",color:"var(--text-dim)",marginBottom:"1rem",lineHeight:1.7}}>
+            Upload CSV, Excel, or PDF statements from US banks (Chase, BofA, Wells Fargo, Citi, Capital One, Amex, Discover, US Bank) and Indian banks (HDFC, ICICI, Axis, SBI, Kotak).
+            Transactions are <span style={{color:"#4caf9a"}}>AES-256 encrypted</span> before storage. Statements older than 1 year are automatically purged.
+          </div>
+          <div className="frow">
+            <FG label="Region">
+              <select className="fi fs" value={budgetUploadForm.region}
+                onChange={e=>{setBudgetUploadForm(p=>({...p,region:e.target.value,bank_key:""})); setBudgetUploadMsg("");}}>
+                <option value="">Select region…</option>
+                <option value="US">🇺🇸 US Bank</option>
+                <option value="IN">🇮🇳 Indian Bank</option>
+                <option value="AUTO">🔍 Auto-detect</option>
+              </select>
+            </FG>
+            <FG label="Bank">
+              <select className="fi fs" value={budgetUploadForm.bank_key}
+                disabled={!budgetUploadForm.region}
+                onChange={e=>setBudgetUploadForm(p=>({...p,bank_key:e.target.value}))}>
+                {budgetUploadForm.region==="US"?(<>
+                  <option value="">Select bank…</option>
+                  <option value="chase">Chase</option>
+                  <option value="bofa">Bank of America</option>
+                  <option value="wells_fargo">Wells Fargo</option>
+                  <option value="citi">Citi</option>
+                  <option value="capital_one">Capital One</option>
+                  <option value="amex">Amex</option>
+                  <option value="discover">Discover</option>
+                  <option value="us_bank">US Bank</option>
+                  <option value="other_us">Other US Bank</option>
+                </>):budgetUploadForm.region==="IN"?(<>
+                  <option value="">Select bank…</option>
+                  <option value="hdfc">HDFC</option>
+                  <option value="icici">ICICI</option>
+                  <option value="axis">Axis</option>
+                  <option value="sbi">SBI</option>
+                  <option value="kotak">Kotak</option>
+                  <option value="other_in">Other Indian Bank</option>
+                </>):budgetUploadForm.region==="AUTO"?(<>
+                  <option value="auto">Auto-detect from file</option>
+                </>):(<option value="">Pick a region first</option>)}
+              </select>
+            </FG>
+          </div>
+          <div className="frow">
+            <FG label="Type">
+              <select className="fi fs" value={budgetUploadForm.statement_type}
+                onChange={e=>setBudgetUploadForm(p=>({...p,statement_type:e.target.value}))}>
+                <option value="BANK">🏦 Bank Account</option>
+                <option value="CREDIT_CARD">💳 Credit Card</option>
+                <option value="UPI">📲 UPI / GPay</option>
+                <option value="OTHER">📄 Other</option>
+              </select>
+            </FG>
+            <FG label="Custom Label (optional)">
+              <input className="fi" placeholder="e.g. Joint Savings, Salary Account"
+                value={budgetUploadForm.custom_label}
+                onChange={e=>setBudgetUploadForm(p=>({...p,custom_label:e.target.value}))}/>
+            </FG>
+          </div>
+          <FG label="Statement File (CSV, XLSX, or PDF)">
+            <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="fi"
+              onChange={e=>setBudgetUploadFile(e.target.files[0])}
+              style={{paddingTop:".4rem",color:"var(--text)"}}/>
+          </FG>
+          <FG label="Notes (optional)">
+            <input className="fi" placeholder="e.g. Jan–Mar 2026 statement"
+              value={budgetUploadForm.notes}
+              onChange={e=>setBudgetUploadForm(p=>({...p,notes:e.target.value}))}/>
+          </FG>
+
+          {budgetUploadMsg&&(
+            <div style={{padding:".6rem .85rem",borderRadius:6,marginBottom:".75rem",fontSize:".78rem",
+              whiteSpace:"pre-wrap",fontFamily:budgetUploadMsg.startsWith("📄")?"monospace":"inherit",
+              maxHeight:budgetUploadMsg.startsWith("📄")?"400px":"none",overflow:"auto",
+              background:budgetUploadMsg.startsWith("✓")?"rgba(76,175,154,.1)":budgetUploadMsg.startsWith("📄")?"rgba(90,156,224,.08)":"rgba(224,124,90,.1)",
+              border:`1px solid ${budgetUploadMsg.startsWith("✓")?"rgba(76,175,154,.3)":budgetUploadMsg.startsWith("📄")?"rgba(90,156,224,.2)":"rgba(224,124,90,.3)"}`,
+              color:budgetUploadMsg.startsWith("✓")?"#4caf9a":budgetUploadMsg.startsWith("📄")?"var(--text-dim)":"#e07c5a"}}>
+              {budgetUploadMsg}
+            </div>
+          )}
+
+          <button className="btns" disabled={!budgetUploadFile||!budgetUploadForm.region||budgetUploading}
+            onClick={()=>uploadBudgetStatement(budgetUploadFile, budgetUploadForm)}>
+            {budgetUploading?"Importing…":"Upload & Parse"}
+          </button>
+          {budgetUploadFile && budgetUploadFile.name.endsWith(".pdf") && (
+            <button className="btnc" style={{marginLeft:".5rem",fontSize:".7rem"}}
+              onClick={async()=>{
+                setBudgetUploadMsg("Analyzing + importing PDF...");
+                try{
+                  const fd=new FormData();
+                  fd.append("file",budgetUploadFile);
+                  fd.append("import","true");
+                  const data=await api("/api/budget/debug-pdf",{method:"POST",body:fd});
+                  let msg = `📄 ${data.pages} pages, ${data.totalLines} lines, ${data.totalChars} chars\n` +
+                    `US parser: ${data.usRowsParsed} rows | IN parser: ${data.inRowsParsed} rows\n`;
+                  if (data.imported > 0) {
+                    msg = `✓ Imported ${data.imported} transactions via debug endpoint\n` + msg;
+                    await loadBudget();
+                    setBudgetStatements(await api("/api/budget/statements") || []);
+                  } else {
+                    msg += `Import: ${data.imported} (${data.importError || "no rows to import"})\n`;
+                  }
+                  msg += `Sections: ${data.sectionHeaders?.join(" | ") || "none"}\n` +
+                    `Date lines: ${data.dateLines?.slice(0,5).join(" | ") || "none"}\n` +
+                    `--- First 15 lines ---\n${data.first80Lines?.slice(0,15).join("\n")}`;
+                  setBudgetUploadMsg(msg);
+                }catch(e){setBudgetUploadMsg("⚠ Debug: "+e.message);}
+              }}>
+              🔍 Debug + Import PDF
+            </button>
+          )}
+        </div>
+
+        {/* Statement history */}
+        <div className="card">
+          <div className="ctitle">Statement History (1-year rolling)</div>
+          {budgetStatements.length===0?<div className="empty">No statements imported yet</div>:(
+            <table className="ht">
+              <thead><tr><th>Source</th><th>Type</th><th>Period</th><th className="r">Transactions</th><th>Uploaded</th><th>Notes</th><th/></tr></thead>
+              <tbody>
+                {budgetStatements.map(s=>(
+                  <tr key={s.id}>
+                    <td style={{fontWeight:500,color:"var(--text)"}}>{s.source}</td>
+                    <td><span style={{fontSize:".68rem",padding:"2px 7px",borderRadius:3,background:`${TYPE_COLORS[s.statement_type]||"#6b6356"}22`,color:TYPE_COLORS[s.statement_type]||"#6b6356",border:`1px solid ${TYPE_COLORS[s.statement_type]||"#6b6356"}44`}}>{TYPE_ICONS[s.statement_type]} {s.statement_type}</span></td>
+                    <td className="dim" style={{fontSize:".75rem"}}>{s.period_start||"?"} → {s.period_end||"?"}</td>
+                    <td className="r mono" style={{color:"#c9a84c"}}>{s.txn_count}</td>
+                    <td className="dim" style={{fontSize:".72rem"}}>{s.upload_date?.slice(0,10)}</td>
+                    <td className="dim" style={{fontSize:".72rem",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.notes||"—"}</td>
+                    <td><button className="delbtn" onClick={async()=>{
+                      if(!confirm(`Delete "${s.source}" statement and all its transactions?`))return;
+                      await api(`/api/budget/statements/${s.id}`,{method:"DELETE"});
+                      await loadBudget(); // re-fetches statements + analytics
+                    }}>✕</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+      </>)}
+    </>
+  );
+}
