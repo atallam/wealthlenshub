@@ -222,6 +222,12 @@ export default function HoldingsTab({
                             {h.interest_rate?<span style={{opacity:.8}}> · {h.interest_rate}%</span>:null}
                           </div>;
                         })()}
+                        {h.type==="FD"&&h.currency&&h.currency!=="INR"&&(
+                          <span style={{marginLeft:4,fontSize:".58rem",fontWeight:700,padding:"2px 6px",borderRadius:4,
+                            background:"rgba(90,156,224,.15)",color:"#5a9ce0",border:"1px solid rgba(90,156,224,.3)"}}>
+                            {h.currency}
+                          </span>
+                        )}
                       </td>
                       <td>
                         {(h.ticker||h.scheme_code)
@@ -405,7 +411,7 @@ export default function HoldingsTab({
                           const dLeft=Math.ceil((new Date(h.maturity_date)-Date.now())/864e5);
                           const mc=dLeft>90?"#4caf9a":dLeft>30?"#f0a050":"#e07c5a";
                           return<div className="m-hc-cell" style={{gridColumn:"1/-1"}}>
-                            <span className="m-hc-lbl">Maturity</span>
+                            <span className="m-hc-lbl">Maturity {h.currency&&h.currency!=="INR"&&<span style={{marginLeft:4,fontSize:".6rem",fontWeight:700,padding:"1px 5px",borderRadius:3,background:"rgba(90,156,224,.15)",color:"#5a9ce0",border:"1px solid rgba(90,156,224,.3)"}}>{h.currency}</span>}</span>
                             <span className="m-hc-val" style={{color:mc,fontWeight:600}}>
                               {new Date(h.maturity_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}
                               {" "}· {dLeft<=0?"Matured":`${dLeft}d remaining`}

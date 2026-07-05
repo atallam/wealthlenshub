@@ -23,10 +23,18 @@ export function calcAccr(p,rate,s){const y=Math.max(0,(new Date()-new Date(s))/(
 
 export function isUSDHolding(h) {
   if (USD_TYPES.has(h.type)) return true;
-  if (h.currency && h.currency.toUpperCase() === "USD") return true;
+  // Any holding with an explicitly non-INR currency (covers foreign-currency FDs: USD/SGD/GBP/EUR)
+  if (h.currency && h.currency.toUpperCase() !== "INR") return true;
   // CASH from SnapTrade is always USD (even if currency field is missing in DB)
   if (h.type === "CASH" && (h.source === "snaptrade" || (h.ticker||"").toUpperCase().includes("USD") || (h.name||"").includes("USD"))) return true;
   return false;
+}
+
+// Native currency code for a holding (e.g. "USD", "SGD", "INR")
+export function nativeCurrency(h) {
+  if (h.currency && h.currency.toUpperCase() !== "INR") return h.currency.toUpperCase();
+  if (USD_TYPES.has(h.type)) return "USD";
+  return "INR";
 }
 
 // getVal / getInv return NATIVE currency (₹ for Indian, $ for US)
@@ -73,8 +81,16 @@ export function hasCostBasis(h) {
 // Convert native value → INR for unified portfolio totals
 // toINR: uses purchase-time FX rate (h.usd_inr_rate) — for historical cost basis
 export function toINR(val, h) { return isUSDHolding(h) ? val * (h.usd_inr_rate || _liveUsdInr) : val; }
-// toINRCurrent: always uses live rate — correct for current market value and clean gain calc
-export function toINRCurrent(val, h) { return isUSDHolding(h) ? val * _liveUsdInr : val; }
+// toINRCurrent: uses live USD rate for USD holdings; stored rate for other foreign currencies
+// (SGD/GBP/EUR FDs have no live feed — usd_inr_rate stores the user-entered conversion rate)
+export function toINRCurrent(val, h) {
+  if (!isUSDHolding(h)) return val;
+  const cur = (h.currency || "USD").toUpperCase();
+  // Pure USD-type holdings (stocks, ETFs, crypto) → live rate
+  if (USD_TYPES.has(h.type) && (!h.currency || cur === "USD")) return val * _liveUsdInr;
+  // Non-INR FDs and other foreign-currency holdings → use stored rate (no live feed)
+  return val * (h.usd_inr_rate || _liveUsdInr);
+}
 export function toUSD(val, h) { return isUSDHolding(h) ? val : val / _liveUsdInr; }
 export function fxFor(h) { return isUSDHolding(h) ? (h.usd_inr_rate || _liveUsdInr) : 1; }
 // getValINR: current value at live rate

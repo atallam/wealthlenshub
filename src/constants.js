@@ -19,7 +19,7 @@ export const AT = {
 };
 
 // Holding form — instrument details only, no transaction data
-export const BF={member_id:"",type:"US_STOCK",name:"",ticker:"",scheme_code:"",interest_rate:"",start_date:"",maturity_date:"",purchase_value:"",current_value:"",principal:"",usd_inr_rate:""};
+export const BF={member_id:"",type:"US_STOCK",name:"",ticker:"",scheme_code:"",interest_rate:"",start_date:"",maturity_date:"",purchase_value:"",current_value:"",principal:"",usd_inr_rate:"",currency:"INR"};
 // Transaction form
 // txn_type: BUY | SELL | DIVIDEND | BONUS | RIGHTS | SWP
 export const BT={holding_id:"",txn_type:"BUY",units:"",price:"",price_usd:"",amount:"",txn_date:new Date().toISOString().slice(0,10),notes:""};

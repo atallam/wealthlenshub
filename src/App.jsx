@@ -509,6 +509,7 @@ ${alertsText}`;
       current_value:  h.current_value  || '',
       principal:      h.principal      || '',
       usd_inr_rate:   h.usd_inr_rate   || '',
+      currency:       h.currency       || 'INR',
     });
     setEditHolding(h);
     setModal('add');
@@ -923,8 +924,31 @@ ${alertsText}`;
 
           {/* FD / PPF / EPF fields */}
           {['FD','PPF','EPF'].includes(form.type) && (<>
+            {/* FD: currency selector — shown first so it can drive label below */}
+            {form.type === 'FD' && (
+              <div className="frow" style={{marginBottom:'.5rem'}}>
+                <FG label="Currency">
+                  <select className="fi fs" value={form.currency||'INR'}
+                    onChange={e => setForm(p => ({ ...p, currency: e.target.value, usd_inr_rate: '' }))}>
+                    <option value="INR">₹ INR — Indian Rupee</option>
+                    <option value="USD">$ USD — US Dollar (FCNR)</option>
+                    <option value="SGD">S$ SGD — Singapore Dollar</option>
+                    <option value="GBP">£ GBP — British Pound</option>
+                    <option value="EUR">€ EUR — Euro</option>
+                  </select>
+                </FG>
+                {(form.currency && form.currency !== 'INR') && (
+                  <FG label={`1 ${form.currency} = ₹ (exchange rate)`}>
+                    <input type="number" className="fi"
+                      placeholder={form.currency==='USD'?'e.g. 84.5':form.currency==='SGD'?'e.g. 63.2':form.currency==='GBP'?'e.g. 107.0':'e.g. 90.0'}
+                      value={form.usd_inr_rate||''}
+                      onChange={e => setForm(p => ({ ...p, usd_inr_rate: e.target.value }))}/>
+                  </FG>
+                )}
+              </div>
+            )}
             <div className="frow">
-              <FG label="Principal ₹">
+              <FG label={form.type==='FD'&&form.currency&&form.currency!=='INR'?`Principal ${form.currency}`:"Principal ₹"}>
                 <FmtInput value={form.principal} placeholder="e.g. 500000"
                   onChange={e => setForm(p => ({ ...p, principal: e.target.value }))}/>
               </FG>
