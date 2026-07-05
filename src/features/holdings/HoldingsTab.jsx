@@ -5,6 +5,19 @@ import ConcallPanel from "./ConcallPanel.jsx";
 
 const CONCALL_TYPES = new Set(["IN_STOCK", "IN_ETF", "US_STOCK", "US_ETF"]);
 
+// Manual holdings — no live feed, need periodic user updates
+const STALE_THRESHOLDS = { FD:90, PPF:90, EPF:90, REAL_ESTATE:180, CASH:14, INSURANCE:365, OTHER:60 };
+
+function computeStale(holdings) {
+  const now = Date.now();
+  return holdings.filter(h => {
+    const thresh = STALE_THRESHOLDS[h.type];
+    if (!thresh) return false;
+    const lastTouched = h.updated_at ? new Date(h.updated_at) : h.created_at ? new Date(h.created_at) : new Date(0);
+    return Math.floor((now - lastTouched) / 864e5) >= thresh;
+  });
+}
+
 export default function HoldingsTab({
   // Data
   visH,
@@ -49,6 +62,12 @@ export default function HoldingsTab({
   BT,
 }) {
   const [concallHolding, setConcallHolding] = useState(null);
+  const [showStaleOnly, setShowStaleOnly] = useState(false);
+
+  // Stale detection — computed before render so JSX can reference staleH + displayH
+  const staleH   = computeStale(visH);
+  const staleIds = new Set(staleH.map(h => h.id));
+  const displayH = showStaleOnly ? visH.filter(h => staleIds.has(h.id)) : visH;
 
   return (
     <div className="card">
@@ -93,13 +112,61 @@ export default function HoldingsTab({
           </div>
         );
       })()}
+      {/* ── Stale Holdings Nudge Banner ── */}
+      {staleH.length > 0 && (
+          <div style={{
+            background: "linear-gradient(135deg,rgba(192,148,50,.1),rgba(224,124,90,.07))",
+            border: "1px solid rgba(192,148,50,.3)",
+            borderRadius: 8,
+            padding: ".55rem .85rem",
+            marginBottom: ".65rem",
+            display: "flex",
+            alignItems: "center",
+            gap: ".75rem",
+            flexWrap: "wrap",
+          }}>
+            <div style={{fontSize:"1.1rem",lineHeight:1}}>⚠️</div>
+            <div style={{flex:1,minWidth:0}}>
+              <span style={{fontSize:".78rem",color:"#c9a84c",fontWeight:600}}>
+                {staleH.length} holding{staleH.length > 1 ? "s" : ""} need updating
+              </span>
+              <span style={{fontSize:".7rem",color:"var(--text-muted)",marginLeft:".5rem"}}>
+                — manually tracked assets with no live price feed
+              </span>
+            </div>
+            <div style={{display:"flex",gap:".4rem",flexShrink:0}}>
+              <button
+                onClick={() => {
+                  setShowStaleOnly(s => {
+                    // if turning off, also reset the parent type filter to ALL
+                    if (s) setFilterType("ALL");
+                    return !s;
+                  });
+                }}
+                style={{
+                  padding: ".25rem .65rem",
+                  background: showStaleOnly ? "#c9a84c" : "rgba(192,148,50,.15)",
+                  border: "1px solid rgba(192,148,50,.4)",
+                  color: showStaleOnly ? "#111" : "#c9a84c",
+                  borderRadius: 5,
+                  fontSize: ".7rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: "'DM Sans',sans-serif",
+                }}>
+                {showStaleOnly ? "Show all" : `View ${staleH.length} stale`}
+              </button>
+            </div>
+          </div>
+      )}
+
       <div className="tbar">
-        <div className={`fchip${filterType==="ALL"?" act":""}`} onClick={()=>setFilterType("ALL")}>All</div>
-        {Object.entries(AT).map(([k,v])=>(<div key={k} className={`fchip${filterType===k?" act":""}`} onClick={()=>setFilterType(k)}>{v.icon} {v.label}</div>))}
+        <div className={`fchip${filterType==="ALL"?" act":""}`} onClick={()=>{setFilterType("ALL");setShowStaleOnly(false);}}>All</div>
+        {Object.entries(AT).map(([k,v])=>(<div key={k} className={`fchip${filterType===k?" act":""}`} onClick={()=>{setFilterType(k);setShowStaleOnly(false);}}>{v.icon} {v.label}</div>))}
       </div>
 
       {/* ── Export toolbar ── */}
-      {visH.length>0&&(
+      {displayH.length>0&&(
         <div style={{display:"flex",gap:".5rem",justifyContent:"flex-end",marginBottom:".55rem"}}>
           <a href="/api/export/holdings" download
             style={{display:"inline-flex",alignItems:"center",gap:".35rem",padding:".28rem .7rem",
@@ -118,7 +185,7 @@ export default function HoldingsTab({
         </div>
       )}
 
-      {visH.length===0?<div className="empty">{demoMode?"No holdings match the current filter":"No holdings yet"} — <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setModal("add")}>add to portfolio</span>{!demoMode&&setShowImportHub&&<>{" or "}<span style={{color:"#5ea9a0",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setShowImportHub(true)}>import from a broker</span></>}{!demoMode&&<>{" or "}<span style={{color:"#a084ca",cursor:"pointer",textDecoration:"underline"}} onClick={loadDemoData}>try sample data</span></>}</div>:(<>
+      {displayH.length===0?<div className="empty">{demoMode?"No holdings match the current filter": showStaleOnly ? "No stale holdings found — everything is up to date" : "No holdings yet"} — <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setModal("add")}>add to portfolio</span>{!demoMode&&setShowImportHub&&<>{" or "}<span style={{color:"#5ea9a0",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setShowImportHub(true)}>import from a broker</span></>}{!demoMode&&<>{" or "}<span style={{color:"#a084ca",cursor:"pointer",textDecoration:"underline"}} onClick={loadDemoData}>try sample data</span></>}</div>:(<>
         <div className="ht-desktop"><div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",margin:"0 -0.9rem",padding:"0 0.9rem"}}>
           <table className="ht">
             <thead><tr>
@@ -154,9 +221,9 @@ export default function HoldingsTab({
                 const isUSCash = h => h.type === "CASH" && isUSDHolding(h);
                 const isINCash = h => h.type === "CASH" && !isUSDHolding(h);
                 const groups = [
-                  { key: "us", label: "US Assets", icon: "$", color: "#5a9ce0", items: visH.filter(h => US_TYPES.has(h.type) || isUSCash(h)) },
-                  { key: "in", label: "Indian Assets", icon: "₹", color: "#e07c5a", items: visH.filter(h => IN_TYPES.has(h.type) || isINCash(h)) },
-                  { key: "other", label: "Other Assets", icon: "📦", color: "#c9a84c", items: visH.filter(h => !US_TYPES.has(h.type) && !IN_TYPES.has(h.type) && h.type !== "CASH") },
+                  { key: "us", label: "US Assets", icon: "$", color: "#5a9ce0", items: displayH.filter(h => US_TYPES.has(h.type) || isUSCash(h)) },
+                  { key: "in", label: "Indian Assets", icon: "₹", color: "#e07c5a", items: displayH.filter(h => IN_TYPES.has(h.type) || isINCash(h)) },
+                  { key: "other", label: "Other Assets", icon: "📦", color: "#c9a84c", items: displayH.filter(h => !US_TYPES.has(h.type) && !IN_TYPES.has(h.type) && h.type !== "CASH") },
                 ].filter(g => g.items.length > 0);
 
                 // Total column count: 10 data columns + 1 action = 11
@@ -371,15 +438,15 @@ export default function HoldingsTab({
               })()}
             </tbody>
             {/* Totals footer row */}
-            {visH.length>0&&(()=>{
-              const totI=visH.reduce((s,h)=>{ const v=invINRCache.get(h.id); return v==null?s:s+v; },0);
-              const totC=visH.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
+            {displayH.length>0&&(()=>{
+              const totI=displayH.reduce((s,h)=>{ const v=invINRCache.get(h.id); return v==null?s:s+v; },0);
+              const totC=displayH.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
               const totG=totC-totI;
               const totP=totI>0?(totG/totI)*100:0;
               return(
               <tfoot>
                 <tr style={{borderTop:"2px solid rgba(201,168,76,.2)"}}>
-                  <td colSpan={8} style={{padding:".75rem .65rem",fontSize:".7rem",letterSpacing:".08em",textTransform:"uppercase",color:"var(--text-dim)",fontWeight:600}}>Total · {visH.length} holding{visH.length!==1?"s":""}</td>
+                  <td colSpan={8} style={{padding:".75rem .65rem",fontSize:".7rem",letterSpacing:".08em",textTransform:"uppercase",color:"var(--text-dim)",fontWeight:600}}>Total · {displayH.length} holding{displayH.length!==1?"s":""}</td>
                   <td className="r" style={{padding:".75rem .65rem"}}>
                     <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,color:"#c9a84c",fontSize:".88rem"}}>{fmtCr(totC)}</div>
                     <div style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:"rgba(201,168,76,.8)",marginTop:1,fontWeight:600}}>≈ {fmtCrINR(totC)}</div>
@@ -403,9 +470,9 @@ export default function HoldingsTab({
             const isUSCash=h=>h.type==="CASH"&&isUSDHolding(h);
             const isINCash=h=>h.type==="CASH"&&!isUSDHolding(h);
             const groups=[
-              {key:"us",label:"US Assets",icon:"$",color:"#5a9ce0",items:visH.filter(h=>US_T.has(h.type)||isUSCash(h))},
-              {key:"in",label:"Indian Assets",icon:"₹",color:"#e07c5a",items:visH.filter(h=>IN_T.has(h.type)||isINCash(h))},
-              {key:"other",label:"Other Assets",icon:"📦",color:"#c9a84c",items:visH.filter(h=>!US_T.has(h.type)&&!IN_T.has(h.type)&&h.type!=="CASH")},
+              {key:"us",label:"US Assets",icon:"$",color:"#5a9ce0",items:displayH.filter(h=>US_T.has(h.type)||isUSCash(h))},
+              {key:"in",label:"Indian Assets",icon:"₹",color:"#e07c5a",items:displayH.filter(h=>IN_T.has(h.type)||isINCash(h))},
+              {key:"other",label:"Other Assets",icon:"📦",color:"#c9a84c",items:displayH.filter(h=>!US_T.has(h.type)&&!IN_T.has(h.type)&&h.type!=="CASH")},
             ].filter(g=>g.items.length>0);
             return groups.map((grp,gi)=>{
               const isUSGrp=grp.key==="us";
@@ -501,12 +568,12 @@ export default function HoldingsTab({
             });
           })()}
           {/* Mobile totals */}
-          {visH.length>0&&(()=>{
-            const totI=visH.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);
-            const totC=visH.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
+          {displayH.length>0&&(()=>{
+            const totI=displayH.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);
+            const totC=displayH.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
             const totG=totC-totI;const totP=totI>0?(totG/totI)*100:0;
             return(<div className="m-hc-totals">
-              <div><div className="m-hc-lbl">{visH.length} holding{visH.length!==1?"s":""} · Invested</div><div className="m-hc-val" style={{color:"var(--text-dim)",marginTop:".15rem"}}>{fmtCr(totI)}</div></div>
+              <div><div className="m-hc-lbl">{displayH.length} holding{displayH.length!==1?"s":""} · Invested</div><div className="m-hc-val" style={{color:"var(--text-dim)",marginTop:".15rem"}}>{fmtCr(totI)}</div></div>
               <div style={{textAlign:"right"}}><div className="m-hc-lbl">Current · P&L</div><div className="m-hc-val" style={{color:"#c9a84c",marginTop:".15rem"}}>{fmtCr(totC)}</div><div className={`m-hc-val ${totG>=0?"gain":"loss"}`} style={{fontWeight:600,fontSize:".75rem"}}>{totG>=0?"+":""}{fmtCr(totG)} ({fmtPct(totP)})</div></div>
             </div>);
           })()}

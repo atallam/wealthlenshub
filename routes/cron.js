@@ -2,6 +2,8 @@ import { Router } from "express";
 import { supabase } from "../lib/db.js";
 import { fetchUsdInr, mfNav, stockPrice, yahooPrice } from "../lib/prices.js";
 import { takeSnapshot } from "../lib/snapshot.js";
+import { getStaleHoldings } from "../lib/stale-holdings.js";
+import { sendStaleNudge } from "../services/alert-mailer.js";
 
 // Concurrency limiter — same pattern as routes/prices.js
 async function pLimit(fns, concurrency = 5) {
@@ -180,6 +182,73 @@ router.post("/fd-alerts", cronAuth, async (req, res) => {
   const sent = results.filter(r => r.status === "sent").length;
   console.log(`FD alerts: scanned ${(fds||[]).length} FDs, sent ${sent} emails`);
   res.json({ scanned: (fds||[]).length, sent, results });
+});
+
+// ── Stale Holdings Nudge ────────────────────────────────────────────────────
+// POST /api/cron/nudge-stale  (x-cron-secret header required)
+//
+// Scans all users for manual holdings that haven't been updated within their
+// per-type threshold. Sends ONE batched digest email per user — all stale
+// holdings in a single table, sorted most-stale first.
+//
+// Recommended cadence: weekly (e.g. every Monday morning).
+// Env: CRON_SECRET, RESEND_API_KEY, APP_URL
+
+router.post("/nudge-stale", cronAuth, async (req, res) => {
+  if (!process.env.RESEND_API_KEY) {
+    return res.status(503).json({ error: "RESEND_API_KEY not configured" });
+  }
+
+  // 1. Fetch all manual holdings across all users (updated_at is key)
+  const { data: holdings, error } = await supabase
+    .from("holdings")
+    .select("id, user_id, name, type, updated_at, created_at")
+    .in("type", ["FD", "PPF", "EPF", "REAL_ESTATE", "CASH", "INSURANCE", "OTHER"]);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  // 2. Group holdings by user
+  const byUser = {};
+  for (const h of holdings || []) {
+    (byUser[h.user_id] ||= []).push(h);
+  }
+
+  const now = new Date();
+  const results = [];
+
+  // 3. For each user, find stale holdings and send ONE batched email
+  for (const [userId, userHoldings] of Object.entries(byUser)) {
+    const stale = getStaleHoldings(userHoldings, now);
+    if (stale.length === 0) {
+      results.push({ userId, status: "no_stale" });
+      continue;
+    }
+
+    // Resolve user email
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("id", userId)
+      .single();
+
+    const toEmail = profile?.email;
+    if (!toEmail) {
+      results.push({ userId, staleCount: stale.length, status: "no_email" });
+      continue;
+    }
+
+    try {
+      const r = await sendStaleNudge(toEmail, stale);
+      results.push({ userId, email: toEmail, staleCount: stale.length, status: "sent", resendId: r.id });
+    } catch (e) {
+      results.push({ userId, email: toEmail, staleCount: stale.length, status: "error", error: e.message });
+    }
+  }
+
+  const sent = results.filter(r => r.status === "sent").length;
+  const totalStale = results.reduce((s, r) => s + (r.staleCount || 0), 0);
+  console.log(`Stale nudge cron: ${Object.keys(byUser).length} users scanned, ${sent} emails sent, ${totalStale} stale holdings total`);
+  res.json({ users: Object.keys(byUser).length, emailsSent: sent, totalStaleHoldings: totalStale, results });
 });
 
 export default router;

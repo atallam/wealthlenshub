@@ -71,6 +71,12 @@ Return calculation cascades: **XIRR** (Newton-Raphson) → **CAGR** → **Simple
 ### Alerts
 - Threshold-based alerts with email / push notifications via alert-mailer service
 
+### Stale Holdings Nudge
+- Detects manual holdings (FD, PPF, EPF, Real Estate, Cash, Insurance, Other) that haven't been updated past their per-type threshold
+- **Thresholds:** FD 90d · PPF 90d · EPF 90d · Real Estate 180d · Cash 14d · Insurance 365d · Other 60d
+- **In-app:** amber banner in Holdings tab with count + one-click filter to view only stale rows
+- **Email:** batched weekly digest — all stale holdings for a user in one email, sorted most-stale first (via `/api/cron/nudge-stale`)
+
 ### Sharing & Collaboration
 - Share portfolio with viewer or editor roles via email invite
 
@@ -115,9 +121,6 @@ AI-powered earnings call analysis — extracts key figures, management commentar
 
 ### Budget Tab — Spend Insights
 After transactions load, auto-generates a summary of top spend categories, biggest month-over-month changes, and one budget recommendation.
-
-### Tax Tab — AI Tax Strategy
-Streaming recommendations covering LTCG exemption headroom, specific harvest candidates in priority order, FD renewal tax angle, and a 3-step action plan.
 
 ### Goals Tab — AI Goal Planning
 AI gap analysis and scenario recommendations per goal, powered by `useGoalAI` hook.
@@ -200,7 +203,8 @@ wealthlens-hub/
 | `TWELVE_DATA_KEY` | Twelve Data API for stock prices |
 | `SNAPTRADE_CLIENT_ID` | SnapTrade client ID |
 | `SNAPTRADE_CONSUMER_KEY` | SnapTrade consumer key |
-| `CRON_SECRET` | Secures `/api/cron/refresh-all-prices` |
+| `CRON_SECRET` | Secures `/api/cron/refresh-all-prices` and `/api/cron/nudge-stale` |
+| `APP_URL` | Base URL for CTA links in nudge emails (e.g. `https://app.wealthlenshub.com`) |
 | `PLAID_CLIENT_ID` | Plaid client ID |
 | `PLAID_SECRET` | Plaid secret |
 | `PLAID_ENV` | `sandbox` or `production` |
