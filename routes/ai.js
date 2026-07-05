@@ -126,10 +126,10 @@ async function execTool(name, input, userId) {
 
       case "get_holdings": {
         let q = supabase.from("holdings")
-          .select("id, name, symbol, type, units, current_price, current_nav, current_value, invested_value, member_name")
+          .select("id, name, ticker, symbol, type, units, current_price, current_nav, current_value, invested_value, member_name")
           .eq("user_id", userId)
           .order("current_value", { ascending: false })
-          .limit(40);
+          .limit(500);   // no practical limit — surface all holdings to the AI
         if (input.asset_type) q = q.eq("type", input.asset_type);
         if (input.member_id)  q = q.eq("member_id", input.member_id);
         const { data: h } = await q;
@@ -139,7 +139,7 @@ async function execTool(name, input, userId) {
           holdings: h.map(x => ({
             id:                  x.id,
             name:                x.name,
-            symbol:              x.symbol,
+            ticker:              x.ticker || x.symbol,
             type:                x.type,
             units:               x.units,
             current_price_inr:   x.current_price || x.current_nav,

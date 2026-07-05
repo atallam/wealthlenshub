@@ -1,15 +1,28 @@
 // AdvisorTab.jsx — lines 4580–4685 of App.jsx
 
+const FALLBACK_QUESTIONS = [
+  "What is my total portfolio value today?",
+  "Which holding has the best XIRR?",
+  "How much have I invested in mutual funds?",
+  "Which holdings are at a loss?",
+  "How far am I from my retirement goal?",
+  "What percentage of my portfolio is in equity?",
+  "Which is my largest single holding?",
+  "How should I rebalance my portfolio?",
+];
+
 export default function AdvisorTab({
   aiMessages,
   setAiMessages,
   aiInput,
   setAiInput,
   aiLoading,
-  askAI,         // (portfolioContext, aiBottomRef, overrideInput?) => void
+  askAI,              // (portfolioContext, aiBottomRef, overrideInput?) => void
   portfolioContext,
   aiBottomRef,
+  suggestedQuestions, // dynamic questions built from live portfolio state
 }) {
+  const questions = suggestedQuestions?.length ? suggestedQuestions : FALLBACK_QUESTIONS;
   return (
     <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 280px)",minHeight:500}}>
       {/* Header */}
@@ -26,16 +39,7 @@ export default function AdvisorTab({
         <div style={{marginBottom:"1.2rem"}}>
           <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".65rem"}}>Suggested questions</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:".5rem"}}>
-            {[
-              "What is my total portfolio value today?",
-              "Which holding has the best XIRR?",
-              "How much have I invested in mutual funds?",
-              "What is Priya's total portfolio worth?",
-              "Which holdings are at a loss?",
-              "How far am I from my retirement goal?",
-              "What percentage of my portfolio is in equity?",
-              "Which is my largest single holding?",
-            ].map(q=>(
+            {questions.map(q=>(
               <button key={q} onClick={()=>{ askAI(portfolioContext, aiBottomRef, q); }}
                 style={{background:"var(--bg-muted)",border:"1px solid var(--border)",color:"var(--text-dim)",padding:".38rem .8rem",borderRadius:20,cursor:"pointer",fontSize:".74rem",fontFamily:"'DM Sans',sans-serif",transition:"all .2s",textAlign:"left"}}
                 onMouseEnter={e=>{e.target.style.background="rgba(201,168,76,.1)";e.target.style.color="#c9a84c";e.target.style.borderColor="rgba(201,168,76,.3)";}}

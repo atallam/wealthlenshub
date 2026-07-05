@@ -2,6 +2,154 @@
 // All budget state is passed as props because it lives in parent App.jsx
 // (no budget state is local-only; the parent needs it for persistence across tab switches).
 
+import { useState, useRef, useEffect } from 'react';
+import { supabase } from '../../supabase.js';
+import { readSSEStream } from '../../hooks/useGoalAI.js';
+
+// ── AI Spend Insights panel ───────────────────────────────────────────────────
+
+function SpendInsights({ analytics, catData, monthlyData, domCur, selMonth, fmtAmt }) {
+  const [text,    setText]    = useState('');
+  const [loading, setLoading] = useState(false);
+  const [open,    setOpen]    = useState(false);
+  const abortRef = useRef(null);
+
+  // Re-run when analytics or month selection changes
+  const analyticsKey = analytics ? `${analytics.totalDebit}-${selMonth}` : null;
+  const prevKey = useRef(null);
+  useEffect(() => {
+    if (analyticsKey && analyticsKey !== prevKey.current) {
+      prevKey.current = analyticsKey;
+      setText('');
+      setOpen(false);
+    }
+  }, [analyticsKey]);
+
+  async function generate() {
+    if (!analytics) return;
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setLoading(true);
+    setText('');
+    setOpen(true);
+
+    // Build context from analytics data
+    const topCats = catData.slice(0, 6).map(c =>
+      `  ${c.icon || ''} ${c.name}: ${fmtAmt(c.value, domCur)} (${analytics.totalDebit > 0 ? ((c.value / analytics.totalDebit) * 100).toFixed(0) : 0}%)`
+    ).join('\n');
+
+    const trend = monthlyData.slice(-3).map(([mo, v]) =>
+      `  ${mo}: ${fmtAmt(v, domCur)}`
+    ).join('\n');
+
+    // Month-over-month change
+    let momStr = '';
+    if (monthlyData.length >= 2) {
+      const [, prev] = monthlyData[monthlyData.length - 2];
+      const [, curr] = monthlyData[monthlyData.length - 1];
+      const chg = prev > 0 ? (((curr - prev) / prev) * 100).toFixed(1) : null;
+      if (chg !== null) momStr = `\nMonth-over-month change: ${chg >= 0 ? '+' : ''}${chg}%`;
+    }
+
+    const period = selMonth
+      ? new Date(selMonth + '-01').toLocaleString('en-IN', { month: 'long', year: 'numeric' })
+      : 'all time';
+
+    const prompt = `Analyse this spending data for ${period} and provide a concise 3-sentence insight — no headers, no bullet points, flowing prose.
+
+SPENDING SUMMARY:
+- Total spent: ${fmtAmt(analytics.totalDebit, domCur)}
+- Total income/credits: ${fmtAmt(analytics.totalCredit, domCur)}
+- Net flow: ${fmtAmt(analytics.totalCredit - analytics.totalDebit, domCur)}${momStr}
+
+TOP SPENDING CATEGORIES:
+${topCats || '  No categories available'}
+
+MONTHLY TREND (last 3 months):
+${trend || '  No trend data'}
+
+Write 3 sentences: (1) overall spending health — is this sustainable or concerning? (2) the single most notable category finding. (3) one specific, actionable recommendation to improve this spending pattern. Under 70 words total.`;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || '';
+      const res = await fetch('/api/ai/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 200,
+          system: 'You are a concise personal finance advisor. Write in flowing prose, no bullets or headers. Under 70 words.',
+          messages: [{ role: 'user', content: prompt }],
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(res.statusText);
+      setLoading(false);
+      await readSSEStream(res, chunk => setText(p => p + chunk), ctrl.signal);
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      setText(`⚠ ${e.message}`);
+      setLoading(false);
+    }
+  }
+
+  if (!analytics) return null;
+  const hasContent = text || loading;
+
+  return (
+    <div style={{ marginBottom: '1rem' }}>
+      <button
+        onClick={hasContent ? () => setOpen(p => !p) : generate}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: open && hasContent ? 'rgba(160,132,202,.08)' : 'rgba(160,132,202,.04)',
+          border: `1px ${hasContent ? 'solid' : 'dashed'} rgba(160,132,202,.3)`,
+          borderRadius: open && hasContent ? '8px 8px 0 0' : 8,
+          padding: '.5rem .85rem', cursor: 'pointer',
+          fontFamily: "'DM Sans',sans-serif", fontSize: '.72rem', color: '#a084ca',
+        }}>
+        <span>✦ Spend Insights</span>
+        <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
+          {hasContent && !loading && (
+            <span onClick={e => { e.stopPropagation(); generate(); }}
+              style={{ fontSize: '.62rem', color: 'rgba(160,132,202,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
+          )}
+          {loading && (
+            <div style={{ width: 10, height: 10, border: '1.5px solid rgba(160,132,202,.25)', borderTopColor: '#a084ca', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+          )}
+          {hasContent && <span style={{ fontSize: '.6rem' }}>{open ? '▲' : '▼'}</span>}
+          {!hasContent && <span style={{ fontSize: '.65rem', color: 'rgba(160,132,202,.5)' }}>Generate →</span>}
+        </div>
+      </button>
+
+      {open && hasContent && (
+        <div style={{
+          background: 'rgba(160,132,202,.04)', border: '1px solid rgba(160,132,202,.15)',
+          borderTop: 'none', borderRadius: '0 0 8px 8px',
+          padding: '.75rem .9rem', fontSize: '.78rem', lineHeight: 1.7,
+          color: 'var(--text-secondary)', fontFamily: "'DM Sans',sans-serif",
+        }}>
+          {loading && !text ? (
+            <div style={{ display: 'inline-flex', gap: '.3rem', alignItems: 'center' }}>
+              {[0,1,2].map(j => (
+                <span key={j} style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(160,132,202,.5)', display: 'inline-block', animation: `bounce 1.2s ${j * 0.2}s infinite` }} />
+              ))}
+            </div>
+          ) : (
+            <>
+              {text}
+              {loading && <span style={{ display: 'inline-block', width: '2px', height: '1em', background: '#a084ca', marginLeft: '2px', verticalAlign: 'text-bottom', animation: 'blink .9s step-end infinite' }} />}
+            </>
+          )}
+        </div>
+      )}
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}} @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}`}</style>
+    </div>
+  );
+}
+
 export default function BudgetTab({
   // Budget state
   budgetStatements,
@@ -166,6 +314,15 @@ export default function BudgetTab({
           <button className="btns" style={{marginTop:"1rem"}} onClick={()=>setBudgetView("import")}>+ Import Statement</button>
         </div>);
         return(<>
+          {/* ✦ AI Spend Insights */}
+          <SpendInsights
+            analytics={analytics}
+            catData={catData}
+            monthlyData={monthlyData}
+            domCur={domCur}
+            selMonth={budgetSelMonth}
+            fmtAmt={fmtAmt}
+          />
           {/* KPI row */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:".75rem",marginBottom:"1.2rem"}}>
             {[
