@@ -144,7 +144,7 @@ export default function HoldingsTab({
                     : <span style={{marginLeft:3,fontSize:".55rem",opacity:.25}}>⇅</span>}
                 </th>
               ))}
-              <th/>
+              <th style={{width:"130px",minWidth:"130px"}}/>
             </tr></thead>
             <tbody>
               {(()=>{
@@ -317,23 +317,43 @@ export default function HoldingsTab({
                           </>
                         }
                       </td>
-                      <td>
-                        <div style={{display:"flex",gap:3}}>
-                          {CONCALL_TYPES.has(h.type) && (
-                            <button className="delbtn" title="Earnings call analysis" aria-label="Concall analysis"
-                              onClick={()=>setConcallHolding(concallHolding?.id===h.id?null:h)}
-                              style={{color:concallHolding?.id===h.id?"#a084ca":"var(--text-muted)",fontWeight:concallHolding?.id===h.id?700:400}}>
-                              ✦
-                            </button>
-                          )}
-                          <button className="delbtn" title="View transactions" aria-label="View transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transaction_count??h.transactions?.length??0)>0?"#a084ca":"var(--text-muted)"}}>
+                      <td style={{width:"130px",minWidth:"130px"}}>
+                        <div style={{display:"flex",gap:3,alignItems:"center",justifyContent:"flex-end",width:"100%"}}>
+                          {/* Concall — always reserve space, hide when not applicable */}
+                          <button className="delbtn" title="Earnings call analysis" aria-label="Concall analysis"
+                            onClick={()=>CONCALL_TYPES.has(h.type)&&setConcallHolding(concallHolding?.id===h.id?null:h)}
+                            style={{
+                              visibility: CONCALL_TYPES.has(h.type) ? "visible" : "hidden",
+                              color: concallHolding?.id===h.id ? "#a084ca" : "var(--text-muted)",
+                              fontWeight: concallHolding?.id===h.id ? 700 : 400,
+                            }}>
+                            ✦
+                          </button>
+                          {/* Transactions */}
+                          <button className="delbtn" title="View transactions" aria-label="View transactions"
+                            onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}}
+                            style={{color:(h.transaction_count??h.transactions?.length??0)>0?"#a084ca":"var(--text-muted)"}}>
                             📋{(h.transaction_count??h.transactions?.length??0)>0?` ${(h.transaction_count??h.transactions?.length??0)}`:""}
                           </button>
-                          <button className="delbtn" title="Attach documents" aria-label="Attach documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)"}}>
+                          {/* Documents */}
+                          <button className="delbtn" title="Attach documents" aria-label="Attach documents"
+                            onClick={()=>setArtifactHolding(h)}
+                            style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)"}}>
                             📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}
                           </button>
-                          {(!h.source||h.source==="manual")&&<button className="delbtn" title="Modify holding" aria-label="Modify holding" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>editH(h)}>✎</button>}
-                          {(!h.source||h.source==="manual")&&<button className="delbtn" title="Delete holding" aria-label="Delete holding" onClick={()=>deleteHolding(h.id)}>✕</button>}
+                          {/* Edit — always reserve space */}
+                          <button className="delbtn" title="Modify holding" aria-label="Modify holding"
+                            onClick={()=>editH(h)}
+                            style={{
+                              visibility: (!h.source||h.source==="manual") ? "visible" : "hidden",
+                              color: "rgba(90,156,224,.5)",
+                            }}>✎</button>
+                          {/* Delete — always reserve space */}
+                          <button className="delbtn" title="Delete holding" aria-label="Delete holding"
+                            onClick={()=>deleteHolding(h.id)}
+                            style={{visibility: (!h.source||h.source==="manual") ? "visible" : "hidden"}}>
+                            ✕
+                          </button>
                         </div>
                       </td>
                     </tr>,
