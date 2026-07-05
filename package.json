@@ -16,6 +16,7 @@
     "postinstall": "pip install casparser casparser-isin pymupdf --break-system-packages --quiet || true"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "@supabase/supabase-js": "^2.108.2",
     "@vitejs/plugin-react": "^6.0.3",
     "cors": "^2.8.5",
