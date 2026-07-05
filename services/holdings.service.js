@@ -212,6 +212,14 @@ export async function create(userId, body) {
 
 /** Update one of the user's holdings. */
 export async function update(userId, id, body) {
+  // Imported holdings (cas, csv, snaptrade, etc.) are read-only — only manual entries may be edited.
+  const { data: existing, error: fetchErr } = await supabase
+    .from("holdings").select("source").eq("id", id).eq("user_id", userId).single();
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (existing?.source && existing.source !== "manual") {
+    throw Object.assign(new Error("Imported holdings cannot be edited via the UI. Re-import to update."), { status: 403 });
+  }
+
   const { artifacts, transactions, net_units, avg_cost, purchase_nav, current_nav, purchase_price, ...holdingData } = body;
   const isMF = holdingData.type === "MF";
   const updateData = { ...holdingData, ...(isMF ? { purchase_nav: purchase_nav || 0, current_nav: current_nav || 0 } : {}) };
@@ -220,8 +228,14 @@ export async function update(userId, id, body) {
   return { ok: true };
 }
 
-/** Delete one of the user's holdings. */
+/** Delete one of the user's holdings (manual-only). */
 export async function remove(userId, id) {
+  const { data: existing, error: fetchErr } = await supabase
+    .from("holdings").select("source").eq("id", id).eq("user_id", userId).single();
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (existing?.source && existing.source !== "manual") {
+    throw Object.assign(new Error("Imported holdings cannot be deleted via the UI. Re-import to update."), { status: 403 });
+  }
   const { error } = await supabase.from("holdings").delete().eq("id", id).eq("user_id", userId);
   if (error) throw new Error(error.message);
   return { ok: true };

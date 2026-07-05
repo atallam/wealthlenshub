@@ -34,12 +34,12 @@ router.post("/", auth, async (req, res) => {
 
 router.put("/:id", auth, async (req, res) => {
   try { res.json(await holdings.update(req.user.id, req.params.id, req.body)); }
-  catch (e) { sendError(res, e); }
+  catch (e) { sendError(res, e, e.status || 500); }
 });
 
 router.delete("/:id", auth, async (req, res) => {
   try { res.json(await holdings.remove(req.user.id, req.params.id)); }
-  catch (e) { sendError(res, e); }
+  catch (e) { sendError(res, e, e.status || 500); }
 });
 
 export default router;

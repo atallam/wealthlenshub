@@ -280,7 +280,7 @@ export default function HoldingsTab({
                             📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}
                           </button>
                           {(!h.source||h.source==="manual")&&<button className="delbtn" title="Modify holding" aria-label="Modify holding" style={{color:"rgba(90,156,224,.5)"}} onClick={()=>editH(h)}>✎</button>}
-                          <button className="delbtn" title="Delete holding" aria-label="Delete holding" onClick={()=>deleteHolding(h.id)}>✕</button>
+                          {(!h.source||h.source==="manual")&&<button className="delbtn" title="Delete holding" aria-label="Delete holding" onClick={()=>deleteHolding(h.id)}>✕</button>}
                         </div>
                       </td>
                     </tr>,
@@ -420,7 +420,7 @@ export default function HoldingsTab({
                       <button title="Transactions" aria-label="Transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transaction_count??h.transactions?.length??0)>0?"#a084ca":"var(--text-muted)"}}>📋{(h.transaction_count??h.transactions?.length??0)>0?` ${(h.transaction_count??h.transactions?.length??0)}`:""}</button>
                       <button title="Documents" aria-label="Documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)"}}>📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}</button>
                       {(!h.source||h.source==="manual")&&<button title="Edit" aria-label="Edit" onClick={()=>editH(h)} style={{color:"rgba(90,156,224,.5)"}}>✎</button>}
-                      <button title="Delete" aria-label="Delete" onClick={()=>deleteHolding(h.id)} style={{color:"rgba(224,124,90,.4)"}}>✕</button>
+                      {(!h.source||h.source==="manual")&&<button title="Delete" aria-label="Delete" onClick={()=>deleteHolding(h.id)} style={{color:"rgba(224,124,90,.4)"}}>✕</button>}
                     </div>}
                   </div>);
                 })}
