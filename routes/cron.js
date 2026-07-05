@@ -2,7 +2,7 @@ import { Router } from "express";
 import { supabase } from "../lib/db.js";
 import { fetchUsdInr, mfNav, stockPrice, yahooPrice } from "../lib/prices.js";
 import { takeSnapshot } from "../lib/snapshot.js";
-import { getStaleHoldings } from "../lib/stale-holdings.js";
+import { getCrossingHoldings } from "../lib/stale-holdings.js";
 import { sendStaleNudge } from "../services/alert-mailer.js";
 
 // Concurrency limiter — same pattern as routes/prices.js
@@ -187,11 +187,12 @@ router.post("/fd-alerts", cronAuth, async (req, res) => {
 // ── Stale Holdings Nudge ────────────────────────────────────────────────────
 // POST /api/cron/nudge-stale  (x-cron-secret header required)
 //
-// Scans all users for manual holdings that haven't been updated within their
-// per-type threshold. Sends ONE batched digest email per user — all stale
-// holdings in a single table, sorted most-stale first.
+// Fires once per threshold-crossing — only emails when a holding crosses its
+// stale threshold within the last 7 days. Holdings stale for longer are skipped
+// (already nudged). Batches all crossings per user into ONE email.
 //
-// Recommended cadence: weekly (e.g. every Monday morning).
+// Safe to call daily (piggybacked on price refresh cron) — the crossing window
+// ensures emails go out at natural intervals (90d / 180d / 365d), not daily.
 // Env: CRON_SECRET, RESEND_API_KEY, APP_URL
 
 router.post("/nudge-stale", cronAuth, async (req, res) => {
@@ -218,7 +219,7 @@ router.post("/nudge-stale", cronAuth, async (req, res) => {
 
   // 3. For each user, find stale holdings and send ONE batched email
   for (const [userId, userHoldings] of Object.entries(byUser)) {
-    const stale = getStaleHoldings(userHoldings, now);
+    const stale = getCrossingHoldings(userHoldings, now);
     if (stale.length === 0) {
       results.push({ userId, status: "no_stale" });
       continue;

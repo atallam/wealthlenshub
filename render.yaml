@@ -69,7 +69,15 @@ services:
     schedule: "30 0 * * 1-5"
     buildCommand: echo "no build"
     startCommand: >
-      node -e "fetch('https://wealthlens.pro/api/cron/refresh-all-prices',{method:'POST',headers:{'x-cron-secret':process.env.CRON_SECRET}}).then(r=>r.json()).then(console.log)"
+      node -e "
+        const h={method:'POST',headers:{'x-cron-secret':process.env.CRON_SECRET}};
+        const base='https://wealthlens.pro';
+        fetch(base+'/api/cron/refresh-all-prices',h)
+          .then(r=>r.json()).then(d=>{console.log('prices',JSON.stringify(d));
+            return fetch(base+'/api/cron/nudge-stale',h);
+          }).then(r=>r.json()).then(d=>console.log('nudge',JSON.stringify(d)))
+          .catch(e=>console.error('cron error',e.message));
+      "
     envVars:
       - key: CRON_SECRET
         sync: false
