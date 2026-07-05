@@ -678,4 +678,69 @@ export default function BudgetTab({
               color:budgetUploadMsg.startsWith("✓")?"#4caf9a":budgetUploadMsg.startsWith("📄")?"var(--text-dim)":"#e07c5a"}}>
               {budgetUploadMsg}
             </div>
-   
+          )}
+
+          <button className="btns" disabled={!budgetUploadFile||!budgetUploadForm.region||budgetUploading}
+            onClick={()=>uploadBudgetStatement(budgetUploadFile, budgetUploadForm)}>
+            {budgetUploading?"Importing…":"Upload & Parse"}
+          </button>
+          {budgetUploadFile && budgetUploadFile.name.endsWith(".pdf") && (
+            <button className="btnc" style={{marginLeft:".5rem",fontSize:".7rem"}}
+              onClick={async()=>{
+                setBudgetUploadMsg("Analyzing + importing PDF...");
+                try{
+                  const fd=new FormData();
+                  fd.append("file",budgetUploadFile);
+                  fd.append("import","true");
+                  const data=await api("/api/budget/debug-pdf",{method:"POST",body:fd});
+                  let msg = `📄 ${data.pages} pages, ${data.totalLines} lines, ${data.totalChars} chars\n` +
+                    `US parser: ${data.usRowsParsed} rows | IN parser: ${data.inRowsParsed} rows\n`;
+                  if (data.imported > 0) {
+                    msg = `✓ Imported ${data.imported} transactions via debug endpoint\n` + msg;
+                    await loadBudget();
+                    setBudgetStatements(await api("/api/budget/statements") || []);
+                  } else {
+                    msg += `Import: ${data.imported} (${data.importError || "no rows to import"})\n`;
+                  }
+                  msg += `Sections: ${data.sectionHeaders?.join(" | ") || "none"}\n` +
+                    `Date lines: ${data.dateLines?.slice(0,5).join(" | ") || "none"}\n` +
+                    `--- First 15 lines ---\n${data.first80Lines?.slice(0,15).join("\n")}`;
+                  setBudgetUploadMsg(msg);
+                }catch(e){setBudgetUploadMsg("⚠ Debug: "+e.message);}
+              }}>
+              🔍 Debug + Import PDF
+            </button>
+          )}
+        </div>
+
+        {/* Statement history */}
+        <div className="card">
+          <div className="ctitle">Statement History (1-year rolling)</div>
+          {budgetStatements.length===0?<div className="empty">No statements imported yet</div>:(
+            <table className="ht">
+              <thead><tr><th>Source</th><th>Type</th><th>Period</th><th className="r">Transactions</th><th>Uploaded</th><th>Notes</th><th/></tr></thead>
+              <tbody>
+                {budgetStatements.map(s=>(
+                  <tr key={s.id}>
+                    <td style={{fontWeight:500,color:"var(--text)"}}>{s.source}</td>
+                    <td><span style={{fontSize:".68rem",padding:"2px 7px",borderRadius:3,background:`${TYPE_COLORS[s.statement_type]||"#6b6356"}22`,color:TYPE_COLORS[s.statement_type]||"#6b6356",border:`1px solid ${TYPE_COLORS[s.statement_type]||"#6b6356"}44`}}>{TYPE_ICONS[s.statement_type]} {s.statement_type}</span></td>
+                    <td className="dim" style={{fontSize:".75rem"}}>{s.period_start||"?"} → {s.period_end||"?"}</td>
+                    <td className="r mono" style={{color:"#c9a84c"}}>{s.txn_count}</td>
+                    <td className="dim" style={{fontSize:".72rem"}}>{s.upload_date?.slice(0,10)}</td>
+                    <td className="dim" style={{fontSize:".72rem",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.notes||"—"}</td>
+                    <td><button className="delbtn" onClick={async()=>{
+                      if(!confirm(`Delete "${s.source}" statement and all its transactions?`))return;
+                      await api(`/api/budget/statements/${s.id}`,{method:"DELETE"});
+                      await loadBudget(); // re-fetches statements + analytics
+                    }}>✕</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+      </>)}
+    </>
+  );
+}

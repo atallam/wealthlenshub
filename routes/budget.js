@@ -67,4 +67,8 @@ router.delete("/categories/:id", auth, async (req, res) => {
 router.get("/analytics", auth, async (req, res) => {
   try { res.json(await budget.analytics(req.user.id, req.query.month)); } catch (e) { sendError(res, e); }
 });
-router.get("/benchmark"
+router.get("/benchmark", auth, async (req, res) => {
+  try { res.json(await budget.benchmark(req.query.period)); } catch (e) { sendError(res, e); }
+});
+
+export default router;

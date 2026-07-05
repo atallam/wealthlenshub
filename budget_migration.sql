@@ -72,4 +72,9 @@ INSERT INTO budget_categories (id, name, color, icon, monthly_limit, keywords) V
   ('cat_utility',   'Bills & Utilities',  '#c9a84c', '💡',  6000,  'electricity,water,gas,broadband,jio,airtel,bsnl,vi,tata,recharge'),
   ('cat_emi',       'EMIs & Loans',       '#e07c5a', '🏦',  0,     'emi,loan,housing,home loan,car loan,personal loan,hdfc,icici,sbi,axis'),
   ('cat_entertain', 'Entertainment',      '#f0a050', '🎬',  3000,  'netflix,amazon prime,hotstar,spotify,bookmyshow,inox,pvr,movie'),
-  ('cat_travel',    'Travel',             '#5a9ce0', '✈️',  0,     'irctc,indigo,
+  ('cat_travel',    'Travel',             '#5a9ce0', '✈️',  0,     'irctc,indigo,air india,spicejet,hotel,oyo,makemytrip,yatra,booking'),
+  ('cat_education', 'Education',          '#a084ca', '📚',  0,     'school,college,course,udemy,coursera,byju,unacademy,tuition'),
+  ('cat_invest',    'Investments',        '#c9a84c', '📈',  0,     'mutual fund,sip,zerodha,groww,upstox,stock,nse,bse,mf'),
+  ('cat_transfer',  'Transfers',          '#6b6356', '↔️',  0,     'neft,rtgs,imps,upi,transfer,self transfer,own account'),
+  ('cat_other',     'Other',              '#6b6356', '📦',  0,     '')
+ON CONFLICT (id) DO NOTHING;
