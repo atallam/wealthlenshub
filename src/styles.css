@@ -905,7 +905,13 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   .mcsub { font-size: .68rem; }
 
   /* Cards */
-  .card { padding: .9rem .8rem; border-radius: var(--radius-sm); overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .card {
+    padding: .9rem .8rem;
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    word-break: break-word;       /* prevent long numbers overflowing */
+  }
   .ctitle { font-size: .95rem; margin-bottom: .75rem; }
 
   /* Member chips: horizontally scrollable */
@@ -919,6 +925,17 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
 
   /* Overview split grid */
   .sg { grid-template-columns: 1fr; gap: .75rem; }
+
+  /* ── Portfolio Brief AI panel ── */
+  .portfolio-brief-btn { font-size: .73rem !important; }
+
+  /* ── Allocation rows: right column min-width so values don't wrap ── */
+  .argt { min-width: 72px; }
+  .aval { font-size: .75rem; }
+  .apct { font-size: .63rem; }
+
+  /* ── Member summary rows ── */
+  .msrow { gap: .5rem; padding: .65rem 0; }
 
   /* Modals: bottom sheet */
   .ovl { align-items: flex-end; padding: 0; }
@@ -955,6 +972,12 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   /* Scroll snap */
   .tbar { scroll-snap-type: x proximity; }
   .mbar { scroll-snap-type: x proximity; }
+
+  /* ── Global font floor: clamp tiny rem labels to 11px minimum ──
+     .62rem @ 16px base = 9.9px — too small on mobile.
+     Raising base to 17px makes .62rem = 10.5px, .65rem = 11px, .7rem = 11.9px.
+     All larger text scales up proportionally, staying within design. */
+  html { font-size: 17px; }
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -968,6 +991,11 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   .m-hc-name { font-size: .82rem; }
   .hdr-right .btn-o:not(:first-child), .hdr-r .btn-o:not(:first-child) { display: none; }
   .login-card { padding: 2rem 1.2rem; max-width: 100%; }
+
+  /* On very small phones (360px), NRI grid goes single column */
+  /* The inline auto-fit grid already handles this via minmax(165px),
+     but add explicit override for edge cases */
+  html { font-size: 16px; }    /* revert to 16px — 17px base too big at 360px */
 }
 
 /* ══════════════════════════════════════════════════════════

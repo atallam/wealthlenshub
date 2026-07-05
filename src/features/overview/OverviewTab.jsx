@@ -309,20 +309,22 @@ export default function OverviewTab({
         const nm = nriMetrics || {};
         const hasIndia = nm.india_cur > 0;
         const hasUS    = nm.us_cur > 0;
+        const isMob = window.innerWidth < 600;
         const panelStyle = {
-          flex:1, minWidth:0,
+          minWidth:0,
           background:"var(--bg-muted)",
           border:"1px solid var(--border)",
-          borderRadius:10, padding:".9rem 1rem",
+          borderRadius:10,
+          padding: isMob ? ".7rem .75rem" : ".9rem 1rem",
         };
         const labelStyle = {fontSize:".65rem",color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:".3rem",display:"flex",alignItems:"center",gap:".3rem"};
-        const bigVal = {fontFamily:"'DM Mono',monospace",fontSize:"1.25rem",fontWeight:700,color:"var(--text)",lineHeight:1};
-        const secVal = {fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:"var(--text-dim)",marginTop:".2rem"};
-        const rowVal = {display:"flex",justifyContent:"space-between",alignItems:"baseline",marginTop:".55rem",fontSize:".78rem"};
+        const bigVal  = {fontFamily:"'DM Mono',monospace",fontSize: isMob ? "1.1rem" : "1.25rem",fontWeight:700,color:"var(--text)",lineHeight:1};
+        const secVal  = {fontFamily:"'DM Mono',monospace",fontSize:".7rem",color:"var(--text-dim)",marginTop:".2rem",wordBreak:"break-word"};
+        const rowVal  = {display:"flex",justifyContent:"space-between",alignItems:"baseline",marginTop:".5rem",fontSize:".76rem",gap:".35rem"};
         const gainColor = g => g >= 0 ? "#4caf9a" : "#e07c5a";
         const sign     = g => g >= 0 ? "+" : "−";
         return (
-          <div style={{display:"flex",gap:".6rem",marginBottom:"1rem",flexWrap:"wrap"}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,165px),1fr))",gap:".6rem",marginBottom:"1rem"}}>
             {/* India panel */}
             {hasIndia&&(
               <div style={panelStyle}>
@@ -379,16 +381,15 @@ export default function OverviewTab({
               </div>
               {/* FX impact strip — only shown when there are US holdings */}
               {hasUS && nm.fx_gain != null && Math.abs(nm.fx_gain) > 100 && (
-                <div style={{marginTop:".55rem",paddingTop:".45rem",borderTop:"1px solid var(--border)",fontSize:".65rem",color:"var(--text-muted)",display:"flex",justifyContent:"space-between"}}>
-                  <span>FX impact (₹/$)</span>
-                  <span style={{fontFamily:"'DM Mono',monospace",color:gainColor(nm.fx_gain)}}>
+                <div style={{marginTop:".5rem",paddingTop:".4rem",borderTop:"1px solid var(--border)",fontSize:".68rem",color:"var(--text-muted)",display:"flex",justifyContent:"space-between",gap:".35rem",flexWrap:"wrap"}}>
+                  <span style={{flexShrink:0}}>FX impact (₹/$)</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",color:gainColor(nm.fx_gain),textAlign:"right"}}>
                     {sign(nm.fx_gain)}{fmtCrINR(Math.abs(nm.fx_gain))}
                   </span>
                 </div>
               )}
               {/* Net worth strip — shown when liabilities exist */}
               {(liabilities||[]).length>0&&(()=>{
-                // Filter to member-relevant liabilities: exact member match, or unassigned (family-level)
                 const visLiab = selMember && selMember !== 'all'
                   ? (liabilities||[]).filter(l => l.member_id === selMember || !l.member_id)
                   : (liabilities||[]);
@@ -396,14 +397,14 @@ export default function OverviewTab({
                 const assets=nm.combined_cur||totCur;
                 const netWorth=assets-totalLiab;
                 return(
-                  <div style={{marginTop:".55rem",paddingTop:".45rem",borderTop:"1px solid rgba(224,124,90,.3)"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:".65rem",color:"var(--text-muted)",marginBottom:".2rem"}}>
-                      <span>Total Liabilities</span>
-                      <span style={{fontFamily:"'DM Mono',monospace",color:"#e07c5a"}}>−{fmtCrINR(totalLiab)}</span>
+                  <div style={{marginTop:".5rem",paddingTop:".4rem",borderTop:"1px solid rgba(224,124,90,.3)"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:".25rem",fontSize:".68rem",color:"var(--text-muted)",marginBottom:".2rem"}}>
+                      <span style={{flexShrink:0}}>Total Liabilities</span>
+                      <span style={{fontFamily:"'DM Mono',monospace",color:"#e07c5a",textAlign:"right"}}>−{fmtCrINR(totalLiab)}</span>
                     </div>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:".72rem",fontWeight:600}}>
-                      <span style={{color:"var(--text)"}}>True Net Worth</span>
-                      <span style={{fontFamily:"'DM Mono',monospace",color:netWorth>=0?"#4caf9a":"#e07c5a"}}>{fmtCrINR(netWorth)}</span>
+                    <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:".25rem",fontSize:".74rem",fontWeight:600}}>
+                      <span style={{color:"var(--text)",flexShrink:0}}>True Net Worth</span>
+                      <span style={{fontFamily:"'DM Mono',monospace",color:netWorth>=0?"#4caf9a":"#e07c5a",textAlign:"right"}}>{fmtCrINR(netWorth)}</span>
                     </div>
                   </div>
                 );
