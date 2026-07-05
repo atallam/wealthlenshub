@@ -83,9 +83,15 @@ export async function importHoldings(userId, body) {
 
   const isCASImport = !!cas_statement_date;
   if (isCASImport) {
+    // Compute affected members from actual incoming holdings — NOT from account_map values.
+    // Using account_map values would wipe joint-holder members who appear in the PDF
+    // but own none of the holdings in this batch (e.g. TV Rao on a Vijaya-primary account).
     const affectedMemberIds = new Set();
-    if (account_map) for (const mid of Object.values(account_map)) if (mid) affectedMemberIds.add(mid);
-    if (effectiveMemberId) affectedMemberIds.add(effectiveMemberId);
+    for (const h of holdings) {
+      const holderKey = h._holder_name || h._account_name;
+      const mid = (account_map && holderKey && account_map[holderKey]) || effectiveMemberId || h.member_id;
+      if (mid) affectedMemberIds.add(mid);
+    }
     if (affectedMemberIds.size > 0) {
       await supabase.from("holdings").delete().eq("user_id", userId).eq("source", "cas").in("member_id", [...affectedMemberIds]);
     }
