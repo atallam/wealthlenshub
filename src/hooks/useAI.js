@@ -9,7 +9,7 @@
  *   error            → replace placeholder with error message
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase.js';
 
 const TOOL_LABELS = {
@@ -20,10 +20,50 @@ const TOOL_LABELS = {
   get_tax_summary:       "🧾 Computing tax",
 };
 
+const MAX_PERSISTED = 60; // keep last 60 messages in localStorage
+
+function lsKey(uid) { return `wl_ai_conv_${uid}`; }
+
+function loadPersistedMessages(uid) {
+  try {
+    const raw = localStorage.getItem(lsKey(uid));
+    if (!raw) return [];
+    const msgs = JSON.parse(raw);
+    // Revive ts as Date objects; strip streaming flag (never persist mid-stream state)
+    return msgs.map(m => ({ ...m, ts: new Date(m.ts), streaming: false }));
+  } catch { return []; }
+}
+
+function persistMessages(uid, msgs) {
+  try {
+    // Only persist completed messages (no streaming ones)
+    const toSave = msgs
+      .filter(m => !m.streaming)
+      .slice(-MAX_PERSISTED)
+      .map(m => ({ role: m.role, content: m.content, ts: m.ts, toolCalls: m.toolCalls }));
+    localStorage.setItem(lsKey(uid), JSON.stringify(toSave));
+  } catch { /* localStorage unavailable — ignore */ }
+}
+
 export function useAI() {
   const [aiMessages, setAiMessages] = useState([]);
   const [aiInput,    setAiInput]    = useState("");
   const [aiLoading,  setAiLoading]  = useState(false);
+  const userIdRef  = useRef(null);
+
+  // On mount: get userId and restore persisted conversation
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const uid = session?.user?.id;
+        if (!uid) return;
+        userIdRef.current = uid;
+        const saved = loadPersistedMessages(uid);
+        if (saved.length > 0) setAiMessages(saved);
+      } catch { /* session unavailable */ }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * @param {string}  portfolioContext  - Text summary built in App.jsx
@@ -154,7 +194,23 @@ ${portfolioContext}`,
 
     setAiLoading(false);
     setTimeout(scroll, 100);
+
+    // Persist the completed conversation (after state settles)
+    if (userIdRef.current) {
+      setAiMessages(current => {
+        persistMessages(userIdRef.current, current);
+        return current; // no state change — side-effect only
+      });
+    }
   }
 
-  return { aiMessages, setAiMessages, aiInput, setAiInput, aiLoading, askAI };
+  /** Clear chat + remove localStorage snapshot */
+  function clearConversation() {
+    setAiMessages([]);
+    if (userIdRef.current) {
+      try { localStorage.removeItem(lsKey(userIdRef.current)); } catch {}
+    }
+  }
+
+  return { aiMessages, setAiMessages, aiInput, setAiInput, aiLoading, askAI, clearConversation };
 }

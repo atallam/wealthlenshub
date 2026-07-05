@@ -97,6 +97,27 @@ export default function HoldingsTab({
         <div className={`fchip${filterType==="ALL"?" act":""}`} onClick={()=>setFilterType("ALL")}>All</div>
         {Object.entries(AT).map(([k,v])=>(<div key={k} className={`fchip${filterType===k?" act":""}`} onClick={()=>setFilterType(k)}>{v.icon} {v.label}</div>))}
       </div>
+
+      {/* ── Export toolbar ── */}
+      {visH.length>0&&(
+        <div style={{display:"flex",gap:".5rem",justifyContent:"flex-end",marginBottom:".55rem"}}>
+          <a href="/api/export/holdings" download
+            style={{display:"inline-flex",alignItems:"center",gap:".35rem",padding:".28rem .7rem",
+              background:"rgba(76,175,154,.1)",border:"1px solid rgba(76,175,154,.25)",
+              color:"#4caf9a",borderRadius:5,fontSize:".68rem",fontFamily:"'DM Sans',sans-serif",
+              textDecoration:"none",cursor:"pointer"}}>
+            ⬇ Holdings CSV
+          </a>
+          <a href="/api/export/transactions" download
+            style={{display:"inline-flex",alignItems:"center",gap:".35rem",padding:".28rem .7rem",
+              background:"rgba(160,132,202,.1)",border:"1px solid rgba(160,132,202,.25)",
+              color:"#a084ca",borderRadius:5,fontSize:".68rem",fontFamily:"'DM Sans',sans-serif",
+              textDecoration:"none",cursor:"pointer"}}>
+            ⬇ Transactions CSV
+          </a>
+        </div>
+      )}
+
       {visH.length===0?<div className="empty">{demoMode?"No holdings match the current filter":"No holdings yet"} — <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setModal("add")}>add to portfolio</span>{!demoMode&&setShowImportHub&&<>{" or "}<span style={{color:"#5ea9a0",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setShowImportHub(true)}>import from a broker</span></>}{!demoMode&&<>{" or "}<span style={{color:"#a084ca",cursor:"pointer",textDecoration:"underline"}} onClick={loadDemoData}>try sample data</span></>}</div>:(<>
         <div className="ht-desktop"><div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",margin:"0 -0.9rem",padding:"0 0.9rem"}}>
           <table className="ht">

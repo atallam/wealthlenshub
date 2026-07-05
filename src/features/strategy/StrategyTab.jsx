@@ -16,6 +16,46 @@ function heldYears(h) {
   return sd ? (new Date() - new Date(sd)) / (864e5 * 365.25) : null;
 }
 
+// ─── Email Digest Button ───────────────────────────────────────────────────────
+function EmailDigestButton({ trigAlerts }) {
+  const [state, setState] = useState("idle"); // idle | sending | sent | error
+  const [errMsg, setErrMsg] = useState("");
+
+  async function send() {
+    if (state === "sending") return;
+    setState("sending");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
+      const res = await fetch("/api/alerts/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ trigAlerts }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setState("sent");
+      setTimeout(() => setState("idle"), 4000);
+    } catch (e) {
+      setErrMsg(e.message);
+      setState("error");
+      setTimeout(() => setState("idle"), 5000);
+    }
+  }
+
+  const label = state === "sending" ? "Sending…" : state === "sent" ? "✓ Sent!" : state === "error" ? `⚠ ${errMsg}` : "📧 Email Digest";
+  const clr   = state === "sent" ? "#4caf9a" : state === "error" ? "#e07c5a" : "rgba(224,124,90,.8)";
+
+  return (
+    <button onClick={send} disabled={state === "sending"}
+      style={{ fontSize: '.65rem', padding: '3px 10px', borderRadius: 4, cursor: 'pointer',
+        background: 'rgba(224,124,90,.1)', border: '1px solid rgba(224,124,90,.3)',
+        color: clr, fontFamily: "'DM Sans',sans-serif", transition: 'all .2s' }}>
+      {label}
+    </button>
+  );
+}
+
 // ─── Alert rule description ───────────────────────────────────────────────────
 function alertRuleDesc(a, AT) {
   if (!a) return '';
@@ -443,8 +483,11 @@ export default function StrategyTab({
       {/* ═══ TRIGGERED ALERTS ═══ */}
       {trigAlerts.length > 0 && (
         <div style={{ marginBottom: '1.2rem', padding: '1rem', borderRadius: 8, background: 'rgba(224,124,90,.06)', border: '1px solid rgba(224,124,90,.25)' }}>
-          <div style={{ fontSize: '.72rem', letterSpacing: '.1em', textTransform: 'uppercase', color: '#e07c5a', fontWeight: 600, marginBottom: '.7rem' }}>
-            ⚠ {trigAlerts.length} Alert{trigAlerts.length > 1 ? 's' : ''} Triggered
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: '.7rem' }}>
+            <div style={{ fontSize: '.72rem', letterSpacing: '.1em', textTransform: 'uppercase', color: '#e07c5a', fontWeight: 600 }}>
+              ⚠ {trigAlerts.length} Alert{trigAlerts.length > 1 ? 's' : ''} Triggered
+            </div>
+            <EmailDigestButton trigAlerts={trigAlerts} />
           </div>
           {trigAlerts.map(a => {
             const rule   = alerts.find(r => r.id === a.id);

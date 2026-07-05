@@ -739,6 +739,7 @@ ${alertsText}`;
               setAiInput={ai.setAiInput}
               aiLoading={ai.aiLoading}
               askAI={(_, __, overrideInput) => ai.askAI(buildPortfolioContext(), aiBottomRef, overrideInput)}
+              clearConversation={ai.clearConversation}
               aiBottomRef={aiBottomRef}
               suggestedQuestions={buildSuggestedQuestions()}
             />

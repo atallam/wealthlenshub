@@ -27,6 +27,8 @@ import gmailRouter        from "./routes/gmail.js";
 import fdRouter           from "./routes/fd.js";
 import taxRouter          from "./routes/tax.js";
 import concallRouter      from "./routes/concall.js";
+import exportRouter       from "./routes/export.js";
+import alertsRouter       from "./routes/alerts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -76,6 +78,8 @@ app.use("/api/gmail",         gmailRouter);
 app.use("/api/fd",            fdRouter);
 app.use("/api/tax",           taxRouter);
 app.use("/api/concall",       concallRouter);
+app.use("/api/export",        exportRouter);
+app.use("/api/alerts",        alertsRouter);
 
 // ── Global API error handler ─────────────────────────────────────────────────
 app.use((err, req, res, next) => {

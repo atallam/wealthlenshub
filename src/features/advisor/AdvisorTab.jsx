@@ -18,20 +18,31 @@ export default function AdvisorTab({
   setAiInput,
   aiLoading,
   askAI,              // (portfolioContext, aiBottomRef, overrideInput?) => void
+  clearConversation,  // clears messages + localStorage snapshot
   portfolioContext,
   aiBottomRef,
   suggestedQuestions, // dynamic questions built from live portfolio state
 }) {
-  const questions = suggestedQuestions?.length ? suggestedQuestions : FALLBACK_QUESTIONS;
+  const questions  = suggestedQuestions?.length ? suggestedQuestions : FALLBACK_QUESTIONS;
+  // Show "restored" hint when the oldest message is >1 min old (i.e. from a prior session)
+  const isRestored = aiMessages.length > 0 && aiMessages[0]?.ts
+    && (Date.now() - new Date(aiMessages[0].ts).getTime()) > 60_000;
   return (
     <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 280px)",minHeight:500}}>
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
         <div>
           <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"var(--text)"}}>✦ Advisor</div>
-          <div style={{fontSize:".72rem",color:"var(--text-muted)",marginTop:".2rem"}}>Ask anything about your holdings, returns, goals, or allocation</div>
+          <div style={{fontSize:".72rem",color:"var(--text-muted)",marginTop:".2rem"}}>
+            Ask anything about your holdings, returns, goals, or allocation
+            {isRestored&&<span style={{marginLeft:6,color:"rgba(201,168,76,.55)",fontSize:".64rem"}}>· restored from last session</span>}
+          </div>
         </div>
-        {aiMessages.length>0&&<button className="btn-sm" onClick={()=>setAiMessages([])}>Clear chat</button>}
+        {aiMessages.length>0&&(
+          <button className="btn-sm" onClick={()=>clearConversation ? clearConversation() : setAiMessages([])}>
+            Clear chat
+          </button>
+        )}
       </div>
 
       {/* Suggested questions — shown when chat is empty */}
