@@ -142,19 +142,45 @@ export function usePortfolio(user) {
 
   async function addTransaction(txnForm, globalMfAmount, globalMfNav, txnHolding, txnSavingRef) {
     if (!txnForm.holding_id) { toast.error("Select a holding first"); return; }
-    const selH = holdings.find(h => h.id === txnForm.holding_id);
-    const isMFGlobal = selH?.type === "MF";
-    let finalUnits = +txnForm.units;
-    let finalPrice = +txnForm.price;
-    if (isMFGlobal) {
-      if (!globalMfAmount || !globalMfNav?.nav) { toast.error("Enter amount and fetch NAV first"); return; }
-      finalUnits = +(+globalMfAmount / globalMfNav.nav).toFixed(4);
-      finalPrice = +globalMfNav.nav;
-    } else {
-      if (!txnForm.units || !txnForm.price) { toast.error("Fill in units and price"); return; }
-    }
     if (!txnForm.txn_date) { toast.error("Select a date for the transaction"); return; }
     if (txnSavingRef && txnSavingRef.current) return;
+
+    const CASH_EVENTS = new Set(["DIVIDEND","BONUS","RIGHTS","SWP"]);
+    const isCashEvent = CASH_EVENTS.has(txnForm.txn_type);
+
+    let finalUnits, finalPrice, finalAmount;
+
+    if (isCashEvent) {
+      // Cash events bypass MF NAV logic — use form values directly
+      if (txnForm.txn_type === "DIVIDEND") {
+        if (!txnForm.amount || Number(txnForm.amount) <= 0) { toast.error("Enter total cash received for dividend"); return; }
+        finalAmount = +txnForm.amount;
+        finalUnits  = txnForm.units ? +txnForm.units : 0;
+        finalPrice  = 0;
+      } else if (txnForm.txn_type === "BONUS") {
+        if (!txnForm.units || Number(txnForm.units) <= 0) { toast.error("Enter bonus units received"); return; }
+        finalUnits  = +txnForm.units;
+        finalPrice  = 0;
+      } else {
+        // RIGHTS / SWP
+        if (!txnForm.units || !txnForm.price) { toast.error("Fill in units and price"); return; }
+        finalUnits  = +txnForm.units;
+        finalPrice  = +txnForm.price;
+      }
+    } else {
+      const selH = holdings.find(h => h.id === txnForm.holding_id);
+      const isMFGlobal = selH?.type === "MF";
+      finalUnits = +txnForm.units;
+      finalPrice = +txnForm.price;
+      if (isMFGlobal) {
+        if (!globalMfAmount || !globalMfNav?.nav) { toast.error("Enter amount and fetch NAV first"); return; }
+        finalUnits = +(+globalMfAmount / globalMfNav.nav).toFixed(4);
+        finalPrice = +globalMfNav.nav;
+      } else {
+        if (!txnForm.units || !txnForm.price) { toast.error("Fill in units and price"); return; }
+      }
+    }
+
     if (txnSavingRef) txnSavingRef.current = true;
     try {
       await api("/api/transactions", {
@@ -163,6 +189,7 @@ export function usePortfolio(user) {
           txn_type:   txnForm.txn_type,
           units:      finalUnits,
           price:      finalPrice,
+          ...(finalAmount !== undefined ? { amount: finalAmount } : {}),
           price_usd:  txnForm.price_usd ? +txnForm.price_usd : undefined,
           txn_date:   txnForm.txn_date,
           notes:      txnForm.notes || "",

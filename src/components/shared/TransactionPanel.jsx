@@ -35,9 +35,17 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
   // Use fresh fetched data; fall back to inline while loading
   const txns = (freshTxns ?? holding.transactions ?? []).slice().sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
   const buys  = txns.filter(t=>t.txn_type==="BUY");
-  const sells = txns.filter(t=>t.txn_type==="SELL");
-  const netUnits = buys.reduce((s,t)=>s+Number(t.units),0) - sells.reduce((s,t)=>s+Number(t.units),0);
+  // Net units: BUY/BONUS/RIGHTS add units; SELL/SWP subtract; DIVIDEND is cash-only (no unit change)
+  const ADD_UNIT_TYPES = new Set(["BUY","BONUS","RIGHTS"]);
+  const SUB_UNIT_TYPES = new Set(["SELL","SWP"]);
+  const netUnits = txns.reduce((s,t)=>{
+    if(ADD_UNIT_TYPES.has(t.txn_type)) return s+Number(t.units);
+    if(SUB_UNIT_TYPES.has(t.txn_type)) return s-Number(t.units);
+    return s; // DIVIDEND — no unit change
+  },0);
   const avgCost  = buys.length>0 ? buys.reduce((s,t)=>s+Number(t.units)*Number(t.price),0)/buys.reduce((s,t)=>s+Number(t.units),0) : 0;
+  // Cash event totals
+  const totalDividends = txns.filter(t=>t.txn_type==="DIVIDEND").reduce((s,t)=>s+Number(t.amount||0),0);
   const isUS   = USD_TYPES.has(holding.type);
   const isMF   = holding.type==="MF";
   const priceLabel = isMF ? "NAV" : isUS ? "Price $" : "Price ₹";
@@ -249,10 +257,11 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
               {label:"Net Units", val:netUnits.toFixed(4)},
               {label:"Avg Cost (INR)", val:`₹${avgCost.toLocaleString("en-IN",{maximumFractionDigits:2})}`},
               {label:"Transactions", val:txns.length},
+              ...(totalDividends>0?[{label:"Total Dividends", val:`₹${totalDividends.toLocaleString("en-IN",{maximumFractionDigits:0})}`, color:"#5a9ce0"}]:[]),
             ].map(s=>(
               <div key={s.label} style={{background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:8,padding:".7rem .9rem",textAlign:"center"}}>
                 <div style={{fontSize:".62rem",letterSpacing:".08em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".3rem"}}>{s.label}</div>
-                <div style={{fontFamily:"'DM Mono',monospace",fontSize:".95rem",color:"#c9a84c"}}>{s.val}</div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:".95rem",color:s.color||"#c9a84c"}}>{s.val}</div>
               </div>
             ))}
           </div>
@@ -274,20 +283,40 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
                   <th>Notes</th><th/>
                 </tr></thead>
                 <tbody>
-                  {txns.map(t=>(
+                  {txns.map(t=>{
+                    const TYPE_STYLE = {
+                      BUY:      {bg:"rgba(76,175,154,.15)",  color:"#4caf9a"},
+                      SELL:     {bg:"rgba(224,124,90,.15)",  color:"#e07c5a"},
+                      DIVIDEND: {bg:"rgba(90,156,224,.15)",  color:"#5a9ce0"},
+                      BONUS:    {bg:"rgba(160,132,202,.15)", color:"#a084ca"},
+                      RIGHTS:   {bg:"rgba(201,168,76,.15)",  color:"#c9a84c"},
+                      SWP:      {bg:"rgba(224,90,90,.15)",   color:"#e05a5a"},
+                    };
+                    const ts = TYPE_STYLE[t.txn_type]||TYPE_STYLE.BUY;
+                    const isDivRow  = t.txn_type==="DIVIDEND";
+                    const isBonusRow= t.txn_type==="BONUS";
+                    // Total: DIVIDEND uses amount field; BONUS is 0 cost; others = units×price
+                    const rowTotal  = isDivRow
+                      ? (t.amount!=null ? `₹${Number(t.amount).toLocaleString("en-IN",{maximumFractionDigits:0})}` : "—")
+                      : isBonusRow
+                        ? "₹0"
+                        : `₹${(Number(t.units)*Number(t.price)).toLocaleString("en-IN",{maximumFractionDigits:0})}`;
+                    return (
                     <tr key={t.id}>
                       <td className="mono dim">{t.txn_date}</td>
-                      <td><span style={{fontSize:".65rem",padding:"2px 7px",borderRadius:3,fontWeight:600,background:t.txn_type==="BUY"?"rgba(76,175,154,.15)":"rgba(224,124,90,.15)",color:t.txn_type==="BUY"?"#4caf9a":"#e07c5a"}}>{t.txn_type}</span></td>
-                      <td className="r mono">{Number(t.units).toFixed(4)}</td>
-                      {isUS
+                      <td><span style={{fontSize:".65rem",padding:"2px 7px",borderRadius:3,fontWeight:600,background:ts.bg,color:ts.color}}>{t.txn_type}</span></td>
+                      <td className="r mono">{isDivRow&&!t.units?"—":Number(t.units).toFixed(isDivRow?0:4)}</td>
+                      {isUS&&!isDivRow
                         ? <><td className="r mono dim">${t.price_usd!=null?Number(t.price_usd).toFixed(2):(Number(t.price)/fx).toFixed(2)}</td><td className="r mono dim">₹{Number(t.price).toLocaleString("en-IN",{maximumFractionDigits:0})}</td></>
-                        : <td className="r mono dim">₹{Number(t.price).toLocaleString("en-IN",{maximumFractionDigits:2})}</td>
+                        : isUS
+                          ? <><td className="r mono dim">—</td><td className="r mono dim">—</td></>
+                          : <td className="r mono dim">{isDivRow?"—":`₹${Number(t.price).toLocaleString("en-IN",{maximumFractionDigits:2})}`}</td>
                       }
-                      <td className="r mono" style={{color:"var(--text)"}}>₹{(Number(t.units)*Number(t.price)).toLocaleString("en-IN",{maximumFractionDigits:0})}</td>
+                      <td className="r mono" style={{color:isDivRow?"#5a9ce0":"var(--text)"}}>{rowTotal}</td>
                       <td className="dim" style={{maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.notes||"—"}</td>
                       <td><button className="delbtn" onClick={()=>onDeleteTxn(t.id, holding.id)}>✕</button></td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>

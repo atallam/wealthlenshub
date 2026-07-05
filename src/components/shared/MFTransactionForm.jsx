@@ -47,19 +47,63 @@ export default function MFTransactionForm({ holding, isMF, isUS, fx, txnForm, se
     }
   }
 
-  const canSubmit = txnForm.units&&txnForm.price&&txnForm.txn_date;
+  // Cash event flags
+  const isDividend = txnForm.txn_type === "DIVIDEND";
+  const isBonus    = txnForm.txn_type === "BONUS";
+  const isRights   = txnForm.txn_type === "RIGHTS";
+  const isSWP      = txnForm.txn_type === "SWP";
+  const isCashEvent = isDividend || isBonus || isRights || isSWP;
+
+  const canSubmit = txnForm.txn_date && (
+    isDividend ? (txnForm.amount && Number(txnForm.amount) > 0)
+    : isBonus   ? (txnForm.units && Number(txnForm.units) > 0)
+    : (txnForm.units && txnForm.price)
+  );
 
   return (
     <div style={{background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:9,padding:"1rem"}}>
       <div style={{fontSize:".68rem",letterSpacing:".1em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".8rem"}}>Add Transaction</div>
       <div className="frow">
         <FG label="Type">
-          <select className="fi fs" value={txnForm.txn_type} onChange={e=>setTxnForm(p=>({...p,txn_type:e.target.value}))}>
+          <select className="fi fs" value={txnForm.txn_type} onChange={e=>setTxnForm(p=>({...p,txn_type:e.target.value,units:"",price:"",price_usd:"",amount:""}))}>
             <option value="BUY">BUY</option>
             <option value="SELL">SELL</option>
+            <option disabled>──────────</option>
+            <option value="DIVIDEND">DIVIDEND — cash received</option>
+            <option value="BONUS">BONUS — free units</option>
+            <option value="RIGHTS">RIGHTS — issue exercised</option>
+            {isMF&&<option value="SWP">SWP — systematic withdrawal</option>}
           </select>
         </FG>
-        {isMF?(<>
+
+        {/* ── CASH EVENT fields ── */}
+        {isDividend&&(<>
+          <FG label={isUS?"Total Cash Received $":"Total Cash Received ₹"}>
+            <input type="number" className="fi" placeholder="e.g. 2500" value={txnForm.amount||""} onChange={e=>setTxnForm(p=>({...p,amount:e.target.value}))}/>
+          </FG>
+          <FG label="Shares Held at Ex-date (optional)">
+            <input type="number" className="fi" placeholder="e.g. 100" value={txnForm.units} onChange={e=>setTxnForm(p=>({...p,units:e.target.value}))}/>
+          </FG>
+          <FG label="Date"><input type="date" className="fi" value={txnForm.txn_date} onChange={e=>setTxnForm(p=>({...p,txn_date:e.target.value}))}/></FG>
+        </>)}
+        {isBonus&&(<>
+          <FG label="Bonus Units Received">
+            <input type="number" className="fi" placeholder="e.g. 50" value={txnForm.units} onChange={e=>setTxnForm(p=>({...p,units:e.target.value,price:"0"}))}/>
+          </FG>
+          <FG label="Date"><input type="date" className="fi" value={txnForm.txn_date} onChange={e=>setTxnForm(p=>({...p,txn_date:e.target.value}))}/></FG>
+        </>)}
+        {(isRights||isSWP)&&(<>
+          <FG label="Units">
+            <input type="number" className="fi" placeholder="e.g. 25" value={txnForm.units} onChange={e=>setTxnForm(p=>({...p,units:e.target.value}))}/>
+          </FG>
+          <FG label={isSWP?"NAV ₹ per unit":"Exercise Price ₹ per unit"}>
+            <input type="number" className="fi" placeholder="per unit" value={txnForm.price} onChange={e=>setTxnForm(p=>({...p,price:e.target.value}))}/>
+          </FG>
+          <FG label="Date"><input type="date" className="fi" value={txnForm.txn_date} onChange={e=>setTxnForm(p=>({...p,txn_date:e.target.value}))}/></FG>
+        </>)}
+
+        {/* ── NORMAL BUY/SELL fields ── */}
+        {!isCashEvent&&(isMF?(<>
           <FG label="Amount Invested ₹">
             <input type="number" className="fi" placeholder="e.g. 5000" value={mfAmount} onChange={e=>handleAmountChange(e.target.value)}/>
           </FG>
@@ -80,11 +124,21 @@ export default function MFTransactionForm({ holding, isMF, isUS, fx, txnForm, se
           <FG label="Units"><input type="number" className="fi" placeholder="e.g. 100" value={txnForm.units} onChange={e=>setTxnForm(p=>({...p,units:e.target.value}))}/></FG>
           <FG label="Price ₹ per unit"><input type="number" className="fi" placeholder="per unit" value={txnForm.price} onChange={e=>setTxnForm(p=>({...p,price:e.target.value}))}/></FG>
           <FG label="Date"><input type="date" className="fi" value={txnForm.txn_date} onChange={e=>setTxnForm(p=>({...p,txn_date:e.target.value}))}/></FG>
-        </>)}
+        </>))}
       </div>
 
+      {/* Cash event hint */}
+      {isCashEvent&&(
+        <div style={{fontSize:".72rem",color:"var(--text-muted)",marginBottom:".7rem",padding:".45rem .7rem",background:"rgba(201,168,76,.05)",border:"1px solid rgba(201,168,76,.15)",borderRadius:6}}>
+          {isDividend&&"💰 Dividend — record total cash received. Units held is optional context."}
+          {isBonus&&"🎁 Bonus — new units added to your holding at ₹0 cost. No cash involved."}
+          {isRights&&"📋 Rights — units taken up at the exercise price per share."}
+          {isSWP&&"📅 SWP — periodic redemption from mutual fund at the applicable NAV."}
+        </div>
+      )}
+
       {/* MF: NAV info bar */}
-      {isMF&&(
+      {isMF&&!isCashEvent&&(
         <div style={{marginBottom:".8rem"}}>
           <div style={{display:"flex",alignItems:"center",gap:".65rem",padding:".55rem .8rem",
             background:navFetched?"rgba(76,175,154,.06)":"var(--text-muted)",
@@ -123,7 +177,7 @@ export default function MFTransactionForm({ holding, isMF, isUS, fx, txnForm, se
       )}
 
       {/* US FX bar */}
-      {isUS&&(
+      {isUS&&!isCashEvent&&(
         <div style={{display:"flex",alignItems:"center",gap:".75rem",marginBottom:".7rem",padding:".5rem .8rem",background:"rgba(90,156,224,.06)",border:"1px solid rgba(90,156,224,.18)",borderRadius:6}}>
           <div style={{flex:1,fontSize:".75rem"}}>
             <span style={{color:"var(--text-muted)"}}>1 USD = </span>

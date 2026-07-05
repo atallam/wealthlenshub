@@ -17,16 +17,28 @@ export async function listForHolding(userId, holdingId) {
   return data || [];
 }
 
+// Transaction types that carry units (affect net position)
+const UNIT_TYPES = new Set(["BUY", "SELL", "BONUS", "RIGHTS", "SWP"]);
+
 /** Insert a single transaction after verifying the parent holding is owned. */
 export async function add(userId, body) {
-  const { holding_id, txn_type, units, price, price_usd, txn_date, notes } = body;
+  const { holding_id, txn_type, units, price, price_usd, amount, txn_date, notes } = body;
   if (!holding_id) { const e = new Error("holding_id is required"); e.status = 400; throw e; }
   await assertOwnsHolding(userId, holding_id);
+
+  const type = txn_type || "BUY";
+  const isDividend = type === "DIVIDEND";
+
   const { error } = await supabase.from("transactions").insert({
     id: txnId(), holding_id, user_id: userId,
-    txn_type: txn_type || "BUY",
-    units: Number(units) || 0, price: Number(price) || 0,
+    txn_type: type,
+    // DIVIDEND: units = shares held at ex-date (informational), price = per-unit dividend (optional)
+    // BONUS/RIGHTS: units = new units received, price = exercise price (0 for bonus)
+    units: UNIT_TYPES.has(type) ? (Number(units) || 0) : (Number(units) || 0),
+    price: Number(price) || 0,
     ...(price_usd !== undefined ? { price_usd: Number(price_usd) } : {}),
+    // amount = total cash for DIVIDEND; null for everything else
+    ...(amount !== undefined && amount !== "" ? { amount: Number(amount) } : {}),
     txn_date: txn_date || new Date().toISOString().slice(0, 10),
     notes: notes || "",
   });
