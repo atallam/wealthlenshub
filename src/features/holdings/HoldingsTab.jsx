@@ -228,6 +228,32 @@ export default function HoldingsTab({
                             {h.currency}
                           </span>
                         )}
+                        {h.type==="INSURANCE"&&(()=>{
+                          const POLICY_ICON={TERM:"🛡️",ENDOWMENT:"💰",ULIP:"📈",WHOLE_LIFE:"🔄",HEALTH:"🏥",VEHICLE:"🚗"};
+                          const pIcon=POLICY_ICON[h.policy_type]||"🛡️";
+                          const dLeft=h.maturity_date?Math.ceil((new Date(h.maturity_date)-Date.now())/864e5):null;
+                          const mc=dLeft===null?"#e07b8c":dLeft>180?"#4caf9a":dLeft>60?"#f0a050":"#e07c5a";
+                          const matLabel=h.maturity_date?new Date(h.maturity_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"2-digit"}):null;
+                          const freqLabel={ANNUAL:"yr",SEMI:"6mo",QUARTERLY:"qtr",MONTHLY:"mo"}[h.premium_frequency||"ANNUAL"];
+                          return<div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>
+                            <span style={{fontSize:".58rem",fontWeight:600,padding:"2px 6px",borderRadius:4,
+                              background:"rgba(224,123,140,.15)",color:"#e07b8c",border:"1px solid rgba(224,123,140,.3)"}}>
+                              {pIcon} {(h.policy_type||"TERM").replace("_"," ")}
+                            </span>
+                            {h.sum_assured>0&&<span style={{fontSize:".58rem",fontWeight:600,padding:"2px 6px",borderRadius:4,
+                              background:"rgba(76,175,154,.1)",color:"#4caf9a",border:"1px solid rgba(76,175,154,.25)"}}>
+                              Cover ₹{(h.sum_assured/100000).toFixed(0)}L
+                            </span>}
+                            {h.premium>0&&<span style={{fontSize:".58rem",padding:"2px 6px",borderRadius:4,
+                              background:"var(--bg-muted)",color:"var(--text-muted)",border:"1px solid var(--border)"}}>
+                              ₹{Math.round(h.premium/1000)}K/{freqLabel}
+                            </span>}
+                            {matLabel&&<span style={{fontSize:".58rem",padding:"2px 6px",borderRadius:4,
+                              background:mc+"22",color:mc,border:`1px solid ${mc}44`}}>
+                              {dLeft<=0?"Expired":dLeft===null?"":dLeft>365?`${Math.round(dLeft/365)}yr`:`${dLeft}d`} · {matLabel}
+                            </span>}
+                          </div>;
+                        })()}
                       </td>
                       <td>
                         {(h.ticker||h.scheme_code)

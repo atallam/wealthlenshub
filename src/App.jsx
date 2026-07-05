@@ -113,7 +113,7 @@ export default function App() {
   const [artifactHolding, setArtifactHolding] = useState(null);
   const [targetAlloc, setTargetAlloc] = useState({
     IN_STOCK:35,MF:25,IN_ETF:5,US_STOCK:10,US_ETF:5,US_BOND:0,
-    CRYPTO:3,CASH:0,FD:5,PPF:5,EPF:5,REAL_ESTATE:2,OTHER:0,
+    CRYPTO:3,CASH:0,FD:5,PPF:5,EPF:5,REAL_ESTATE:2,INSURANCE:0,OTHER:0,
   });
   const [rebalMember, setRebalMember] = useState('all');
   const [rebalCash,   setRebalCash]   = useState('');
@@ -507,9 +507,13 @@ ${alertsText}`;
       maturity_date:  h.maturity_date  || '',
       purchase_value: h.purchase_value || '',
       current_value:  h.current_value  || '',
-      principal:      h.principal      || '',
-      usd_inr_rate:   h.usd_inr_rate   || '',
-      currency:       h.currency       || 'INR',
+      principal:          h.principal          || '',
+      usd_inr_rate:       h.usd_inr_rate       || '',
+      currency:           h.currency           || 'INR',
+      policy_type:        h.policy_type        || 'TERM',
+      sum_assured:        h.sum_assured        || '',
+      premium:            h.premium            || '',
+      premium_frequency:  h.premium_frequency  || 'ANNUAL',
     });
     setEditHolding(h);
     setModal('add');
@@ -986,6 +990,63 @@ ${alertsText}`;
               </FG>
             </div>
           )}
+
+          {/* Insurance */}
+          {form.type === 'INSURANCE' && (<>
+            <div className="frow">
+              <FG label="Policy Type">
+                <select className="fi fs" value={form.policy_type||'TERM'} onChange={e=>setForm(p=>({...p,policy_type:e.target.value}))}>
+                  <option value="TERM">🛡️ Term — Pure protection</option>
+                  <option value="ENDOWMENT">💰 Endowment — Protection + savings</option>
+                  <option value="ULIP">📈 ULIP — Unit-linked</option>
+                  <option value="WHOLE_LIFE">🔄 Whole Life — Lifelong cover</option>
+                  <option value="HEALTH">🏥 Health / Mediclaim</option>
+                  <option value="VEHICLE">🚗 Vehicle / Motor</option>
+                </select>
+              </FG>
+              <FG label="Sum Assured ₹ (coverage)">
+                <FmtInput value={form.sum_assured||''} placeholder="e.g. 10000000"
+                  onChange={e=>setForm(p=>({...p,sum_assured:e.target.value}))}/>
+              </FG>
+            </div>
+            <div className="frow">
+              <FG label="Premium ₹ per period">
+                <FmtInput value={form.premium||''} placeholder="e.g. 25000"
+                  onChange={e=>setForm(p=>({...p,premium:e.target.value}))}/>
+              </FG>
+              <FG label="Frequency">
+                <select className="fi fs" value={form.premium_frequency||'ANNUAL'} onChange={e=>setForm(p=>({...p,premium_frequency:e.target.value}))}>
+                  <option value="ANNUAL">Annual</option>
+                  <option value="SEMI">Semi-Annual (every 6 months)</option>
+                  <option value="QUARTERLY">Quarterly</option>
+                  <option value="MONTHLY">Monthly</option>
+                </select>
+              </FG>
+            </div>
+            <div className="frow">
+              <FG label="Policy Start Date">
+                <input type="date" className="fi" value={form.start_date}
+                  onChange={e=>setForm(p=>({...p,start_date:e.target.value}))}/>
+              </FG>
+              <FG label="Maturity / Expiry Date">
+                <input type="date" className="fi" value={form.maturity_date}
+                  onChange={e=>setForm(p=>({...p,maturity_date:e.target.value}))}/>
+              </FG>
+            </div>
+            {/* Savings-type policies: show current / invested value */}
+            {['ENDOWMENT','ULIP','WHOLE_LIFE'].includes(form.policy_type||'TERM')&&(
+              <div className="frow">
+                <FG label="Total Premiums Paid ₹">
+                  <FmtInput value={form.principal||''} placeholder="e.g. 150000"
+                    onChange={e=>setForm(p=>({...p,principal:e.target.value}))}/>
+                </FG>
+                <FG label="Current Surrender / Fund Value ₹">
+                  <FmtInput value={form.current_value||''} placeholder="e.g. 180000"
+                    onChange={e=>setForm(p=>({...p,current_value:e.target.value}))}/>
+                </FG>
+              </div>
+            )}
+          </>)}
 
           {/* Indian instruments */}
           {['MF','IN_STOCK','IN_ETF'].includes(form.type) && (

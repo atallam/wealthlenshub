@@ -15,11 +15,12 @@ export const AT = {
   PPF:         { label:"PPF",           color:"#4caf9a", icon:"📗", cat:"Debt" },
   EPF:         { label:"EPF",           color:"#6ec0c9", icon:"🏛️", cat:"Debt" },
   REAL_ESTATE: { label:"Real Estate",  color:"#7cb87c", icon:"🏠", cat:"Physical" },
+  INSURANCE:   { label:"Insurance",    color:"#e07b8c", icon:"🛡️", cat:"Protection" },
   OTHER:       { label:"Other",         color:"#999999", icon:"📁", cat:"Other" },
 };
 
 // Holding form — instrument details only, no transaction data
-export const BF={member_id:"",type:"US_STOCK",name:"",ticker:"",scheme_code:"",interest_rate:"",start_date:"",maturity_date:"",purchase_value:"",current_value:"",principal:"",usd_inr_rate:"",currency:"INR"};
+export const BF={member_id:"",type:"US_STOCK",name:"",ticker:"",scheme_code:"",interest_rate:"",start_date:"",maturity_date:"",purchase_value:"",current_value:"",principal:"",usd_inr_rate:"",currency:"INR",policy_type:"TERM",sum_assured:"",premium:"",premium_frequency:"ANNUAL"};
 // Transaction form
 // txn_type: BUY | SELL | DIVIDEND | BONUS | RIGHTS | SWP
 export const BT={holding_id:"",txn_type:"BUY",units:"",price:"",price_usd:"",amount:"",txn_date:new Date().toISOString().slice(0,10),notes:""};

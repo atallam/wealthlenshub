@@ -53,6 +53,8 @@ export function getVal(h){
     case"CRYPTO":      return units*(h.current_price||h.purchase_price||0);
     case"CASH":        return(h.current_price||h.current_value||h.purchase_price||0);
     case"REAL_ESTATE": return(h.current_value||h.purchase_value||0);
+    // INSURANCE: savings-type (ULIP/ENDOWMENT/WHOLE_LIFE) use current_value; pure protection = 0
+    case"INSURANCE":   return(h.current_value||0);
     default:           return(h.current_value||h.principal||0);
   }
 }
@@ -60,6 +62,7 @@ export function getInv(h){
   // null purchase_price/purchase_value = cost basis unknown (e.g. CAS demat equity)
   if(h.avg_cost!=null && h.net_units!=null) return h.net_units * h.avg_cost;
   switch(h.type){
+    case"INSURANCE":   return(h.principal||0); // total premiums paid to date
     case"MF":          return(h.units||0)*(h.purchase_nav||0)||(h.purchase_value||0);
     case"IN_STOCK":
     case"IN_ETF":

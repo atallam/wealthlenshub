@@ -148,8 +148,9 @@ export default function CalendarTab({
     // Insurance: policy maturity + recurring premium due dates
     if(h.type==="INSURANCE"&&h.start_date){
       if(h.maturity_date) addEvent(h.maturity_date,{type:"Policy Maturity",label:h.name,color:"#e07b8c",icon:"🛡️"});
-      const freqMap={ANNUAL:12,HALF:6,QUARTERLY:3,MONTHLY:1};
-      const monthInterval=freqMap[h.ticker||"ANNUAL"]||12;
+      // premium_frequency: ANNUAL|SEMI|QUARTERLY|MONTHLY (was wrongly stored in h.ticker)
+      const freqMap={ANNUAL:12,SEMI:6,QUARTERLY:3,MONTHLY:1};
+      const monthInterval=freqMap[h.premium_frequency||h.ticker||"ANNUAL"]||12;
       const startDt=new Date(h.start_date);
       const startAbsMo=startDt.getFullYear()*12+startDt.getMonth();
       const viewAbsMo=calY*12+(calMo-1);
@@ -157,7 +158,8 @@ export default function CalendarTab({
       if(diff>0&&diff%monthInterval===0){
         const premDay=Math.min(startDt.getDate(),new Date(calY,calMo,0).getDate());
         const d=`${calY}-${String(calMo).padStart(2,"0")}-${String(premDay).padStart(2,"0")}`;
-        const premAmt=+h.interest_rate||0;
+        // premium field (new) falls back to interest_rate (legacy hack) then 0
+        const premAmt=+(h.premium||h.interest_rate)||0;
         const premLabel=`${h.name.length>22?h.name.slice(0,22)+"...":h.name}${premAmt?` (₹${Math.round(premAmt/1000)}K)`:""}`;
         addEvent(d,{type:"Premium Due",label:premLabel,color:"#e07b8c",icon:"🛡️"});
       }
