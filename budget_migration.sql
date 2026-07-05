@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS budget_transactions (
 -- Budget categories — family-defined spending buckets
 CREATE TABLE IF NOT EXISTS budget_categories (
   id            text PRIMARY KEY,
+  user_id       text,                    -- NULL = system default (visible to all); set on user-created categories
   name          text NOT NULL,
   color         text DEFAULT '#c9a84c',
   icon          text DEFAULT '📁',
@@ -50,6 +51,13 @@ ALTER TABLE budget_categories  DISABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_budget_txns_statement ON budget_transactions(statement_id);
 CREATE INDEX IF NOT EXISTS idx_budget_txns_date ON budget_transactions(txn_date);
 CREATE INDEX IF NOT EXISTS idx_budget_txns_category ON budget_transactions(category);
+CREATE INDEX IF NOT EXISTS idx_budget_cats_user ON budget_categories(user_id);
+
+-- Migration patch: add user_id to budget_categories if upgrading from an older schema
+ALTER TABLE budget_categories ADD COLUMN IF NOT EXISTS user_id text;
+
+-- user_id = NULL means system default category (seeded defaults, visible to all users via OR IS NULL logic in service)
+-- user_id = <uuid> means user-created category, scoped only to that user
 
 -- Auto-expire statements older than 1 year (run as a scheduled function or cron)
 -- DELETE FROM budget_statements WHERE upload_date < now() - interval '1 year';
@@ -64,9 +72,4 @@ INSERT INTO budget_categories (id, name, color, icon, monthly_limit, keywords) V
   ('cat_utility',   'Bills & Utilities',  '#c9a84c', '💡',  6000,  'electricity,water,gas,broadband,jio,airtel,bsnl,vi,tata,recharge'),
   ('cat_emi',       'EMIs & Loans',       '#e07c5a', '🏦',  0,     'emi,loan,housing,home loan,car loan,personal loan,hdfc,icici,sbi,axis'),
   ('cat_entertain', 'Entertainment',      '#f0a050', '🎬',  3000,  'netflix,amazon prime,hotstar,spotify,bookmyshow,inox,pvr,movie'),
-  ('cat_travel',    'Travel',             '#5a9ce0', '✈️',  0,     'irctc,indigo,air india,spicejet,hotel,oyo,makemytrip,yatra,booking'),
-  ('cat_education', 'Education',          '#a084ca', '📚',  0,     'school,college,course,udemy,coursera,byju,unacademy,tuition'),
-  ('cat_invest',    'Investments',        '#c9a84c', '📈',  0,     'mutual fund,sip,zerodha,groww,upstox,stock,nse,bse,mf'),
-  ('cat_transfer',  'Transfers',          '#6b6356', '↔️',  0,     'neft,rtgs,imps,upi,transfer,self transfer,own account'),
-  ('cat_other',     'Other',              '#6b6356', '📦',  0,     '')
-ON CONFLICT (id) DO NOTHING;
+  ('cat_travel',    'Travel',             '#5a9ce0', '✈️',  0,     'irctc,indigo,

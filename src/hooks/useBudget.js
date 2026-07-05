@@ -84,9 +84,7 @@ export function useBudget(user) {
         setBudgetUploadMsg(`✓ Imported ${data.txn_count} transactions (${data.period_start} to ${data.period_end})`);
         setBudgetUploadFile(null);
         setBudgetUploadForm({ region: "", bank_key: "", statement_type: "BANK", notes: "", custom_label: "" });
-        await loadBudget(budgetSelMonth);
-        const stmts = await api("/api/budget/statements");
-        setBudgetStatements(stmts || []);
+        await loadBudget(budgetSelMonth); // already re-fetches statements, categories, and analytics
       } else { setBudgetUploadMsg("⚠ " + data.error); }
     } catch (e) { setBudgetUploadMsg("⚠ " + e.message); }
     setBudgetUploading(false);
@@ -103,8 +101,7 @@ export function useBudget(user) {
         `US parser: ${data.usRowsParsed} rows | IN parser: ${data.inRowsParsed} rows\n`;
       if (data.imported > 0) {
         msg = `✓ Imported ${data.imported} transactions via debug endpoint\n` + msg;
-        await loadBudget(budgetSelMonth);
-        setBudgetStatements(await api("/api/budget/statements") || []);
+        await loadBudget(budgetSelMonth); // already re-fetches statements
       } else {
         msg += `Import: ${data.imported} (${data.importError || "no rows to import"})\n`;
       }
@@ -193,3 +190,4 @@ export function useBudget(user) {
     deleteBudgetStatement,
   };
 }
+                                                                                

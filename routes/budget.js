@@ -17,6 +17,8 @@ router.post("/upload", auth, upload.single("file"), async (req, res) => {
 });
 
 router.post("/debug-pdf", auth, upload.single("file"), async (req, res) => {
+  // Dev-only: disabled in production to prevent exposure of internal parsing internals
+  if (IS_PROD) return res.status(404).json({ error: "Not found" });
   if (!req.file) return res.status(400).json({ error: "No file" });
   const ext = req.file.originalname.split(".").pop().toLowerCase();
   if (ext !== "pdf") return res.status(400).json({ error: "PDF only" });
@@ -65,8 +67,4 @@ router.delete("/categories/:id", auth, async (req, res) => {
 router.get("/analytics", auth, async (req, res) => {
   try { res.json(await budget.analytics(req.user.id, req.query.month)); } catch (e) { sendError(res, e); }
 });
-router.get("/benchmark", auth, async (req, res) => {
-  try { res.json(await budget.benchmark(req.query.period)); } catch (e) { sendError(res, e); }
-});
-
-export default router;
+router.get("/benchmark"

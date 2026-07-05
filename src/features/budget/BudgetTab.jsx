@@ -198,31 +198,14 @@ export default function BudgetTab({
   FG,
   MA,
   Overlay,
+  // Load handlers + upload handler from useBudget hook (avoids duplicate definitions)
+  loadBudget: loadBudgetHook,
+  loadTxns:   loadTxnsHook,
+  uploadBudgetStatement,
 }) {
-  // ── Load functions ──
-  async function loadBudget(){
-    try{
-      const [stmts,cats,analytics]=await Promise.all([
-        api("/api/budget/statements"),
-        api("/api/budget/categories"),
-        api(`/api/budget/analytics${budgetSelMonth?`?month=${budgetSelMonth}`:""}`)
-      ]);
-      setBudgetStatements(stmts||[]);
-      setBudgetCategories(cats||[]);
-      setBudgetAnalytics(analytics||null);
-    }catch(e){console.error(e);}
-  }
-  async function loadTxns(){
-    try{
-      const params=new URLSearchParams();
-      if(budgetSelStmt!=="all") params.set("statement_id",budgetSelStmt);
-      if(budgetSelCat!=="All") params.set("category",budgetSelCat);
-      if(budgetSelMonth) params.set("month",budgetSelMonth);
-      if(budgetSearch) params.set("search",budgetSearch);
-      const txns=await api(`/api/budget/transactions?${params}`);
-      setBudgetTxns(txns||[]);
-    }catch(e){console.error(e);}
-  }
+  // Wrap hook functions with current filter state so callers inside JSX don't need to pass args
+  function loadBudget() { return loadBudgetHook(budgetSelMonth); }
+  function loadTxns()   { return loadTxnsHook(budgetSelStmt, budgetSelCat, budgetSelMonth, budgetSearch); }
 
   // ── Charts ──
   const analytics=budgetAnalytics;
@@ -267,41 +250,15 @@ export default function BudgetTab({
         <div style={{display:"flex",alignItems:"center",gap:".5rem"}}>
           <input type="month" className="fi" style={{width:150,padding:".28rem .6rem",fontSize:".75rem"}}
             value={budgetSelMonth}
-            onChange={e=>{
+            onChange={async e=>{
               const mo = e.target.value;
               setBudgetSelMonth(mo);
-              (async()=>{
-                try {
-                  const [stmts,cats,analytics,txns] = await Promise.all([
-                    api("/api/budget/statements"),
-                    api("/api/budget/categories"),
-                    api(`/api/budget/analytics${mo?`?month=${mo}`:""}`),
-                    api(`/api/budget/transactions${mo?`?month=${mo}`:""}`)
-                  ]);
-                  setBudgetStatements(stmts||[]);
-                  setBudgetCategories(cats||[]);
-                  setBudgetAnalytics(analytics||null);
-                  setBudgetTxns(txns||[]);
-                } catch(err) { console.error("Month change reload:", err); }
-              })();
+              await Promise.all([loadBudgetHook(mo), loadTxnsHook(budgetSelStmt, budgetSelCat, mo, budgetSearch)]);
             }}
             placeholder="All time"/>
-          {budgetSelMonth&&<button onClick={()=>{
+          {budgetSelMonth&&<button onClick={async()=>{
             setBudgetSelMonth("");
-            (async()=>{
-              try {
-                const [stmts,cats,analytics,txns] = await Promise.all([
-                  api("/api/budget/statements"),
-                  api("/api/budget/categories"),
-                  api("/api/budget/analytics"),
-                  api("/api/budget/transactions")
-                ]);
-                setBudgetStatements(stmts||[]);
-                setBudgetCategories(cats||[]);
-                setBudgetAnalytics(analytics||null);
-                setBudgetTxns(txns||[]);
-              } catch(err) { console.error("Month clear reload:", err); }
-            })();
+            await Promise.all([loadBudgetHook(""), loadTxnsHook(budgetSelStmt, budgetSelCat, "", budgetSearch)]);
           }} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:".9rem"}}>✕</button>}
         </div>
       </div>
@@ -537,7 +494,7 @@ export default function BudgetTab({
                   <th>Date</th><th>Description</th><th className="r">Amount</th><th>Type</th><th>Category</th>
                 </tr></thead>
                 <tbody>
-                  {budgetTxns.slice(0,200).map(t=>{
+                  {budgetTxns.map(t=>{
                     const cat=budgetCategories.find(c=>c.name===t.category);
                     return(<tr key={t.id} style={{background:selectedTxnIds.has(t.id)?"rgba(201,168,76,.06)":""}}>
                       <td><input type="checkbox" checked={selectedTxnIds.has(t.id)}
@@ -561,7 +518,7 @@ export default function BudgetTab({
                   })}
                 </tbody>
               </table>
-              {budgetTxns.length>200&&<div style={{padding:".65rem",textAlign:"center",fontSize:".72rem",color:"var(--text-muted)"}}>Showing 200 of {budgetTxns.length} transactions — apply filters to narrow</div>}
+              {budgetTxns.length>=500&&<div style={{padding:".65rem",textAlign:"center",fontSize:".72rem",color:"var(--text-muted)"}}>Showing first 500 transactions — apply filters or select a month to narrow</div>}
             </div>
           )}
         </>);
@@ -580,7 +537,7 @@ export default function BudgetTab({
                 <div>
                   <div style={{fontSize:".9rem",color:"var(--text)",marginBottom:".2rem"}}>{cat.icon} {cat.name}</div>
                   <div style={{fontSize:".68rem",color:"var(--text-muted)"}}>
-                    {cat.monthly_limit>0?`Budget: ₹${cat.monthly_limit.toLocaleString("en-IN")} /mo`:"No budget set"}
+                    {cat.monthly_limit>0?`Budget: ${fmtAmt(cat.monthly_limit, domCur)} /mo`:"No budget set"}
                   </div>
                   {cat.keywords&&<div style={{fontSize:".65rem",color:"var(--text-muted)",marginTop:".2rem",lineHeight:1.5}}>Keywords: {cat.keywords.slice(0,60)}{cat.keywords.length>60?"…":""}</div>}
                 </div>
@@ -721,93 +678,4 @@ export default function BudgetTab({
               color:budgetUploadMsg.startsWith("✓")?"#4caf9a":budgetUploadMsg.startsWith("📄")?"var(--text-dim)":"#e07c5a"}}>
               {budgetUploadMsg}
             </div>
-          )}
-
-          <button className="btns" disabled={!budgetUploadFile||!budgetUploadForm.region||budgetUploading}
-            onClick={async()=>{
-              if(!budgetUploadFile||!budgetUploadForm.region) return;
-              const bankKey = budgetUploadForm.bank_key || (budgetUploadForm.region==="AUTO"?"auto":"");
-              if(!bankKey){setBudgetUploadMsg("⚠ Please select a bank"); return;}
-              setBudgetUploading(true); setBudgetUploadMsg("");
-              try{
-                const fd=new FormData();
-                fd.append("file",budgetUploadFile);
-                fd.append("bank_key",bankKey);
-                fd.append("source",budgetUploadForm.custom_label||budgetUploadForm.bank_key||"Auto");
-                fd.append("statement_type",budgetUploadForm.statement_type);
-                fd.append("notes",budgetUploadForm.notes||"");
-                const data=await api("/api/budget/upload",{method:"POST",body:fd});
-                if(data.ok){
-                  setBudgetUploadMsg(`✓ Imported ${data.txn_count} transactions (${data.period_start} to ${data.period_end})`);
-                  setBudgetUploadFile(null);
-                  setBudgetUploadForm({region:"",bank_key:"",statement_type:"BANK",notes:"",custom_label:""});
-                  await loadBudget();
-                  const stmts=await api("/api/budget/statements");
-                  setBudgetStatements(stmts||[]);
-                } else { setBudgetUploadMsg("⚠ "+data.error); }
-              }catch(e){ setBudgetUploadMsg("⚠ "+e.message); }
-              setBudgetUploading(false);
-            }}>
-            {budgetUploading?"Importing…":"Upload & Parse"}
-          </button>
-          {budgetUploadFile && budgetUploadFile.name.endsWith(".pdf") && (
-            <button className="btnc" style={{marginLeft:".5rem",fontSize:".7rem"}}
-              onClick={async()=>{
-                setBudgetUploadMsg("Analyzing + importing PDF...");
-                try{
-                  const fd=new FormData();
-                  fd.append("file",budgetUploadFile);
-                  fd.append("import","true");
-                  const data=await api("/api/budget/debug-pdf",{method:"POST",body:fd});
-                  let msg = `📄 ${data.pages} pages, ${data.totalLines} lines, ${data.totalChars} chars\n` +
-                    `US parser: ${data.usRowsParsed} rows | IN parser: ${data.inRowsParsed} rows\n`;
-                  if (data.imported > 0) {
-                    msg = `✓ Imported ${data.imported} transactions via debug endpoint\n` + msg;
-                    await loadBudget();
-                    setBudgetStatements(await api("/api/budget/statements") || []);
-                  } else {
-                    msg += `Import: ${data.imported} (${data.importError || "no rows to import"})\n`;
-                  }
-                  msg += `Sections: ${data.sectionHeaders?.join(" | ") || "none"}\n` +
-                    `Date lines: ${data.dateLines?.slice(0,5).join(" | ") || "none"}\n` +
-                    `--- First 15 lines ---\n${data.first80Lines?.slice(0,15).join("\n")}`;
-                  setBudgetUploadMsg(msg);
-                }catch(e){setBudgetUploadMsg("⚠ Debug: "+e.message);}
-              }}>
-              🔍 Debug + Import PDF
-            </button>
-          )}
-        </div>
-
-        {/* Statement history */}
-        <div className="card">
-          <div className="ctitle">Statement History (1-year rolling)</div>
-          {budgetStatements.length===0?<div className="empty">No statements imported yet</div>:(
-            <table className="ht">
-              <thead><tr><th>Source</th><th>Type</th><th>Period</th><th className="r">Transactions</th><th>Uploaded</th><th>Notes</th><th/></tr></thead>
-              <tbody>
-                {budgetStatements.map(s=>(
-                  <tr key={s.id}>
-                    <td style={{fontWeight:500,color:"var(--text)"}}>{s.source}</td>
-                    <td><span style={{fontSize:".68rem",padding:"2px 7px",borderRadius:3,background:`${TYPE_COLORS[s.statement_type]||"#6b6356"}22`,color:TYPE_COLORS[s.statement_type]||"#6b6356",border:`1px solid ${TYPE_COLORS[s.statement_type]||"#6b6356"}44`}}>{TYPE_ICONS[s.statement_type]} {s.statement_type}</span></td>
-                    <td className="dim" style={{fontSize:".75rem"}}>{s.period_start||"?"} → {s.period_end||"?"}</td>
-                    <td className="r mono" style={{color:"#c9a84c"}}>{s.txn_count}</td>
-                    <td className="dim" style={{fontSize:".72rem"}}>{s.upload_date?.slice(0,10)}</td>
-                    <td className="dim" style={{fontSize:".72rem",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.notes||"—"}</td>
-                    <td><button className="delbtn" onClick={async()=>{
-                      if(!confirm(`Delete "${s.source}" statement and all its transactions?`))return;
-                      await api(`/api/budget/statements/${s.id}`,{method:"DELETE"});
-                      const stmts=await api("/api/budget/statements");
-                      setBudgetStatements(stmts||[]);
-                    }}>✕</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-      </>)}
-    </>
-  );
-}
+   

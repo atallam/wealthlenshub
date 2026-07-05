@@ -7,7 +7,7 @@ import { randomUUID } from "crypto";
 import { supabase } from "../lib/db.js";
 import { encrypt, decrypt } from "../lib/crypto.js";
 import {
-  xlsxBufferToCSV, autoCategorise, BANK_REGISTRY, parseCSV,
+  xlsxBufferToCSV, autoCategorise, loadCategoriesForBulk, BANK_REGISTRY, parseCSV,
   extractPDFText, parseUSPDF, parseIndianPDF, parseDateForRegion, parseAmtBudget,
 } from "../lib/parsers.js";
 import { yahooFetch } from "../lib/prices.js";
@@ -54,6 +54,9 @@ export async function uploadStatement(userId, file, body, isProd) {
   if (!rawRows.length && (!bank_key || bank_key === "auto")) throw err("Could not auto-detect bank format. Please select your bank from the dropdown and try again.", 400, { code: "BANK_DETECT_FAILED" });
   if (!rawRows.length) throw err(`No transactions found (ext=${ext}, bank=${bank_key}, region=${region}).`, 400);
 
+  // Load categories once — avoids N+1 DB query (one per transaction)
+  const catList = await loadCategoriesForBulk(userId);
+
   const txns = [];
   let periodStart = null, periodEnd = null, skippedNoDate = 0, skippedNoAmt = 0, skippedNoDesc = 0;
   for (const row of rawRows) {
@@ -63,7 +66,7 @@ export async function uploadStatement(userId, file, body, isProd) {
     if (debit === 0 && credit === 0) { skippedNoAmt++; continue; }
     const desc = String(row.desc || "").trim();
     if (!desc) { skippedNoDesc++; continue; }
-    const category = await autoCategorise(desc);
+    const category = autoCategorise(desc, catList);
     if (!periodStart || date < periodStart) periodStart = date;
     if (!periodEnd || date > periodEnd) periodEnd = date;
     txns.push({
@@ -106,8 +109,14 @@ export async function listTransactions(userId, query) {
   let q = supabase.from("budget_transactions").select("*").eq("user_id", userId).order("txn_date", { ascending: false });
   if (statement_id) q = q.eq("statement_id", statement_id);
   if (category && category !== "All") q = q.eq("category", category);
-  if (month) q = q.gte("txn_date", `${month}-01`).lte("txn_date", `${month}-31`);
-  q = q.limit(1000);
+  if (month) {
+    const [y, m] = month.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate(); // correct last day for any month
+    q = q.gte("txn_date", `${month}-01`).lte("txn_date", `${month}-${String(lastDay).padStart(2, "0")}`);
+  }
+  // Note: description is AES-encrypted so server-side search isn't possible without a plaintext index.
+  // We fetch up to 500 rows and filter in-memory for the search param.
+  q = q.limit(500);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   const decrypted = (data || []).map((t) => ({ ...t, description: decrypt(t.description), balance: t.balance ? decrypt(t.balance) : null }));
@@ -125,7 +134,12 @@ export async function recategorise(userId, ids, category) {
 }
 
 export async function listCategories(userId) {
-  const { data, error } = await supabase.from("budget_categories").select("*").eq("user_id", userId).order("name");
+  // Returns system defaults (user_id IS NULL) + user's own categories (user_id = userId)
+  const { data, error } = await supabase
+    .from("budget_categories")
+    .select("*")
+    .or(`user_id.eq.${userId},user_id.is.null`)
+    .order("name");
   if (error) throw new Error(error.message);
   return data || [];
 }
@@ -146,11 +160,17 @@ export async function updateCategory(userId, id, name, keywords, icon, color, mo
   if (icon          !== undefined) patch.icon          = icon;
   if (color         !== undefined) patch.color         = color;
   if (monthly_limit !== undefined) patch.monthly_limit = Number(monthly_limit) || 0;
-  const { error } = await supabase.from("budget_categories").update(patch).eq("id", id).eq("user_id", userId);
+  // Only allow editing user-owned categories (user_id = userId); system defaults (NULL) are read-only
+  const { error } = await supabase
+    .from("budget_categories")
+    .update(patch)
+    .eq("id", id)
+    .eq("user_id", userId);
   if (error) throw new Error(error.message);
   return { ok: true };
 }
 export async function deleteCategory(userId, id) {
+  // Only allow deleting user-owned categories; system defaults are protected
   await supabase.from("budget_categories").delete().eq("id", id).eq("user_id", userId);
   return { ok: true };
 }
@@ -199,6 +219,7 @@ export async function debugPdf(userId, file, body) {
   if (rawRows.length > 0 && body && body !== "debug_only") {
     try {
       const id = stId();
+      const catList = await loadCategoriesForBulk(userId);
       const txns = []; let periodStart = null, periodEnd = null;
       for (const row of rawRows) {
         const date = parseDateForRegion(row.date, region);
@@ -206,18 +227,10 @@ export async function debugPdf(userId, file, body) {
         const debit = Math.abs(parseAmtBudget(row.debit)), credit = Math.abs(parseAmtBudget(row.credit));
         if (debit === 0 && credit === 0) continue;
         const desc = String(row.desc || "").trim(); if (!desc) continue;
-        const category = await autoCategorise(desc);
+        const category = autoCategorise(desc, catList);
         if (!periodStart || date < periodStart) periodStart = date;
         if (!periodEnd || date > periodEnd) periodEnd = date;
         txns.push({ id: txId(), statement_id: id, user_id: userId, txn_date: date, description: encrypt(desc), raw_desc: encrypt(desc), amount: debit > 0 ? debit : credit, txn_type: debit > 0 ? "DEBIT" : "CREDIT", category, balance: row.balance ? encrypt(String(row.balance)) : null, ref_number: (row.ref || "").slice(0, 50), currency: "USD" });
       }
       if (txns.length > 0) {
-        await supabase.from("budget_statements").delete().eq("user_id", userId).lt("upload_date", new Date(Date.now() - 365 * 24 * 3600_000).toISOString());
-        await supabase.from("budget_statements").insert({ user_id: userId, id, source: "Bank of America (debug)", statement_type: "BANK", filename: file.originalname, file_size: file.size, period_start: periodStart, period_end: periodEnd, txn_count: txns.length, notes: "Imported via debug endpoint", region: "US" });
-        for (let i = 0; i < txns.length; i += 100) { const { error } = await supabase.from("budget_transactions").insert(txns.slice(i, i + 100)); if (error) importError = error.message; }
-        imported = txns.length;
-      }
-    } catch (ie) { importError = ie.message; }
-  }
-  return { pages: undefined, totalChars: rawText.length, totalLines: lines.length, usRowsParsed: usRows.length, inRowsParsed: inRows.length, sectionHeaders, dateLines, first80Lines: sampleLines, usRowsSample: usRows.slice(0, 5), inRowsSample: inRows.slice(0, 5), imported, importError };
-}
+        await supabase.from("budget_statements").delete().eq("user_id", userId).lt("upload_date", new Date(Date.now() - 365 * 24 * 360
