@@ -16,8 +16,10 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../supabase.js';
 import { goalCagr, sipRequired, getTaxPath } from '../features/goals/goalMath.js';
+import { readSSEStream } from './useStreamAI.js';
 
 export { getTaxPath }; // re-export so callers only need one import
+export { readSSEStream }; // re-export for backwards compat with OverviewTab, CalendarTab, MembersTab
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -38,39 +40,7 @@ async function aiChat(messages, system, model = 'claude-haiku-4-5-20251001') {
   return data.content?.filter(b => b.type === 'text').map(b => b.text).join('') || '';
 }
 
-/** Read an SSE stream from /api/ai/chat/stream, calling onChunk for each text delta. */
-export async function readSSEStream(res, onChunk, signal) {
-  const reader  = res.body?.getReader();
-  if (!reader) throw new Error('No response body');
-  const decoder = new TextDecoder();
-  let buf = '';
-  try {
-    while (true) {
-      if (signal?.aborted) break;
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const lines = buf.split('\n');
-      buf = lines.pop() ?? '';
-      for (const line of lines) {
-        const t = line.trim();
-        if (!t || t === 'data: [DONE]') continue;
-        if (t.startsWith('data: ')) {
-          try {
-            const ev = JSON.parse(t.slice(6));
-            if (ev.type === 'text_delta' && ev.text) onChunk(ev.text);
-            if (ev.type === 'done') return;
-            if (ev.type === 'error') throw new Error(ev.error);
-          } catch (e) {
-            if (e.message && !e.message.includes('JSON')) throw e;
-          }
-        }
-      }
-    }
-  } finally {
-    reader.cancel().catch(() => {});
-  }
-}
+// readSSEStream is now imported from useStreamAI.js (single source of truth)
 
 async function aiStream(prompt, system, onChunk, signal, model = 'claude-sonnet-4-6') {
   const token = await getToken();

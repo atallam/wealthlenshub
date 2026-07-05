@@ -10,39 +10,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../supabase.js';
-
-// ── helpers ────────────────────────────────────────────────────────────────
-
-function fmtINR(n) {
-  if (n == null || isNaN(n)) return '—';
-  const abs = Math.abs(n);
-  const sign = n < 0 ? '−' : '';
-  if (abs >= 1e7) return `${sign}₹${(abs / 1e7).toFixed(2)} Cr`;
-  if (abs >= 1e5) return `${sign}₹${(abs / 1e5).toFixed(2)} L`;
-  return `${sign}₹${abs.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-}
-
-function gainColor(n) {
-  if (!n) return 'var(--text-muted)';
-  return n >= 0 ? '#4caf9a' : '#e07c5a';
-}
-
-function currentFY() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = d.getMonth(); // April = 3
-  const s = m >= 3 ? y : y - 1;
-  return `${s}-${String(s + 1).slice(-2)}`;
-}
-
-function fyList() {
-  const cur = parseInt(currentFY().split('-')[0], 10);
-  const fys = [];
-  for (let y = cur + 1; y >= 2021; y--) {
-    fys.push(`${y}-${String(y + 1).slice(-2)}`);
-  }
-  return fys;
-}
+import { gainColor, currentFY, fyList, fmtINRCompact as fmtINR } from '../../lib/fmt.js';
 
 // ── sub-components ─────────────────────────────────────────────────────────
 

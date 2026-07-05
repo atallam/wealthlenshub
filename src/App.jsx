@@ -64,6 +64,12 @@ import GoalPlanModal from './components/modals/GoalPlanModal.jsx';
 import ImportModal from './components/modals/ImportModal.jsx';
 import ImportHub from './components/modals/ImportHub.jsx';
 
+// ── Context ──────────────────────────────────────────────────────
+import { PortfolioProvider } from './contexts/PortfolioContext.jsx';
+
+// ── Error boundary ───────────────────────────────────────────────
+import ErrorBoundary from './components/shared/ErrorBoundary.jsx';
+
 // ── API helper imported from lib/api.js (see top imports) ────────
 
 const TABS = [
@@ -522,103 +528,123 @@ ${alertsText}`;
 
       {/* ── MAIN CONTENT ───────────────────────────────────────── */}
       <main className="main">
+      <PortfolioProvider value={sharedPortfolioProps}>
 
         {/* Loading skeleton shown while portfolio data fetches after auth */}
         {!loaded && <LoadingSkeleton />}
 
         {loaded && tab === 'overview' && (
-          <OverviewTab
-            {...sharedPortfolioProps}
-            selMember={selMember}
-            bmPeriod={bmPeriod} setBmPeriod={setBmPeriod}
-            setBenchmark={portfolio.setBenchmark}
-            nwMember={nwMember} setNwMember={setNwMember}
-          />
+          <ErrorBoundary tab="Overview">
+            <OverviewTab
+              {...sharedPortfolioProps}
+              selMember={selMember}
+              bmPeriod={bmPeriod} setBmPeriod={setBmPeriod}
+              setBenchmark={portfolio.setBenchmark}
+              nwMember={nwMember} setNwMember={setNwMember}
+            />
+          </ErrorBoundary>
         )}
 
         {loaded && tab === 'holdings' && (
-          <HoldingsTab
-            {...sharedPortfolioProps}
-            visH={visH}
-            filterType={filterType} setFilterType={setFilterType}
-            sortCol={sortCol}       setSortCol={setSortCol}
-            sortDir={sortDir}       setSortDir={setSortDir}
-            expandedHolding={expandedHolding} setExpandedHolding={setExpandedHolding}
-            toggleSort={toggleSort}
-            editH={editH}
-            setTxnForm={setTxnForm}
-            setTxnHolding={setTxnHolding}
-            setArtifactHolding={setArtifactHolding}
-          />
+          <ErrorBoundary tab="Holdings">
+            <HoldingsTab
+              {...sharedPortfolioProps}
+              visH={visH}
+              filterType={filterType} setFilterType={setFilterType}
+              sortCol={sortCol}       setSortCol={setSortCol}
+              sortDir={sortDir}       setSortDir={setSortDir}
+              expandedHolding={expandedHolding} setExpandedHolding={setExpandedHolding}
+              toggleSort={toggleSort}
+              editH={editH}
+              setTxnForm={setTxnForm}
+              setTxnHolding={setTxnHolding}
+              setArtifactHolding={setArtifactHolding}
+            />
+          </ErrorBoundary>
         )}
 
         {loaded && tab === 'goals' && (
-          <GoalsTab
-            {...sharedPortfolioProps}
-            setGoals={portfolio.setGoals}
-            setGoalForm={setGoalForm}
-            setEditGoalId={setEditGoalId}
-          />
+          <ErrorBoundary tab="Goals">
+            <GoalsTab
+              {...sharedPortfolioProps}
+              setGoals={portfolio.setGoals}
+              setGoalForm={setGoalForm}
+              setEditGoalId={setEditGoalId}
+            />
+          </ErrorBoundary>
         )}
 
         {loaded && tab === 'strategy' && (
-          <StrategyTab
-            {...sharedPortfolioProps}
-            targetAlloc={targetAlloc} setTargetAlloc={setTargetAlloc}
-            rebalMember={rebalMember} setRebalMember={setRebalMember}
-            rebalCash={rebalCash}     setRebalCash={setRebalCash}
-            showQuietAlerts={showQuietAlerts} setShowQuietAlerts={setShowQuietAlerts}
-            setAlertForm={setAlertForm}
-            setAlerts={portfolio.setAlerts}
-          />
+          <ErrorBoundary tab="Strategy">
+            <StrategyTab
+              {...sharedPortfolioProps}
+              targetAlloc={targetAlloc} setTargetAlloc={setTargetAlloc}
+              rebalMember={rebalMember} setRebalMember={setRebalMember}
+              rebalCash={rebalCash}     setRebalCash={setRebalCash}
+              showQuietAlerts={showQuietAlerts} setShowQuietAlerts={setShowQuietAlerts}
+              setAlertForm={setAlertForm}
+              setAlerts={portfolio.setAlerts}
+            />
+          </ErrorBoundary>
         )}
 
         {loaded && tab === 'members' && (
-          <MembersTab
-            {...sharedPortfolioProps}
-            openMemberModal={openMemberModal}
-            setMemberAction={setMemberAction}
-            memberAction={memberAction}
-            deleteMember={(id, reassignTo) => portfolio.deleteMember(id, reassignTo, holdings)}
-            mergeMembers={portfolio.mergeMembers}
-          />
+          <ErrorBoundary tab="Members">
+            <MembersTab
+              {...sharedPortfolioProps}
+              openMemberModal={openMemberModal}
+              setMemberAction={setMemberAction}
+              memberAction={memberAction}
+              deleteMember={(id, reassignTo) => portfolio.deleteMember(id, reassignTo, holdings)}
+              mergeMembers={portfolio.mergeMembers}
+            />
+          </ErrorBoundary>
         )}
 
         {loaded && tab === 'budget' && (
-          <BudgetTab
-            {...budget}
-            allCur={allCur} allInv={allInv} totInv={totInv}
-            fmtCr={fmtCr} fmtPct={fmtPct}
-            api={api} FG={FG} MA={MA} Overlay={Overlay}
-          />
+          <ErrorBoundary tab="Budget">
+            <BudgetTab
+              {...budget}
+              allCur={allCur} allInv={allInv} totInv={totInv}
+              fmtCr={fmtCr} fmtPct={fmtPct}
+              api={api} FG={FG} MA={MA} Overlay={Overlay}
+            />
+          </ErrorBoundary>
         )}
 
         {loaded && tab === 'calendar' && (
-          <CalendarTab
-            holdings={holdings} goals={goals}
-            calMonth={calMonth} setCalMonth={setCalMonth}
-          />
+          <ErrorBoundary tab="Calendar">
+            <CalendarTab
+              holdings={holdings} goals={goals}
+              calMonth={calMonth} setCalMonth={setCalMonth}
+            />
+          </ErrorBoundary>
         )}
 
         {loaded && tab === 'tax' && (
-          <TaxTab
-            members={members}
-            selMember={selMember}
-          />
+          <ErrorBoundary tab="Tax">
+            <TaxTab
+              members={members}
+              selMember={selMember}
+            />
+          </ErrorBoundary>
         )}
 
         {loaded && tab === 'advisor' && (
-          <AdvisorTab
-            aiMessages={ai.aiMessages}
-            setAiMessages={ai.setAiMessages}
-            aiInput={ai.aiInput}
-            setAiInput={ai.setAiInput}
-            aiLoading={ai.aiLoading}
-            askAI={(_, __, overrideInput) => ai.askAI(buildPortfolioContext(), aiBottomRef, overrideInput)}
-            aiBottomRef={aiBottomRef}
-          />
+          <ErrorBoundary tab="Advisor">
+            <AdvisorTab
+              aiMessages={ai.aiMessages}
+              setAiMessages={ai.setAiMessages}
+              aiInput={ai.aiInput}
+              setAiInput={ai.setAiInput}
+              aiLoading={ai.aiLoading}
+              askAI={(_, __, overrideInput) => ai.askAI(buildPortfolioContext(), aiBottomRef, overrideInput)}
+              aiBottomRef={aiBottomRef}
+            />
+          </ErrorBoundary>
         )}
 
+      </PortfolioProvider>
       </main>
 
       {/* ── FAB — Add Holding (mobile) ──────────────────────────── */}
