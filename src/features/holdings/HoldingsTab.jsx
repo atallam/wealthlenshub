@@ -1,6 +1,7 @@
 // HoldingsTab.jsx — lines 2866–3205 of App.jsx
 
 import { useState } from "react";
+import { ClipboardList, Paperclip, Pencil, X as XIcon } from "lucide-react";
 import ConcallPanel from "./ConcallPanel.jsx";
 
 const CONCALL_TYPES = new Set(["IN_STOCK", "IN_ETF", "US_STOCK", "US_ETF"]);
@@ -141,12 +142,12 @@ export default function HoldingsTab({
                     <div key={i} style={{fontSize:".72rem"}}>
                       <span style={{color:"var(--text-dim)"}}>{e.member}:</span>{" "}
                       <span style={{color:"#4caf9a",fontWeight:500}}>{new Date(e.date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</span>
-                      <span style={{color:"var(--text-muted)",marginLeft:".3rem",fontSize:".62rem"}}>{e.src}</span>
+                      <span style={{color:"var(--text-muted)",marginLeft:".3rem",fontSize:".65rem"}}>{e.src}</span>
                     </div>
                   ))}
                 </div>
               )}
-              <div style={{fontSize:".6rem",color:"var(--text-muted)",marginTop:".15rem"}}>NAVs & prices reflect the CAS statement date, not live market</div>
+              <div style={{fontSize:".65rem",color:"var(--text-muted)",marginTop:".15rem"}}>NAVs & prices reflect the CAS statement date, not live market</div>
             </div>
           </div>
         );
@@ -207,25 +208,17 @@ export default function HoldingsTab({
       {/* ── Export toolbar ── */}
       {displayH.length>0&&(
         <div style={{display:"flex",gap:".5rem",justifyContent:"flex-end",marginBottom:".55rem"}}>
-          <a href="/api/export/holdings" download
-            style={{display:"inline-flex",alignItems:"center",gap:".35rem",padding:".28rem .7rem",
-              background:"rgba(76,175,154,.1)",border:"1px solid rgba(76,175,154,.25)",
-              color:"#4caf9a",borderRadius:5,fontSize:".68rem",fontFamily:"'DM Sans',sans-serif",
-              textDecoration:"none",cursor:"pointer"}}>
+          <a href="/api/export/holdings" download className="btn-o" style={{fontSize:".72rem",padding:".28rem .7rem",minHeight:32}}>
             ⬇ Holdings CSV
           </a>
-          <a href="/api/export/transactions" download
-            style={{display:"inline-flex",alignItems:"center",gap:".35rem",padding:".28rem .7rem",
-              background:"rgba(160,132,202,.1)",border:"1px solid rgba(160,132,202,.25)",
-              color:"#a084ca",borderRadius:5,fontSize:".68rem",fontFamily:"'DM Sans',sans-serif",
-              textDecoration:"none",cursor:"pointer"}}>
+          <a href="/api/export/transactions" download className="btn-o" style={{fontSize:".72rem",padding:".28rem .7rem",minHeight:32,borderColor:"rgba(160,132,202,.4)",color:"var(--accent-2)"}}>
             ⬇ Transactions CSV
           </a>
         </div>
       )}
 
       {displayH.length===0?<div className="empty">{demoMode?"No holdings match the current filter": showStaleOnly ? "No stale holdings found — everything is up to date" : "No holdings yet"} — <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setModal("add")}>add to portfolio</span>{!demoMode&&setShowImportHub&&<>{" or "}<span style={{color:"#5ea9a0",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setShowImportHub(true)}>import from a broker</span></>}{!demoMode&&<>{" or "}<span style={{color:"#a084ca",cursor:"pointer",textDecoration:"underline"}} onClick={loadDemoData}>try sample data</span></>}</div>:(<>
-        <div className="ht-desktop"><div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",margin:"0 -0.9rem",padding:"0 0.9rem"}}>
+        <div className="ht-desktop"><div className="ht-scroll-outer">
           <table className="ht">
             <thead><tr>
               {[
@@ -244,10 +237,10 @@ export default function HoldingsTab({
                   onClick={()=>toggleSort(c.key)}
                   style={{cursor:"pointer",userSelect:"none",whiteSpace:"nowrap"}}>
                   {c.label}
-                  {c.tip&&<span title={c.tip} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",border:"1px solid var(--border)",fontSize:"8px",color:"var(--text-muted)",marginLeft:3,cursor:"help",verticalAlign:"middle",fontStyle:"normal",fontWeight:400}}>?</span>}
+                  {c.tip&&<span title={c.tip} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:13,height:13,borderRadius:"50%",border:"1px solid var(--border)",fontSize:"10px",color:"var(--text-muted)",marginLeft:3,cursor:"help",verticalAlign:"middle",fontStyle:"normal",fontWeight:400}}>?</span>}
                   {sortCol===c.key
-                    ? <span style={{marginLeft:3,fontSize:".55rem",opacity:.7}}>{sortDir==="asc"?"▲":"▼"}</span>
-                    : <span style={{marginLeft:3,fontSize:".55rem",opacity:.25}}>⇅</span>}
+                    ? <span style={{marginLeft:3,fontSize:".72rem",opacity:.7}}>{sortDir==="asc"?"▲":"▼"}</span>
+                    : <span style={{marginLeft:3,fontSize:".72rem",opacity:.25}}>⇅</span>}
                 </th>
               ))}
               <th style={{width:"130px",minWidth:"130px"}}/>
@@ -290,7 +283,7 @@ export default function HoldingsTab({
                         <span style={{fontSize:".78rem",letterSpacing:".1em",textTransform:"uppercase",color:grp.color,fontWeight:700}}>
                           {grp.icon} {grp.label}
                         </span>
-                        <span style={{fontSize:".62rem",color:"var(--text-muted)",marginLeft:10}}>{grp.items.length} holding{grp.items.length!==1?"s":""}</span>
+                        <span style={{fontSize:".65rem",color:"var(--text-muted)",marginLeft:10}}>{grp.items.length} holding{grp.items.length!==1?"s":""}</span>
                       </td>
                       <td className="r" style={{padding:".7rem .65rem",borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`}}>
                         <span style={{fontFamily:"'DM Mono',monospace",fontSize:".76rem",color:grp.color,fontWeight:600}}>{fmtGrpCr(grpCur)}</span>
@@ -343,14 +336,14 @@ export default function HoldingsTab({
                           const mc=dLeft>90?"#4caf9a":dLeft>30?"#f0a050":"#e07c5a";
                           const matLabel=new Date(h.maturity_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"2-digit"});
                           return<div style={{marginTop:3,display:"inline-flex",alignItems:"center",gap:4,
-                            fontSize:".58rem",fontWeight:600,padding:"2px 6px",borderRadius:4,
+                            fontSize:".65rem",fontWeight:600,padding:"2px 6px",borderRadius:4,
                             background:mc+"22",color:mc,border:`1px solid ${mc}44`}}>
                             🏦 {matLabel} · {dLeft<=0?"Matured":`${dLeft}d`}
                             {h.interest_rate?<span style={{opacity:.8}}> · {h.interest_rate}%</span>:null}
                           </div>;
                         })()}
                         {h.type==="FD"&&h.currency&&h.currency!=="INR"&&(
-                          <span style={{marginLeft:4,fontSize:".58rem",fontWeight:700,padding:"2px 6px",borderRadius:4,
+                          <span style={{marginLeft:4,fontSize:".65rem",fontWeight:700,padding:"2px 6px",borderRadius:4,
                             background:"rgba(90,156,224,.15)",color:"#5a9ce0",border:"1px solid rgba(90,156,224,.3)"}}>
                             {h.currency}
                           </span>
@@ -363,19 +356,19 @@ export default function HoldingsTab({
                           const matLabel=h.maturity_date?new Date(h.maturity_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"2-digit"}):null;
                           const freqLabel={ANNUAL:"yr",SEMI:"6mo",QUARTERLY:"qtr",MONTHLY:"mo"}[h.premium_frequency||"ANNUAL"];
                           return<div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>
-                            <span style={{fontSize:".58rem",fontWeight:600,padding:"2px 6px",borderRadius:4,
+                            <span style={{fontSize:".65rem",fontWeight:600,padding:"2px 6px",borderRadius:4,
                               background:"rgba(224,123,140,.15)",color:"#e07b8c",border:"1px solid rgba(224,123,140,.3)"}}>
                               {pIcon} {(h.policy_type||"TERM").replace("_"," ")}
                             </span>
-                            {h.sum_assured>0&&<span style={{fontSize:".58rem",fontWeight:600,padding:"2px 6px",borderRadius:4,
+                            {h.sum_assured>0&&<span style={{fontSize:".65rem",fontWeight:600,padding:"2px 6px",borderRadius:4,
                               background:"rgba(76,175,154,.1)",color:"#4caf9a",border:"1px solid rgba(76,175,154,.25)"}}>
                               Cover ₹{(h.sum_assured/100000).toFixed(0)}L
                             </span>}
-                            {h.premium>0&&<span style={{fontSize:".58rem",padding:"2px 6px",borderRadius:4,
+                            {h.premium>0&&<span style={{fontSize:".65rem",padding:"2px 6px",borderRadius:4,
                               background:"var(--bg-muted)",color:"var(--text-muted)",border:"1px solid var(--border)"}}>
                               ₹{Math.round(h.premium/1000)}K/{freqLabel}
                             </span>}
-                            {matLabel&&<span style={{fontSize:".58rem",padding:"2px 6px",borderRadius:4,
+                            {matLabel&&<span style={{fontSize:".65rem",padding:"2px 6px",borderRadius:4,
                               background:mc+"22",color:mc,border:`1px solid ${mc}44`}}>
                               {dLeft<=0?"Expired":dLeft===null?"":dLeft>365?`${Math.round(dLeft/365)}yr`:`${dLeft}d`} · {matLabel}
                             </span>}
@@ -396,9 +389,9 @@ export default function HoldingsTab({
                       </td>
                       <td>
                         {brokerLabel
-                          ? <div><span style={{fontSize:".62rem",background:"rgba(167,139,250,.08)",color:"rgba(167,139,250,.7)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(167,139,250,.15)"}}>{brokerLabel}</span>
-                              <div style={{fontSize:".55rem",color:"var(--text-muted)",marginTop:2}}>{srcLabel}</div></div>
-                          : <span style={{fontSize:".62rem",color:"var(--text-muted)"}}>{srcLabel}</span>
+                          ? <div><span style={{fontSize:".65rem",background:"rgba(167,139,250,.08)",color:"rgba(167,139,250,.7)",padding:"2px 6px",borderRadius:3,border:"1px solid rgba(167,139,250,.15)"}}>{brokerLabel}</span>
+                              <div style={{fontSize:".72rem",color:"var(--text-muted)",marginTop:2}}>{srcLabel}</div></div>
+                          : <span style={{fontSize:".65rem",color:"var(--text-muted)"}}>{srcLabel}</span>
                         }
                       </td>
                       <td className="r">
@@ -409,14 +402,14 @@ export default function HoldingsTab({
                       <td className="r">{avgDisplay}</td>
                       <td className="r">
                         <div>{curPriceDisplay}</div>
-                        {isLive&&<div style={{fontSize:".52rem",color:"#4caf9a",marginTop:1}}>● {ago(h.price_fetched_at)}</div>}
+                        {isLive&&<div style={{fontSize:".65rem",color:"#4caf9a",marginTop:1}}>● {ago(h.price_fetched_at)}</div>}
                       </td>
                       <td className="r">
                         <div style={{fontFamily:"'DM Mono',monospace",fontWeight:500,fontSize:".78rem"}}>{fmtCrNative(cur, h)}</div>
                       </td>
                       <td className="r">
                         {g===null
-                          ? <div style={{fontSize:".7rem",color:"var(--text-muted)"}}>— <span style={{fontSize:".6rem"}}>no cost basis</span></div>
+                          ? <div style={{fontSize:".7rem",color:"var(--text-muted)"}}>— no cost basis</div>
                           : <>
                             <div className={`mono${g>=0?" gain":" loss"}`} style={{fontSize:".78rem"}}>{g>=0?"+":""}{fmtNative(Math.abs(g), h)}</div>
                             <div className={`mono${p>=0?" gain":" loss"}`} style={{fontSize:".65rem",marginTop:1}}>{fmtPct(p)}</div>
@@ -438,27 +431,29 @@ export default function HoldingsTab({
                           {/* Transactions */}
                           <button className="delbtn" title="View transactions" aria-label="View transactions"
                             onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}}
-                            style={{color:(h.transaction_count??h.transactions?.length??0)>0?"#a084ca":"var(--text-muted)"}}>
-                            📋{(h.transaction_count??h.transactions?.length??0)>0?` ${(h.transaction_count??h.transactions?.length??0)}`:""}
+                            style={{color:(h.transaction_count??h.transactions?.length??0)>0?"#a084ca":"var(--text-muted)",gap:".25rem",fontSize:".72rem"}}>
+                            <ClipboardList size={13} strokeWidth={1.8}/>
+                            {(h.transaction_count??h.transactions?.length??0)>0&&<span>{h.transaction_count??h.transactions?.length}</span>}
                           </button>
                           {/* Documents */}
                           <button className="delbtn" title="Attach documents" aria-label="Attach documents"
                             onClick={()=>setArtifactHolding(h)}
-                            style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)"}}>
-                            📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}
+                            style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)",gap:".25rem",fontSize:".72rem"}}>
+                            <Paperclip size={13} strokeWidth={1.8}/>
+                            {(h.artifacts||[]).length>0&&<span>{h.artifacts.length}</span>}
                           </button>
                           {/* Edit — always reserve space */}
                           <button className="delbtn" title="Modify holding" aria-label="Modify holding"
                             onClick={()=>editH(h)}
                             style={{
                               visibility: (!h.source||h.source==="manual") ? "visible" : "hidden",
-                              color: "rgba(90,156,224,.5)",
-                            }}>✎</button>
+                              color: "rgba(90,156,224,.65)",
+                            }}><Pencil size={13} strokeWidth={1.8}/></button>
                           {/* Delete — always reserve space */}
                           <button className="delbtn" title="Delete holding" aria-label="Delete holding"
                             onClick={()=>deleteHolding(h.id)}
-                            style={{visibility: (!h.source||h.source==="manual") ? "visible" : "hidden"}}>
-                            ✕
+                            style={{visibility: (!h.source||h.source==="manual") ? "visible" : "hidden", color:"var(--loss)"}}>
+                            <XIcon size={13} strokeWidth={2}/>
                           </button>
                         </div>
                       </td>
@@ -489,7 +484,7 @@ export default function HoldingsTab({
                   <td className="r" style={{padding:".75rem .65rem"}}>
                     <div style={{fontFamily:"'DM Mono',monospace",fontWeight:700,color:"#c9a84c",fontSize:".88rem"}}>{fmtCr(totC)}</div>
                     <div style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:"rgba(201,168,76,.8)",marginTop:1,fontWeight:600}}>≈ {fmtCrINR(totC)}</div>
-                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".62rem",color:"var(--text-muted)",marginTop:1}}>inv. {fmtCr(totI)}</div>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:".65rem",color:"var(--text-muted)",marginTop:1}}>inv. {fmtCr(totI)}</div>
                   </td>
                   <td className="r" style={{padding:".75rem .65rem"}}>
                     <div className={`mono${totG>=0?" gain":" loss"}`} style={{fontWeight:600,fontSize:".83rem"}}>{totG>=0?"+":""}{fmtCr(totG)}</div>
@@ -527,7 +522,7 @@ export default function HoldingsTab({
               return(<div key={grp.key} style={gi>0?{marginTop:"1rem"}:{}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:".6rem .5rem",marginBottom:".35rem",borderTop:`2px solid ${grp.color}44`,borderBottom:`1px solid ${grp.color}33`,background:`${grp.color}0D`,borderRadius:"4px 4px 0 0"}}>
                   <span style={{fontSize:".76rem",letterSpacing:".1em",textTransform:"uppercase",color:grp.color,fontWeight:700}}>{grp.icon} {grp.label} <span style={{color:"var(--text-muted)",fontWeight:400}}>{grp.items.length}</span></span>
-                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:grp.color,fontWeight:600}}>{fmtGrpCr(grpCur)} <span className={grpG>=0?"gain":"loss"} style={{fontSize:".62rem"}}>{grpG>=0?"+":""}{fmtPct(grpP)}</span></span>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",color:grp.color,fontWeight:600}}>{fmtGrpCr(grpCur)} <span className={grpG>=0?"gain":"loss"} style={{fontSize:".65rem"}}>{grpG>=0?"+":""}{fmtPct(grpP)}</span></span>
                 </div>
                 {grp.items.map(h=>{
                   const cur=valNativeCache.get(h.id)||0,inv=invNativeCache.get(h.id),hasInv=inv!=null&&inv>0,g=hasInv?cur-inv:null,p=hasInv?(g/inv)*100:null;
@@ -576,7 +571,7 @@ export default function HoldingsTab({
                           <span className="m-hc-lbl">Cur. Price</span>
                           <span className="m-hc-val">{rawPrice?`${nativeSym}${h.type==="MF"?Number(rawPrice).toFixed(4):Number(rawPrice).toLocaleString(isUS?"en-US":"en-IN",{maximumFractionDigits:2})}`:"—"}</span>
                           {h.price_fetched_at && (
-                            <span style={{fontSize:".56rem",color:"#4caf9a",marginTop:2,display:"flex",alignItems:"center",gap:3}}>
+                            <span style={{fontSize:".65rem",color:"#4caf9a",marginTop:2,display:"flex",alignItems:"center",gap:3}}>
                               <span style={{width:5,height:5,borderRadius:"50%",background:"#4caf9a",display:"inline-block"}}/>
                               {ago(h.price_fetched_at)}
                             </span>
@@ -590,7 +585,7 @@ export default function HoldingsTab({
                           const dLeft=Math.ceil((new Date(h.maturity_date)-Date.now())/864e5);
                           const mc=dLeft>90?"#4caf9a":dLeft>30?"#f0a050":"#e07c5a";
                           return<div className="m-hc-cell" style={{gridColumn:"1/-1"}}>
-                            <span className="m-hc-lbl">Maturity {h.currency&&h.currency!=="INR"&&<span style={{marginLeft:4,fontSize:".6rem",fontWeight:700,padding:"1px 5px",borderRadius:3,background:"rgba(90,156,224,.15)",color:"#5a9ce0",border:"1px solid rgba(90,156,224,.3)"}}>{h.currency}</span>}</span>
+                            <span className="m-hc-lbl">Maturity {h.currency&&h.currency!=="INR"&&<span style={{marginLeft:4,fontSize:".65rem",fontWeight:700,padding:"1px 5px",borderRadius:3,background:"rgba(90,156,224,.15)",color:"#5a9ce0",border:"1px solid rgba(90,156,224,.3)"}}>{h.currency}</span>}</span>
                             <span className="m-hc-val" style={{color:mc,fontWeight:600}}>
                               {new Date(h.maturity_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}
                               {" "}· {dLeft<=0?"Matured":`${dLeft}d remaining`}
@@ -600,12 +595,26 @@ export default function HoldingsTab({
                         })()}
                       </>}
                     </div>
-                    {!isExp&&<div style={{textAlign:"center",marginTop:".4rem",fontSize:".56rem",color:"var(--text-muted)",letterSpacing:".08em",textTransform:"uppercase"}}>tap for details</div>}
+                    {!isExp&&<div style={{textAlign:"center",marginTop:".4rem",fontSize:".65rem",color:"var(--text-muted)",letterSpacing:".08em",textTransform:"uppercase"}}>tap for details</div>}
                     {isExp&&<div className="m-hc-actions" onClick={e=>e.stopPropagation()}>
-                      <button title="Transactions" aria-label="Transactions" onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}} style={{color:(h.transaction_count??h.transactions?.length??0)>0?"#a084ca":"var(--text-muted)"}}>📋{(h.transaction_count??h.transactions?.length??0)>0?` ${(h.transaction_count??h.transactions?.length??0)}`:""}</button>
-                      <button title="Documents" aria-label="Documents" onClick={()=>setArtifactHolding(h)} style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)"}}>📎{(h.artifacts||[]).length>0?` ${(h.artifacts||[]).length}`:""}</button>
-                      {(!h.source||h.source==="manual")&&<button title="Edit" aria-label="Edit" onClick={()=>editH(h)} style={{color:"rgba(90,156,224,.5)"}}>✎</button>}
-                      {(!h.source||h.source==="manual")&&<button title="Delete" aria-label="Delete" onClick={()=>deleteHolding(h.id)} style={{color:"rgba(224,124,90,.4)"}}>✕</button>}
+                      <button title="Transactions" aria-label="Transactions"
+                        onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}}
+                        style={{color:(h.transaction_count??h.transactions?.length??0)>0?"#a084ca":"var(--text-muted)",gap:".3rem",fontSize:".72rem"}}>
+                        <ClipboardList size={16} strokeWidth={1.8}/>
+                        {(h.transaction_count??h.transactions?.length??0)>0&&<span>{h.transaction_count??h.transactions?.length}</span>}
+                      </button>
+                      <button title="Documents" aria-label="Documents"
+                        onClick={()=>setArtifactHolding(h)}
+                        style={{color:(h.artifacts||[]).length>0?"#c9a84c":"var(--text-muted)",gap:".3rem",fontSize:".72rem"}}>
+                        <Paperclip size={16} strokeWidth={1.8}/>
+                        {(h.artifacts||[]).length>0&&<span>{h.artifacts.length}</span>}
+                      </button>
+                      {(!h.source||h.source==="manual")&&<button title="Edit" aria-label="Edit" onClick={()=>editH(h)} style={{color:"rgba(90,156,224,.65)"}}>
+                        <Pencil size={16} strokeWidth={1.8}/>
+                      </button>}
+                      {(!h.source||h.source==="manual")&&<button title="Delete" aria-label="Delete" onClick={()=>deleteHolding(h.id)} style={{color:"var(--loss)"}}>
+                        <XIcon size={16} strokeWidth={2}/>
+                      </button>}
                     </div>}
                   </div>);
                 })}

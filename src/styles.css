@@ -362,7 +362,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   color: #fff;
   border-radius: 10px;
   padding: 1px 6px;
-  font-size: .58rem;
+  font-size: .65rem;
   margin-left: 4px;
   vertical-align: middle;
   font-weight: 700;
@@ -396,7 +396,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
 .mc::before { display: none; }
 
 .mclbl {
-  font-size: .64rem;
+  font-size: .66rem;
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -453,7 +453,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
 .afill { height: 100%; border-radius: 3px; transition: width .8s ease; }
 .argt { text-align: right; min-width: 80px; }
 .aval { font-size: .78rem; font-family: var(--font-mono); color: var(--text); font-weight: 600; }
-.apct { font-size: .66rem; color: var(--text-muted); }
+.apct { font-size: .68rem; color: var(--text-muted); }
 
 /* Member summary rows */
 .msrow {
@@ -520,7 +520,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
    ══════════════════════════════════════════════════════════ */
 .ht { width: 100%; border-collapse: collapse; }
 .ht th {
-  font-size: .62rem;
+  font-size: .65rem;
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -545,7 +545,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
 .tbadge2 {
   padding: .18rem .52rem;
   border-radius: 4px;
-  font-size: .62rem;
+  font-size: .65rem;
   letter-spacing: .04em;
   font-weight: 700;
   white-space: nowrap;
@@ -579,6 +579,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   max-width: 640px;
   max-height: 92vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: var(--shadow-lg);
 }
 .modtitle {
@@ -720,7 +721,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   transition: color .18s;
 }
 .bnav-item .bnav-label, .bnav-btn .bnav-label {
-  font-size: .6rem;
+  font-size: .65rem;
   font-weight: 700;
   letter-spacing: .03em;
   color: var(--text-muted);
@@ -736,6 +737,29 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
 .bnav-item.budget-tab.act .bnav-icon,
 .bnav-item.budget-tab.act .bnav-label { color: var(--accent-2); }
 .bnav-item.budget-tab.act { background: var(--accent-2-dim); }
+
+/* ══════════════════════════════════════════════════════════
+   HOLDINGS TABLE — horizontal scroll shadow
+   Reveals a teal edge-shadow only when content overflows
+   ══════════════════════════════════════════════════════════ */
+.ht-scroll-outer {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -.9rem;
+  padding: 0 .9rem;
+  background:
+    linear-gradient(to right, var(--bg-card) 16px, transparent) left,
+    linear-gradient(to left,  var(--bg-card) 16px, transparent) right,
+    radial-gradient(farthest-side at 0 50%,   rgba(13,148,136,.14), transparent) left,
+    radial-gradient(farthest-side at 100% 50%, rgba(13,148,136,.14), transparent) right;
+  background-repeat: no-repeat;
+  background-color: var(--bg-card);
+  background-size: 16px 100%, 16px 100%, 12px 100%, 12px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+
+/* anchor links using btn-o should have no underline */
+a.btn-o { text-decoration: none; }
 
 /* ══════════════════════════════════════════════════════════
    MORE SHEET (mobile)
@@ -784,7 +808,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
 }
 .more-sheet-item:active { background: var(--bg-hover); }
 .more-sheet-item .msi-icon { font-size: 1.15rem; }
-.more-sheet-item .msi-label { font-size: .6rem; color: var(--text-dim); text-align: center; font-weight: 700; }
+.more-sheet-item .msi-label { font-size: .65rem; color: var(--text-dim); text-align: center; font-weight: 700; }
 .more-sheet-item.act {
   background: var(--primary-dim);
   border-color: rgba(13,148,136,.3);
@@ -839,7 +863,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
 .m-hc-ticker { font-size: .67rem; color: var(--text-muted); margin-top: .12rem; font-family: var(--font-mono); }
 .m-hc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem .8rem; }
 .m-hc-cell { display: flex; flex-direction: column; gap: .08rem; }
-.m-hc-lbl { font-size: .57rem; letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted); font-weight: 700; }
+.m-hc-lbl { font-size: .65rem; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); font-weight: 700; }
 .m-hc-val { font-size: .78rem; font-family: var(--font-mono); color: var(--text); font-weight: 600; }
 .m-hc-actions {
   display: flex;
@@ -891,6 +915,23 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   .m-holdings-list { display: block; }
   .ht-desktop { display: none; }
 
+  /* Hide non-essential header buttons on mobile (accessible via more sheet) */
+  .hdr-extra { display: none !important; }
+
+  /* More sheet slide-up animation */
+  .more-sheet { animation: moreSlideUp .22s cubic-bezier(.32,.72,0,1); }
+  @keyframes moreSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+  /* Scroll fade affordance on horizontally scrollable filter bars */
+  .tbar {
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 2.5rem), transparent 100%);
+    mask-image: linear-gradient(to right, black calc(100% - 2.5rem), transparent 100%);
+  }
+  .mbar {
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 2.5rem), transparent 100%);
+    mask-image: linear-gradient(to right, black calc(100% - 2.5rem), transparent 100%);
+  }
+
   .main { padding: .8rem .75rem; padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
   .hdr { padding: 0 .75rem; height: 50px; }
   .logo { font-size: 1.1rem; }
@@ -932,7 +973,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   /* ── Allocation rows: right column min-width so values don't wrap ── */
   .argt { min-width: 72px; }
   .aval { font-size: .75rem; }
-  .apct { font-size: .63rem; }
+  .apct { font-size: .68rem; }
 
   /* ── Member summary rows ── */
   .msrow { gap: .5rem; padding: .65rem 0; }
@@ -966,7 +1007,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   /* Empty states / tables */
   .empty { padding: 2rem .75rem; font-size: .9rem; }
   .tab { padding: .5rem .8rem; font-size: .73rem; }
-  .ht th { font-size: .58rem; padding: 0 .45rem .5rem; }
+  .ht th { font-size: .65rem; padding: 0 .45rem .5rem; }
   .ht td { padding: .68rem .45rem; font-size: .76rem; }
 
   /* Scroll snap */
@@ -986,7 +1027,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
 @media (max-width: 400px) {
   .mg { grid-template-columns: 1fr; gap: .45rem; }
   .mcval { font-size: 1.38rem; }
-  .mclbl { font-size: .58rem; }
+  .mclbl { font-size: .65rem; }
   .m-hc-grid { gap: .3rem .6rem; }
   .m-hc-name { font-size: .82rem; }
   .hdr-right .btn-o:not(:first-child), .hdr-r .btn-o:not(:first-child) { display: none; }
