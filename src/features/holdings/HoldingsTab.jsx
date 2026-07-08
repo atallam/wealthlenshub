@@ -60,6 +60,8 @@ export default function HoldingsTab({
   isUSDHolding,
   // Transaction form blank
   BT,
+  // Price refresh timestamp
+  lastPriceRefresh,
 }) {
   const [concallHolding, setConcallHolding] = useState(null);
   const [showStaleOnly, setShowStaleOnly] = useState(false);
@@ -69,8 +71,45 @@ export default function HoldingsTab({
   const staleIds = new Set(staleH.map(h => h.id));
   const displayH = showStaleOnly ? visH.filter(h => staleIds.has(h.id)) : visH;
 
+  // ── Price freshness badge helpers ─────────────────────────────
+  const livePriceHoldings = visH.filter(h => h.price_fetched_at);
+  const priceFreshnessEl = (() => {
+    if (!livePriceHoldings.length) return null;
+    const oldest = new Date(Math.min(...livePriceHoldings.map(h => new Date(h.price_fetched_at))));
+    const ageMs  = Date.now() - oldest.getTime();
+    const ageMin = Math.floor(ageMs / 60_000);
+    const color  = ageMin < 60 ? "#4caf9a" : ageMin < 240 ? "#c9a84c" : "#e07c5a";
+    const label  = ageMin < 1
+      ? "just now"
+      : ageMin < 60
+        ? `${ageMin}m ago`
+        : ageMin < 1440
+          ? `${Math.floor(ageMin / 60)}h ago`
+          : `${Math.floor(ageMin / 1440)}d ago`;
+    return (
+      <span style={{
+        display: "inline-flex", alignItems: "center", gap: ".35rem",
+        padding: ".2rem .6rem", borderRadius: 20,
+        background: `${color}1A`, border: `1px solid ${color}44`,
+        fontSize: ".65rem", color, fontWeight: 600,
+        marginLeft: ".5rem", verticalAlign: "middle",
+        cursor: "default",
+      }} title={`Oldest live price fetched at ${oldest.toLocaleTimeString("en-IN")}`}>
+        <span style={{width: 6, height: 6, borderRadius: "50%", background: color, display:"inline-block"}}/>
+        Prices {label} · {livePriceHoldings.length} live
+      </span>
+    );
+  })();
+
   return (
     <div className="card">
+      {/* ── Live price freshness badge ── */}
+      {priceFreshnessEl && (
+        <div style={{marginBottom: ".55rem", display: "flex", alignItems: "center", flexWrap: "wrap", gap: ".35rem"}}>
+          <span style={{fontSize: ".7rem", color: "var(--text-muted)"}}>Live prices:</span>
+          {priceFreshnessEl}
+        </div>
+      )}
       {/* ── Data Freshness Banner ── */}
       {(()=>{
         const srcDates = {};
@@ -536,6 +575,12 @@ export default function HoldingsTab({
                         <div className="m-hc-cell">
                           <span className="m-hc-lbl">Cur. Price</span>
                           <span className="m-hc-val">{rawPrice?`${nativeSym}${h.type==="MF"?Number(rawPrice).toFixed(4):Number(rawPrice).toLocaleString(isUS?"en-US":"en-IN",{maximumFractionDigits:2})}`:"—"}</span>
+                          {h.price_fetched_at && (
+                            <span style={{fontSize:".56rem",color:"#4caf9a",marginTop:2,display:"flex",alignItems:"center",gap:3}}>
+                              <span style={{width:5,height:5,borderRadius:"50%",background:"#4caf9a",display:"inline-block"}}/>
+                              {ago(h.price_fetched_at)}
+                            </span>
+                          )}
                         </div>
                         <div className="m-hc-cell" style={{textAlign:"right"}}>
                           <span className="m-hc-lbl">Source</span>
