@@ -253,7 +253,7 @@ export default function CASImportModal({
                     <tr key={i}>
                       <td style={{ fontWeight: 500 }}>{h.name}</td>
                       <td>
-                        <span style={{ fontSize: ".62rem", padding: ".1rem .35rem", borderRadius: 3,
+                        <span style={{ fontSize: ".65rem", padding: ".1rem .35rem", borderRadius: 3,
                           background: h.type === "MF" ? "rgba(160,132,202,.15)" : "rgba(224,124,90,.12)",
                           color: h.type === "MF" ? "#a084ca" : "#e07c5a" }}>
                           {h.type === "MF" ? "MF" : h.type === "IN_STOCK" ? "Stock" : h.type}

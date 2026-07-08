@@ -190,10 +190,10 @@ export default function SetuAAImport({ onClose, onImported, members, api }) {
                 <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: ".4rem 0", borderBottom: "1px solid var(--border)" }}>
                   <div>
                     <span style={{ fontSize: ".72rem", color: "var(--text-dim)" }}>{new Date(c.created_at).toLocaleDateString()}</span>
-                    <span style={{ fontSize: ".62rem", marginLeft: 8, padding: "1px 5px", borderRadius: 3,
+                    <span style={{ fontSize: ".65rem", marginLeft: 8, padding: "1px 5px", borderRadius: 3,
                       background: c.status === "ACTIVE" ? "rgba(76,175,154,.12)" : "rgba(201,168,76,.12)",
                       color: c.status === "ACTIVE" ? "#4caf9a" : "#c9a84c" }}>{c.status}</span>
-                    {c.holdings_count > 0 && <span style={{ fontSize: ".62rem", color: "var(--text-muted)", marginLeft: 6 }}>{c.holdings_count} imported</span>}
+                    {c.holdings_count > 0 && <span style={{ fontSize: ".65rem", color: "var(--text-muted)", marginLeft: 6 }}>{c.holdings_count} imported</span>}
                   </div>
                   {(c.status === "ACTIVE" || c.status === "PENDING") && (
                     <button onClick={() => resumeConsent(c)} style={{ ...secondaryBtn, padding: ".25rem .5rem", fontSize: ".65rem" }}>
@@ -254,10 +254,10 @@ export default function SetuAAImport({ onClose, onImported, members, api }) {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".72rem" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    <th style={{ textAlign: "left", padding: ".4rem", color: "var(--text-muted)", fontSize: ".62rem", textTransform: "uppercase" }}>Name</th>
-                    <th style={{ textAlign: "left", padding: ".4rem", color: "var(--text-muted)", fontSize: ".62rem", textTransform: "uppercase" }}>Type</th>
-                    <th style={{ textAlign: "right", padding: ".4rem", color: "var(--text-muted)", fontSize: ".62rem", textTransform: "uppercase" }}>Value</th>
-                    <th style={{ textAlign: "left", padding: ".4rem", color: "var(--text-muted)", fontSize: ".62rem", textTransform: "uppercase" }}>Source</th>
+                    <th style={{ textAlign: "left", padding: ".4rem", color: "var(--text-muted)", fontSize: ".65rem", textTransform: "uppercase" }}>Name</th>
+                    <th style={{ textAlign: "left", padding: ".4rem", color: "var(--text-muted)", fontSize: ".65rem", textTransform: "uppercase" }}>Type</th>
+                    <th style={{ textAlign: "right", padding: ".4rem", color: "var(--text-muted)", fontSize: ".65rem", textTransform: "uppercase" }}>Value</th>
+                    <th style={{ textAlign: "left", padding: ".4rem", color: "var(--text-muted)", fontSize: ".65rem", textTransform: "uppercase" }}>Source</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -265,12 +265,12 @@ export default function SetuAAImport({ onClose, onImported, members, api }) {
                     <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
                       <td style={{ padding: ".45rem .4rem", color: "var(--text)" }}>{h.name}</td>
                       <td style={{ padding: ".45rem .4rem" }}>
-                        <span style={{ fontSize: ".62rem", padding: "1px 5px", borderRadius: 3, background: "rgba(160,132,202,.1)", color: "#a084ca" }}>{h.type}</span>
+                        <span style={{ fontSize: ".65rem", padding: "1px 5px", borderRadius: 3, background: "rgba(160,132,202,.1)", color: "#a084ca" }}>{h.type}</span>
                       </td>
                       <td style={{ padding: ".45rem .4rem", textAlign: "right", fontFamily: "'DM Mono',monospace", color: "#c9a84c" }}>
                         ₹{(h.current_value || 0).toLocaleString("en-IN")}
                       </td>
-                      <td style={{ padding: ".45rem .4rem", fontSize: ".62rem", color: "var(--text-muted)" }}>{h.fip_name}</td>
+                      <td style={{ padding: ".45rem .4rem", fontSize: ".65rem", color: "var(--text-muted)" }}>{h.fip_name}</td>
                     </tr>
                   ))}
                 </tbody>

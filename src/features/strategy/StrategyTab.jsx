@@ -149,12 +149,12 @@ Also mention if any "Trim" action could reduce funding for a goal that uses that
         }}>
         <span>
           {loading ? '✦ Analysing plan…' : '✦ Explain this rebalance plan'}
-          {!hasContent && <span style={{ fontSize: '.62rem', color: 'rgba(160,132,202,.5)', marginLeft: '.5rem' }}>AI · streaming</span>}
+          {!hasContent && <span style={{ fontSize: '.65rem', color: 'rgba(160,132,202,.5)', marginLeft: '.5rem' }}>AI · streaming</span>}
         </span>
         <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
           {hasContent && !loading && (
             <span onClick={e => { e.stopPropagation(); explain(); }}
-              style={{ fontSize: '.62rem', color: 'rgba(160,132,202,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
+              style={{ fontSize: '.65rem', color: 'rgba(160,132,202,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
           )}
           {loading && <div style={{ width: 10, height: 10, border: '1.5px solid rgba(160,132,202,.25)', borderTopColor: 'var(--accent-2)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />}
           {hasContent && <span style={{ fontSize: '.6rem' }}>{open ? '▲' : '▼'}</span>}
@@ -220,7 +220,7 @@ function ComputedWarnings({ allHoldings, valINRCache, goals, AT, fmtCr }) {
               <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: '.8rem', padding: '.38rem 0', borderBottom: '1px solid rgba(201,168,76,.1)', fontSize: '.72rem' }}>
                 <div style={{ flex: 1 }}>
                   <span style={{ color: 'var(--text)' }}>{h.name}</span>
-                  {h.interest_rate && <span style={{ marginLeft: '.4rem', color: 'var(--text-muted)', fontSize: '.62rem' }}>{h.interest_rate}% p.a.</span>}
+                  {h.interest_rate && <span style={{ marginLeft: '.4rem', color: 'var(--text-muted)', fontSize: '.65rem' }}>{h.interest_rate}% p.a.</span>}
                 </div>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '.7rem', color: 'var(--text-muted)' }}>{fmtCr(h.val)}</span>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '.7rem', color: urgency, fontWeight: 600, minWidth: 50, textAlign: 'right' }}>
@@ -229,7 +229,7 @@ function ComputedWarnings({ allHoldings, valINRCache, goals, AT, fmtCr }) {
               </div>
             );
           })}
-          <div style={{ marginTop: '.4rem', fontSize: '.62rem', color: 'var(--text-muted)' }}>
+          <div style={{ marginTop: '.4rem', fontSize: '.65rem', color: 'var(--text-muted)' }}>
             Plan renewal or redirect into goal-aligned investments before maturity.
           </div>
         </div>
@@ -247,12 +247,12 @@ function ComputedWarnings({ allHoldings, valINRCache, goals, AT, fmtCr }) {
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '.7rem', color: 'var(--text-muted)' }}>
                 {g.fundedPct.toFixed(0)}% funded
               </span>
-              <span style={{ fontSize: '.62rem', padding: '1px 8px', borderRadius: 8, background: `${g.st.color}15`, border: `1px solid ${g.st.color}33`, color: g.st.color }}>
+              <span style={{ fontSize: '.65rem', padding: '1px 8px', borderRadius: 8, background: `${g.st.color}15`, border: `1px solid ${g.st.color}33`, color: g.st.color }}>
                 {g.st.label}
               </span>
             </div>
           ))}
-          <div style={{ marginTop: '.4rem', fontSize: '.62rem', color: 'var(--text-muted)' }}>
+          <div style={{ marginTop: '.4rem', fontSize: '.65rem', color: 'var(--text-muted)' }}>
             Consider increasing SIP or redirecting from lower-priority goals.
           </div>
         </div>
@@ -289,7 +289,7 @@ function HoldingsDrillDown({ type, rHoldings, valINRCache, invINRCache, fmtCr, i
   return (
     <div style={{ background: 'var(--bg-muted)', borderTop: '1px solid var(--border)' }}>
       {isTrim && (
-        <div style={{ padding: '.3rem .75rem', fontSize: '.62rem', color: 'rgba(76,175,154,.7)', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ padding: '.3rem .75rem', fontSize: '.65rem', color: 'rgba(76,175,154,.7)', borderBottom: '1px solid var(--border)' }}>
           💡 LTCG-eligible first (held {'>'} 1 yr) — lower tax on equity gains
         </div>
       )}
@@ -303,12 +303,12 @@ function HoldingsDrillDown({ type, rHoldings, valINRCache, invINRCache, fmtCr, i
             {h.name}
           </div>
           {h.ltcg ? (
-            <span style={{ fontSize: '.58rem', padding: '1px 5px', borderRadius: 3, background: 'rgba(76,175,154,.1)', border: '1px solid rgba(76,175,154,.25)', color: '#4caf9a', flexShrink: 0 }}>LTCG</span>
+            <span style={{ fontSize: '.65rem', padding: '1px 5px', borderRadius: 3, background: 'rgba(76,175,154,.1)', border: '1px solid rgba(76,175,154,.25)', color: '#4caf9a', flexShrink: 0 }}>LTCG</span>
           ) : h.yrs !== null ? (
-            <span style={{ fontSize: '.58rem', padding: '1px 5px', borderRadius: 3, background: 'rgba(224,124,90,.1)', border: '1px solid rgba(224,124,90,.2)', color: '#e07c5a', flexShrink: 0 }}>STCG</span>
+            <span style={{ fontSize: '.65rem', padding: '1px 5px', borderRadius: 3, background: 'rgba(224,124,90,.1)', border: '1px solid rgba(224,124,90,.2)', color: '#e07c5a', flexShrink: 0 }}>STCG</span>
           ) : null}
           {h.yrs !== null && (
-            <span style={{ fontSize: '.62rem', color: 'var(--text-muted)', flexShrink: 0 }}>{h.yrs.toFixed(1)}yr</span>
+            <span style={{ fontSize: '.65rem', color: 'var(--text-muted)', flexShrink: 0 }}>{h.yrs.toFixed(1)}yr</span>
           )}
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '.68rem', color: 'var(--text-muted)', flexShrink: 0 }}>{fmtCr(h.cur)}</span>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '.65rem', color: h.gain >= 0 ? '#4caf9a' : '#e07c5a', flexShrink: 0, minWidth: 42, textAlign: 'right' }}>
@@ -536,7 +536,7 @@ export default function StrategyTab({
                 <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#e07c5a', flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '.78rem', color: '#e07c5a' }}>{a.label}</div>
-                  <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginTop: 1 }}>{alertRuleDesc(a, AT)}</div>
+                  <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', marginTop: 1 }}>{alertRuleDesc(a, AT)}</div>
                 </div>
                 <button className="btn-o" onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
                   style={{ fontSize: '.65rem', color: '#4caf9a' }}>ON</button>
@@ -550,7 +550,7 @@ export default function StrategyTab({
                 <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#4caf9a', flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '.78rem', color: 'var(--text)' }}>{a.label}</div>
-                  <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginTop: 1 }}>{alertRuleDesc(a, AT)}</div>
+                  <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', marginTop: 1 }}>{alertRuleDesc(a, AT)}</div>
                 </div>
                 <span style={{ fontSize: '.6rem', color: 'rgba(76,175,154,.6)', padding: '2px 7px', borderRadius: 3, background: 'rgba(76,175,154,.08)', border: '1px solid rgba(76,175,154,.15)', flexShrink: 0 }}>✓ Passing</span>
                 <button className="btn-o" onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
@@ -619,7 +619,7 @@ export default function StrategyTab({
           <FmtInput value={rebalCash} placeholder="e.g. 50000" onChange={e => setRebalCash(e.target.value)} style={{ marginTop: '.3rem' }} />
         </div>
         <div style={{ flex: 1, textAlign: 'right' }}>
-          <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', letterSpacing: '.08em', textTransform: 'uppercase' }}>Portfolio</div>
+          <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', letterSpacing: '.08em', textTransform: 'uppercase' }}>Portfolio</div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.15rem', color: 'var(--text)' }}>{fmtCr(rTotal)}</div>
           {cash > 0 && <div style={{ fontSize: '.65rem', color: 'var(--gold)' }}>+ {fmtCr(cash)} cash</div>}
         </div>
@@ -627,7 +627,7 @@ export default function StrategyTab({
 
       {/* Strategy presets — Change 3: button.btn-o replaces inline div with hover simulation */}
       <div style={{ display: 'flex', gap: '.4rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginRight: '.2rem' }}>STRATEGY:</span>
+        <span style={{ fontSize: '.65rem', color: 'var(--text-muted)', marginRight: '.2rem' }}>STRATEGY:</span>
         {[
           { name: 'Conservative', desc: 'FD/PPF heavy, low risk',     alloc: { IN_STOCK:15, MF:20, IN_ETF:5, US_STOCK:0,  US_ETF:0,  US_BOND:5, CRYPTO:0, FD:25, PPF:15, EPF:15, REAL_ESTATE:0 } },
           { name: 'Balanced',     desc: 'Mix of equity & debt',        alloc: { IN_STOCK:25, MF:25, IN_ETF:5, US_STOCK:8,  US_ETF:5,  US_BOND:0, CRYPTO:2, FD:10, PPF:10, EPF:10, REAL_ESTATE:0 } },
@@ -637,7 +637,7 @@ export default function StrategyTab({
           <button key={p.name} className="btn-o" onClick={() => setTargetAlloc(p.alloc)}
             style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '.35rem .7rem', gap: '.05rem' }}>
             <span style={{ fontSize: '.7rem' }}>{p.name}</span>
-            <span style={{ fontSize: '.58rem', color: 'var(--text-muted)', fontWeight: 400 }}>{p.desc}</span>
+            <span style={{ fontSize: '.65rem', color: 'var(--text-muted)', fontWeight: 400 }}>{p.desc}</span>
           </button>
         ))}
       </div>
@@ -717,10 +717,10 @@ export default function StrategyTab({
                               <div style={{ display: 'flex', alignItems: 'center', gap: '.3rem' }}>
                                 {at.label}
                                 {!isFlat && (
-                                  <span style={{ fontSize: '.55rem', color: 'var(--text-muted)', transform: isExpanded ? 'rotate(90deg)' : 'none', display: 'inline-block', transition: 'transform .15s' }}>▶</span>
+                                  <span style={{ fontSize: '.65rem', color: 'var(--text-muted)', transform: isExpanded ? 'rotate(90deg)' : 'none', display: 'inline-block', transition: 'transform .15s' }}>▶</span>
                                 )}
                               </div>
-                              <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginTop: 1 }}>{fmtCr(t.cur)}</div>
+                              <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', marginTop: 1 }}>{fmtCr(t.cur)}</div>
                             </div>
                           </div>
                         </td>
@@ -736,7 +736,7 @@ export default function StrategyTab({
                             <span style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>%</span>
                           </div>
                           {showEffPct && (
-                            <div style={{ fontSize: '.58rem', color: 'var(--text-muted)', textAlign: 'right', marginTop: 2 }}>
+                            <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', textAlign: 'right', marginTop: 2 }}>
                               ≈{normTarget[t.type].toFixed(0)}% effective
                             </div>
                           )}
@@ -762,7 +762,7 @@ export default function StrategyTab({
                                 ▲ Invest {fmtCr(absDelta)}
                               </span>
                               {monthlySIP > 0 && (
-                                <div style={{ fontSize: '.58rem', color: 'rgba(76,175,154,.5)', marginTop: 3 }}>
+                                <div style={{ fontSize: '.65rem', color: 'rgba(76,175,154,.5)', marginTop: 3 }}>
                                   {absDelta > 50000 ? `SIP ~${fmtCr(monthlySIP)}/mo × 12` : 'lump sum'}
                                 </div>
                               )}
@@ -772,7 +772,7 @@ export default function StrategyTab({
                               <span style={{ background: 'rgba(224,124,90,.12)', color: '#e07c5a', border: '1px solid rgba(224,124,90,.3)', borderRadius: 4, padding: '3px 8px', fontSize: '.7rem', fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                 ▼ Trim {fmtCr(absDelta)}
                               </span>
-                              <div style={{ fontSize: '.58rem', color: 'rgba(224,124,90,.45)', marginTop: 3 }}>
+                              <div style={{ fontSize: '.65rem', color: 'rgba(224,124,90,.45)', marginTop: 3 }}>
                                 {bestRedirect
                                   ? `→ redirect to ${AT[bestRedirect.type]?.label || bestRedirect.type}`
                                   : absDelta > 100000 ? 'redeem or pause SIPs' : 'pause new investments'}

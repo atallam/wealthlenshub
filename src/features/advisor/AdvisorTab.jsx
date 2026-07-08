@@ -35,7 +35,7 @@ export default function AdvisorTab({
           <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"var(--text)"}}>✦ Advisor</div>
           <div style={{fontSize:".72rem",color:"var(--text-muted)",marginTop:".2rem"}}>
             Ask anything about your holdings, returns, goals, or allocation
-            {isRestored&&<span style={{marginLeft:6,color:"rgba(201,168,76,.55)",fontSize:".64rem"}}>· restored from last session</span>}
+            {isRestored&&<span style={{marginLeft:6,color:"rgba(201,168,76,.55)",fontSize:".65rem"}}>· restored from last session</span>}
           </div>
         </div>
         {aiMessages.length>0&&(
@@ -67,7 +67,7 @@ export default function AdvisorTab({
         {aiMessages.map((m,i)=>(
           <div key={i} style={{display:"flex",flexDirection:"column",alignItems:m.role==="user"?"flex-end":"flex-start"}}>
             {/* Role label */}
-            <div style={{fontSize:".62rem",color:"var(--text-muted)",marginBottom:".3rem",letterSpacing:".06em",textTransform:"uppercase"}}>
+            <div style={{fontSize:".65rem",color:"var(--text-muted)",marginBottom:".3rem",letterSpacing:".06em",textTransform:"uppercase"}}>
               {m.role==="user"?"You":"✦ Advisor"}
             </div>
             {/* Bubble */}

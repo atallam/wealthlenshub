@@ -222,7 +222,7 @@ Keep the response practical, specific to the numbers, and formatted clearly with
                             {isDoubled && <span title="Funded % may be inflated — shares asset types with another goal" style={{ marginLeft:5, color:'#e07c5a', fontSize:'.7rem' }}>⚠</span>}
                           </td>
                           <td style={{ padding:'.4rem .55rem' }}>
-                            <span style={{ color:st.color, fontSize:'.62rem', background:`${st.color}15`, border:`1px solid ${st.color}33`, borderRadius:8, padding:'1px 7px' }}>{st.label}</span>
+                            <span style={{ color:st.color, fontSize:'.65rem', background:`${st.color}15`, border:`1px solid ${st.color}33`, borderRadius:8, padding:'1px 7px' }}>{st.label}</span>
                           </td>
                           <td style={{ padding:'.4rem .55rem', fontFamily:"'DM Mono',monospace", color: isDoubled && pct > 100 ? '#e07c5a' : 'inherit' }}>
                             {pct.toFixed(0)}%{isDoubled && pct > 80 && <span style={{ fontSize:'.6rem', marginLeft:3, color:'#e07c5a' }}>*</span>}
@@ -235,7 +235,7 @@ Keep the response practical, specific to the numbers, and formatted clearly with
                   </tbody>
                 </table>
                 {doubledGoalIds.size > 0 && (
-                  <div style={{ padding:'.3rem .55rem', fontSize:'.62rem', color:'var(--text-muted)', borderTop:'1px solid var(--border)' }}>
+                  <div style={{ padding:'.3rem .55rem', fontSize:'.65rem', color:'var(--text-muted)', borderTop:'1px solid var(--border)' }}>
                     * Funded % marked with ⚠ may be overstated due to shared asset types
                   </div>
                 )}

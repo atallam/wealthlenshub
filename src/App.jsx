@@ -577,7 +577,7 @@ ${alertsText}`;
         <div className="hdr-left">
           <div className="logo">Wealth<span>Lens</span></div>
           {demoMode && (
-            <span style={{marginLeft:'.5rem',fontSize:'.62rem',background:'rgba(160,132,202,.12)',border:'1px solid rgba(160,132,202,.3)',color:'#A084CA',borderRadius:4,padding:'2px 8px',letterSpacing:'.06em',fontWeight:600}}>
+            <span style={{marginLeft:'.5rem',fontSize:'.65rem',background:'rgba(160,132,202,.12)',border:'1px solid rgba(160,132,202,.3)',color:'#A084CA',borderRadius:4,padding:'2px 8px',letterSpacing:'.06em',fontWeight:600}}>
               DEMO
             </span>
           )}
@@ -1100,7 +1100,7 @@ ${alertsText}`;
                 <FmtInput value={form.current_value} placeholder="current ₹"
                   onChange={e => setForm(p => ({ ...p, current_value: e.target.value }))}/>
               </FG>
-              <FG label={<>USD/INR Rate <button type="button" onClick={fetchUsdInr} style={{fontSize:'.58rem',color:'#5a9ce0',background:'none',border:'none',cursor:'pointer'}}>{usdInrLoading ? '…' : '⟳'}</button></>}>
+              <FG label={<>USD/INR Rate <button type="button" onClick={fetchUsdInr} style={{fontSize:'.65rem',color:'#5a9ce0',background:'none',border:'none',cursor:'pointer'}}>{usdInrLoading ? '…' : '⟳'}</button></>}>
                 <input type="number" className="fi" placeholder={String(usdInrRate)} value={form.usd_inr_rate}
                   onChange={e => setForm(p => ({ ...p, usd_inr_rate: e.target.value }))}/>
               </FG>
@@ -1291,7 +1291,7 @@ ${alertsText}`;
               placeholder={newMember.pan_masked ? `Saved: ${newMember.pan_masked} — type to replace` : 'e.g. ABCDE1234F'}
               value={newMember.pan || ''}
               onChange={e => setNewMember(p => ({ ...p, pan: e.target.value.toUpperCase() }))}/>
-            <div style={{fontSize:'.62rem',color:'var(--text-muted)',marginTop:'.25rem'}}>
+            <div style={{fontSize:'.65rem',color:'var(--text-muted)',marginTop:'.25rem'}}>
               Used to unlock this member's CAS PDFs and auto-assign imported holdings. Stored encrypted.
             </div>
           </FG>
@@ -1514,67 +1514,4 @@ ${alertsText}`;
           setImportState={importHook.setImportState}
           members={members}
           AT={AT}
-          handleImportFile={file => importHook.handleImportFile(file, null, members)}
-          executeImport={() => importHook.executeImport(members)}
-          resetImport={importHook.resetImport}
-          importFileRef={importFileRef}
-          onClose={() => { importHook.resetImport(); setModal(null); }}
-          fmt={fmt}
-          submitCASPassword={() => importHook.submitCASPassword(members)}
-        />
-      )}
-
-      {/* ── Goal Plan modal ─────────────────────────────────────── */}
-      {modal === 'goalplan' && (
-        <GoalPlanModal
-          open
-          onClose={() => setModal(null)}
-          goals={goals}
-          members={members}
-          holdings={allHoldings}
-          allCur={allCur}
-          allInv={allInv}
-          AT={AT}
-          getValINR={getValINR}
-          usdInr={usdInrRate}
-        />
-      )}
-
-      {/* ── Transaction panel ────────────────────────────────────── */}
-      {txnHolding && (
-        <TransactionPanel
-          holding={txnHolding}
-          txnForm={txnForm}
-          setTxnForm={setTxnForm}
-          onAddTxn={() => portfolio.addTransaction(txnForm, null, null, txnHolding, txnSaving)
-            .then(res => { if (res?.hlds) setTxnForm(BT); })}
-          onDeleteTxn={(txnId, holdingId) => portfolio.deleteTransaction(txnId, holdingId)}
-          onReload={portfolio.reloadHoldings}
-          onClose={() => setTxnHolding(null)}
-          fxRate={usdInrRate}
-          fxLoading={usdInrLoading}
-          onFetchFx={fetchUsdInr}
-        />
-      )}
-
-      {/* ── Artifact panel ───────────────────────────────────────── */}
-      {artifactHolding && (
-        <ArtifactPanel
-          holding={artifactHolding}
-          token={null}
-          onClose={() => setArtifactHolding(null)}
-        />
-      )}
-
-      {/* old inline CAS + broker overlays removed — now handled by CASImportModal and Import Hub above */}
-
-      {/* ── Hidden file input for import ─────────────────────────── */}
-      <input ref={importFileRef} type="file" style={{display:'none'}} accept=".csv,.xlsx,.xls,.pdf"
-        onChange={e => importHook.handleImportFile(e.target.files[0], null, members)}/>
-
-      {/* ── PWA install prompt ───────────────────────────────────── */}
-      <InstallPrompt />
-
-    </div>
-  );
-}
+          handleImportFile={file =>

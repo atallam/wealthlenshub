@@ -190,9 +190,9 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
                     {label:"Avg NAV",    val:`₹${avgNav.toFixed(4)}`},
                   ].map(s=>(
                     <div key={s.label} style={{background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:7,padding:".55rem .7rem",textAlign:"center"}}>
-                      <div style={{fontSize:".58rem",letterSpacing:".07em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".2rem"}}>{s.label}</div>
+                      <div style={{fontSize:".65rem",letterSpacing:".07em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".2rem"}}>{s.label}</div>
                       <div style={{fontFamily:"'DM Mono',monospace",fontSize:".82rem",color:s.label==="Future SIPs"?"#5a9ce0":"#c9a84c"}}>{s.val}</div>
-                      {s.note&&<div style={{fontSize:".58rem",color:"var(--text-muted)",marginTop:".1rem"}}>{s.note}</div>}
+                      {s.note&&<div style={{fontSize:".65rem",color:"var(--text-muted)",marginTop:".1rem"}}>{s.note}</div>}
                     </div>
                   ))}
                 </div>
@@ -221,12 +221,12 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
                           <td className="r mono dim">₹{r.amount.toLocaleString("en-IN")}</td>
                           <td>
                             {r.is_future
-                              ? <span style={{fontSize:".62rem",color:"#5a9ce0",background:"rgba(90,156,224,.12)",padding:"1px 6px",borderRadius:3}}>Scheduled</span>
+                              ? <span style={{fontSize:".65rem",color:"#5a9ce0",background:"rgba(90,156,224,.12)",padding:"1px 6px",borderRadius:3}}>Scheduled</span>
                               : r.is_estimated
-                                ? <span style={{fontSize:".62rem",color:"#c9a84c",background:"rgba(201,168,76,.1)",padding:"1px 6px",borderRadius:3}}>Est. NAV</span>
+                                ? <span style={{fontSize:".65rem",color:"#c9a84c",background:"rgba(201,168,76,.1)",padding:"1px 6px",borderRadius:3}}>Est. NAV</span>
                                 : r.nav
-                                  ? <span style={{fontSize:".62rem",color:"#4caf9a",background:"rgba(76,175,154,.1)",padding:"1px 6px",borderRadius:3}}>✓ Exact</span>
-                                  : <span style={{fontSize:".62rem",color:"#e07c5a"}}>No NAV</span>
+                                  ? <span style={{fontSize:".65rem",color:"#4caf9a",background:"rgba(76,175,154,.1)",padding:"1px 6px",borderRadius:3}}>✓ Exact</span>
+                                  : <span style={{fontSize:".65rem",color:"#e07c5a"}}>No NAV</span>
                             }
                           </td>
                         </tr>
@@ -260,7 +260,7 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
               ...(totalDividends>0?[{label:"Total Dividends", val:`₹${totalDividends.toLocaleString("en-IN",{maximumFractionDigits:0})}`, color:"#5a9ce0"}]:[]),
             ].map(s=>(
               <div key={s.label} style={{background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:8,padding:".7rem .9rem",textAlign:"center"}}>
-                <div style={{fontSize:".62rem",letterSpacing:".08em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".3rem"}}>{s.label}</div>
+                <div style={{fontSize:".65rem",letterSpacing:".08em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".3rem"}}>{s.label}</div>
                 <div style={{fontFamily:"'DM Mono',monospace",fontSize:".95rem",color:s.color||"#c9a84c"}}>{s.val}</div>
               </div>
             ))}

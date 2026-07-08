@@ -87,12 +87,12 @@ Cover: (1) Who is most diversified or concentrated and why it matters, (2) any i
         }}>
         <span>
           ✦ Family Allocation Narrative
-          {!hasContent && <span style={{ fontSize: '.62rem', color: 'rgba(76,175,154,.5)', marginLeft: '.5rem' }}>AI · on demand</span>}
+          {!hasContent && <span style={{ fontSize: '.65rem', color: 'rgba(76,175,154,.5)', marginLeft: '.5rem' }}>AI · on demand</span>}
         </span>
         <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
           {hasContent && !loading && (
             <span onClick={e => { e.stopPropagation(); generate(); }}
-              style={{ fontSize: '.62rem', color: 'rgba(76,175,154,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
+              style={{ fontSize: '.65rem', color: 'rgba(76,175,154,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
           )}
           {loading && <div style={{ width: 10, height: 10, border: '1.5px solid rgba(76,175,154,.25)', borderTopColor: '#4caf9a', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />}
           {hasContent && <span style={{ fontSize: '.6rem' }}>{open ? '▲' : '▼'}</span>}

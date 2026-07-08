@@ -387,7 +387,7 @@ export default function ConcallPanel({ holding, onClose }) {
               <div style={{ fontSize: ".72rem", color: "var(--text-secondary)", lineHeight: 1.55 }}>
                 {analysis.summary}
               </div>
-              <div style={{ fontSize: ".62rem", color: "var(--text-muted)", marginTop: ".35rem" }}>
+              <div style={{ fontSize: ".65rem", color: "var(--text-muted)", marginTop: ".35rem" }}>
                 {analysis.quarter} · via {analysis.source_provider || "manual"}
                 {analysis.analysed_at && ` · ${new Date(analysis.analysed_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" })}`}
               </div>

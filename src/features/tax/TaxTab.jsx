@@ -84,7 +84,7 @@ function DetailTable({ rows, title, emptyMsg }) {
                   </td>
                   <td style={{ padding: '.35rem .5rem' }}>
                     <span style={{
-                      fontSize: '.62rem', padding: '2px 6px', borderRadius: 4, fontWeight: 600,
+                      fontSize: '.65rem', padding: '2px 6px', borderRadius: 4, fontWeight: 600,
                       background: r.is_ltcg ? 'rgba(76,175,154,.15)' : 'rgba(224,124,90,.15)',
                       color: r.is_ltcg ? '#4caf9a' : '#e07c5a',
                     }}>
@@ -135,7 +135,7 @@ function UnrealizedTable({ rows }) {
                   <td style={{ padding: '.35rem .5rem', textAlign: 'right', fontFamily: "'DM Mono',monospace", color: gainColor(r.gain) }}>{fmtINR(r.gain)}</td>
                   <td style={{ padding: '.35rem .5rem' }}>
                     <span style={{
-                      fontSize: '.62rem', padding: '2px 6px', borderRadius: 4, fontWeight: 600,
+                      fontSize: '.65rem', padding: '2px 6px', borderRadius: 4, fontWeight: 600,
                       background: r.is_ltcg ? 'rgba(76,175,154,.15)' : 'rgba(224,124,90,.15)',
                       color: r.is_ltcg ? '#4caf9a' : '#e07c5a',
                     }}>

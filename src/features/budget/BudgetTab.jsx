@@ -123,7 +123,7 @@ Write 3 sentences: (1) overall spending health — is this sustainable or concer
         <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
           {hasContent && !loading && (
             <span onClick={e => { e.stopPropagation(); generate(); }}
-              style={{ fontSize: '.62rem', color: 'rgba(160,132,202,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
+              style={{ fontSize: '.65rem', color: 'rgba(160,132,202,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
           )}
           {loading && (
             <div style={{ width: 10, height: 10, border: '1.5px solid rgba(160,132,202,.25)', borderTopColor: '#a084ca', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
@@ -303,7 +303,7 @@ export default function BudgetTab({
               {label:"Categories",val:catData.length,color:"#c9a84c",isCnt:true},
             ].map(k=>(
               <div key={k.label} className="card" style={{padding:".85rem 1rem"}}>
-                <div style={{fontSize:".62rem",letterSpacing:".1em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".4rem"}}>{k.label}</div>
+                <div style={{fontSize:".65rem",letterSpacing:".1em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".4rem"}}>{k.label}</div>
                 <div style={{fontFamily:"'DM Mono',monospace",fontSize:k.isCnt?"1.4rem":"1.1rem",color:k.color}}>
                   {k.isCnt?k.val:fmtAmt(Math.abs(k.val),domCur)}
                 </div>
@@ -363,7 +363,7 @@ export default function BudgetTab({
                       <div style={{width:"100%",background:"rgba(201,168,76,.12)",borderRadius:"3px 3px 0 0",height:100,display:"flex",alignItems:"flex-end"}}>
                         <div style={{width:"100%",background:"rgba(201,168,76,.7)",borderRadius:"3px 3px 0 0",height:`${pct}%`,transition:"height .6s ease"}}/>
                       </div>
-                      <div style={{fontSize:".62rem",color:"var(--text-dim)"}}>{label}</div>
+                      <div style={{fontSize:".65rem",color:"var(--text-dim)"}}>{label}</div>
                     </div>);
                   })}
                 </div>

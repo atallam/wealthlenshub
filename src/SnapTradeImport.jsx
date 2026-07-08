@@ -30,7 +30,7 @@ function StepBar({ step }) {
             color:      i <= idx ? "var(--primary)" : "var(--text-muted)",
           }}>{i + 1}</div>
           <div style={{
-            fontSize: ".62rem", letterSpacing: ".06em", whiteSpace: "nowrap", fontWeight: i <= idx ? 600 : 400,
+            fontSize: ".65rem", letterSpacing: ".06em", whiteSpace: "nowrap", fontWeight: i <= idx ? 600 : 400,
             color: i <= idx ? "var(--primary)" : "var(--text-muted)",
           }}>{s.label}</div>
           {i < steps.length - 1 && (
@@ -272,7 +272,7 @@ export default function SnapTradeImport({ onClose, members = [] }) {
               </button>
             ))}
           </div>
-          <div style={{ fontSize: ".62rem", color: "var(--text-muted)", marginTop: "1rem", textAlign: "center", lineHeight: 1.6 }}>
+          <div style={{ fontSize: ".65rem", color: "var(--text-muted)", marginTop: "1rem", textAlign: "center", lineHeight: 1.6 }}>
             Powered by SnapTrade · OAuth2 · Your credentials stay with your broker
           </div>
         </div>
@@ -283,7 +283,7 @@ export default function SnapTradeImport({ onClose, members = [] }) {
         <div>
           {connections.length > 0 && (
             <div style={{ marginBottom: "1.2rem" }}>
-              <div style={{ fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: ".6rem", fontWeight: 600 }}>
+              <div style={{ fontSize: ".65rem", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: ".6rem", fontWeight: 600 }}>
                 Connected Brokerages
               </div>
               {connections.map(c => (
@@ -291,14 +291,14 @@ export default function SnapTradeImport({ onClose, members = [] }) {
                   <div style={{ fontSize: "1.1rem" }}>{brokerIcon(c.brokerage_slug)}</div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: ".8rem", color: "var(--text)", fontWeight: 600 }}>{c.brokerage}</div>
-                    <div style={{ fontSize: ".62rem", color: "var(--text-muted)", marginTop: 2 }}>
+                    <div style={{ fontSize: ".65rem", color: "var(--text-muted)", marginTop: 2 }}>
                       {c.status === "active"
                         ? <span style={{ color: "var(--gain)" }}>● Active</span>
                         : <span style={{ color: WARN }}>● Disabled</span>}
                     </div>
                   </div>
                   <button onClick={() => setShowDisconnectConfirm(c.authorization_id)}
-                    style={{ background: "none", border: `1px solid ${WARN_BORDER}`, color: WARN, padding: ".22rem .55rem", borderRadius: 4, cursor: "pointer", fontSize: ".62rem", transition: "all .2s", fontFamily: "var(--font-ui)" }}
+                    style={{ background: "none", border: `1px solid ${WARN_BORDER}`, color: WARN, padding: ".22rem .55rem", borderRadius: 4, cursor: "pointer", fontSize: ".65rem", transition: "all .2s", fontFamily: "var(--font-ui)" }}
                     onMouseEnter={e => { e.currentTarget.style.background = WARN_DIM; }}
                     onMouseLeave={e => { e.currentTarget.style.background = "none"; }}>
                     Disconnect
@@ -310,7 +310,7 @@ export default function SnapTradeImport({ onClose, members = [] }) {
 
           {accounts.length > 0 ? (
             <>
-              <div style={{ fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: ".6rem", fontWeight: 600 }}>
+              <div style={{ fontSize: ".65rem", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: ".6rem", fontWeight: 600 }}>
                 Accounts — assign member &amp; click to preview
               </div>
               {accounts.map(a => (
@@ -324,7 +324,7 @@ export default function SnapTradeImport({ onClose, members = [] }) {
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: ".8rem", color: "var(--text)", fontWeight: 600 }}>{a.account_name || a.brokerage}</div>
-                      <div style={{ fontSize: ".62rem", color: "var(--text-muted)", marginTop: 2 }}>
+                      <div style={{ fontSize: ".65rem", color: "var(--text-muted)", marginTop: 2 }}>
                         {a.brokerage} · {a.account_number ? `••${a.account_number.slice(-4)}` : "Account"}
                       </div>
                     </div>
@@ -364,12 +364,12 @@ export default function SnapTradeImport({ onClose, members = [] }) {
       {!loading && step === "preview" && (
         <div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: ".7rem" }}>
-            <div style={{ fontSize: ".63rem", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 600 }}>
+            <div style={{ fontSize: ".65rem", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 600 }}>
               {holdings.length} positions found
               {holdings.length > 0 && <span style={{ fontWeight: 400 }}> · Total {fmtVal(holdings.reduce((s, h) => s + h.market_value, 0))}</span>}
             </div>
             {selectedBrokerage && (
-              <div style={{ display: "flex", alignItems: "center", gap: ".35rem", fontSize: ".63rem", color: "var(--primary)", fontWeight: 600 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: ".35rem", fontSize: ".65rem", color: "var(--primary)", fontWeight: 600 }}>
                 <span>{brokerIcon(accounts.find(a => a.account_id === selectedAcct)?.brokerage_slug)}</span>
                 {selectedBrokerage}
                 <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>via SnapTrade</span>
@@ -421,10 +421,10 @@ export default function SnapTradeImport({ onClose, members = [] }) {
                           <div style={{ fontSize: ".6rem", color: "var(--text-muted)", marginTop: 1, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.asset_name}</div>
                         </td>
                         <td style={tdStyle}>
-                          <span style={{ fontSize: ".58rem", padding: ".15rem .4rem", borderRadius: 4, background: typeInfo.bg, color: typeInfo.color, fontWeight: 600, whiteSpace: "nowrap" }}>{typeInfo.label}</span>
+                          <span style={{ fontSize: ".65rem", padding: ".15rem .4rem", borderRadius: 4, background: typeInfo.bg, color: typeInfo.color, fontWeight: 600, whiteSpace: "nowrap" }}>{typeInfo.label}</span>
                         </td>
                         <td style={tdStyle}>
-                          <span style={{ fontSize: ".58rem", color: "var(--text-muted)" }}>{h.brokerage_name || h.source || "—"}</span>
+                          <span style={{ fontSize: ".65rem", color: "var(--text-muted)" }}>{h.brokerage_name || h.source || "—"}</span>
                         </td>
                         <td style={{ ...tdStyle, textAlign: "right", fontFamily: "var(--font-mono)", fontSize: ".71rem" }}>
                           {h.units?.toFixed(h.units % 1 === 0 ? 0 : 4)}
@@ -436,8 +436,8 @@ export default function SnapTradeImport({ onClose, members = [] }) {
                           {fmtVal(h.market_value)}
                         </td>
                         <td style={tdStyle}>
-                          <span style={{ fontSize: ".58rem", padding: ".15rem .4rem", borderRadius: 4, background: dupInfo.bg, color: dupInfo.color, fontWeight: 600, whiteSpace: "nowrap" }}>{dupInfo.icon} {dupInfo.label}</span>
-                          {h.dup_detail && <div style={{ fontSize: ".55rem", color: "var(--text-muted)", marginTop: 2, maxWidth: 140, lineHeight: 1.3 }}>{h.dup_detail}</div>}
+                          <span style={{ fontSize: ".65rem", padding: ".15rem .4rem", borderRadius: 4, background: dupInfo.bg, color: dupInfo.color, fontWeight: 600, whiteSpace: "nowrap" }}>{dupInfo.icon} {dupInfo.label}</span>
+                          {h.dup_detail && <div style={{ fontSize: ".65rem", color: "var(--text-muted)", marginTop: 2, maxWidth: 140, lineHeight: 1.3 }}>{h.dup_detail}</div>}
                         </td>
                       </tr>
                     );

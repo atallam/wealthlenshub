@@ -88,12 +88,12 @@ Cover: (1) One time-sensitive action to take this month, (2) any FD renewal or g
         }}>
         <span>
           ✦ {monthName} Brief
-          {!hasContent && <span style={{ fontSize: '.62rem', color: 'rgba(160,132,202,.5)', marginLeft: '.5rem' }}>AI · on demand</span>}
+          {!hasContent && <span style={{ fontSize: '.65rem', color: 'rgba(160,132,202,.5)', marginLeft: '.5rem' }}>AI · on demand</span>}
         </span>
         <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
           {hasContent && !loading && (
             <span onClick={e => { e.stopPropagation(); generate(); }}
-              style={{ fontSize: '.62rem', color: 'rgba(160,132,202,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
+              style={{ fontSize: '.65rem', color: 'rgba(160,132,202,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
           )}
           {loading && <div style={{ width: 10, height: 10, border: '1.5px solid rgba(160,132,202,.25)', borderTopColor: '#a084ca', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />}
           {hasContent && <span style={{ fontSize: '.6rem' }}>{open ? '▲' : '▼'}</span>}
@@ -243,7 +243,7 @@ export default function CalendarTab({
 
           {/* Day headers */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
-            {DAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:".63rem",color:"var(--text-muted)",letterSpacing:".05em",padding:".3rem 0"}}>{d}</div>)}
+            {DAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:".65rem",color:"var(--text-muted)",letterSpacing:".05em",padding:".3rem 0"}}>{d}</div>)}
           </div>
 
           {/* Calendar cells */}
@@ -262,13 +262,13 @@ export default function CalendarTab({
               }}>
                 <div style={{fontSize:".72rem",color:today?"#c9a84c":"var(--text-dim)",fontWeight:today?600:400,marginBottom:".2rem"}}>{day}</div>
                 {dayEvents.slice(0,2).map((e,idx)=>(
-                  <div key={idx} style={{fontSize:".55rem",lineHeight:1.3,padding:"1px 3px",borderRadius:2,marginBottom:1,
+                  <div key={idx} style={{fontSize:".65rem",lineHeight:1.3,padding:"1px 3px",borderRadius:2,marginBottom:1,
                     background:`${e.color}22`,color:e.color,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
                     title={e.label}>
                     {e.icon} {e.label.slice(0,14)}{e.label.length>14?"…":""}
                   </div>
                 ))}
-                {dayEvents.length>2&&<div style={{fontSize:".52rem",color:"var(--text-muted)"}}>+{dayEvents.length-2} more</div>}
+                {dayEvents.length>2&&<div style={{fontSize:".65rem",color:"var(--text-muted)"}}>+{dayEvents.length-2} more</div>}
               </div>);
             })}
           </div>
@@ -291,7 +291,7 @@ export default function CalendarTab({
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontFamily:"'DM Mono',monospace",fontSize:".7rem",color:e.color}}>{daysLeft===0?"Today":daysLeft===1?"Tomorrow":`${daysLeft}d`}</div>
-                    <div style={{fontSize:".62rem",color:"var(--text-muted)"}}>{dt.toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</div>
+                    <div style={{fontSize:".65rem",color:"var(--text-muted)"}}>{dt.toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</div>
                   </div>
                 </div>);
               })

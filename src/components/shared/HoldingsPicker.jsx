@@ -208,14 +208,14 @@ export default function HoldingsPicker({
                     </div>
                     <div style={{ display: 'flex', gap: '.3rem', flexWrap: 'wrap', marginTop: '.1rem' }}>
                       <span style={{
-                        fontSize: '.58rem', padding: '1px 5px', borderRadius: 3,
+                        fontSize: '.65rem', padding: '1px 5px', borderRadius: 3,
                         background: `${a.color}18`, border: `1px solid ${a.color}44`, color: a.color,
                       }}>
                         {a.label}
                       </span>
                       {mName && (
                         <span style={{
-                          fontSize: '.58rem', padding: '1px 5px', borderRadius: 3,
+                          fontSize: '.65rem', padding: '1px 5px', borderRadius: 3,
                           background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)',
                         }}>
                           {mName}
@@ -223,7 +223,7 @@ export default function HoldingsPicker({
                       )}
                       {claimedBy.length > 0 && (
                         <span style={{
-                          fontSize: '.58rem', padding: '1px 5px', borderRadius: 3,
+                          fontSize: '.65rem', padding: '1px 5px', borderRadius: 3,
                           background: 'rgba(201,168,76,.12)', border: '1px solid rgba(201,168,76,.3)', color: '#c9a84c',
                         }}
                           title={`Also earmarked in: ${claimedBy.join(', ')}`}>
@@ -246,7 +246,7 @@ export default function HoldingsPicker({
           </div>
 
           {/* Footer note */}
-          <div style={{ padding: '.35rem .65rem', fontSize: '.62rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border)', lineHeight: 1.5 }}>
+          <div style={{ padding: '.35rem .65rem', fontSize: '.65rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border)', lineHeight: 1.5 }}>
             Earmarked holdings are always included in this goal's funded value, regardless of member or type filters above.
           </div>
         </div>

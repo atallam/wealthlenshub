@@ -196,7 +196,7 @@ export default function ImportModal({ importState, setImportState, members, AT, 
                     {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
                   </select>
                 </label>
-                {members.length===1&&<span style={{fontSize:".62rem",color:"rgba(76,175,154,.6)"}}>✓ auto-selected</span>}
+                {members.length===1&&<span style={{fontSize:".65rem",color:"rgba(76,175,154,.6)"}}>✓ auto-selected</span>}
               </div>
             )}
           </div>
@@ -314,16 +314,16 @@ export default function ImportModal({ importState, setImportState, members, AT, 
               {action!=="skip"&&(
                 <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:".4rem",fontSize:".67rem",marginTop:".3rem"}}>
                   <div style={{background:"var(--bg-muted)",borderRadius:6,padding:".4rem .6rem",border:"1px solid var(--border)"}}>
-                    <div style={{fontSize:".58rem",letterSpacing:".06em",textTransform:"uppercase",color:"var(--text)",marginBottom:".25rem"}}>Current (in portfolio)</div>
+                    <div style={{fontSize:".65rem",letterSpacing:".06em",textTransform:"uppercase",color:"var(--text)",marginBottom:".25rem"}}>Current (in portfolio)</div>
                     <div style={{color:"var(--text)"}}>Units: <span className="mono">{ex.units!=null?fmt(ex.units,2):"—"}</span></div>
                     <div style={{color:"var(--text)"}}>Avg Cost: <span className="mono">{ex.purchase_price?fmt(ex.purchase_price):"—"}</span></div>
                     <div style={{color:"var(--text)"}}>Invested: <span className="mono">{exInv?fmt(exInv):"—"}</span></div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",color:"var(--text)",fontSize:"1.1rem"}}>→</div>
                   <div style={{background:"rgba(90,156,224,.05)",borderRadius:6,padding:".4rem .6rem",border:"1px solid rgba(90,156,224,.12)"}}>
-                    <div style={{fontSize:".58rem",letterSpacing:".06em",textTransform:"uppercase",color:"#5a9ce0",marginBottom:".25rem"}}>New (from file)</div>
-                    <div style={{color:"var(--text)"}}>Units: <span className="mono" style={{color:unitsChanged?"#c9a84c":"#fff"}}>{fmt(h.units||0,2)}</span>{unitsChanged&&<span style={{fontSize:".58rem",color:"#c9a84c",marginLeft:".3rem"}}>changed</span>}</div>
-                    <div style={{color:"var(--text)"}}>Avg Cost: <span className="mono" style={{color:priceChanged?"#c9a84c":"#fff"}}>{fmt(h.purchase_price||h.purchase_nav||0)}</span>{priceChanged&&<span style={{fontSize:".58rem",color:"#c9a84c",marginLeft:".3rem"}}>changed</span>}</div>
+                    <div style={{fontSize:".65rem",letterSpacing:".06em",textTransform:"uppercase",color:"#5a9ce0",marginBottom:".25rem"}}>New (from file)</div>
+                    <div style={{color:"var(--text)"}}>Units: <span className="mono" style={{color:unitsChanged?"#c9a84c":"#fff"}}>{fmt(h.units||0,2)}</span>{unitsChanged&&<span style={{fontSize:".65rem",color:"#c9a84c",marginLeft:".3rem"}}>changed</span>}</div>
+                    <div style={{color:"var(--text)"}}>Avg Cost: <span className="mono" style={{color:priceChanged?"#c9a84c":"#fff"}}>{fmt(h.purchase_price||h.purchase_nav||0)}</span>{priceChanged&&<span style={{fontSize:".65rem",color:"#c9a84c",marginLeft:".3rem"}}>changed</span>}</div>
                     <div style={{color:"var(--text)"}}>Invested: <span className="mono">{fmt(newInv)}</span></div>
                   </div>
                 </div>

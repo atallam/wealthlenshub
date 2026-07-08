@@ -55,7 +55,7 @@ function NudgesSection({ nudges, loading, loaded, dismissed, onLoad, onDismiss }
             onClick={() => setOpen(p => !p)}>
             <span style={{ fontSize: '.68rem', color: '#a084ca', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase' }}>✦ AI Insights</span>
             <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
-              <span style={{ fontSize: '.62rem', color: 'var(--text-muted)' }}>{nudges.length} finding{nudges.length !== 1 ? 's' : ''}</span>
+              <span style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>{nudges.length} finding{nudges.length !== 1 ? 's' : ''}</span>
               <button onClick={e => { e.stopPropagation(); onDismiss(); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '.75rem', lineHeight: 1 }}>✕</button>
               <span style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>{open ? '▲' : '▼'}</span>
             </div>
@@ -367,7 +367,7 @@ export default function GoalsTab({
             </button>
           </div>
           {nlError && <div style={{ marginTop: '.4rem', fontSize: '.68rem', color: '#e07c5a' }}>⚠ {nlError}</div>}
-          <div style={{ marginTop: '.4rem', fontSize: '.63rem', color: 'var(--text-muted)' }}>
+          <div style={{ marginTop: '.4rem', fontSize: '.65rem', color: 'var(--text-muted)' }}>
             AI will extract the goal name, target amount, date, and category — you can review and edit before saving.
           </div>
         </div>
@@ -492,8 +492,8 @@ export default function GoalsTab({
               {/* Priority + status pills */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '.35rem', marginBottom: '.55rem' }}>
                 <div style={{ background: `${g.color}22`, border: `1px solid ${g.color}55`, borderRadius: 3, padding: '1px 7px', fontSize: '.6rem', letterSpacing: '.08em', color: g.color, fontWeight: 600 }}>P{g.priority || idx + 1}</div>
-                <div style={{ background: `${st.color}18`, border: `1px solid ${st.color}44`, borderRadius: 10, padding: '1px 8px', fontSize: '.58rem', color: st.color, fontWeight: 500 }}>{st.label}</div>
-                <span style={{ fontSize: '.62rem', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)', marginLeft: '.15rem' }}>{g.category}</span>
+                <div style={{ background: `${st.color}18`, border: `1px solid ${st.color}44`, borderRadius: 10, padding: '1px 8px', fontSize: '.65rem', color: st.color, fontWeight: 500 }}>{st.label}</div>
+                <span style={{ fontSize: '.65rem', letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)', marginLeft: '.15rem' }}>{g.category}</span>
               </div>
 
               {/* Controls */}
@@ -510,7 +510,7 @@ export default function GoalsTab({
               {g.notes && <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginBottom: '.6rem' }}>{g.notes}</div>}
 
               {/* Funded by */}
-              <div style={{ marginBottom: '.5rem', fontSize: '.62rem', color: 'var(--text-muted)', letterSpacing: '.04em', textTransform: 'uppercase', fontWeight: 500 }}>Funded by</div>
+              <div style={{ marginBottom: '.5rem', fontSize: '.65rem', color: 'var(--text-muted)', letterSpacing: '.04em', textTransform: 'uppercase', fontWeight: 500 }}>Funded by</div>
               <div style={{ marginBottom: '.65rem', display: 'flex', flexWrap: 'wrap', gap: '.35rem' }}>
                 <span style={{ fontSize: '.65rem', background: 'var(--bg-muted)', border: '1px solid var(--border)', borderRadius: 12, padding: '2px 9px', color: 'var(--text-dim)' }}>👤 {memberNames}</span>
                 {(g.linkedTypes || []).length > 0 ? g.linkedTypes.map(t => {
@@ -576,18 +576,18 @@ export default function GoalsTab({
                 {/* 1. What-If SIP */}
                 {st.label !== 'Achieved' && yLeft > 0 && (
                   <button onClick={() => setExpandedWhatIf(whatIfExpanded ? null : g.id)}
-                    style={{ flex: 1, background: whatIfExpanded ? 'rgba(29,158,117,.1)' : 'none', border: `1px solid ${whatIfExpanded ? 'rgba(29,158,117,.4)' : 'var(--border)'}`, borderRadius: 5, padding: '.28rem .4rem', cursor: 'pointer', fontSize: '.62rem', color: whatIfExpanded ? '#1d9e75' : 'var(--text-muted)', fontFamily: "'DM Sans',sans-serif" }}>
+                    style={{ flex: 1, background: whatIfExpanded ? 'rgba(29,158,117,.1)' : 'none', border: `1px solid ${whatIfExpanded ? 'rgba(29,158,117,.4)' : 'var(--border)'}`, borderRadius: 5, padding: '.28rem .4rem', cursor: 'pointer', fontSize: '.65rem', color: whatIfExpanded ? '#1d9e75' : 'var(--text-muted)', fontFamily: "'DM Sans',sans-serif" }}>
                     🎯 What-If SIP
                   </button>
                 )}
                 {/* 2. Tax Path */}
                 <button onClick={() => setExpandedTaxId(taxExpanded ? null : g.id)}
-                  style={{ flex: 1, background: taxExpanded ? 'rgba(160,132,202,.1)' : 'none', border: `1px solid ${taxExpanded ? 'rgba(160,132,202,.4)' : 'var(--border)'}`, borderRadius: 5, padding: '.28rem .4rem', cursor: 'pointer', fontSize: '.62rem', color: taxExpanded ? '#a084ca' : 'var(--text-muted)', fontFamily: "'DM Sans',sans-serif" }}>
+                  style={{ flex: 1, background: taxExpanded ? 'rgba(160,132,202,.1)' : 'none', border: `1px solid ${taxExpanded ? 'rgba(160,132,202,.4)' : 'var(--border)'}`, borderRadius: 5, padding: '.28rem .4rem', cursor: 'pointer', fontSize: '.65rem', color: taxExpanded ? '#a084ca' : 'var(--text-muted)', fontFamily: "'DM Sans',sans-serif" }}>
                   📋 Tax Path
                 </button>
                 {/* 3. Holdings drill-down */}
                 <button onClick={() => setExpandedGoalId(holdingsExpanded ? null : g.id)}
-                  style={{ flex: 1, background: holdingsExpanded ? 'rgba(90,156,224,.08)' : 'none', border: `1px solid ${holdingsExpanded ? 'rgba(90,156,224,.3)' : 'var(--border)'}`, borderRadius: 5, padding: '.28rem .4rem', cursor: 'pointer', fontSize: '.62rem', color: holdingsExpanded ? '#5a9ce0' : 'var(--text-muted)', fontFamily: "'DM Sans',sans-serif" }}>
+                  style={{ flex: 1, background: holdingsExpanded ? 'rgba(90,156,224,.08)' : 'none', border: `1px solid ${holdingsExpanded ? 'rgba(90,156,224,.3)' : 'var(--border)'}`, borderRadius: 5, padding: '.28rem .4rem', cursor: 'pointer', fontSize: '.65rem', color: holdingsExpanded ? '#5a9ce0' : 'var(--text-muted)', fontFamily: "'DM Sans',sans-serif" }}>
                   📊 Holdings
                 </button>
               </div>
@@ -595,7 +595,7 @@ export default function GoalsTab({
               {/* ── What-If SIP Simulator ─────────────────────────────────── */}
               {whatIfExpanded && (
                 <div style={{ marginTop: '.5rem', padding: '.65rem .75rem', background: 'rgba(29,158,117,.05)', border: '1px solid rgba(29,158,117,.2)', borderRadius: 8 }}>
-                  <div style={{ fontSize: '.63rem', color: '#1d9e75', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: '.5rem' }}>🎯 What-If SIP Simulator</div>
+                  <div style={{ fontSize: '.65rem', color: '#1d9e75', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: '.5rem' }}>🎯 What-If SIP Simulator</div>
                   <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', marginBottom: '.5rem' }}>
                     <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', flexShrink: 0 }}>Add extra</span>
                     <div style={{ position: 'relative', flex: 1 }}>
@@ -645,12 +645,12 @@ export default function GoalsTab({
                 <div style={{ marginTop: '.5rem', padding: '.65rem .75rem', background: 'rgba(160,132,202,.05)', border: '1px solid rgba(160,132,202,.2)', borderRadius: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.5rem' }}>
                     <div>
-                      <div style={{ fontSize: '.63rem', color: '#a084ca', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase' }}>📋 Tax-Optimised Path</div>
+                      <div style={{ fontSize: '.65rem', color: '#a084ca', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase' }}>📋 Tax-Optimised Path</div>
                       <div style={{ fontSize: '.65rem', color: taxPath.color, marginTop: '.15rem' }}>{taxPath.label}</div>
                     </div>
                     {!taxAIText[g.id] && !taxAILoading[g.id] && (
                       <button onClick={() => { setExpandedTaxId(g.id); handleAITaxPath(g, cur, yLeft); }}
-                        style={{ background: 'rgba(160,132,202,.12)', border: '1px solid rgba(160,132,202,.3)', color: '#a084ca', borderRadius: 5, padding: '.22rem .55rem', cursor: 'pointer', fontSize: '.62rem', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 }}>
+                        style={{ background: 'rgba(160,132,202,.12)', border: '1px solid rgba(160,132,202,.3)', color: '#a084ca', borderRadius: 5, padding: '.22rem .55rem', cursor: 'pointer', fontSize: '.65rem', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 }}>
                         ✦ Get AI advice
                       </button>
                     )}

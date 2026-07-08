@@ -127,7 +127,7 @@ export default function LiabilitiesPanel({ liabilities, setLiabilities, fmtCrINR
                     {fmtAmt(currentBalance, l.currency)}
                   </div>
                   {auto && (
-                    <div style={{ fontSize: ".58rem", color: "rgba(160,132,202,.7)", marginTop: 1 }}>
+                    <div style={{ fontSize: ".65rem", color: "rgba(160,132,202,.7)", marginTop: 1 }}>
                       auto-calc
                     </div>
                   )}

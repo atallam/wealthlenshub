@@ -125,7 +125,7 @@ Cover: (1) overall portfolio health in one sentence, (2) one standout performer 
         <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
           {hasContent && !loading && (
             <span onClick={e => { e.stopPropagation(); generate(); }}
-              style={{ fontSize: '.62rem', color: 'rgba(201,168,76,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
+              style={{ fontSize: '.65rem', color: 'rgba(201,168,76,.6)', cursor: 'pointer' }}>⟳ Refresh</span>
           )}
           {loading && <div style={{ width: 10, height: 10, border: '1.5px solid rgba(201,168,76,.25)', borderTopColor: '#c9a84c', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />}
           {hasContent && <span style={{ fontSize: '.6rem' }}>{open ? '▲' : '▼'}</span>}
@@ -280,7 +280,7 @@ export default function OverviewTab({
               onClick={()=>setModal("add")}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".3rem"}}>
                 <span style={{fontSize:".8rem",color:"var(--text)",fontWeight:500}}>{c.title}</span>
-                <span style={{fontSize:".55rem",padding:"2px 6px",borderRadius:3,background:c.badgeBg,color:c.badgeC}}>{c.badge}</span>
+                <span style={{fontSize:".65rem",padding:"2px 6px",borderRadius:3,background:c.badgeBg,color:c.badgeC}}>{c.badge}</span>
               </div>
               <div style={{fontSize:".68rem",color:"var(--text-muted)",lineHeight:1.5}}>{c.desc}</div>
             </div>
@@ -488,7 +488,7 @@ export default function OverviewTab({
                   <div style={{fontSize:".95rem",width:22,textAlign:"center"}}>{r.src==="CAS"?"📥":r.src==="SnapTrade"?"🔗":r.src==="CSV"?"📄":"✍️"}</div>
                   <div style={{flex:1}}>
                     <div style={{fontSize:".75rem",color:"var(--text)",fontWeight:500}}>{r.member}</div>
-                    <div style={{fontSize:".62rem",color:"var(--text-muted)"}}>{r.src} · {r.count} holding{r.count!==1?"s":""}</div>
+                    <div style={{fontSize:".65rem",color:"var(--text-muted)"}}>{r.src} · {r.count} holding{r.count!==1?"s":""}</div>
                   </div>
                   <div style={{textAlign:"right"}}>
                     {r.hasLive ? (
@@ -496,12 +496,12 @@ export default function OverviewTab({
                     ) : r.casPeriodEnd ? (
                       <>
                         <div style={{fontSize:".72rem",color:"#c9a84c",fontWeight:500}}>{r.casPeriodStart ? `${dfmtShort(r.casPeriodStart)} → ${dfmt(r.casPeriodEnd)}` : dfmt(r.casPeriodEnd)}</div>
-                        {r.importDate && <div style={{fontSize:".58rem",color:"var(--text-muted)"}}>Imported: {dfmtShort(r.importDate)}</div>}
+                        {r.importDate && <div style={{fontSize:".65rem",color:"var(--text-muted)"}}>Imported: {dfmtShort(r.importDate)}</div>}
                       </>
                     ) : r.date ? (
                       <>
                         <div style={{fontSize:".72rem",color:"#c9a84c",fontWeight:500}}>{dfmt(r.date)}</div>
-                        {r.importDate && r.importDate.slice(0,10) !== r.date && <div style={{fontSize:".58rem",color:"var(--text-muted)"}}>Imported: {dfmtShort(r.importDate)}</div>}
+                        {r.importDate && r.importDate.slice(0,10) !== r.date && <div style={{fontSize:".65rem",color:"var(--text-muted)"}}>Imported: {dfmtShort(r.importDate)}</div>}
                       </>
                     ) : r.lastRefresh ? (
                       <div style={{fontSize:".72rem",color:"rgba(201,168,76,.6)",fontWeight:500}}>Price: {dfmt(r.lastRefresh)}</div>
@@ -509,7 +509,7 @@ export default function OverviewTab({
                       <div style={{fontSize:".72rem",color:"var(--text-muted)"}}>—</div>
                     )}
                     {r.lastRefresh && (r.casPeriodEnd || r.date) && (
-                      <div style={{fontSize:".58rem",color:"var(--text-muted)"}}>Price: {dfmtShort(r.lastRefresh)}</div>
+                      <div style={{fontSize:".65rem",color:"var(--text-muted)"}}>Price: {dfmtShort(r.lastRefresh)}</div>
                     )}
                   </div>
                 </div>
@@ -655,17 +655,17 @@ export default function OverviewTab({
               {/* Reset history */}
               {!confirmResetSnaps
                 ? <button onClick={()=>setConfirmResetSnaps(true)}
-                    style={{fontSize:".62rem",padding:".2rem .5rem",background:"none",border:"1px solid rgba(224,124,90,.35)",color:"rgba(224,124,90,.7)",borderRadius:5,cursor:"pointer"}}>
+                    style={{fontSize:".65rem",padding:".2rem .5rem",background:"none",border:"1px solid rgba(224,124,90,.35)",color:"rgba(224,124,90,.7)",borderRadius:5,cursor:"pointer"}}>
                     Reset history
                   </button>
                 : <span style={{display:"flex",alignItems:"center",gap:".35rem"}}>
-                    <span style={{fontSize:".62rem",color:"rgba(224,124,90,.85)"}}>Keep only latest?</span>
+                    <span style={{fontSize:".65rem",color:"rgba(224,124,90,.85)"}}>Keep only latest?</span>
                     <button onClick={async()=>{await resetSnapshotHistory();setConfirmResetSnaps(false);}}
-                      style={{fontSize:".62rem",padding:".2rem .5rem",background:"rgba(224,124,90,.12)",border:"1px solid rgba(224,124,90,.5)",color:"#e07c5a",borderRadius:5,cursor:"pointer"}}>
+                      style={{fontSize:".65rem",padding:".2rem .5rem",background:"rgba(224,124,90,.12)",border:"1px solid rgba(224,124,90,.5)",color:"#e07c5a",borderRadius:5,cursor:"pointer"}}>
                       Yes, reset
                     </button>
                     <button onClick={()=>setConfirmResetSnaps(false)}
-                      style={{fontSize:".62rem",padding:".2rem .5rem",background:"none",border:"1px solid var(--border)",color:"var(--text-muted)",borderRadius:5,cursor:"pointer"}}>
+                      style={{fontSize:".65rem",padding:".2rem .5rem",background:"none",border:"1px solid var(--border)",color:"var(--text-muted)",borderRadius:5,cursor:"pointer"}}>
                       Cancel
                     </button>
                   </span>
@@ -674,15 +674,15 @@ export default function OverviewTab({
           </div>
           <div style={{display:"flex",gap:"1rem",marginBottom:".8rem",flexWrap:"wrap"}}>
             <div style={{flex:1,minWidth:120,padding:".5rem .7rem",borderRadius:8,background:"rgba(76,175,154,.06)",border:"1px solid rgba(76,175,154,.15)"}}>
-              <div style={{fontSize:".62rem",color:"var(--text-dim)",textTransform:"uppercase",letterSpacing:".05em"}}>Current Value</div>
+              <div style={{fontSize:".65rem",color:"var(--text-dim)",textTransform:"uppercase",letterSpacing:".05em"}}>Current Value</div>
               <div style={{fontSize:".9rem",fontWeight:600,color:"#4caf9a",fontFamily:"'DM Mono',monospace"}}>{fmtCr(latestSnap.total_current)}</div>
             </div>
             <div style={{flex:1,minWidth:120,padding:".5rem .7rem",borderRadius:8,background:"rgba(201,168,76,.06)",border:"1px solid rgba(201,168,76,.15)"}}>
-              <div style={{fontSize:".62rem",color:"var(--text-dim)",textTransform:"uppercase",letterSpacing:".05em"}}>Total Invested</div>
+              <div style={{fontSize:".65rem",color:"var(--text-dim)",textTransform:"uppercase",letterSpacing:".05em"}}>Total Invested</div>
               <div style={{fontSize:".9rem",fontWeight:600,color:"#c9a84c",fontFamily:"'DM Mono',monospace"}}>{fmtCr(latestSnap.total_invested)}</div>
             </div>
             <div style={{flex:1,minWidth:120,padding:".5rem .7rem",borderRadius:8,background:monthGrowth>=0?"rgba(76,175,154,.06)":"rgba(224,124,90,.06)",border:`1px solid ${monthGrowth>=0?"rgba(76,175,154,.15)":"rgba(224,124,90,.15)"}`}}>
-              <div style={{fontSize:".62rem",color:"var(--text-dim)",textTransform:"uppercase",letterSpacing:".05em"}}>Month Change</div>
+              <div style={{fontSize:".65rem",color:"var(--text-dim)",textTransform:"uppercase",letterSpacing:".05em"}}>Month Change</div>
               <div style={{fontSize:".9rem",fontWeight:600,color:monthGrowth>=0?"#4caf9a":"#e07c5a",fontFamily:"'DM Mono',monospace"}}>{monthGrowth>=0?"+":""}{fmtCr(monthGrowth)}</div>
             </div>
           </div>
@@ -719,7 +719,7 @@ export default function OverviewTab({
             <summary style={{fontSize:".68rem",color:"var(--text-dim)",cursor:"pointer",userSelect:"none"}}>View monthly data ({snaps.length} snapshots)</summary>
             <div style={{overflowX:"auto",marginTop:".4rem"}}>
               <table className="ht" style={{fontSize:".7rem"}}><thead><tr><th>Month</th><th className="r">Invested</th><th className="r">Current</th><th className="r">Gain</th><th className="r">Return</th><th>Source</th></tr></thead>
-              <tbody>{[...snaps].reverse().map(s=>{const gain=s.total_current-s.total_invested;const pct=s.total_invested>0?((gain/s.total_invested)*100).toFixed(1):"0";const[y,m]=s.snapshot_month.split("-");const mon=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1];return<tr key={s.snapshot_month}><td style={{whiteSpace:"nowrap"}}>{mon} {y}</td><td className="r mono">{fmtCr(s.total_invested)}</td><td className="r mono">{fmtCr(s.total_current)}</td><td className={`r mono ${gain>=0?"gain":"loss"}`}>{gain>=0?"+":""}{fmtCr(gain)}</td><td className={`r ${gain>=0?"gain":"loss"}`}>{pct}%</td><td style={{fontSize:".62rem",color:"var(--text-muted)"}}>{s.source==="cas_import"?"📥 CAS":s.source==="price_refresh"?"🔄 Refresh":"📝 Manual"}{s.cas_statement_date?` (${s.cas_statement_date})`:""}</td></tr>;})}</tbody></table>
+              <tbody>{[...snaps].reverse().map(s=>{const gain=s.total_current-s.total_invested;const pct=s.total_invested>0?((gain/s.total_invested)*100).toFixed(1):"0";const[y,m]=s.snapshot_month.split("-");const mon=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1];return<tr key={s.snapshot_month}><td style={{whiteSpace:"nowrap"}}>{mon} {y}</td><td className="r mono">{fmtCr(s.total_invested)}</td><td className="r mono">{fmtCr(s.total_current)}</td><td className={`r mono ${gain>=0?"gain":"loss"}`}>{gain>=0?"+":""}{fmtCr(gain)}</td><td className={`r ${gain>=0?"gain":"loss"}`}>{pct}%</td><td style={{fontSize:".65rem",color:"var(--text-muted)"}}>{s.source==="cas_import"?"📥 CAS":s.source==="price_refresh"?"🔄 Refresh":"📝 Manual"}{s.cas_statement_date?` (${s.cas_statement_date})`:""}</td></tr>;})}</tbody></table>
             </div>
           </details>
         </div>);

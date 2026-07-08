@@ -78,7 +78,7 @@ export default function LoginScreen({ error: initError }) {
             </button>
           </div>
 
-          <div style={{display:"flex",alignItems:"center",gap:".7rem",margin:"0 0 .9rem"}}><div style={{flex:1,height:1,background:"var(--bg-muted)"}}/><div style={{fontSize:".58rem",color:"var(--text-muted)",letterSpacing:".06em"}}>or use email</div><div style={{flex:1,height:1,background:"var(--bg-muted)"}}/></div>
+          <div style={{display:"flex",alignItems:"center",gap:".7rem",margin:"0 0 .9rem"}}><div style={{flex:1,height:1,background:"var(--bg-muted)"}}/><div style={{fontSize:".65rem",color:"var(--text-muted)",letterSpacing:".06em"}}>or use email</div><div style={{flex:1,height:1,background:"var(--bg-muted)"}}/></div>
 
           {mode!=="forgot"&&<div style={{display:"flex",gap:".25rem",marginBottom:".8rem",borderRadius:8,background:"var(--bg-muted)",padding:"3px"}}>
             {["signin","signup"].map(m=><div key={m} onClick={()=>{setMode(m);setErr("");setMsg("");}} style={{flex:1,textAlign:"center",padding:".4rem",borderRadius:6,cursor:"pointer",fontSize:".72rem",fontWeight:mode===m?500:400,background:mode===m?"rgba(201,168,76,.1)":"transparent",color:mode===m?"#c9a84c":"var(--text-muted)",transition:"all .2s"}}>{m==="signin"?"Sign In":"Create Account"}</div>)}
@@ -118,7 +118,7 @@ export default function LoginScreen({ error: initError }) {
       {/* ═══ FEATURES ═══ */}
       <div id="features" style={{...S.section,paddingTop:"5rem",paddingBottom:"5rem",borderTop:"1px solid rgba(232,224,208,.04)"}}>
         <div style={{marginBottom:"2.5rem",maxWidth:520}}>
-          <div style={{fontSize:".62rem",letterSpacing:".2em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".8rem",display:"flex",alignItems:"center",gap:".5rem"}}>
+          <div style={{fontSize:".65rem",letterSpacing:".2em",textTransform:"uppercase",color:"#c9a84c",marginBottom:".8rem",display:"flex",alignItems:"center",gap:".5rem"}}>
             <span style={{width:20,height:1,background:"#c9a84c",display:"inline-block"}}/>
             Features
           </div>
@@ -140,7 +140,7 @@ export default function LoginScreen({ error: initError }) {
                 <div style={{fontSize:"1.2rem",marginBottom:".8rem"}}>{f.icon}</div>
                 <div style={{fontSize:".88rem",fontWeight:600,marginBottom:".35rem"}}>{f.t}</div>
                 <div style={{fontSize:".78rem",color:"rgba(232,224,208,.4)",lineHeight:1.7,marginBottom:".6rem"}}>{f.d}</div>
-                <span style={{fontSize:".58rem",letterSpacing:".08em",textTransform:"uppercase",color:f.c,opacity:.7}}>{f.tag}</span>
+                <span style={{fontSize:".65rem",letterSpacing:".08em",textTransform:"uppercase",color:f.c,opacity:.7}}>{f.tag}</span>
               </div>
             ))}
         </div>
@@ -149,7 +149,7 @@ export default function LoginScreen({ error: initError }) {
       {/* ═══ SECURITY ═══ */}
       <div id="security" style={{...S.section,paddingTop:"5rem",paddingBottom:"5rem",borderTop:"1px solid rgba(232,224,208,.04)"}}>
         <div style={{marginBottom:"2.5rem",maxWidth:520}}>
-          <div style={{fontSize:".62rem",letterSpacing:".2em",textTransform:"uppercase",color:"#4caf9a",marginBottom:".8rem",display:"flex",alignItems:"center",gap:".5rem"}}>
+          <div style={{fontSize:".65rem",letterSpacing:".2em",textTransform:"uppercase",color:"#4caf9a",marginBottom:".8rem",display:"flex",alignItems:"center",gap:".5rem"}}>
             <span style={{width:20,height:1,background:"#4caf9a",display:"inline-block"}}/>
             Security
           </div>
