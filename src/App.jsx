@@ -70,6 +70,9 @@ import { PortfolioProvider } from './contexts/PortfolioContext.jsx';
 // ── Error boundary ───────────────────────────────────────────────
 import ErrorBoundary from './components/shared/ErrorBoundary.jsx';
 
+// ── PWA install prompt ───────────────────────────────────────────
+import InstallPrompt from './components/shared/InstallPrompt.jsx';
+
 // ── API helper imported from lib/api.js (see top imports) ────────
 
 const TABS = [
@@ -543,7 +546,7 @@ ${alertsText}`;
   // ── Props bundle shared across most tabs ──────────────────────
   const sharedPortfolioProps = {
     holdings, allHoldings, allMembers, members, goals, alerts, liabilities, setLiabilities,
-    loaded, demoMode, wealthSnapshots, benchmark,
+    loaded, demoMode, wealthSnapshots, benchmark, lastPriceRefresh,
     valINRCache, invINRCache, valNativeCache, invNativeCache, xirrCache,
     totCur, totInv, totGain, totPct, allCur, allInv, byType, mSum, trigAlerts,
     nriMetrics,
@@ -1536,6 +1539,9 @@ ${alertsText}`;
       {/* ── Hidden file input for import ─────────────────────────── */}
       <input ref={importFileRef} type="file" style={{display:'none'}} accept=".csv,.xlsx,.xls,.pdf"
         onChange={e => importHook.handleImportFile(e.target.files[0], null, members)}/>
+
+      {/* ── PWA install prompt ───────────────────────────────────── */}
+      <InstallPrompt />
 
     </div>
   );
