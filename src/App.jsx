@@ -1514,4 +1514,67 @@ ${alertsText}`;
           setImportState={importHook.setImportState}
           members={members}
           AT={AT}
-          handleImportFile={file =>
+          handleImportFile={file => importHook.handleImportFile(file, null, members)}
+          executeImport={() => importHook.executeImport(members)}
+          resetImport={importHook.resetImport}
+          importFileRef={importFileRef}
+          onClose={() => { importHook.resetImport(); setModal(null); }}
+          fmt={fmt}
+          submitCASPassword={() => importHook.submitCASPassword(members)}
+        />
+      )}
+
+      {/* ── Goal Plan modal ─────────────────────────────────────── */}
+      {modal === 'goalplan' && (
+        <GoalPlanModal
+          open
+          onClose={() => setModal(null)}
+          goals={goals}
+          members={members}
+          holdings={allHoldings}
+          allCur={allCur}
+          allInv={allInv}
+          AT={AT}
+          getValINR={getValINR}
+          usdInr={usdInrRate}
+        />
+      )}
+
+      {/* ── Transaction panel ────────────────────────────────────── */}
+      {txnHolding && (
+        <TransactionPanel
+          holding={txnHolding}
+          txnForm={txnForm}
+          setTxnForm={setTxnForm}
+          onAddTxn={() => portfolio.addTransaction(txnForm, null, null, txnHolding, txnSaving)
+            .then(res => { if (res?.hlds) setTxnForm(BT); })}
+          onDeleteTxn={(txnId, holdingId) => portfolio.deleteTransaction(txnId, holdingId)}
+          onReload={portfolio.reloadHoldings}
+          onClose={() => setTxnHolding(null)}
+          fxRate={usdInrRate}
+          fxLoading={usdInrLoading}
+          onFetchFx={fetchUsdInr}
+        />
+      )}
+
+      {/* ── Artifact panel ───────────────────────────────────────── */}
+      {artifactHolding && (
+        <ArtifactPanel
+          holding={artifactHolding}
+          token={null}
+          onClose={() => setArtifactHolding(null)}
+        />
+      )}
+
+      {/* old inline CAS + broker overlays removed — now handled by CASImportModal and Import Hub above */}
+
+      {/* ── Hidden file input for import ─────────────────────────── */}
+      <input ref={importFileRef} type="file" style={{display:'none'}} accept=".csv,.xlsx,.xls,.pdf"
+        onChange={e => importHook.handleImportFile(e.target.files[0], null, members)}/>
+
+      {/* ── PWA install prompt ───────────────────────────────────── */}
+      <InstallPrompt />
+
+    </div>
+  );
+}
