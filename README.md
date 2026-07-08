@@ -223,6 +223,19 @@ wealthlens-hub/
 1. [supabase.com](https://supabase.com) → New project → Name: `wealthlens`, Region: South Asia (Mumbai)
 2. SQL Editor → paste `database.sql` → Run
 
+### 1b. Incremental migrations
+After the initial `database.sql`, run any new files in `migrations/` in order via **Supabase → SQL Editor**:
+```
+migrations/0009_reconcile_artifacts_and_security.sql
+migrations/0010_add_liabilities_column.sql
+migrations/0011_drop_portfolio_sharing.sql
+migrations/0012_concall_analyses.sql   ← required for Concall Analysis feature
+migrations/0013_cash_events.sql
+migrations/0014_fd_currency.sql
+migrations/0015_insurance_fields.sql
+```
+Each file is idempotent (safe to re-run).
+
 ### 2. Auth providers
 - Authentication → Providers → Enable **Google** and/or **GitHub**
 - Add your OAuth client credentials from [console.cloud.google.com](https://console.cloud.google.com)

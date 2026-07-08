@@ -104,7 +104,12 @@ async function saveAnalysis(holdingId, userId, quarter, result, provenance) {
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    if (error.code === "42P01") {
+      throw new Error("concall_analyses table not found — run migrations/0012_concall_analyses.sql in Supabase SQL editor");
+    }
+    throw error;
+  }
   return data;
 }
 
@@ -266,10 +271,13 @@ router.get("/:holdingId", auth, async (req, res) => {
       .limit(1)
       .single();
 
-    if (error && error.code === "PGRST116") {
-      return res.json({ analysis: null, no_data: true });
+    if (error) {
+      // PGRST116 = no rows; 42P01 = table not yet migrated — both are "no data" to the UI
+      if (error.code === "PGRST116" || error.code === "42P01") {
+        return res.json({ analysis: null, no_data: true });
+      }
+      throw error;
     }
-    if (error) throw error;
 
     const fresh = data.expires_at && new Date(data.expires_at) > new Date();
     return res.json({ analysis: data, stale: !fresh });
@@ -296,7 +304,8 @@ router.get("/:holdingId/history", auth, async (req, res) => {
       .order("quarter_date", { ascending: false })
       .limit(12);
 
-    if (error) throw error;
+    // 42P01 = table not yet migrated — return empty history rather than 500
+    if (error && error.code !== "42P01") throw error;
     return res.json({ history: data || [] });
   } catch (e) {
     sendError(res, e);
