@@ -236,9 +236,9 @@ export default function CalendarTab({
         {/* Calendar grid */}
         <div className="card" style={{padding:"1rem"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
-            <button onClick={prevMo} style={{background:"var(--bg-muted)",border:"1px solid var(--border)",color:"var(--text-dim)",borderRadius:5,padding:".25rem .6rem",cursor:"pointer",fontSize:".85rem"}}>‹</button>
+            <button onClick={prevMo} aria-label="Previous month" style={{background:"var(--bg-muted)",border:"1px solid var(--border)",color:"var(--text-dim)",borderRadius:5,padding:".25rem .6rem",cursor:"pointer",fontSize:".85rem",minHeight:"44px",minWidth:"44px"}}>‹</button>
             <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"var(--text)"}}>{monthName}</div>
-            <button onClick={nextMo} style={{background:"var(--bg-muted)",border:"1px solid var(--border)",color:"var(--text-dim)",borderRadius:5,padding:".25rem .6rem",cursor:"pointer",fontSize:".85rem"}}>›</button>
+            <button onClick={nextMo} aria-label="Next month" style={{background:"var(--bg-muted)",border:"1px solid var(--border)",color:"var(--text-dim)",borderRadius:5,padding:".25rem .6rem",cursor:"pointer",fontSize:".85rem",minHeight:"44px",minWidth:"44px"}}>›</button>
           </div>
 
           {/* Day headers */}

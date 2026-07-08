@@ -1000,8 +1000,10 @@ a.btn-o { text-decoration: none; }
   .btn-sm { min-height: 42px; padding: .5rem .9rem; }
   .fchip { min-height: 38px; padding: .4rem .8rem; font-size: .73rem; display: inline-flex; align-items: center; scroll-snap-align: start; }
   .mchip, .mbar-btn { min-height: 38px; }
-  .fi { min-height: 46px; font-size: .9rem; padding: .65rem .85rem; }
+  .fi { min-height: 46px; font-size: 16px; padding: .65rem .85rem; }
   .fs { min-height: 46px; }
+  /* iOS Safari: prevent auto-zoom when tapping any input/select/textarea (requires font-size >= 16px) */
+  input, select, textarea { font-size: 16px !important; }
   .google-btn { min-height: 50px; font-size: .93rem; }
 
   /* Empty states / tables */

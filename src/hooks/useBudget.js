@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../supabase.js';
+import { useToast } from '../components/shared/Toast.jsx';
 
 async function api(path, opts = {}) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -15,6 +16,7 @@ async function api(path, opts = {}) {
 // NOTE: loadBudget, loadTxns, and upload handlers are defined inline inside the budget tab JSX in App.jsx.
 // They are extracted here as standalone async functions and exposed so the budget tab can call them.
 export function useBudget(user) {
+  const toast = useToast();
   // ── Budget state ── Lines 1052–1068
   const [budgetStatements,  setBudgetStatements]  = useState([]);
   const [budgetTxns,        setBudgetTxns]        = useState([]);
@@ -143,13 +145,15 @@ export function useBudget(user) {
   }
 
   async function deleteBudgetCategory(cat) {
-    if (!confirm(`Delete "${cat.name}"?`)) return;
+    const ok = await toast.confirm(`Delete "${cat.name}"?`, { confirmLabel: "Delete", danger: true });
+    if (!ok) return;
     await api(`/api/budget/categories/${cat.id}`, { method: "DELETE" });
     await loadBudget(budgetSelMonth);
   }
 
   async function deleteBudgetStatement(stmt) {
-    if (!confirm(`Delete "${stmt.source}" statement and all its transactions?`)) return;
+    const ok = await toast.confirm(`Delete "${stmt.source}" statement and all its transactions?`, { confirmLabel: "Delete", danger: true });
+    if (!ok) return;
     await api(`/api/budget/statements/${stmt.id}`, { method: "DELETE" });
     const stmts = await api("/api/budget/statements");
     setBudgetStatements(stmts || []);

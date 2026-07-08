@@ -3,6 +3,7 @@
 // Mirrors SnapTradeImport.jsx patterns exactly
 
 import { useState, useEffect, useCallback } from "react";
+import { useToast } from "./components/shared/Toast.jsx";
 
 const S = {
   wrap:    { fontFamily: "'DM Sans', sans-serif", maxWidth: 520, margin: "0 auto" },
@@ -16,6 +17,7 @@ const S = {
 };
 
 export default function KiteImport({ onClose, members = [], api }) {
+  const toast = useToast();
   const [step, setStep] = useState("check");   // check | setup | reauth | ready | syncing | done
   const [status, setStatus] = useState(null);
   const [apiKey, setApiKey] = useState("");
@@ -106,7 +108,8 @@ export default function KiteImport({ onClose, members = [], api }) {
 
   // ── Disconnect ───────────────────────────────────────────────────
   async function handleDisconnect() {
-    if (!confirm("Disconnect Zerodha and remove all Kite-synced holdings?")) return;
+    const ok = await toast.confirm("Disconnect Zerodha and remove all Kite-synced holdings?", { confirmLabel: "Disconnect", danger: true });
+    if (!ok) return;
     setLoading(true);
     try {
       await api("/api/kite/disconnect", { method: "DELETE" });
@@ -131,7 +134,7 @@ export default function KiteImport({ onClose, members = [], api }) {
           {status.token_valid ? "Token valid" : "Token expired"}
         </span>
       )}
-      <button onClick={onClose} style={{ ...S.ghost, padding: ".3rem .6rem" }}>✕</button>
+      <button className="delbtn" aria-label="Close" onClick={onClose} style={{ color: "var(--text-dim)" }}>✕</button>
     </div>
   );
 

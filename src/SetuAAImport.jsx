@@ -131,7 +131,7 @@ export default function SetuAAImport({ onClose, onImported, members, api }) {
             RBI-regulated consent-based import via Setu {status?.sandbox ? <span style={{ color: "#c9a84c" }}>· Sandbox</span> : ""}
           </div>
         </div>
-        <button onClick={onClose} style={{ ...secondaryBtn, padding: ".3rem .6rem" }}>✕</button>
+        <button className="delbtn" aria-label="Close" onClick={onClose} style={{ color: "var(--text-dim)" }}>✕</button>
       </div>
 
       {error && <div style={{ padding: ".6rem .8rem", background: "rgba(224,124,90,.1)", border: "1px solid rgba(224,124,90,.3)", borderRadius: 6, color: "#e07c5a", fontSize: ".75rem", marginBottom: "1rem" }}>{error}</div>}

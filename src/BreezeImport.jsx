@@ -3,6 +3,7 @@
 // Mirrors KiteImport.jsx; Breeze requires pasting session_token (no auto-redirect)
 
 import { useState, useEffect, useCallback } from "react";
+import { useToast } from "./components/shared/Toast.jsx";
 
 const S = {
   wrap:    { fontFamily: "'DM Sans', sans-serif", maxWidth: 520, margin: "0 auto" },
@@ -16,6 +17,7 @@ const S = {
 };
 
 export default function BreezeImport({ onClose, members = [], api }) {
+  const toast = useToast();
   const [step, setStep] = useState("check");
   const [status, setStatus] = useState(null);
   const [apiKey, setApiKey] = useState("");
@@ -112,7 +114,8 @@ export default function BreezeImport({ onClose, members = [], api }) {
 
   // ── Disconnect ───────────────────────────────────────────────────
   async function handleDisconnect() {
-    if (!confirm("Disconnect ICICI Direct and remove all Breeze-synced holdings?")) return;
+    const ok = await toast.confirm("Disconnect ICICI Direct and remove all Breeze-synced holdings?", { confirmLabel: "Disconnect", danger: true });
+    if (!ok) return;
     setLoading(true);
     try {
       await api("/api/breeze/disconnect", { method: "DELETE" });
@@ -136,7 +139,7 @@ export default function BreezeImport({ onClose, members = [], api }) {
           {status.token_valid ? "Session valid" : "Session expired"}
         </span>
       )}
-      <button onClick={onClose} style={{ ...S.ghost, padding: ".3rem .6rem" }}>✕</button>
+      <button className="delbtn" aria-label="Close" onClick={onClose} style={{ color: "var(--text-dim)" }}>✕</button>
     </div>
   );
 

@@ -72,6 +72,7 @@ import ErrorBoundary from './components/shared/ErrorBoundary.jsx';
 
 // ── PWA install prompt ───────────────────────────────────────────
 import InstallPrompt from './components/shared/InstallPrompt.jsx';
+import { useToast } from './components/shared/Toast.jsx';
 
 // ── API helper imported from lib/api.js (see top imports) ────────
 
@@ -93,6 +94,8 @@ const BOTTOM_NAV_TABS = BOTTOM_NAV_KEYS.map(k => TABS.find(t => t.key === k));
 const MORE_SHEET_TABS = TABS.filter(t => !BOTTOM_NAV_KEYS.includes(t.key));
 
 export default function App() {
+  const toast = useToast();
+
   // ── Auth ──────────────────────────────────────────────────────
   const [user,        setUser]        = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -151,7 +154,7 @@ export default function App() {
     }
     if (p.has('gmail_error')) {
       window.history.replaceState({}, '', window.location.pathname);
-      alert(`Gmail connection failed: ${p.get('gmail_error')}`);
+      toast.error(`Gmail connection failed: ${p.get('gmail_error')}`);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1391,19 +1394,20 @@ ${alertsText}`;
                       try {
                         const r = await api('/api/gmail/check-now', { method: 'POST' });
                         await fetchGmailStatus();
-                        alert(`Done — ${r.imported ?? 0} added, ${r.updated ?? 0} updated, ${r.skipped ?? 0} skipped.`);
-                      } catch (e) { alert('Check failed: ' + e.message); }
+                        toast.success(`Done — ${r.imported ?? 0} added, ${r.updated ?? 0} updated, ${r.skipped ?? 0} skipped.`);
+                      } catch (e) { toast.error('Check failed: ' + e.message); }
                       finally { setGmailChecking(false); }
                     }}>
                     {gmailChecking ? 'Checking…' : '↻ Check Now'}
                   </button>
                   <button className="btn-o" style={{fontSize:'.78rem',color:'var(--loss)',borderColor:'rgba(220,38,38,.25)'}}
                     onClick={async () => {
-                      if (!confirm('Disconnect Gmail?')) return;
+                      const ok = await toast.confirm('Disconnect Gmail?', { confirmLabel: 'Disconnect', danger: true });
+                      if (!ok) return;
                       try {
                         await api('/api/gmail/disconnect', { method: 'DELETE' });
                         setGmailStatus(p => ({ ...p, connected: false, gmail_email: null }));
-                      } catch (e) { alert('Failed: ' + e.message); }
+                      } catch (e) { toast.error('Failed: ' + e.message); }
                     }}>
                     Disconnect
                   </button>
@@ -1433,7 +1437,7 @@ ${alertsText}`;
                     try {
                       const { url } = await api('/api/gmail/auth');
                       window.location.href = url;
-                    } catch (e) { alert('Failed to start Gmail auth: ' + e.message); setGmailLoading(false); }
+                    } catch (e) { toast.error('Failed to start Gmail auth: ' + e.message); setGmailLoading(false); }
                   }}>
                   {gmailLoading ? 'Redirecting…' : '🔗 Connect Gmail'}
                 </button>

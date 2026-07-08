@@ -132,8 +132,8 @@ export default function LiabilitiesPanel({ liabilities, setLiabilities, fmtCrINR
                     </div>
                   )}
                 </div>
-                <button onClick={() => startEdit(l)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: ".8rem", padding: "2px 4px" }}>✎</button>
-                <button onClick={() => del(l.id)} style={{ background: "none", border: "none", color: "#e07c5a", cursor: "pointer", fontSize: ".8rem", padding: "2px 4px" }}>✕</button>
+                <button className="delbtn" aria-label="Edit liability" onClick={() => startEdit(l)} style={{ color: "var(--text-muted)" }}>✎</button>
+                <button className="delbtn" aria-label="Delete liability" onClick={() => del(l.id)} style={{ color: "#e07c5a" }}>✕</button>
               </div>
             );
           })}

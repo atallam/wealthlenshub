@@ -316,10 +316,7 @@ export default function ConcallPanel({ holding, onClose }) {
             </span>
           )}
         </div>
-        <button onClick={onClose}
-          style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "1rem", lineHeight: 1 }}>
-          ✕
-        </button>
+        <button className="delbtn" aria-label="Close" onClick={onClose} style={{ color: "var(--text-muted)" }}>✕</button>
       </div>
 
       {/* ── Quarter selector ── */}

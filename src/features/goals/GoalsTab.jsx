@@ -56,7 +56,7 @@ function NudgesSection({ nudges, loading, loaded, dismissed, onLoad, onDismiss }
             <span style={{ fontSize: '.68rem', color: '#a084ca', fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase' }}>✦ AI Insights</span>
             <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
               <span style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>{nudges.length} finding{nudges.length !== 1 ? 's' : ''}</span>
-              <button onClick={e => { e.stopPropagation(); onDismiss(); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '.75rem', lineHeight: 1 }}>✕</button>
+              <button className="delbtn" aria-label="Dismiss AI insights" onClick={e => { e.stopPropagation(); onDismiss(); }} style={{ color: 'var(--text-muted)' }}>✕</button>
               <span style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>{open ? '▲' : '▼'}</span>
             </div>
           </div>

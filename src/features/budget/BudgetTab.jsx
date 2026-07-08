@@ -5,6 +5,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../../supabase.js';
 import { readSSEStream } from '../../hooks/useGoalAI.js';
+import { useToast } from '../../components/shared/Toast.jsx';
 
 // ── AI Spend Insights panel ───────────────────────────────────────────────────
 
@@ -214,6 +215,7 @@ export default function BudgetTab({
   loadTxns:   loadTxnsHook,
   uploadBudgetStatement,
 }) {
+  const toast = useToast();
   // Wrap hook functions with current filter state so callers inside JSX don't need to pass args
   function loadBudget() { return loadBudgetHook(budgetSelMonth); }
   function loadTxns()   { return loadTxnsHook(budgetSelStmt, budgetSelCat, budgetSelMonth, budgetSearch); }
@@ -270,10 +272,10 @@ export default function BudgetTab({
               await Promise.all([loadBudgetHook(mo), loadTxnsHook(budgetSelStmt, budgetSelCat, mo, budgetSearch)]);
             }}
             placeholder="All time"/>
-          {budgetSelMonth&&<button onClick={async()=>{
+          {budgetSelMonth&&<button className="delbtn" aria-label="Clear month filter" onClick={async()=>{
             setBudgetSelMonth("");
             await Promise.all([loadBudgetHook(""), loadTxnsHook(budgetSelStmt, budgetSelCat, "", budgetSearch)]);
-          }} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:".9rem"}}>✕</button>}
+          }} style={{color:"var(--text-muted)"}}>✕</button>}
         </div>
       </div>
 
@@ -643,8 +645,9 @@ export default function BudgetTab({
                 </div>
                 <div style={{display:"flex",gap:".3rem"}}>
                   <button className="delbtn" onClick={()=>setBudgetEditCat(cat)} title="Edit" aria-label="Edit">✎</button>
-                  <button className="delbtn" onClick={async()=>{
-                    if(!confirm(`Delete "${cat.name}"?`))return;
+                  <button className="delbtn" aria-label="Delete category" onClick={async()=>{
+                    const ok = await toast.confirm(`Delete "${cat.name}"?`, { confirmLabel: "Delete", danger: true });
+                    if(!ok)return;
                     await api(`/api/budget/categories/${cat.id}`,{method:"DELETE"});
                     await loadBudget();
                   }}>✕</button>
@@ -828,8 +831,9 @@ export default function BudgetTab({
                     <td className="r mono" style={{color:"#c9a84c"}}>{s.txn_count}</td>
                     <td className="dim" style={{fontSize:".72rem"}}>{s.upload_date?.slice(0,10)}</td>
                     <td className="dim" style={{fontSize:".72rem",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.notes||"—"}</td>
-                    <td><button className="delbtn" onClick={async()=>{
-                      if(!confirm(`Delete "${s.source}" statement and all its transactions?`))return;
+                    <td><button className="delbtn" aria-label="Delete statement" onClick={async()=>{
+                      const ok = await toast.confirm(`Delete "${s.source}" statement and all its transactions?`, { confirmLabel: "Delete", danger: true });
+                      if(!ok)return;
                       await api(`/api/budget/statements/${s.id}`,{method:"DELETE"});
                       await loadBudget(); // re-fetches statements + analytics
                     }}>✕</button></td>

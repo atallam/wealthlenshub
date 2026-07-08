@@ -89,7 +89,7 @@ export function ToastProvider({ children }) {
             }}>
               <span style={{ color: c.iconColor, fontWeight: 700, fontSize: '1rem', lineHeight: 1.4, flexShrink: 0 }}>{c.icon}</span>
               <span style={{ flex: 1, fontSize: '.82rem', color: 'var(--text)', lineHeight: 1.5 }}>{t.message}</span>
-              <button onClick={() => dismiss(t.id)} style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', padding:0, fontSize:'.9rem', lineHeight:1, flexShrink:0 }}>✕</button>
+              <button onClick={() => dismiss(t.id)} aria-label="Dismiss" style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', padding:'.5rem', minHeight:'44px', minWidth:'44px', fontSize:'.9rem', lineHeight:1, flexShrink:0 }}>✕</button>
             </div>
           );
         })}

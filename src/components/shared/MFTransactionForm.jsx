@@ -184,7 +184,7 @@ export default function MFTransactionForm({ holding, isMF, isUS, fx, txnForm, se
             <span style={{fontFamily:"'DM Mono',monospace",color:"#5a9ce0"}}>₹{fx.toFixed(2)}</span>
             {txnForm.price_usd&&<span style={{marginLeft:".75rem",color:"var(--text-muted)"}}>→ ₹<span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>{(+txnForm.price_usd*fx).toLocaleString("en-IN",{maximumFractionDigits:0})}</span> per unit</span>}
           </div>
-          <button onClick={onFetchFx} disabled={fxLoading} style={{background:"rgba(90,156,224,.15)",border:"1px solid rgba(90,156,224,.3)",color:"#5a9ce0",borderRadius:4,padding:"2px 8px",cursor:"pointer",fontSize:".65rem",fontFamily:"'DM Sans',sans-serif"}}>
+          <button onClick={onFetchFx} disabled={fxLoading} aria-label="Fetch exchange rate" style={{background:"rgba(90,156,224,.15)",border:"1px solid rgba(90,156,224,.3)",color:"#5a9ce0",borderRadius:4,padding:"6px 10px",minHeight:"36px",cursor:"pointer",fontSize:".65rem",fontFamily:"'DM Sans',sans-serif"}}>
             {fxLoading?"…":"⟳ Rate"}
           </button>
         </div>

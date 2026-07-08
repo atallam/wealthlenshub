@@ -65,7 +65,7 @@ export default function FDScanSheet({ onConfirm, onClose, api }) {
           <div style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"1.2rem", color:"var(--text)" }}>
             Scan FD Certificate
           </div>
-          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:"1.2rem", color:"var(--text-muted)", cursor:"pointer", padding:".25rem" }}>✕</button>
+          <button className="delbtn" aria-label="Close" onClick={onClose} style={{ color:"var(--text-muted)" }}>✕</button>
         </div>
 
         {/* ── IDLE ── */}

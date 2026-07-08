@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { FG } from './Overlay.jsx';
 import { supabase } from '../../supabase.js';
+import { useToast } from './Toast.jsx';
 
 /* ══════════════════════════════════════════════
    ARTIFACT PANEL (per holding)
@@ -22,6 +23,7 @@ const fmtSize = b => b>1e6?`${(b/1e6).toFixed(1)}MB`:b>1e3?`${(b/1e3).toFixed(0)
 const ago = d => { if(!d)return"Never"; const s=Math.floor((Date.now()-new Date(d))/1000); if(s<60)return`${s}s ago`; if(s<3600)return`${Math.floor(s/60)}m ago`; if(s<86400)return`${Math.floor(s/3600)}h ago`; return`${Math.floor(s/86400)}d ago`; };
 
 export default function ArtifactPanel({ holding, token, onClose }) {
+  const toast = useToast();
   const [artifacts, setArtifacts] = useState(holding.artifacts || []);
   const [uploading, setUploading] = useState(false);
   const [desc, setDesc]   = useState("");
@@ -43,7 +45,7 @@ export default function ArtifactPanel({ holding, token, onClose }) {
         uploaded_at: new Date().toISOString()
       }, ...p]);
       setDesc("");
-    } catch(e) { alert("Upload failed: " + e.message); }
+    } catch(e) { toast.error("Upload failed: " + e.message); }
     setUploading(false);
   }
 
@@ -51,11 +53,12 @@ export default function ArtifactPanel({ holding, token, onClose }) {
     try {
       const { url } = await api(`/api/artifacts/download/${art.id}`, {});
       window.open(url, "_blank");
-    } catch(e) { alert("Download failed: " + e.message); }
+    } catch(e) { toast.error("Download failed: " + e.message); }
   }
 
   async function remove(id) {
-    if (!confirm("Delete this file?")) return;
+    const ok = await toast.confirm("Delete this file?", { confirmLabel: "Delete", danger: true });
+    if (!ok) return;
     await api(`/api/artifacts/${id}`, { method:"DELETE" });
     setArtifacts(p => p.filter(a => a.id !== id));
   }
