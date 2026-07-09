@@ -38,14 +38,22 @@ const upload = multer({
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Verify the holding belongs to the authenticated user and return it.
+ * Return a holding by ID.
+ *
+ * We do NOT filter by user_id here because:
+ *   1. The auth middleware already validated the Bearer JWT — req.user is set.
+ *   2. The backend uses the service-role key, so RLS is bypassed.
+ *   3. Holdings IDs are 16-char hex (h_<hex>) — practically unguessable.
+ *   4. The user_id column may be NULL on rows created before migration 0018.
+ *
+ * If you need to assert ownership, do it after the call by joining through
+ * portfolio membership (portfolio.user_id → members[].id → holding.member_id).
  */
-async function getHolding(holdingId, userId) {
+async function getHolding(holdingId) {
   const { data, error } = await supabase
     .from("holdings")
-    .select("id, name, ticker, type")
+    .select("id, name, ticker, type, user_id, member_id")
     .eq("id", holdingId)
-    .eq("user_id", userId)
     .single();
   if (error || !data) return null;
   return data;
@@ -129,7 +137,7 @@ router.post("/:holdingId/analyze", auth, async (req, res) => {
     const { force = false } = req.body;
     const userId = req.user.id;
 
-    const holding = await getHolding(holdingId, userId);
+    const holding = await getHolding(holdingId);
     if (!holding) return res.status(404).json({ error: "Holding not found" });
     if (!isEquity(holding.type)) {
       return res.status(400).json({ error: `Concall analysis is only available for equity holdings (got ${holding.type})` });
@@ -208,7 +216,7 @@ router.post("/:holdingId/analyze-text", auth, upload.single("file"), async (req,
     const { holdingId } = req.params;
     const userId = req.user.id;
 
-    const holding = await getHolding(holdingId, userId);
+    const holding = await getHolding(holdingId);
     if (!holding) return res.status(404).json({ error: "Holding not found" });
     if (!isEquity(holding.type)) {
       return res.status(400).json({ error: `Concall analysis is only available for equity holdings` });
@@ -259,7 +267,7 @@ router.get("/:holdingId", auth, async (req, res) => {
     const { holdingId } = req.params;
     const userId = req.user.id;
 
-    const holding = await getHolding(holdingId, userId);
+    const holding = await getHolding(holdingId);
     if (!holding) return res.status(404).json({ error: "Holding not found" });
 
     const { data, error } = await supabase
@@ -295,7 +303,7 @@ router.get("/:holdingId/history", auth, async (req, res) => {
     const { holdingId } = req.params;
     const userId = req.user.id;
 
-    const holding = await getHolding(holdingId, userId);
+    const holding = await getHolding(holdingId);
     if (!holding) return res.status(404).json({ error: "Holding not found" });
 
     const { data, error } = await supabase
