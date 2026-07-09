@@ -272,8 +272,10 @@ router.get("/:holdingId", auth, async (req, res) => {
       .single();
 
     if (error) {
-      // PGRST116 = no rows; 42P01 = table not yet migrated — both are "no data" to the UI
-      if (error.code === "PGRST116" || error.code === "42P01") {
+      // PGRST116 = no rows found
+      // 42P01   = table not yet migrated
+      // 22P02   = holding_id column is uuid but holding id is text (run migration 0017)
+      if (error.code === "PGRST116" || error.code === "42P01" || error.code === "22P02") {
         return res.json({ analysis: null, no_data: true });
       }
       throw error;
@@ -304,8 +306,9 @@ router.get("/:holdingId/history", auth, async (req, res) => {
       .order("quarter_date", { ascending: false })
       .limit(12);
 
-    // 42P01 = table not yet migrated — return empty history rather than 500
-    if (error && error.code !== "42P01") throw error;
+    // 42P01 = table not yet migrated
+    // 22P02 = holding_id type mismatch (run migration 0017)
+    if (error && error.code !== "42P01" && error.code !== "22P02") throw error;
     return res.json({ history: data || [] });
   } catch (e) {
     sendError(res, e);
