@@ -1,8 +1,92 @@
 // HoldingsTab.jsx — lines 2866–3205 of App.jsx
 
 import { useState } from "react";
-import { ClipboardList, Paperclip, Pencil, X as XIcon } from "lucide-react";
+import { ClipboardList, Paperclip, Pencil, X as XIcon, Bell } from "lucide-react";
 import ConcallPanel from "./ConcallPanel.jsx";
+
+// ── Per-holding alert panel ───────────────────────────────────────────────────
+
+function HoldingAlertPanel({ holding, alerts, setAlerts, onClose }) {
+  const holdingAlerts = (alerts || []).filter(
+    a => (a.type === "HOLDING_PRICE" || a.type === "HOLDING_RETURN") && a.holdingId === holding.id
+  );
+
+  const [form, setForm] = useState({ type: "HOLDING_PRICE", direction: "above", threshold: "" });
+  const [saving, setSaving] = useState(false);
+
+  function addAlert() {
+    if (!form.threshold) return;
+    setSaving(true);
+    const typeLabel = form.type === "HOLDING_PRICE" ? "price" : "return";
+    const label = `${holding.name} ${typeLabel} ${form.direction} ${form.type === "HOLDING_PRICE" ? "₹" : ""}${form.threshold}${form.type === "HOLDING_RETURN" ? "%" : ""}`;
+    const newAlert = {
+      id: Math.random().toString(36).slice(2),
+      type: form.type,
+      direction: form.direction,
+      threshold: Number(form.threshold),
+      holdingId: holding.id,
+      holdingName: holding.name,
+      label,
+      active: true,
+    };
+    setAlerts(prev => [...prev, newAlert]);
+    setForm({ type: "HOLDING_PRICE", direction: "above", threshold: "" });
+    setSaving(false);
+  }
+
+  function removeAlert(id) {
+    setAlerts(prev => prev.filter(a => a.id !== id));
+  }
+
+  const rowStyle = { display: "flex", alignItems: "center", gap: ".5rem", padding: ".4rem .6rem", borderRadius: 6, background: "var(--bg-muted)", border: "1px solid var(--border)", marginBottom: ".35rem" };
+  const badgeStyle = c => ({ fontSize: ".65rem", fontWeight: 600, padding: "2px 6px", borderRadius: 4, background: `${c}1A`, color: c, border: `1px solid ${c}33` });
+
+  return (
+    <div style={{ padding: ".75rem", background: "rgba(201,168,76,.03)", border: "1px solid rgba(201,168,76,.15)", borderRadius: 8, margin: ".25rem 0 .5rem" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: ".6rem" }}>
+        <span style={{ fontSize: ".78rem", fontWeight: 700, color: "#c9a84c" }}>🔔 Price / Return Alerts — {holding.name}</span>
+        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 0 }}><XIcon size={14}/></button>
+      </div>
+
+      {holdingAlerts.length === 0 && (
+        <div style={{ fontSize: ".72rem", color: "var(--text-muted)", marginBottom: ".6rem" }}>No alerts set for this holding.</div>
+      )}
+      {holdingAlerts.map(a => (
+        <div key={a.id} style={rowStyle}>
+          <span style={badgeStyle(a.direction === "above" ? "#e07c5a" : "#4caf9a")}>{a.direction === "above" ? "▲" : "▼"} {a.direction}</span>
+          <span style={badgeStyle("#a084ca")}>{a.type === "HOLDING_PRICE" ? "PRICE" : "RETURN"}</span>
+          <span style={{ flex: 1, fontSize: ".75rem", color: "var(--text)" }}>{a.label}</span>
+          <button onClick={() => removeAlert(a.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--loss)", padding: 0 }}><XIcon size={12}/></button>
+        </div>
+      ))}
+
+      {/* Add form */}
+      <div style={{ display: "flex", gap: ".4rem", flexWrap: "wrap", marginTop: ".5rem" }}>
+        <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}
+          style={{ fontSize: ".72rem", padding: ".3rem .5rem", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 5, color: "var(--text)", cursor: "pointer" }}>
+          <option value="HOLDING_PRICE">Price</option>
+          <option value="HOLDING_RETURN">Return %</option>
+        </select>
+        <select value={form.direction} onChange={e => setForm(p => ({ ...p, direction: e.target.value }))}
+          style={{ fontSize: ".72rem", padding: ".3rem .5rem", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 5, color: "var(--text)", cursor: "pointer" }}>
+          <option value="above">Above</option>
+          <option value="below">Below</option>
+        </select>
+        <input
+          type="number"
+          placeholder={form.type === "HOLDING_PRICE" ? "Price (₹)" : "Return (%)"}
+          value={form.threshold}
+          onChange={e => setForm(p => ({ ...p, threshold: e.target.value }))}
+          style={{ fontSize: ".72rem", padding: ".3rem .5rem", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 5, color: "var(--text)", width: 110 }}
+        />
+        <button onClick={addAlert} disabled={!form.threshold || saving}
+          style={{ fontSize: ".72rem", padding: ".3rem .75rem", background: "rgba(201,168,76,.15)", border: "1px solid rgba(201,168,76,.4)", color: "#c9a84c", borderRadius: 5, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>
+          + Add Alert
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const CONCALL_TYPES = new Set(["IN_STOCK", "IN_ETF", "US_STOCK", "US_ETF"]);
 
@@ -63,8 +147,12 @@ export default function HoldingsTab({
   BT,
   // Price refresh timestamp
   lastPriceRefresh,
+  // Holding-level alerts
+  alerts,
+  setAlerts,
 }) {
   const [concallHolding, setConcallHolding] = useState(null);
+  const [alertHolding,   setAlertHolding]   = useState(null);
   const [showStaleOnly, setShowStaleOnly] = useState(false);
 
   // Stale detection — computed before render so JSX can reference staleH + displayH
@@ -434,6 +522,18 @@ export default function HoldingsTab({
                             }}>
                             ✦
                           </button>
+                          {/* Holding Alerts */}
+                          {(() => {
+                            const hAlerts = (alerts||[]).filter(a => (a.type==="HOLDING_PRICE"||a.type==="HOLDING_RETURN") && a.holdingId===h.id);
+                            return (
+                              <button className="delbtn" title="Price / return alerts" aria-label="Holding alerts"
+                                onClick={()=>setAlertHolding(alertHolding?.id===h.id?null:h)}
+                                style={{color: hAlerts.length>0?"#c9a84c":alertHolding?.id===h.id?"#c9a84c":"var(--text-muted)"}}>
+                                <Bell size={13} strokeWidth={1.8}/>
+                                {hAlerts.length>0&&<span style={{fontSize:".65rem",marginLeft:1}}>{hAlerts.length}</span>}
+                              </button>
+                            );
+                          })()}
                           {/* Transactions */}
                           <button className="delbtn" title="View transactions" aria-label="View transactions"
                             onClick={()=>{setTxnForm({...BT,holding_id:h.id});setTxnHolding(h);}}
@@ -468,6 +568,13 @@ export default function HoldingsTab({
                       <tr key={`concall_${h.id}`}>
                         <td colSpan={11} style={{padding:"0 .65rem .65rem",background:"rgba(160,132,202,.02)"}}>
                           <ConcallPanel holding={h} onClose={()=>setConcallHolding(null)} />
+                        </td>
+                      </tr>
+                    ),
+                    alertHolding?.id===h.id && (
+                      <tr key={`alert_${h.id}`}>
+                        <td colSpan={11} style={{padding:"0 .65rem .65rem",background:"rgba(201,168,76,.02)"}}>
+                          <HoldingAlertPanel holding={h} alerts={alerts} setAlerts={setAlerts} onClose={()=>setAlertHolding(null)} />
                         </td>
                       </tr>
                     ),

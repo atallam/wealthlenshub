@@ -3,7 +3,7 @@ import {
   LayoutDashboard, BarChart2, Target, Compass,
   Users, Wallet, CalendarDays, MessageSquare,
   RefreshCw, Settings, LogOut, Eye, X, MoreHorizontal,
-  AlertTriangle, Download, Receipt,
+  AlertTriangle, Download, Receipt, Bookmark,
 } from 'lucide-react';
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
 import { api } from './lib/api.js';
@@ -45,6 +45,7 @@ import BudgetTab from './features/budget/BudgetTab.jsx';
 import CalendarTab from './features/calendar/CalendarTab.jsx';
 import AdvisorTab from './features/advisor/AdvisorTab.jsx';
 import TaxTab from './features/tax/TaxTab.jsx';
+import WatchlistTab from './features/watchlist/WatchlistTab.jsx';
 
 // ── Shared components ────────────────────────────────────────────
 import LoginScreen from './components/shared/LoginScreen.jsx';
@@ -85,6 +86,7 @@ const TABS = [
   { key: 'budget',    label: 'Budget',    Icon: Wallet },
   { key: 'calendar',  label: 'Calendar',  Icon: CalendarDays },
   { key: 'tax',       label: 'Tax',       Icon: Receipt },
+  { key: 'watchlist', label: 'Watchlist', Icon: Bookmark },
   { key: 'advisor',   label: 'Advisor',   Icon: MessageSquare },
 ];
 
@@ -349,6 +351,21 @@ export default function App() {
         if (totPct < a.threshold) triggered.push(a);
       } else if (a.type === 'USD_INR_RATE') {
         if (usdInrRate > 0 && usdInrRate > +a.threshold) triggered.push(a);
+      } else if (a.type === 'HOLDING_PRICE' || a.type === 'HOLDING_RETURN') {
+        const h = allHoldings.find(hh => hh.id === a.holdingId);
+        if (!h) continue;
+        if (a.type === 'HOLDING_PRICE') {
+          const price = Number(h.current_price || h.current_nav || 0);
+          if (a.direction === 'above' && price > +a.threshold) triggered.push(a);
+          if (a.direction === 'below' && price > 0 && price < +a.threshold) triggered.push(a);
+        } else {
+          const cur = valINRCache.get(h.id) || 0;
+          const inv = invINRCache.get(h.id) || 0;
+          if (inv <= 0) continue;
+          const ret = ((cur - inv) / inv) * 100;
+          if (a.direction === 'above' && ret > +a.threshold) triggered.push(a);
+          if (a.direction === 'below' && ret < +a.threshold) triggered.push(a);
+        }
       } else {
         const typeVal = allHoldings
           .filter(h => h.type === a.assetType)
@@ -359,7 +376,7 @@ export default function App() {
       }
     }
     return triggered;
-  }, [alerts, allHoldings, allCur, totPct, valINRCache]);
+  }, [alerts, allHoldings, allCur, totPct, valINRCache, invINRCache]);
 
   // ── buildPortfolioContext (stays in App — depends on all memoized caches) ──
   function buildPortfolioContext() {
@@ -672,6 +689,8 @@ ${alertsText}`;
               setTxnForm={setTxnForm}
               setTxnHolding={setTxnHolding}
               setArtifactHolding={setArtifactHolding}
+              alerts={alerts}
+              setAlerts={portfolio.setAlerts}
             />
           </ErrorBoundary>
         )}
@@ -741,6 +760,12 @@ ${alertsText}`;
               members={members}
               selMember={selMember}
             />
+          </ErrorBoundary>
+        )}
+
+        {loaded && tab === 'watchlist' && (
+          <ErrorBoundary tab="Watchlist">
+            <WatchlistTab />
           </ErrorBoundary>
         )}
 

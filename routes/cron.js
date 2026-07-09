@@ -318,6 +318,23 @@ router.post("/alert-check", cronAuth, async (req, res) => {
         if (a.type === "CONCENTRATION" && pct < threshold) {
           triggered.push({ ...a, currentValue: pct.toFixed(2) });
         }
+      } else if (a.type === "HOLDING_PRICE" || a.type === "HOLDING_RETURN") {
+        const h = holdings.find(hh => hh.id === a.holdingId);
+        if (!h) continue;
+        if (a.type === "HOLDING_PRICE") {
+          const price = Number(h.current_price || h.current_nav || 0);
+          if (a.direction === "above" && price > threshold) triggered.push({ ...a, currentValue: price.toFixed(2) });
+          if (a.direction === "below" && price > 0 && price < threshold) triggered.push({ ...a, currentValue: price.toFixed(2) });
+        } else {
+          const cur = Number(h.current_value || 0);
+          const inv = h.avg_cost != null && h.net_units != null
+            ? Number(h.net_units) * Number(h.avg_cost)
+            : Number(h.purchase_value || h.principal || 0);
+          if (inv <= 0) continue;
+          const ret = ((cur - inv) / inv) * 100;
+          if (a.direction === "above" && ret > threshold) triggered.push({ ...a, currentValue: ret.toFixed(2) });
+          if (a.direction === "below" && ret < threshold) triggered.push({ ...a, currentValue: ret.toFixed(2) });
+        }
       }
     }
 

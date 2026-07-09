@@ -8,9 +8,10 @@
  * • Per-transaction detail table (collapsible)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../supabase.js';
 import { gainColor, currentFY, fyList, fmtINRCompact as fmtINR } from '../../lib/fmt.js';
+import { readSSEStream } from '../../hooks/useStreamAI.js';
 
 // ── sub-components ─────────────────────────────────────────────────────────
 
@@ -146,6 +147,150 @@ function UnrealizedTable({ rows }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── AI Tax Strategy streaming panel ────────────────────────────────────────
+
+function AiTaxStrategy({ data, fy }) {
+  const [text,    setText]    = useState('');
+  const [loading, setLoading] = useState(false);
+  const [open,    setOpen]    = useState(false);
+  const abortRef  = useRef(null);
+  const fullRef   = useRef('');
+
+  async function generate() {
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setLoading(true);
+    setText('');
+    setOpen(true);
+    fullRef.current = '';
+
+    const R = data?.realized;
+    const U = data?.unrealized;
+    const harvestable = (U?.details || [])
+      .filter(d => d.gain < -1000)
+      .sort((a, b) => a.gain - b.gain)
+      .slice(0, 5);
+
+    const prompt = `You are a concise Indian tax advisor. Write a structured tax strategy for this portfolio — FY ${fy}.
+
+TAX SUMMARY:
+- STCG: ₹${(R?.stcg || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })} | Tax @ 20%: ₹${(R?.stcg_tax || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+- LTCG: ₹${(R?.ltcg || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })} | Taxable LTCG (after ₹1.25L exemption): ₹${(R?.ltcg_taxable || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })} | Tax @ 12.5%: ₹${(R?.ltcg_tax || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+- Total tax liability: ₹${(R?.total_tax || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+- LTCG exemption used: ₹${Math.min(R?.ltcg || 0, 125000).toLocaleString('en-IN', { maximumFractionDigits: 0 })} of ₹1,25,000
+- LTCG exemption headroom remaining: ₹${Math.max(0, 125000 - (R?.ltcg || 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+
+HARVEST CANDIDATES (unrealized losses > ₹1000):
+${harvestable.length > 0
+  ? harvestable.map(d => `  ${d.symbol || d.name} (${d.type}): unrealized loss ₹${Math.abs(d.gain).toLocaleString('en-IN', { maximumFractionDigits: 0 })}, held ${d.hold_months} months`).join('\n')
+  : '  None identified'}
+
+UNREALIZED GAINS:
+- Unrealized STCG: ₹${(U?.stcg || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+- Unrealized LTCG: ₹${(U?.ltcg || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+
+Respond with EXACTLY this structure (no extra headers):
+
+**LTCG Exemption Headroom**
+One sentence on how much of the ₹1.25L exemption is left this FY and whether the investor should book more LTCG to use it.
+
+**Tax-Loss Harvest Candidates**
+List up to 3 specific holdings to sell to book losses, ranked by impact. If none, say so. Each item: holding name → loss amount → why it makes sense.
+
+**FD Renewal Tax Angle**
+One sentence on whether any FD interest this FY pushes the investor into a higher slab and what to consider at renewal.
+
+**3-Step Action Plan**
+Numbered list. Three concrete actions to take before 31 March. Be specific — name amounts and asset types.
+
+Keep the entire response under 200 words. No disclaimers.`;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || '';
+      const res = await fetch('/api/ai/chat/stream', {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 600,
+          system: 'You are a concise Indian tax advisor. Use markdown bold (**) for section headers only. Be precise and actionable.',
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `AI error (${res.status})`); }
+      await readSSEStream(res, chunk => {
+        fullRef.current += chunk;
+        setText(fullRef.current);
+      }, ctrl.signal);
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      setText(`⚠ ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function renderText(t) {
+    // Minimal markdown: **bold** → <strong>
+    return t.split('\n').map((line, i) => {
+      const parts = line.split(/(\*\*[^*]+\*\*)/g).map((p, j) =>
+        p.startsWith('**') && p.endsWith('**')
+          ? <strong key={j} style={{ color: '#c9a84c' }}>{p.slice(2, -2)}</strong>
+          : p
+      );
+      return <div key={i} style={{ minHeight: line ? undefined : '.4rem' }}>{parts}</div>;
+    });
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem', flexWrap: 'wrap' }}>
+        <div style={{ flex: 1 }}>
+          <div className="ctitle" style={{ marginBottom: '.15rem' }}>✦ AI Tax Strategy</div>
+          <div style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>LTCG headroom · harvest candidates · FD angle · 3-step plan</div>
+        </div>
+        <button
+          onClick={loading ? () => abortRef.current?.abort() : generate}
+          style={{
+            fontSize: '.75rem', padding: '.38rem .85rem',
+            background: loading ? 'rgba(224,124,90,.12)' : 'rgba(201,168,76,.12)',
+            border: `1px solid ${loading ? 'rgba(224,124,90,.35)' : 'rgba(201,168,76,.35)'}`,
+            color: loading ? '#e07c5a' : '#c9a84c',
+            borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 600,
+          }}
+        >
+          {loading ? '⏹ Stop' : open ? '↻ Regenerate' : '✦ Generate Strategy'}
+        </button>
+        {open && !loading && (
+          <button onClick={() => setOpen(false)}
+            style={{ fontSize: '.7rem', padding: '.3rem .6rem', background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: 5, cursor: 'pointer' }}>
+            Hide
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div style={{ marginTop: '.9rem', borderTop: '1px solid var(--border)', paddingTop: '.85rem' }}>
+          {loading && !text && (
+            <div style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>
+              <span style={{ animation: 'pulse 1.5s infinite' }}>✦</span> Analysing tax position…
+            </div>
+          )}
+          {text && (
+            <div style={{ fontSize: '.82rem', color: 'var(--text)', lineHeight: 1.7, fontFamily: "'DM Sans',sans-serif" }}>
+              {renderText(text)}
+              {loading && <span style={{ opacity: .5 }}> ▋</span>}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -357,6 +502,9 @@ export default function TaxTab({ members = [], selMember = 'all' }) {
 
             <UnrealizedTable rows={U?.details || []} />
           </div>
+
+          {/* ── AI Tax Strategy ─────────────────────────────────────────── */}
+          <AiTaxStrategy data={data} fy={fy} />
 
           {/* ── Notes ────────────────────────────────────────────────────── */}
           <div className="card" style={{ fontSize: '.72rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
