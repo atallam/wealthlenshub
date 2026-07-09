@@ -189,31 +189,55 @@ wealthlens-hub/
 
 ## Environment Variables
 
+See `.env.example` for the full template with inline comments. Summary:
+
 ### Server-side (required)
 | Variable | Purpose |
 |----------|---------|
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_KEY` | Supabase service role key (private) |
 | `ANTHROPIC_KEY` | Anthropic API key for AI features |
-| `ENCRYPTION_KEY` | Key for encrypting CAS credentials at rest |
+| `BUDGET_ENCRYPT_KEY` | 64-char hex key for AES-256-GCM encryption (PAN, Plaid tokens, budget). Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 
 ### Server-side (optional)
 | Variable | Purpose |
 |----------|---------|
-| `TWELVE_DATA_KEY` | Twelve Data API for stock prices |
-| `SNAPTRADE_CLIENT_ID` | SnapTrade client ID |
+| `TWELVE_DATA_KEY` | Twelve Data API for live prices (falls back to Yahoo Finance) |
+| `RESEND_API_KEY` | Resend.com key — required for FD alerts, alert digests, stale nudges |
+| `RESEND_FROM` | Verified sender, e.g. `WealthLens Hub <alerts@yourdomain.com>` |
+| `APP_URL` | Base URL for email CTAs, e.g. `https://app.wealthlenshub.com` |
+| `CRON_SECRET` | Passed as `x-cron-secret` header to secure all `/api/cron/*` endpoints |
+| `SNAPTRADE_CLIENT_ID` | SnapTrade client ID (US brokerage sync) |
 | `SNAPTRADE_CONSUMER_KEY` | SnapTrade consumer key |
-| `CRON_SECRET` | Secures `/api/cron/refresh-all-prices` and `/api/cron/nudge-stale` |
-| `APP_URL` | Base URL for CTA links in nudge emails (e.g. `https://app.wealthlenshub.com`) |
-| `PLAID_CLIENT_ID` | Plaid client ID |
+| `PLAID_CLIENT_ID` | Plaid client ID (US bank transactions) |
 | `PLAID_SECRET` | Plaid secret |
-| `PLAID_ENV` | `sandbox` or `production` |
+| `PLAID_ENV` | `sandbox` / `development` / `production` |
+| `GMAIL_CLIENT_ID` | Gmail OAuth client ID (CAS email auto-import) |
+| `GMAIL_CLIENT_SECRET` | Gmail OAuth client secret |
+| `GMAIL_REDIRECT_URI` | Gmail OAuth redirect URI |
+| `GMAIL_STATE_SECRET` | Random string for CSRF protection |
+| `SETU_ENABLED` | `true` to enable Account Aggregator (Setu AA) integration |
+| `SETU_CLIENT_ID` | Setu AA client ID |
+| `SETU_CLIENT_SECRET` | Setu AA client secret |
+| `SETU_PRODUCT_INSTANCE_ID` | Setu product instance ID |
+| `SETU_WEBHOOK_SECRET` | Setu webhook HMAC secret |
 
 ### Client-side (Vite)
 | Variable | Purpose |
 |----------|---------|
 | `VITE_SUPABASE_URL` | Supabase URL (public) |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon key (public) |
+
+### Cron schedule (recommended)
+All endpoints require `x-cron-secret: $CRON_SECRET`.
+
+| Endpoint | Schedule | Purpose |
+|----------|----------|---------|
+| `POST /api/cron/refresh-all-prices` | Every 4 h | Refresh stock/MF/FX prices |
+| `POST /api/cron/alert-check` | Daily 08:00 | Evaluate alert rules → email digest |
+| `POST /api/cron/fd-alerts` | Daily 08:00 | FD maturity reminders (7/30/60 d) |
+| `POST /api/cron/nudge-stale` | Daily 08:00 | Nudge stale manual holdings |
+| `POST /api/cron/check-cas-email` | Every 6 h | Auto-import CAS from Gmail |
 
 ---
 

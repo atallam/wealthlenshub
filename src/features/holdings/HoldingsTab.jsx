@@ -207,7 +207,13 @@ export default function HoldingsTab({
 
       {/* ── Export toolbar ── */}
       {displayH.length>0&&(
-        <div style={{display:"flex",gap:".5rem",justifyContent:"flex-end",marginBottom:".55rem"}}>
+        <div style={{display:"flex",gap:".5rem",justifyContent:"flex-end",marginBottom:".55rem",flexWrap:"wrap"}}>
+          <a href="/api/export/report" target="_blank" rel="noopener noreferrer" className="btn-o" style={{fontSize:".72rem",padding:".28rem .7rem",minHeight:32,borderColor:"rgba(201,168,76,.4)",color:"var(--accent-3, #c9a84c)"}}>
+            ⎙ PDF Report
+          </a>
+          <a href="/api/export/xlsx" download className="btn-o" style={{fontSize:".72rem",padding:".28rem .7rem",minHeight:32,borderColor:"rgba(94,169,160,.4)",color:"var(--accent)"}}>
+            ⬇ Excel (full)
+          </a>
           <a href="/api/export/holdings" download className="btn-o" style={{fontSize:".72rem",padding:".28rem .7rem",minHeight:32}}>
             ⬇ Holdings CSV
           </a>

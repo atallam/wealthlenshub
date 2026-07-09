@@ -3,7 +3,7 @@ import { supabase } from "../lib/db.js";
 import { fetchUsdInr, mfNav, stockPrice, yahooPrice } from "../lib/prices.js";
 import { takeSnapshot } from "../lib/snapshot.js";
 import { getCrossingHoldings } from "../lib/stale-holdings.js";
-import { sendStaleNudge } from "../services/alert-mailer.js";
+import { sendStaleNudge, sendAlertDigest } from "../services/alert-mailer.js";
 
 // Concurrency limiter — same pattern as routes/prices.js
 async function pLimit(fns, concurrency = 5) {
@@ -250,6 +250,115 @@ router.post("/nudge-stale", cronAuth, async (req, res) => {
   const totalStale = results.reduce((s, r) => s + (r.staleCount || 0), 0);
   console.log(`Stale nudge cron: ${Object.keys(byUser).length} users scanned, ${sent} emails sent, ${totalStale} stale holdings total`);
   res.json({ users: Object.keys(byUser).length, emailsSent: sent, totalStaleHoldings: totalStale, results });
+});
+
+// ── Daily Alert Check ────────────────────────────────────────────────────────
+// POST /api/cron/alert-check  (x-cron-secret header required)
+//
+// Evaluates all active portfolio alert rules for every user and sends a
+// digest email if any rules are triggered. Mirrors the frontend useMemo logic
+// in App.jsx for RETURN_TARGET, USD_INR_RATE, ALLOCATION_DRIFT, CONCENTRATION.
+//
+// Env: CRON_SECRET, RESEND_API_KEY, APP_URL
+
+router.post("/alert-check", cronAuth, async (req, res) => {
+  if (!process.env.RESEND_API_KEY) {
+    return res.status(503).json({ error: "RESEND_API_KEY not configured" });
+  }
+
+  // 1. Fetch all portfolios that have at least one active alert rule
+  const { data: portfolios, error: pErr } = await supabase
+    .from("portfolio")
+    .select("user_id, alerts, goals");
+  if (pErr) return res.status(500).json({ error: pErr.message });
+
+  const results = [];
+
+  for (const port of portfolios || []) {
+    const alertRules = (port.alerts || []).filter(a => a.active);
+    if (!alertRules.length) continue;
+
+    // 2. Fetch user's holdings
+    const { data: holdings } = await supabase
+      .from("holdings")
+      .select("id, type, current_value, avg_cost, net_units, units, purchase_value, principal, usd_inr_rate")
+      .eq("user_id", port.user_id);
+
+    if (!holdings?.length) continue;
+
+    // 3. Compute portfolio metrics (mirrors App.jsx computations)
+    const allCur = holdings.reduce((s, h) => s + (Number(h.current_value) || 0), 0);
+    const allInv = holdings.reduce((s, h) => {
+      const inv = h.avg_cost != null && h.net_units != null
+        ? Number(h.net_units) * Number(h.avg_cost)
+        : Number(h.purchase_value || h.principal || 0);
+      return s + inv;
+    }, 0);
+    const totPct = allInv > 0 ? ((allCur - allInv) / allInv) * 100 : 0;
+    const usdInrRate = holdings.find(h => (Number(h.usd_inr_rate) || 0) > 0)?.usd_inr_rate || 0;
+
+    // 4. Evaluate each alert rule
+    const triggered = [];
+    for (const a of alertRules) {
+      const threshold = Number(a.threshold);
+      if (a.type === "RETURN_TARGET") {
+        if (totPct < threshold) triggered.push({ ...a, currentValue: totPct.toFixed(2) });
+      } else if (a.type === "USD_INR_RATE") {
+        if (usdInrRate > 0 && Number(usdInrRate) > threshold) {
+          triggered.push({ ...a, currentValue: Number(usdInrRate).toFixed(2) });
+        }
+      } else if (a.type === "ALLOCATION_DRIFT" || a.type === "CONCENTRATION") {
+        const typeVal = holdings
+          .filter(h => h.type === a.assetType)
+          .reduce((s, h) => s + (Number(h.current_value) || 0), 0);
+        const pct = allCur > 0 ? (typeVal / allCur) * 100 : 0;
+        if (a.type === "ALLOCATION_DRIFT" && pct > threshold) {
+          triggered.push({ ...a, currentValue: pct.toFixed(2) });
+        }
+        if (a.type === "CONCENTRATION" && pct < threshold) {
+          triggered.push({ ...a, currentValue: pct.toFixed(2) });
+        }
+      }
+    }
+
+    if (!triggered.length) {
+      results.push({ userId: port.user_id, triggered: 0, status: "no_alerts" });
+      continue;
+    }
+
+    // 5. Resolve user email
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("id", port.user_id)
+      .single();
+
+    const toEmail = profile?.email;
+    if (!toEmail) {
+      results.push({ userId: port.user_id, triggered: triggered.length, status: "no_email" });
+      continue;
+    }
+
+    // 6. Build a brief portfolio summary
+    const portfolioSummary = [
+      `Current value: ₹${allCur.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`,
+      `Invested:      ₹${allInv.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`,
+      `Total return:  ${totPct.toFixed(2)}%`,
+      usdInrRate ? `USD/INR rate:  ₹${Number(usdInrRate).toFixed(2)}` : null,
+    ].filter(Boolean).join("\n");
+
+    try {
+      await sendAlertDigest(toEmail, triggered, portfolioSummary);
+      results.push({ userId: port.user_id, email: toEmail, triggered: triggered.length, status: "sent" });
+    } catch (e) {
+      results.push({ userId: port.user_id, email: toEmail, triggered: triggered.length, status: "error", error: e.message });
+    }
+  }
+
+  const sent       = results.filter(r => r.status === "sent").length;
+  const totalTrigs = results.reduce((s, r) => s + (r.triggered || 0), 0);
+  console.log(`Alert check cron: ${(portfolios||[]).length} users, ${totalTrigs} alerts triggered, ${sent} digests sent`);
+  res.json({ users: (portfolios||[]).length, emailsSent: sent, totalTriggered: totalTrigs, results });
 });
 
 export default router;
