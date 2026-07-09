@@ -55,7 +55,10 @@ async function getHolding(holdingId) {
     .select("id, name, ticker, type, user_id, member_id")
     .eq("id", holdingId)
     .single();
-  if (error || !data) return null;
+  if (error || !data) {
+    console.error("[concall] getHolding failed — holdingId=%s error=%j", holdingId, error);
+    return { _notFound: true, holdingId, supabaseError: error };
+  }
   return data;
 }
 
@@ -138,7 +141,7 @@ router.post("/:holdingId/analyze", auth, async (req, res) => {
     const userId = req.user.id;
 
     const holding = await getHolding(holdingId);
-    if (!holding) return res.status(404).json({ error: "Holding not found" });
+    if (!holding || holding._notFound) return res.status(404).json({ error: "Holding not found", debug: holding });
     if (!isEquity(holding.type)) {
       return res.status(400).json({ error: `Concall analysis is only available for equity holdings (got ${holding.type})` });
     }
@@ -268,7 +271,7 @@ router.get("/:holdingId", auth, async (req, res) => {
     const userId = req.user.id;
 
     const holding = await getHolding(holdingId);
-    if (!holding) return res.status(404).json({ error: "Holding not found" });
+    if (!holding || holding._notFound) return res.status(404).json({ error: "Holding not found", debug: holding });
 
     const { data, error } = await supabase
       .from("concall_analyses")
@@ -304,7 +307,7 @@ router.get("/:holdingId/history", auth, async (req, res) => {
     const userId = req.user.id;
 
     const holding = await getHolding(holdingId);
-    if (!holding) return res.status(404).json({ error: "Holding not found" });
+    if (!holding || holding._notFound) return res.status(404).json({ error: "Holding not found", debug: holding });
 
     const { data, error } = await supabase
       .from("concall_analyses")
