@@ -12,7 +12,7 @@ BEGIN;
 -- 1. Main table
 CREATE TABLE IF NOT EXISTS concall_analyses (
   id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  holding_id      uuid        NOT NULL,
+  holding_id      text        NOT NULL,   -- matches holdings.id (text, format h_xxx)
   user_id         uuid        NOT NULL,
 
   -- Quarter / quarter identification
