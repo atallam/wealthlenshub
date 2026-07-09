@@ -36,6 +36,10 @@ const PORT = process.env.PORT || 3000;
 
 const app = express();
 
+// Trust Render's (and similar reverse-proxy) X-Forwarded-For header so that
+// express-rate-limit sees the real client IP rather than the proxy IP.
+app.set("trust proxy", 1);
+
 // ── Security headers ─────────────────────────────────────────────────────────
 // Helmet sets HSTS, X-Content-Type-Options, frameguard, etc. The default CSP is
 // left OFF because it can break the Vite-built SPA (inline styles/module scripts);

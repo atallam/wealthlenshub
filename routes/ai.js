@@ -11,7 +11,7 @@
  */
 
 import { Router }    from "express";
-import rateLimit     from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { auth, sendError } from "../lib/auth.js";
 import { supabase }  from "../lib/db.js";
 import { currentFY, fyRange, computeGains, summarizeRealized } from "../lib/tax.js";
@@ -21,7 +21,7 @@ const router = Router();
 const aiLimiter = rateLimit({
   windowMs: 60_000,
   max: 20,
-  keyGenerator: (req) => req.user?.id || req.ip,
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many AI requests — please wait a minute before trying again." },
