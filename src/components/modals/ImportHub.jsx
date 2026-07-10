@@ -3,9 +3,7 @@ import { Overlay } from '../shared/Overlay.jsx';
 
 /**
  * ImportHub — single entry point for every import source.
- * Config-driven so adding a source is one array entry (previously this was
- * ~65 lines of repeated inline JSX in App.jsx). Also surfaces Zerodha Kite and
- * ICICI Breeze, which were previously reachable only via orphaned overlays.
+ * Config-driven so adding a source is one array entry.
  *
  * Props:
  *   onClose()      – close the hub
@@ -16,8 +14,6 @@ const SECTIONS = [
     label: '🇮🇳 India',
     items: [
       { key: 'cas',    icon: '📄', title: 'NSDL / CDSL CAS',     desc: 'Import all mutual funds & demat holdings from your CAS PDF' },
-      { key: 'kite',   icon: '📈', title: 'Zerodha Kite',        desc: 'Live-sync equity & mutual fund holdings from Zerodha' },
-      { key: 'breeze', icon: '📊', title: 'ICICI Direct (Breeze)', desc: 'Live-sync holdings from your ICICI Direct account' },
       { key: 'fd',     icon: '🏦', title: 'Fixed Deposit (FD)',  desc: 'Scan certificate with AI vision or enter details manually' },
     ],
   },

@@ -8,8 +8,7 @@ import {
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
 import { api } from './lib/api.js';
 import SnapTradeImport from './SnapTradeImport.jsx';
-import KiteImport from './KiteImport.jsx';
-import BreezeImport from './BreezeImport.jsx';
+// KiteImport and BreezeImport decommissioned — integrations removed
 // SetuAAImport — disabled until Setu integration is ready
 // import SetuAAImport from './SetuAAImport.jsx';
 
@@ -185,7 +184,7 @@ export default function App() {
   const {
     modal, setModal, fdScanOpen, setFdScanOpen, showSettings, setShowSettings,
     showImportHub, setShowImportHub, showSnapTrade, setShowSnapTrade,
-    showKite, setShowKite, showBreeze, setShowBreeze, moreSheetOpen, setMoreSheetOpen,
+    moreSheetOpen, setMoreSheetOpen,
     expandedHolding, setExpandedHolding, showQuietAlerts, setShowQuietAlerts,
   } = ui;
   const { filterType, setFilterType, sortCol, setSortCol, sortDir, setSortDir, toggleSort } = useHoldingsView();
@@ -555,8 +554,6 @@ ${alertsText}`;
   function handleImportSelect(key) {
     switch (key) {
       case 'cas':       casImport.setCasModal(true); break;
-      case 'kite':      setShowKite(true); break;
-      case 'breeze':    setShowBreeze(true); break;
       case 'fd':        setForm(p => ({ ...p, type: 'FD' })); setModal('add'); break;
       case 'snaptrade': setShowSnapTrade(true); break;
       case 'csv':       setModal('import'); break;
@@ -1510,28 +1507,6 @@ ${alertsText}`;
           <SnapTradeImport
             onClose={() => setShowSnapTrade(false)}
             members={members}
-          />
-        </Overlay>
-      )}
-
-      {/* ── Kite Import ──────────────────────────────────────────── */}
-      {showKite && (
-        <Overlay onClose={() => setShowKite(false)} wide>
-          <KiteImport
-            onClose={() => setShowKite(false)}
-            members={members}
-            api={api}
-          />
-        </Overlay>
-      )}
-
-      {/* ── Breeze Import ────────────────────────────────────────── */}
-      {showBreeze && (
-        <Overlay onClose={() => setShowBreeze(false)} wide>
-          <BreezeImport
-            onClose={() => setShowBreeze(false)}
-            members={members}
-            api={api}
           />
         </Overlay>
       )}

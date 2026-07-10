@@ -1,7 +1,7 @@
 // OverviewTab.jsx — lines 2480–2865 of App.jsx
 // Props: all from parent App component (no local-only state to extract)
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import LiabilitiesPanel from '../../components/shared/LiabilitiesPanel.jsx';
 import { computeOutstanding } from '../../lib/amortization.js';
 import { supabase } from '../../supabase.js';
@@ -18,11 +18,6 @@ function PortfolioBrief({ allHoldings, allCur, allInv, totPct, members, mSum,
   const [open,    setOpen]    = useState(!!cached);
   const abortRef  = useRef(null);
   const fullTextRef = useRef(cached); // accumulates chunks for sessionStorage write
-
-  // Auto-trigger once per session if no cached brief exists
-  useEffect(() => {
-    if (!sessionStorage.getItem(BRIEF_KEY)) generate();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function generate() {
     abortRef.current?.abort();
@@ -121,7 +116,10 @@ Cover: (1) overall portfolio health in one sentence, (2) one standout performer 
           padding: '.5rem .85rem', cursor: 'pointer',
           fontFamily: "'DM Sans',sans-serif", fontSize: '.72rem', color: '#c9a84c',
         }}>
-        <span>✦ Portfolio Brief</span>
+        <span>
+          ✦ Portfolio Brief
+          {!hasContent && <span style={{ fontSize: '.65rem', color: 'rgba(201,168,76,.5)', marginLeft: '.5rem' }}>AI · on demand</span>}
+        </span>
         <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
           {hasContent && !loading && (
             <span onClick={e => { e.stopPropagation(); generate(); }}
