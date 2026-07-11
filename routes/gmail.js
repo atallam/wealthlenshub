@@ -41,6 +41,7 @@ const CAS_SUBJECT_KEYWORDS = [
   "CDSL CAS",
   "eCAS Statement",
   "Consolidated Mutual Fund Statement",
+  "CAS",
 ];
 
 function makeGmailOAuth2Client() {
