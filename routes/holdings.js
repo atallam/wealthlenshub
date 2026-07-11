@@ -20,7 +20,7 @@ router.post("/import", auth, auditImport("HOLDINGS_IMPORT"), async (req, res) =>
   const { holdings: rows } = req.body;
   if (!rows?.length) return res.status(400).json({ error: "No holdings to import" });
   try {
-    const { _cas_statement_date, ...result } = await holdings.importHoldings(req.user.id, req.body);
+    const { _cas_statement_date, ...result } = await holdings.importHoldings(req.user.id, { ...req.body, import_method: "manual_upload" });
     res.json(result);
     // Fire-and-forget after responding (snapshot + background price backfill).
     holdings.runPostImport(req.user.id, _cas_statement_date);

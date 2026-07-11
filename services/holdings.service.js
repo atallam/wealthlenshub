@@ -66,7 +66,7 @@ export async function listTransactions(userId, holdingId) {
 
 /** CSV/CAS import (flush-and-fill for CAS, update-vs-insert for manual). */
 export async function importHoldings(userId, body) {
-  const { holdings, member_id, account_map, cas_statement_date, cas_period_start, cas_period_end } = body;
+  const { holdings, member_id, account_map, cas_statement_date, cas_period_start, cas_period_end, import_method } = body;
 
   const { invalid } = validateRows(holdingSchema.partial(), holdings);
   if (invalid.length > 0) console.warn(`[import] ${invalid.length} invalid row(s) flagged (kept — lenient import).`);
@@ -131,6 +131,7 @@ export async function importHoldings(userId, body) {
       start_date: h.start_date || null, maturity_date: h.maturity_date || null,
       usd_inr_rate: h.usd_inr_rate || null,
       ...(h.source ? { source: h.source } : {}),
+      ...(import_method ? { import_method } : {}),
       ...(h.brokerage_name ? { brokerage_name: h.brokerage_name } : {}),
       ...(h.currency ? { currency: h.currency } : {}),
       ...(cas_statement_date ? { source_date: cas_statement_date } : {}),

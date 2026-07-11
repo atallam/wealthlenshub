@@ -293,6 +293,7 @@ async function autoImportCASForUser(userId) {
             // Only count as "updated" when units actually changed.
             const patch = {
               source:           "cas",
+              import_method:    "gmail_auto",
               source_date:      sourceDate,
               cas_period_start: casPeriodStart,
               cas_period_end:   casPeriodEnd,
@@ -323,6 +324,7 @@ async function autoImportCASForUser(userId) {
               current_value:  h.units * (h.current_nav || h.purchase_nav || 0),
               start_date:     h.start_date || null,
               source:           "cas",
+              import_method:    "gmail_auto",
               source_date:      sourceDate,
               cas_period_start: casPeriodStart,
               cas_period_end:   casPeriodEnd,
