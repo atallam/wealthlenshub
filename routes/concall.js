@@ -19,7 +19,7 @@ import { Router }    from "express";
 import multer        from "multer";
 import { auth, sendError } from "../lib/auth.js";
 import { supabase }  from "../lib/db.js";
-import { findTranscript }  from "../lib/concall/providers.js";
+import { findTranscript, debugTranscript } from "../lib/concall/providers.js";
 import { extractPdf, prepareTranscript } from "../lib/concall/extractor.js";
 import { validateTranscript }            from "../lib/concall/validate.js";
 import { analyzeTranscript }             from "../lib/concall/analyzer.js";
@@ -294,6 +294,40 @@ router.get("/:holdingId", auth, async (req, res) => {
 
     const fresh = data.expires_at && new Date(data.expires_at) > new Date();
     return res.json({ analysis: data, stale: !fresh });
+  } catch (e) {
+    sendError(res, e);
+  }
+});
+
+// ── GET /api/concall/:holdingId/debug ────────────────────────────────────────
+
+/**
+ * Runs each provider individually for this holding and returns per-provider
+ * success/failure detail. Use this to diagnose why auto-analysis is 404ing.
+ *
+ * Response shape:
+ *   {
+ *     holding: { id, name, ticker, type },
+ *     providers: [
+ *       { name: "BSEFilingProvider", status: "success"|"null"|"error",
+ *         chars: 1234, url: "...", error: null },
+ *       ...
+ *     ]
+ *   }
+ */
+router.get("/:holdingId/debug", auth, async (req, res) => {
+  try {
+    const { holdingId } = req.params;
+    const holding = await getHolding(holdingId);
+    if (!holding || holding._notFound) {
+      return res.status(404).json({ error: "Holding not found", debug: holding });
+    }
+
+    const results = await debugTranscript(holding.ticker, holding.type);
+    return res.json({
+      holding: { id: holding.id, name: holding.name, ticker: holding.ticker, type: holding.type },
+      providers: results,
+    });
   } catch (e) {
     sendError(res, e);
   }
