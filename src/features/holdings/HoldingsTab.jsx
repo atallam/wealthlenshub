@@ -201,19 +201,24 @@ export default function HoldingsTab({
       )}
       {/* ── Data Freshness Banner ── */}
       {(()=>{
-        const srcDates = {};
+        // Group by member only (latest source_date wins) — avoids repeating member per broker
+        const byMember = {};
         for (const h of visH) {
           if (!h.source_date) continue;
-          const src = h.source === "cas" ? (h.brokerage_name || "CAS") : (h.source || "manual");
           const mem = allMembers.find(m => m.id === h.member_id);
           const memName = mem?.name || "Unassigned";
-          const key = `${src}|${memName}`;
-          if (!srcDates[key] || h.source_date > srcDates[key].date) {
-            srcDates[key] = { date: h.source_date, src, member: memName };
+          if (!byMember[memName] || h.source_date > byMember[memName]) {
+            byMember[memName] = h.source_date;
           }
         }
-        const entries = Object.values(srcDates);
+        // Order entries by allMembers order (matches the top member filter tabs)
+        const entries = allMembers
+          .filter(m => byMember[m.name])
+          .map(m => ({ member: m.name, date: byMember[m.name] }));
+        // Include any unmatched (e.g. "Unassigned")
+        if (byMember["Unassigned"]) entries.push({ member: "Unassigned", date: byMember["Unassigned"] });
         if (entries.length === 0) return null;
+        const fmt = d => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
         const allSame = entries.every(e => e.date === entries[0].date);
         return (
           <div style={{background:"linear-gradient(135deg,rgba(76,175,154,.08),rgba(160,132,202,.06))",border:"1px solid rgba(76,175,154,.18)",borderRadius:8,padding:".55rem .85rem",marginBottom:".65rem",display:"flex",alignItems:"center",gap:".65rem"}}>
@@ -221,16 +226,15 @@ export default function HoldingsTab({
             <div style={{flex:1}}>
               {allSame ? (
                 <div style={{fontSize:".75rem",color:"#4caf9a",fontWeight:500}}>
-                  Data as on {new Date(entries[0].date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}
-                  <span style={{color:"var(--text-muted)",fontWeight:400,marginLeft:".5rem"}}>{entries.length} source{entries.length>1?"s":""}</span>
+                  Data as on {fmt(entries[0].date)}
+                  <span style={{color:"var(--text-muted)",fontWeight:400,marginLeft:".5rem"}}>{entries.map(e=>e.member).join(", ")}</span>
                 </div>
               ) : (
                 <div style={{display:"flex",flexWrap:"wrap",gap:".25rem .8rem"}}>
                   {entries.map((e,i) => (
                     <div key={i} style={{fontSize:".72rem"}}>
                       <span style={{color:"var(--text-dim)"}}>{e.member}:</span>{" "}
-                      <span style={{color:"#4caf9a",fontWeight:500}}>{new Date(e.date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</span>
-                      <span style={{color:"var(--text-muted)",marginLeft:".3rem",fontSize:".65rem"}}>{e.src}</span>
+                      <span style={{color:"#4caf9a",fontWeight:500}}>{fmt(e.date)}</span>
                     </div>
                   ))}
                 </div>
