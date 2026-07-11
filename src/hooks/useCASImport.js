@@ -74,60 +74,33 @@ export function useCASImport(user, onSuccess) {
     return map;
   }
 
-  async function handleCASUpload(file, members) {
-    setCasUploading(true);
-    setCasWarnings([]);
-    setCasHoldings([]);
-    setCasHolderNames([]);
-    setCasHolderPans([]);
-    setCasStep("uploading");
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token || "";
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/import/detect", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}` },
-        body: fd,
-      });
-      const data = await res.json();
-      if (data.error === "password_required" || data.error === "password_incorrect") {
-        setCasWarnings(data.error === "password_incorrect"
-          ? ["Incorrect password - check your PAN (uppercase, 10 chars)"]
-          : ["This CAS PDF is password-protected. Enter your PAN to unlock."]);
-        setCasStep("password");
-        setCasUploading(false);
-        setCasPendingFile(file);
-        return;
-      }
-      if (data.error) {
-        setCasWarnings([data.error]);
-        setCasStep("intro");
-        setCasUploading(false);
-        return;
-      }
-      const holdings = data.holdings || [];
-      const holderNames = data.holder_names || [];
-      const holderPans = data.holder_pans || [];
-      setCasHoldings(holdings);
-      setCasHolderNames(holderNames);
-      setCasHolderPans(holderPans);
-      setCasWarnings(data.warnings || []);
-      setCasFormat(data.format || "");
-      setCasStatementDate(data.statement_date || null);
-      setCasPeriodStart(data.period_start || null);
-      setCasPeriodEnd(data.period_end || null);
-      setCasDepository(data.depository || "");
-      const autoMap = autoMapCASHolders(holderNames, holderPans, members, data.holder_member_map || {});
-      setCasHolderMap(autoMap);
-      setCasStep("matching");
-    } catch (e) {
-      setCasWarnings([`Upload failed: ${e.message}`]);
-      setCasStep("intro");
-    }
-    setCasUploading(false);
-  }
+  // OLD parser (lib/parsers.js / /api/import/detect) — kept for reference.
+  // casparser (handleCASUploadV2) is now the only active upload path.
+  // async function handleCASUpload(file, members) {
+  //   setCasUploading(true); setCasWarnings([]); setCasHoldings([]);
+  //   setCasHolderNames([]); setCasHolderPans([]); setCasStep("uploading");
+  //   try {
+  //     const { data: { session } } = await supabase.auth.getSession();
+  //     const token = session?.access_token || "";
+  //     const fd = new FormData();
+  //     fd.append("file", file);
+  //     const res = await fetch("/api/import/detect", { method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: fd });
+  //     const data = await res.json();
+  //     if (data.error === "password_required" || data.error === "password_incorrect") {
+  //       setCasWarnings(data.error === "password_incorrect" ? ["Incorrect PAN"] : ["PDF is password-protected"]);
+  //       setCasStep("password"); setCasUploading(false); setCasPendingFile(file); return;
+  //     }
+  //     if (data.error) { setCasWarnings([data.error]); setCasStep("intro"); setCasUploading(false); return; }
+  //     setCasHoldings(data.holdings || []); setCasHolderNames(data.holder_names || []);
+  //     setCasHolderPans(data.holder_pans || []); setCasWarnings(data.warnings || []);
+  //     setCasFormat(data.format || ""); setCasStatementDate(data.statement_date || null);
+  //     setCasPeriodStart(data.period_start || null); setCasPeriodEnd(data.period_end || null);
+  //     setCasDepository(data.depository || "");
+  //     setCasHolderMap(autoMapCASHolders(data.holder_names || [], data.holder_pans || [], members, data.holder_member_map || {}));
+  //     setCasStep("matching");
+  //   } catch (e) { setCasWarnings([`Upload failed: ${e.message}`]); setCasStep("intro"); }
+  //   setCasUploading(false);
+  // }
 
   async function executeCASImport(members, onPriceRefresh) {
     setCasStep("importing");
@@ -172,57 +145,30 @@ export function useCASImport(user, onSuccess) {
     }
   }
 
-  async function retryCASWithPassword(members) {
-    if (!casPendingFile || !casPanInput.trim()) return;
-    const pan = casPanInput.trim().toUpperCase();
-    setCasStep("uploading");
-    setCasWarnings([]);
-    setCasUploading(true);
-    if (casSavePan) {
-      api("/api/profile", { method: "PUT", body: JSON.stringify({ pan }) }).catch(() => {});
-    }
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token || "";
-      const fd = new FormData();
-      fd.append("file", casPendingFile);
-      fd.append("password", pan);
-      const res = await fetch("/api/import/detect", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}` },
-        body: fd,
-      });
-      const data = await res.json();
-      if (data.error === "password_incorrect") {
-        setCasWarnings(["Incorrect password - check your PAN is correct (uppercase, e.g. ABCDE1234F)"]);
-        setCasStep("password");
-        setCasUploading(false);
-        return;
-      }
-      if (data.error) {
-        setCasWarnings([data.error]);
-        setCasStep("password");
-        setCasUploading(false);
-        return;
-      }
-      const holdings = data.holdings || [];
-      setCasHoldings(holdings);
-      setCasHolderNames(data.holder_names || []);
-      setCasHolderPans(data.holder_pans || []);
-      setCasWarnings(data.warnings || []);
-      setCasFormat(data.format || "");
-      const autoMap = autoMapCASHolders(data.holder_names || [], data.holder_pans || [], members, data.holder_member_map || {});
-      setCasHolderMap(autoMap);
-      setCasStep("matching");
-      setCasPendingFile(null);
-    } catch (e) {
-      setCasWarnings([`Upload failed: ${e.message}`]);
-      setCasStep("password");
-    }
-    setCasUploading(false);
-  }
+  // OLD password retry (paired with handleCASUpload above) — kept for reference.
+  // async function retryCASWithPassword(members) {
+  //   if (!casPendingFile || !casPanInput.trim()) return;
+  //   const pan = casPanInput.trim().toUpperCase();
+  //   setCasStep("uploading"); setCasWarnings([]); setCasUploading(true);
+  //   if (casSavePan) api("/api/profile", { method: "PUT", body: JSON.stringify({ pan }) }).catch(() => {});
+  //   try {
+  //     const { data: { session } } = await supabase.auth.getSession();
+  //     const token = session?.access_token || "";
+  //     const fd = new FormData(); fd.append("file", casPendingFile); fd.append("password", pan);
+  //     const res = await fetch("/api/import/detect", { method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: fd });
+  //     const data = await res.json();
+  //     if (data.error === "password_incorrect") { setCasWarnings(["Incorrect PAN"]); setCasStep("password"); setCasUploading(false); return; }
+  //     if (data.error) { setCasWarnings([data.error]); setCasStep("password"); setCasUploading(false); return; }
+  //     setCasHoldings(data.holdings || []); setCasHolderNames(data.holder_names || []);
+  //     setCasHolderPans(data.holder_pans || []); setCasWarnings(data.warnings || []);
+  //     setCasFormat(data.format || "");
+  //     setCasHolderMap(autoMapCASHolders(data.holder_names || [], data.holder_pans || [], members, data.holder_member_map || {}));
+  //     setCasStep("matching"); setCasPendingFile(null);
+  //   } catch (e) { setCasWarnings([`Upload failed: ${e.message}`]); setCasStep("password"); }
+  //   setCasUploading(false);
+  // }
 
-  // V2 (casparser Smart Parser)
+  // casparser Smart Parser — now the only active upload path
   async function handleCASUploadV2(file, members) {
     setCasUploading(true);
     setCasWarnings([]);
@@ -369,9 +315,9 @@ export function useCASImport(user, onSuccess) {
     casPeriodStart,
     casPeriodEnd,
     casDepository,
-    handleCASUpload,
+    // handleCASUpload,       // old parser — commented out
+    // retryCASWithPassword,  // old parser — commented out
     executeCASImport,
-    retryCASWithPassword,
     resetCASDownloader,
     autoMapCASHolders,
     handleCASUploadV2,

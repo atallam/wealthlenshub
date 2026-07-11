@@ -1,6 +1,7 @@
 // CASImportModal.jsx - NSDL/CDSL CAS PDF import wizard
-// Steps: intro -> uploading -> password -> matching -> importing -> done
-// V2 step: password_v2 (casparser Smart Parser path)
+// Steps: intro -> uploading -> password_v2 -> matching -> importing -> done
+// casparser (Smart Parser) is the only active upload path.
+// Old parser (lib/parsers.js / /api/import/detect) kept commented out for reference.
 
 import { useRef } from "react";
 import { Overlay } from "../shared/Overlay.jsx";
@@ -11,34 +12,34 @@ export default function CASImportModal({
   onClose,
   onPriceRefresh,
 }) {
-  const fileRef   = useRef(null);
-  const fileRefV2 = useRef(null);
+  const fileRef = useRef(null);
+  // const fileRefV2 = useRef(null);  // old parser had a separate ref — now merged into fileRef
   const {
     casStep, casHoldings, casHolderNames, casHolderPans,
     casHolderMap, setCasHolderMap, casWarnings, casFormat,
     casUploading, casResult, casPanInput, setCasPanInput,
     casSavePan, setCasSavePan,
-    handleCASUpload, executeCASImport, retryCASWithPassword, resetCASDownloader,
+    // handleCASUpload, retryCASWithPassword,  // old parser — removed
+    executeCASImport, resetCASDownloader,
     handleCASUploadV2, retryCASWithPasswordV2,
   } = casImport;
 
   function handleFile(file) {
-    if (file) handleCASUpload(file, members);
+    if (file) handleCASUploadV2(file, members);
   }
 
-  const isDone        = casStep === "done";
-  const isImporting   = casStep === "importing";
-  const isMatching    = casStep === "matching";
-  const isPassword    = casStep === "password";
-  const isPasswordV2  = casStep === "password_v2";
-  const isUploading   = casStep === "uploading" || casUploading;
+  const isDone       = casStep === "done";
+  const isImporting  = casStep === "importing";
+  const isMatching   = casStep === "matching";
+  // const isPassword = casStep === "password";  // old parser step — removed
+  const isPasswordV2 = casStep === "password_v2";
+  const isUploading  = casStep === "uploading" || casUploading;
 
   const title = isDone       ? "CAS Imported"
     : isImporting  ? "Importing..."
-    : isPassword   ? "Unlock CAS PDF"
-    : isPasswordV2 ? "Unlock CAS PDF (Smart Parser)"
-    : isMatching   ? "Import CAS (NSDL/CDSL)"
-    : "Import CAS (NSDL/CDSL)";
+    : isPasswordV2 ? "Unlock CAS PDF"
+    : isMatching   ? "Import CAS"
+    : "Import CAS";
 
   const hasMultiHolder = casHolderNames.length > 1 && members.length > 1;
 
@@ -57,38 +58,12 @@ export default function CASImportModal({
         </div>
       )}
 
-      {/* Password unlock step */}
+      {/* OLD password unlock step (old parser) — kept for reference
       {!isUploading && isPassword && (
         <div style={{ maxWidth: 400, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: "1.2rem" }}>
-            <div style={{ fontSize: "2rem", marginBottom: ".5rem" }}>🔐</div>
-            <div style={{ fontSize: ".85rem", color: "var(--text)", marginBottom: ".3rem" }}>This PDF is password-protected</div>
-            <div style={{ fontSize: ".72rem", color: "var(--text)" }}>NSDL/CDSL CAS password is your PAN number (uppercase)</div>
-          </div>
-          {casWarnings.length > 0 && (
-            <div style={{ background: "rgba(224,124,90,.1)", border: "1px solid rgba(224,124,90,.25)", borderRadius: 8, padding: ".55rem .75rem", marginBottom: ".8rem" }}>
-              {casWarnings.map((w, i) => <div key={i} style={{ fontSize: ".73rem", color: "#e07c5a" }}>⚠ {w}</div>)}
-            </div>
-          )}
-          <div style={{ marginBottom: ".8rem" }}>
-            <label style={{ fontSize: ".68rem", color: "var(--text)", letterSpacing: ".05em", textTransform: "uppercase", display: "block", marginBottom: ".3rem" }}>PAN Number</label>
-            <input className="fi" value={casPanInput} onChange={e => setCasPanInput(e.target.value.toUpperCase())}
-              placeholder="ABCDE1234F" maxLength={10}
-              style={{ fontFamily: "'DM Mono',monospace", textTransform: "uppercase", letterSpacing: ".1em" }}
-              onKeyDown={e => e.key === "Enter" && casPanInput.length === 10 && retryCASWithPassword(members)} />
-          </div>
-          <label style={{ display: "flex", alignItems: "center", gap: ".5rem", fontSize: ".73rem", color: "var(--text)", marginBottom: "1.2rem", cursor: "pointer" }}>
-            <input type="checkbox" checked={casSavePan} onChange={e => setCasSavePan(e.target.checked)} style={{ accentColor: "#c9a84c" }} />
-            Remember PAN for future imports (encrypted)
-          </label>
-          <div style={{ display: "flex", gap: ".7rem" }}>
-            <button className="btnc" onClick={() => { resetCASDownloader(); onClose(); }}>Cancel</button>
-            <button className="btns" disabled={casPanInput.length !== 10} onClick={() => retryCASWithPassword(members)}>
-              Unlock &amp; Parse
-            </button>
-          </div>
+          ...retryCASWithPassword(members)...
         </div>
-      )}
+      )} */}
 
       {/* Intro / upload step */}
       {!isUploading && (casStep === "intro" || casStep === "upload") && (
@@ -106,24 +81,11 @@ export default function CASImportModal({
           <input ref={fileRef} type="file" accept=".pdf" style={{ display: "none" }}
             onChange={e => { const f = e.target.files[0]; if (f) handleFile(f); e.target.value = ""; }} />
 
-          {/* Smart Parser alternative */}
-          <div style={{ border: "1px solid rgba(76,175,154,.25)", borderRadius: 10, padding: "1rem 1.2rem", background: "rgba(76,175,154,.04)", marginBottom: ".9rem", display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
-            <div style={{ flex: 1, minWidth: 180 }}>
-              <div style={{ fontSize: ".78rem", fontWeight: 600, color: "var(--text)", marginBottom: ".2rem" }}>
-                Try Smart Parser
-                <span style={{ fontSize: ".6rem", padding: ".15rem .4rem", borderRadius: 3, background: "rgba(76,175,154,.15)", color: "#4caf9a", border: "1px solid rgba(76,175,154,.25)", fontWeight: 600, marginLeft: ".4rem", verticalAlign: "middle" }}>Beta</span>
-              </div>
-              <div style={{ fontSize: ".7rem", color: "var(--text)" }}>Uses casparser library · better equity values · supports CAMS &amp; NSDL</div>
-            </div>
-            <button
-              className="btnc"
-              style={{ fontSize: ".73rem", borderColor: "rgba(76,175,154,.4)", color: "#4caf9a", whiteSpace: "nowrap" }}
-              onClick={() => fileRefV2.current?.click()}>
-              📂 Choose PDF (Smart)
-            </button>
+          {/* OLD: secondary "Try Smart Parser" card — removed now that casparser is the default.
+          <div style={{ border: "1px solid rgba(76,175,154,.25)", ... }}>
+            <button onClick={() => fileRefV2.current?.click()}>📂 Choose PDF (Smart)</button>
           </div>
-          <input ref={fileRefV2} type="file" accept=".pdf" style={{ display: "none" }}
-            onChange={e => { const f = e.target.files[0]; if (f) { handleCASUploadV2(f, members); } e.target.value = ""; }} />
+          <input ref={fileRefV2} ... onChange={e => handleCASUploadV2(f, members)} /> */}
 
           {casWarnings.length > 0 && (
             <div style={{ background: "rgba(224,124,90,.1)", border: "1px solid rgba(224,124,90,.25)", borderRadius: 8, padding: ".7rem .9rem" }}>
@@ -140,7 +102,7 @@ export default function CASImportModal({
             <div style={{ fontSize: "2rem", marginBottom: ".5rem" }}>🔐</div>
             <div style={{ fontSize: ".85rem", color: "var(--text)", marginBottom: ".3rem" }}>This PDF is password-protected</div>
             <div style={{ fontSize: ".72rem", color: "var(--text)" }}>NSDL/CDSL CAS password is your PAN number (uppercase)</div>
-            <div style={{ fontSize: ".68rem", color: "#4caf9a", marginTop: ".3rem" }}>Using Smart Parser (casparser)</div>
+            <div style={{ fontSize: ".68rem", color: "#4caf9a", marginTop: ".3rem" }}>Powered by casparser · supports NSDL, CDSL, CAMS &amp; Kfintech</div>
           </div>
           {casWarnings.length > 0 && (
             <div style={{ background: "rgba(224,124,90,.1)", border: "1px solid rgba(224,124,90,.25)", borderRadius: 8, padding: ".55rem .75rem", marginBottom: ".8rem" }}>
