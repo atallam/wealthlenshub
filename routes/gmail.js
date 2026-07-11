@@ -1,10 +1,19 @@
-import { Router } from "express";
-import crypto from "crypto";
-import { google } from "googleapis";
-import { supabase } from "../lib/db.js";
+import { Router }          from "express";
+import crypto              from "crypto";
+import { spawn }           from "child_process";
+import { writeFile, unlink } from "fs/promises";
+import { join, dirname }   from "path";
+import { tmpdir }          from "os";
+import { fileURLToPath }   from "url";
+import { google }          from "googleapis";
+import { supabase }        from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
 import { encrypt, decrypt } from "../lib/crypto.js";
-import { pdfjsLib, _pdfjsFontPath, parseNSDLCASStatement } from "../lib/parsers.js";
+// OLD parser — kept for reference; casparser is used instead (see runCasparser below)
+// import { pdfjsLib, _pdfjsFontPath, parseNSDLCASStatement } from "../lib/parsers.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = dirname(__filename);
 
 const router = Router();
 
@@ -43,6 +52,43 @@ const CAS_SUBJECT_KEYWORDS = [
   "Consolidated Mutual Fund Statement",
   "CAS",
 ];
+
+// ── Smart CAS parser (Python casparser library) ───────────────────────────────
+// Mirrors the same helper in routes/import_v2.js.
+// Spawns services/cas_casparser_service.py and returns parsed JSON.
+function runCasparser(pdfPath, password) {
+  return new Promise((resolve, reject) => {
+    const scriptPath = join(__dirname, "..", "services", "cas_casparser_service.py");
+    const pythonBin  = process.platform === "win32" ? "python" : "python3";
+
+    function spawnWith(bin) {
+      const child = spawn(bin, [scriptPath, pdfPath, password ?? ""], {
+        timeout: 60_000,
+        env: { ...process.env },
+      });
+      let stdout = "", stderr = "";
+      child.stdout.on("data", (c) => { stdout += c.toString(); });
+      child.stderr.on("data", (c) => { stderr += c.toString(); });
+      child.on("error", (err) => {
+        if (err.code === "ENOENT" && bin === "python3") {
+          // python3 not found on Windows — retry with plain "python"
+          spawnWith("python").then(resolve).catch(reject);
+        } else {
+          reject(new Error(`Python spawn error: ${err.message}`));
+        }
+      });
+      child.on("close", (code) => {
+        if (code !== 0 && !stdout.trim()) {
+          return reject(new Error(`casparser exited ${code}: ${stderr.slice(0, 300)}`));
+        }
+        try { resolve(JSON.parse(stdout)); }
+        catch { reject(new Error(`Invalid JSON from casparser: ${stdout.slice(0, 200)}`)); }
+      });
+    }
+
+    spawnWith(pythonBin);
+  });
+}
 
 function makeGmailOAuth2Client() {
   return new google.auth.OAuth2(
@@ -97,14 +143,16 @@ async function autoImportCASForUser(userId) {
     const primaryDOB = profile?.encrypted_dob ? decrypt(profile.encrypted_dob) : null;
 
     const allPANs = [...new Set([...(primaryPAN ? [primaryPAN.toUpperCase()] : []), ...Array.from(panMap.keys())])];
-    const allPasswords = [];
-    for (const pan of allPANs) {
-      allPasswords.push(pan);
-      if (primaryDOB) {
-        const dobStr = primaryDOB.replace(/-/g, "");
-        if (dobStr.length === 8) allPasswords.push(pan + dobStr.slice(6,8) + dobStr.slice(4,6) + dobStr.slice(0,4));
-      }
-    }
+    // casparser uses PAN alone as the PDF password — no DOB suffix needed.
+    // OLD allPasswords block (kept for reference):
+    // const allPasswords = [];
+    // for (const pan of allPANs) {
+    //   allPasswords.push(pan);
+    //   if (primaryDOB) {
+    //     const dobStr = primaryDOB.replace(/-/g, "");
+    //     if (dobStr.length === 8) allPasswords.push(pan + dobStr.slice(6,8) + dobStr.slice(4,6) + dobStr.slice(0,4));
+    //   }
+    // }
 
     // Build subject-based query so forwarded family CAS emails are included.
     // Gmail subject: operator requires quoted phrases for multi-word terms.
@@ -145,37 +193,72 @@ async function autoImportCASForUser(userId) {
           pdfBuffer = Buffer.from(pdfPart.body.data, "base64url");
         } else { importRecord.status = "skipped"; importRecord.error_message = "Cannot read attachment"; summary.skipped++; continue; }
 
-        let rawText = null, succeededPAN = null;
-        const tryPasswords = allPasswords.length ? allPasswords : [""];
-        for (const pwd of tryPasswords) {
+        // ── Smart CAS parser (casparser) ─────────────────────────────────────
+        // Write buffer to a temp file, then try each PAN as the PDF password.
+        // "" (empty string) is tried first to handle unprotected PDFs.
+        const tmpFile = join(tmpdir(), `cas_${crypto.randomBytes(8).toString("hex")}.pdf`);
+        await writeFile(tmpFile, pdfBuffer);
+
+        let parseResult = null;
+        const passwordsToTry = ["", ...allPANs];
+        for (const pwd of passwordsToTry) {
           try {
-            const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(pdfBuffer), standardFontDataUrl: _pdfjsFontPath, useSystemFonts: true });
-            loadingTask.onPassword = (cb, reason) => { if (reason === 2) cb(new Error("wrong")); else cb(pwd); };
-            const pdf = await loadingTask.promise;
-            const pages = [];
-            for (let i = 1; i <= pdf.numPages; i++) {
-              pages.push(pdf.getPage(i).then(pg => pg.getTextContent()).then(c => {
-                return c.items.sort((a,b) => Math.round(b.transform[5])-Math.round(a.transform[5]) || a.transform[4]-b.transform[4]).map(it => it.str).join(" ") + "\n";
-              }));
+            const parsed = await runCasparser(tmpFile, pwd);
+            if (parsed.error === "password_incorrect" || parsed.error === "password_required") continue;
+            if (parsed.error) {
+              // Non-password error (invalid PDF, parse failure, etc.) — skip this email
+              importRecord.status        = "skipped";
+              importRecord.error_message = `casparser: ${parsed.error}`;
+              summary.skipped++;
+              break;
             }
-            rawText = (await Promise.all(pages)).join("\n");
-            succeededPAN = pwd.slice(0, 10);
+            parseResult = parsed;
             break;
-          } catch { /* try next */ }
+          } catch (spawnErr) {
+            // Python not available or script missing — fall through to error below
+            importRecord.status        = "error";
+            importRecord.error_message = `Smart parser unavailable: ${spawnErr.message}`;
+            summary.errors.push(importRecord.error_message);
+            break;
+          }
         }
-        if (!rawText) {
-          importRecord.status = "error";
-          importRecord.error_message =
-            "Could not decrypt PDF — ensure the PAN (and optionally DOB) for every family member " +
-            "is saved in Settings → Members. CAS PDFs are password-protected with the holder's PAN " +
-            "(or PAN + DDMMYYYY of birth date).";
-          summary.errors.push(importRecord.error_message);
+        await unlink(tmpFile).catch(() => {});  // always clean up
+
+        if (!parseResult) {
+          // If status was already set inside the loop (skipped/error), honour it
+          if (!importRecord.status || importRecord.status === "pending") {
+            importRecord.status = "error";
+            importRecord.error_message =
+              "Could not decrypt PDF — ensure the PAN for every family member " +
+              "is saved in Settings → Members.";
+            summary.errors.push(importRecord.error_message);
+          }
           continue;
         }
-        if (!/consolidated\s*account\s*statement|nsdl|cdsl/i.test(rawText)) { importRecord.status = "skipped"; importRecord.error_message = "Not a CAS statement"; summary.skipped++; continue; }
-
-        const parseResult = parseNSDLCASStatement(rawText);
         if (!parseResult.holdings?.length) { importRecord.status = "skipped"; importRecord.error_message = "No holdings found in CAS"; summary.skipped++; continue; }
+
+        // OLD pdf.js + parseNSDLCASStatement flow — kept for reference:
+        // let rawText = null;
+        // const tryPasswords = allPasswords.length ? allPasswords : [""];
+        // for (const pwd of tryPasswords) {
+        //   try {
+        //     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(pdfBuffer), ... });
+        //     loadingTask.onPassword = (cb, reason) => { if (reason === 2) cb(new Error("wrong")); else cb(pwd); };
+        //     const pdf = await loadingTask.promise;
+        //     const pages = [];
+        //     for (let i = 1; i <= pdf.numPages; i++) {
+        //       pages.push(pdf.getPage(i).then(pg => pg.getTextContent()).then(c => {
+        //         return c.items.sort(...).map(it => it.str).join(" ") + "\n";
+        //       }));
+        //     }
+        //     rawText = (await Promise.all(pages)).join("\n");
+        //     break;
+        //   } catch { /* try next */ }
+        // }
+        // if (!rawText) { /* error */ continue; }
+        // if (!/consolidated\s*account\s*statement|nsdl|cdsl/i.test(rawText)) { /* skip */ continue; }
+        // const parseResult = parseNSDLCASStatement(rawText);
+        // if (!parseResult.holdings?.length) { /* skip */ continue; }
 
         const pdfHolderPANs  = (parseResult.holder_pans  || []).map(p => p.toUpperCase());
         const pdfHolderNames = (parseResult.holder_names || []).map(n => n.trim().toUpperCase());
@@ -183,10 +266,10 @@ async function autoImportCASForUser(userId) {
         // Match on PRIMARY holder only (index 0) — joint holders are ignored intentionally.
         // PANs and names are extracted in document order so [0] is always the first/primary holder.
         let targetMember = null;
-        const primaryPAN  = pdfHolderPANs[0];
-        const primaryName = pdfHolderNames[0];
-        if (primaryPAN  && panMap.has(primaryPAN))  targetMember = panMap.get(primaryPAN);
-        if (!targetMember && primaryName && nameMap.has(primaryName)) targetMember = nameMap.get(primaryName);
+        const pdfPrimaryPAN  = pdfHolderPANs[0];
+        const pdfPrimaryName = pdfHolderNames[0];
+        if (pdfPrimaryPAN  && panMap.has(pdfPrimaryPAN))  targetMember = panMap.get(pdfPrimaryPAN);
+        if (!targetMember && pdfPrimaryName && nameMap.has(pdfPrimaryName)) targetMember = nameMap.get(pdfPrimaryName);
         if (!targetMember) { targetMember = members.find(m => (m.relation||"").toLowerCase() === "self") || members[0]; }
         const memberId = targetMember?.id || "self";
 
