@@ -31,9 +31,16 @@ function verifyState(state, maxAgeMs = 10 * 60 * 1000) {
 
 const GMAIL_ENABLED = !!(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET);
 
-const CAS_SENDERS = [
-  "cas@nsdl.co.in", "casrequest@cams.com", "mfcentral@nsdl.co.in",
-  "kfintech@kfintech.com", "nsdl@nsdl.co.in",
+// Subject keywords used to find CAS emails.
+// Matching on subject (not sender) means forwarded family-member CAS emails
+// are picked up regardless of who forwarded them.
+const CAS_SUBJECT_KEYWORDS = [
+  "Consolidated Account Statement",
+  "CAS Statement",
+  "NSDL e-CAS",
+  "CDSL CAS",
+  "eCAS Statement",
+  "Consolidated Mutual Fund Statement",
 ];
 
 function makeGmailOAuth2Client() {
@@ -98,8 +105,14 @@ async function autoImportCASForUser(userId) {
       }
     }
 
-    const fromQuery = CAS_SENDERS.map(s => `from:${s}`).join(" OR ");
-    const listRes = await gmail.users.messages.list({ userId: "me", q: `(${fromQuery}) has:attachment filename:pdf`, maxResults: 20 });
+    // Build subject-based query so forwarded family CAS emails are included.
+    // Gmail subject: operator requires quoted phrases for multi-word terms.
+    const subjectQuery = CAS_SUBJECT_KEYWORDS.map(s => `subject:"${s}"`).join(" OR ");
+    const listRes = await gmail.users.messages.list({
+      userId: "me",
+      q: `(${subjectQuery}) has:attachment filename:pdf`,
+      maxResults: 50,   // bumped from 20 — family with multiple members may have more
+    });
     const messages = listRes.data.messages || [];
     summary.checked = messages.length;
 
@@ -149,7 +162,15 @@ async function autoImportCASForUser(userId) {
             break;
           } catch { /* try next */ }
         }
-        if (!rawText) { importRecord.status = "error"; importRecord.error_message = "Could not decrypt — add member PANs in Settings"; summary.errors.push(importRecord.error_message); continue; }
+        if (!rawText) {
+          importRecord.status = "error";
+          importRecord.error_message =
+            "Could not decrypt PDF — ensure the PAN (and optionally DOB) for every family member " +
+            "is saved in Settings → Members. CAS PDFs are password-protected with the holder's PAN " +
+            "(or PAN + DDMMYYYY of birth date).";
+          summary.errors.push(importRecord.error_message);
+          continue;
+        }
         if (!/consolidated\s*account\s*statement|nsdl|cdsl/i.test(rawText)) { importRecord.status = "skipped"; importRecord.error_message = "Not a CAS statement"; summary.skipped++; continue; }
 
         const parseResult = parseNSDLCASStatement(rawText);
