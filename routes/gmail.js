@@ -194,6 +194,11 @@ async function autoImportCASForUser(userId) {
         const existMap = new Map();
         for (const h of existing || []) { const k = (h.scheme_code || h.ticker || h.name || "").toLowerCase(); if (k) existMap.set(k, h); }
 
+        // CAS period metadata — written to every holding so Data Freshness card shows the correct dates
+        const casPeriodStart = parseResult.period_start || null;
+        const casPeriodEnd   = parseResult.period_end   || parseResult.statement_date || null;
+        const sourceDate     = casPeriodEnd;   // "as of" date for the Data Freshness card
+
         let added = 0, updated = 0, skipped = 0;
         const now = new Date().toISOString();
         for (const h of parseResult.holdings) {
@@ -201,13 +206,45 @@ async function autoImportCASForUser(userId) {
           const match = key ? existMap.get(key) : null;
           if (match) {
             const diff = Math.abs((match.units || 0) - (h.units || 0));
+            // Always refresh CAS period metadata so Data Freshness card reflects the new statement.
+            // Only count as "updated" when units actually changed.
+            const patch = {
+              source:           "cas",
+              source_date:      sourceDate,
+              cas_period_start: casPeriodStart,
+              cas_period_end:   casPeriodEnd,
+              updated_at:       now,
+            };
             if (diff > 0.001) {
-              await supabase.from("holdings").update({ units: h.units, current_nav: h.current_nav || h.purchase_nav, current_value: h.units * (h.current_nav || h.purchase_nav || 0), price_fetched_at: now }).eq("id", match.id);
+              Object.assign(patch, {
+                units:           h.units,
+                current_nav:     h.current_nav || h.purchase_nav,
+                current_value:   h.units * (h.current_nav || h.purchase_nav || 0),
+                price_fetched_at: now,
+              });
               updated++;
-            } else { skipped++; }
+            } else {
+              skipped++;
+            }
+            await supabase.from("holdings").update(patch).eq("id", match.id);
           } else {
             const newId = `h_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-            await supabase.from("holdings").insert({ id: newId, user_id: userId, member_id: memberId, type: h.type || "MF", name: h.name, ticker: h.ticker || null, scheme_code: h.scheme_code || null, units: h.units || 0, purchase_nav: h.purchase_nav || null, current_nav: h.current_nav || h.purchase_nav || null, purchase_value: h.purchase_value || 0, current_value: h.units * (h.current_nav || h.purchase_nav || 0), start_date: h.start_date || null, created_at: now });
+            await supabase.from("holdings").insert({
+              id: newId, user_id: userId, member_id: memberId,
+              type: h.type || "MF", name: h.name,
+              ticker: h.ticker || null, scheme_code: h.scheme_code || null,
+              units: h.units || 0,
+              purchase_nav:   h.purchase_nav || null,
+              current_nav:    h.current_nav || h.purchase_nav || null,
+              purchase_value: h.purchase_value || 0,
+              current_value:  h.units * (h.current_nav || h.purchase_nav || 0),
+              start_date:     h.start_date || null,
+              source:           "cas",
+              source_date:      sourceDate,
+              cas_period_start: casPeriodStart,
+              cas_period_end:   casPeriodEnd,
+              created_at: now,
+            });
             added++;
           }
         }
