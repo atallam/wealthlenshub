@@ -165,7 +165,8 @@ async function autoImportCASForUser(userId) {
     const messages = listRes.data.messages || [];
     summary.checked = messages.length;
 
-    const { data: processed } = await supabase.from("email_imports").select("email_id").eq("user_id", userId);
+    // Only skip emails that were successfully imported — errors/skips are retried on next check.
+    const { data: processed } = await supabase.from("email_imports").select("email_id").eq("user_id", userId).eq("status", "success");
     const processedIds = new Set((processed || []).map(r => r.email_id));
 
     for (const msg of messages) {
@@ -273,68 +274,55 @@ async function autoImportCASForUser(userId) {
         if (!targetMember) { targetMember = members.find(m => (m.relation||"").toLowerCase() === "self") || members[0]; }
         const memberId = targetMember?.id || "self";
 
-        const { data: existing } = await supabase.from("holdings").select("id, name, scheme_code, ticker, units").eq("user_id", userId);
-        const existMap = new Map();
-        for (const h of existing || []) { const k = (h.scheme_code || h.ticker || h.name || "").toLowerCase(); if (k) existMap.set(k, h); }
-
         // CAS period metadata — written to every holding so Data Freshness card shows the correct dates
         const casPeriodStart = parseResult.period_start || null;
         const casPeriodEnd   = parseResult.period_end   || parseResult.statement_date || null;
         const sourceDate     = casPeriodEnd;   // "as of" date for the Data Freshness card
 
-        let added = 0, updated = 0, skipped = 0;
-        const now = new Date().toISOString();
-        for (const h of parseResult.holdings) {
-          const key = (h.scheme_code || h.ticker || h.name || "").toLowerCase();
-          const match = key ? existMap.get(key) : null;
-          if (match) {
-            const diff = Math.abs((match.units || 0) - (h.units || 0));
-            // Always refresh CAS period metadata so Data Freshness card reflects the new statement.
-            // Only count as "updated" when units actually changed.
-            const patch = {
-              source:           "cas",
-              import_method:    "gmail_auto",
-              source_date:      sourceDate,
-              cas_period_start: casPeriodStart,
-              cas_period_end:   casPeriodEnd,
-              updated_at:       now,
-            };
-            if (diff > 0.001) {
-              Object.assign(patch, {
-                units:           h.units,
-                current_nav:     h.current_nav || h.purchase_nav,
-                current_value:   h.units * (h.current_nav || h.purchase_nav || 0),
-                price_fetched_at: now,
-              });
-              updated++;
-            } else {
-              skipped++;
-            }
-            await supabase.from("holdings").update(patch).eq("id", match.id);
-          } else {
-            const newId = `h_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-            await supabase.from("holdings").insert({
-              id: newId, user_id: userId, member_id: memberId,
-              type: h.type || "MF", name: h.name,
-              ticker: h.ticker || null, scheme_code: h.scheme_code || null,
-              units: h.units || 0,
-              purchase_nav:   h.purchase_nav || null,
-              current_nav:    h.current_nav || h.purchase_nav || null,
-              purchase_value: h.purchase_value || 0,
-              current_value:  h.units * (h.current_nav || h.purchase_nav || 0),
-              start_date:     h.start_date || null,
-              source:           "cas",
-              import_method:    "gmail_auto",
-              source_date:      sourceDate,
-              cas_period_start: casPeriodStart,
-              cas_period_end:   casPeriodEnd,
-              created_at: now,
-            });
-            added++;
-          }
+        // ── Flush-and-fill (mirrors UI CAS import in holdings.service.js) ────
+        // Delete existing CAS holdings for this member before inserting fresh ones.
+        // This ensures sold/redeemed funds don't linger after a new CAS is imported.
+        // Scoped to memberId so other members' holdings are never touched.
+        if (memberId && memberId !== "self") {
+          await supabase.from("holdings").delete().eq("user_id", userId).eq("source", "cas").eq("member_id", memberId);
+        } else {
+          // Fallback: flush null-member CAS holdings (legacy rows with no member_id)
+          await supabase.from("holdings").delete().eq("user_id", userId).eq("source", "cas").is("member_id", null);
         }
-        importRecord.status = "success"; importRecord.holdings_added = added; importRecord.holdings_updated = updated; importRecord.holdings_skipped = skipped;
-        summary.imported += added; summary.updated += updated;
+
+        const now = new Date().toISOString();
+        const toInsert = parseResult.holdings.map(h => ({
+          id: `h_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          user_id:          userId,
+          member_id:        memberId,
+          type:             h.type || "MF",
+          name:             h.name,
+          ticker:           h.ticker || null,
+          scheme_code:      h.scheme_code || null,
+          units:            h.units || 0,
+          purchase_nav:     h.purchase_nav || null,
+          current_nav:      h.current_nav || h.purchase_nav || null,
+          purchase_value:   h.purchase_value || 0,
+          current_value:    h.units * (h.current_nav || h.purchase_nav || 0),
+          start_date:       h.start_date || null,
+          source:           "cas",
+          import_method:    "gmail_auto",
+          source_date:      sourceDate,
+          cas_period_start: casPeriodStart,
+          cas_period_end:   casPeriodEnd,
+          created_at:       now,
+        }));
+
+        // Insert in chunks to avoid Supabase payload limits
+        const CHUNK = 100;
+        for (let i = 0; i < toInsert.length; i += CHUNK) {
+          const { error: insErr } = await supabase.from("holdings").insert(toInsert.slice(i, i + CHUNK));
+          if (insErr) throw new Error(`holdings insert error: ${insErr.message}`);
+        }
+
+        const added = toInsert.length;
+        importRecord.status = "success"; importRecord.holdings_added = added; importRecord.holdings_updated = 0; importRecord.holdings_skipped = 0;
+        summary.imported += added;
       } catch (err) {
         importRecord.status = "error"; importRecord.error_message = err.message;
         summary.errors.push(err.message);
