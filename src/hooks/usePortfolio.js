@@ -127,6 +127,8 @@ export function usePortfolio(user) {
       purchase_value: +form.purchase_value || null,
       current_value:  +form.current_value || null,
       usd_inr_rate:   +form.usd_inr_rate || getLiveUsdInr(),
+      sum_assured:    form.sum_assured === "" || form.sum_assured == null ? null : +form.sum_assured,
+      premium:        form.premium === "" || form.premium == null ? null : +form.premium,
     };
     try {
       if (editHolding) {
