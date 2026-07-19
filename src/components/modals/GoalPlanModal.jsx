@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabase.js';
 // Shared math — avoids circular dep with GoalsTab.jsx
-import { goalStatusCalc } from '../../features/goals/goalMath.js';
+import { goalStatusCalc, goalCagr } from '../../features/goals/goalMath.js';
 import { readSSEStream } from '../../hooks/useGoalAI.js';
 
 /* ══════════════════════════════════════════════
@@ -81,7 +81,8 @@ export default function GoalPlanModal({ open, onClose, goals, members, holdings,
       const mNames = lm.includes('all') ? 'all family members' : lm.map(id => members.find(m => m.id === id)?.name || '?').join(', ');
       const lh     = g.linkedTypes || [];
       const linkedDetail = lh.length > 0 ? ` | Asset types: ${lh.map(t => AT[t]?.label || t).join(', ')}` : '';
-      return `${i + 1}. ${g.name} [Priority ${g.priority || i + 1}] — Category: ${g.category} | Target: ${fmtCr(g.targetAmount)} by ${g.targetDate} | Current: ${fmtCr(cur)} (${pct}%) | Remaining: ${fmtCr(rem)} | Time left: ${yLeft}y | Linked to: ${mNames}${g.monthlyContribution > 0 ? ` | Monthly SIP: ₹${(+g.monthlyContribution).toLocaleString('en-IN')}` : ''}${linkedDetail}`;
+      const cagr = (goalCagr(g.linkedTypes) * 100).toFixed(1);
+      return `${i + 1}. ${g.name} [Priority ${g.priority || i + 1}] — Category: ${g.category} | Target: ${fmtCr(g.targetAmount)} by ${g.targetDate} | Current: ${fmtCr(cur)} (${pct}%) | Remaining: ${fmtCr(rem)} | Time left: ${yLeft}y | Expected CAGR: ${cagr}% p.a. (based on linked asset types) | Linked to: ${mNames}${g.monthlyContribution > 0 ? ` | Monthly SIP: ₹${(+g.monthlyContribution).toLocaleString('en-IN')}` : ''}${linkedDetail}`;
     }).join('\n');
 
     const memberBreakdown = members.map(m => {
@@ -94,7 +95,7 @@ export default function GoalPlanModal({ open, onClose, goals, members, holdings,
 FAMILY PORTFOLIO SUMMARY:
 - Total portfolio value: ${fmtCr(allCur)}
 - Total invested: ${fmtCr(allInv)}
-- Total gain: ${fmtCr(allCur - allInv)} (${allInv > 0 ? ((allCur - allInv) / allInv * 100).toFixed(1) : 0}% return)
+- Total gain: ${fmtCr(allCur - allInv)} (${allInv > 0 ? ((allCur - allInv) / allInv * 100).toFixed(1) : 0}% simple return since inception — NOT the annual rate; do not use this as a future return assumption)
 
 MEMBER PORTFOLIOS:
 ${memberBreakdown}

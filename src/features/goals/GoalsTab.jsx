@@ -548,7 +548,9 @@ export default function GoalsTab({
               {/* Projected completion */}
               {st.label !== 'Achieved' && yLeft > 0 && (
                 <div style={{ marginTop: '.45rem', padding: '.32rem .6rem', background: 'var(--bg-muted)', borderRadius: 5, fontSize: '.67rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>📅 Projected</span>
+                  <span title={`Expected CAGR based on linked asset types${(g.linkedTypes||[]).length === 0 ? ' (default — no types linked)' : ''}`}>
+                    📅 Projected <span style={{ fontSize: '.62rem', opacity: .7 }}>@ {(r * 100).toFixed(1)}% p.a.</span>
+                  </span>
                   {projDate !== null
                     ? <span style={{ fontFamily: "'DM Mono',monospace", color: projDiff > 0 ? '#e07c5a' : '#1d9e75', fontWeight: 500 }}>{projDate} {projDiff > 0 ? `(${projDiff}y late)` : projDiff < 0 ? `(${Math.abs(projDiff)}y early)` : '(on time)'}</span>
                     : <span style={{ color: '#e07c5a' }}>Won't reach at current rate</span>
