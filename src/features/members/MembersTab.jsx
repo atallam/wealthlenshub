@@ -160,10 +160,6 @@ export default function MembersTab({
                   <div style={{ fontSize:'.58rem', color:'var(--text-muted)', marginBottom:'.1rem' }}>Portfolio</div>
                   <div style={{ fontFamily:"'DM Mono',monospace", fontSize:'.78rem', color:'#c9a84c' }}>{fmt(m.cur)}</div>
                 </div>
-                <div style={{ background:'var(--bg-muted)', borderRadius:6, padding:'.28rem .55rem' }}>
-                  <div style={{ fontSize:'.58rem', color:'var(--text-muted)', marginBottom:'.1rem' }}>Return</div>
-                  <div style={{ fontSize:'.78rem' }} className={m.gain >= 0 ? 'gain' : 'loss'}>{fmtPct(m.pct)}</div>
-                </div>
                 {holdingCount > 0 && (
                   <div style={{ background:'var(--bg-muted)', borderRadius:6, padding:'.28rem .55rem' }}>
                     <div style={{ fontSize:'.58rem', color:'var(--text-muted)', marginBottom:'.1rem' }}>Holdings</div>
