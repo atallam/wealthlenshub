@@ -460,49 +460,45 @@ export default function OverviewTab({
 
       {/* ── PROTECTION COVERAGE CARD ── */}
       {(()=>{
-        const policies = (holdings||[]).filter(h => h.type === "INSURANCE" && (h.sum_assured || 0) > 0);
+        const POLICY_ICON = {TERM:"🛡️",ENDOWMENT:"💰",ULIP:"📈",WHOLE_LIFE:"🔄",HEALTH:"🏥",VEHICLE:"🚗"};
+        const policies = (holdings||[]).filter(h => h.type === "INSURANCE");
         if (policies.length === 0) return null;
         const LIFE_TYPES = new Set(["TERM", "ENDOWMENT", "ULIP", "WHOLE_LIFE"]);
-        const lifePolicies   = policies.filter(h => LIFE_TYPES.has(h.policy_type));
-        const otherPolicies  = policies.filter(h => !LIFE_TYPES.has(h.policy_type)); // HEALTH, VEHICLE
-        const sumBy = (arr) => arr.reduce((s, h) => s + (h.sum_assured || 0), 0);
-        const totalLifeCover  = sumBy(lifePolicies);
-        const healthCover     = sumBy(otherPolicies.filter(h => h.policy_type === "HEALTH"));
-        const vehicleCover    = sumBy(otherPolicies.filter(h => h.policy_type === "VEHICLE"));
-        const withExpiry = policies.filter(h => h.maturity_date).sort((a,b) => new Date(a.maturity_date) - new Date(b.maturity_date));
-        const nearest = withExpiry[0];
-        const dLeft = nearest ? Math.ceil((new Date(nearest.maturity_date) - Date.now()) / 864e5) : null;
-        const mc = dLeft === null ? "var(--text-muted)" : dLeft < 0 ? "#e07c5a" : dLeft > 180 ? "#4caf9a" : dLeft > 60 ? "#f0a050" : "#e07c5a";
+        const pType = (h) => h.policy_type || "TERM"; // same default HoldingsTab uses for display
+        const lifePolicies = policies.filter(h => LIFE_TYPES.has(pType(h)));
+        const totalLifeCover = lifePolicies.reduce((s, h) => s + (h.sum_assured || 0), 0);
+        const rows = [...policies].sort((a, b) => (b.sum_assured || 0) - (a.sum_assured || 0));
         return (
           <div className="card">
             <div className="ctitle">🛡️ Protection Coverage</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:".8rem",marginBottom:nearest?".7rem":0}}>
-              <div style={{flex:"1 1 140px"}}>
-                <div style={{fontSize:".68rem",color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:".05em"}}>Total Life Cover</div>
-                <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.15rem",color:"var(--text)",marginTop:".15rem"}}>{fmtCrINR(totalLifeCover)}</div>
-                <div style={{fontSize:".68rem",color:"var(--text-dim)",marginTop:".1rem"}}>{lifePolicies.length} polic{lifePolicies.length===1?"y":"ies"}</div>
-              </div>
-              {healthCover>0&&<div style={{flex:"1 1 120px"}}>
-                <div style={{fontSize:".68rem",color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:".05em"}}>Health Cover</div>
-                <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.15rem",color:"var(--text)",marginTop:".15rem"}}>{fmtCrINR(healthCover)}</div>
-              </div>}
-              {vehicleCover>0&&<div style={{flex:"1 1 120px"}}>
-                <div style={{fontSize:".68rem",color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:".05em"}}>Vehicle Cover</div>
-                <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.15rem",color:"var(--text)",marginTop:".15rem"}}>{fmtCrINR(vehicleCover)}</div>
-              </div>}
+            <div style={{marginBottom:".7rem"}}>
+              <div style={{fontSize:".68rem",color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:".05em"}}>Total Life Cover</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.15rem",color:"var(--text)",marginTop:".15rem"}}>{fmtCrINR(totalLifeCover)}</div>
+              <div style={{fontSize:".68rem",color:"var(--text-dim)",marginTop:".1rem"}}>{lifePolicies.length} of {policies.length} polic{policies.length===1?"y":"ies"} · TERM/ENDOWMENT/ULIP/WHOLE LIFE</div>
             </div>
-            {nearest&&(
-              <div style={{display:"flex",alignItems:"center",gap:".5rem",padding:".45rem .65rem",background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:6}}>
-                <span style={{fontSize:".9rem"}}>⏰</span>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:".72rem",color:"var(--text)"}}>{nearest.name}</div>
-                  <div style={{fontSize:".65rem",color:"var(--text-dim)"}}>{(nearest.policy_type||"TERM").replace("_"," ")} · nearest renewal/maturity</div>
-                </div>
-                <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",fontWeight:600,color:mc}}>
-                  {dLeft<0?"Expired":`${dLeft}d`}
-                </span>
-              </div>
-            )}
+            <div style={{display:"grid",gap:".4rem"}}>
+              {rows.map(h => {
+                const pt = pType(h);
+                const dLeft = h.maturity_date ? Math.ceil((new Date(h.maturity_date) - Date.now()) / 864e5) : null;
+                const mc = dLeft === null ? "var(--text-dim)" : dLeft < 0 ? "#e07c5a" : dLeft > 180 ? "#4caf9a" : dLeft > 60 ? "#f0a050" : "#e07c5a";
+                return (
+                  <div key={h.id} style={{display:"flex",alignItems:"center",gap:".6rem",padding:".45rem .65rem",background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:6}}>
+                    <span style={{fontSize:".95rem",width:22,textAlign:"center"}}>{POLICY_ICON[pt] || "🛡️"}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:".78rem",color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{h.name}</div>
+                      <div style={{fontSize:".65rem",color:"var(--text-dim)"}}>
+                        {pt.replace("_"," ")}
+                        {h.premium>0 && ` · ₹${h.premium.toLocaleString('en-IN')}/${(h.premium_frequency||"ANNUAL").toLowerCase()}`}
+                      </div>
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontFamily:"'DM Mono',monospace",fontSize:".78rem",color:"var(--text)"}}>{h.sum_assured>0 ? fmtCrINR(h.sum_assured) : "—"}</div>
+                      {dLeft!==null && <div style={{fontFamily:"'DM Mono',monospace",fontSize:".65rem",fontWeight:600,color:mc}}>{dLeft<0?"Expired":`${dLeft}d left`}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         );
       })()}
@@ -564,110 +560,6 @@ export default function OverviewTab({
             </div>
           </div>
         );
-      })()}
-
-      {/* ── NET WORTH TIMELINE ── */}
-      {(()=>{
-        const nwHoldings = nwMember==="all" ? allHoldings : allHoldings.filter(h=>h.member_id===nwMember);
-        const nwCur = nwHoldings.reduce((s,h)=>s+(valINRCache.get(h.id)||0),0);
-        const nwInv = nwHoldings.reduce((s,h)=>s+(invINRCache.get(h.id)||0),0);
-
-        // Build cumulative invested per month from transactions
-        const monthlyInv = {};
-        for(const h of nwHoldings){
-          for(const t of (h.transactions||[])){
-            const mo=t.txn_date.slice(0,7);
-            const delta=(t.txn_type==="BUY"?1:-1)*(+t.units)*(+t.price);
-            monthlyInv[mo]=(monthlyInv[mo]||0)+delta;
-          }
-          if(["FD","PPF","EPF","REAL_ESTATE"].includes(h.type)&&h.start_date){
-            const mo=h.start_date.slice(0,7);
-            monthlyInv[mo]=(monthlyInv[mo]||0)+(invINRCache.get(h.id)||0);
-          }
-        }
-        // Convert to cumulative
-        const sortedMos = Object.keys(monthlyInv).sort();
-        let cum=0; const cumByMo={};
-        for(const mo of sortedMos){ cum+=monthlyInv[mo]; cumByMo[mo]=Math.max(0,cum); }
-        const last24=sortedMos.slice(-24);
-        if(last24.length<2) return null;
-
-        const [hovIdx,setHovIdx]=window.__nwHov||[null,null];
-        const maxV=Math.max(...last24.map(m=>cumByMo[m]),nwCur)*1.05;
-        const W=580,H=180,pad={l:58,r:16,t:14,b:32};
-        const iW=W-pad.l-pad.r,iH=H-pad.t-pad.b;
-        const xPos=(i)=>pad.l+i*(iW/Math.max(last24.length-1,1));
-        const yPos=(v)=>pad.t+iH-((v/maxV)*iH);
-        const pts=last24.map((m,i)=>`${xPos(i)},${yPos(cumByMo[m]||0)}`).join(" ");
-        const labels=last24.filter((_,i)=>i===0||(i%4===0)||i===last24.length-1);
-
-        return(
-        <div className="card">
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:".85rem",flexWrap:"wrap",gap:".5rem"}}>
-            <div className="ctitle" style={{margin:0}}>Net Worth Timeline</div>
-            <div style={{display:"flex",gap:".5rem",alignItems:"center"}}>
-              <select className="fi fs" style={{width:140,marginBottom:0,fontSize:".72rem",padding:".28rem .6rem"}}
-                value={nwMember} onChange={e=>setNwMember(e.target.value)}>
-                <option value="all">All Members</option>
-                {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            </div>
-          </div>
-          <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",overflow:"visible"}}
-            onMouseLeave={()=>{if(window.__nwSetHov)window.__nwSetHov(null);}}>
-            <defs>
-              <linearGradient id="nwGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#c9a84c" stopOpacity="0.3"/>
-                <stop offset="100%" stopColor="#c9a84c" stopOpacity="0.02"/>
-              </linearGradient>
-            </defs>
-            {/* Y grid + labels */}
-            {[0,.25,.5,.75,1].map(p=>{
-              const y=pad.t+iH*(1-p);
-              return <g key={p}>
-                <line x1={pad.l} y1={y} x2={W-pad.r} y2={y} stroke="#D1E8E0" strokeWidth="1"/>
-                <text x={pad.l-6} y={y+4} textAnchor="end" fill="#7FA898" fontSize="9" fontFamily="'DM Mono',monospace">
-                  {fmtCr(maxV*p)}
-                </text>
-              </g>;
-            })}
-            {/* Area fill */}
-            <polygon points={`${pad.l},${pad.t+iH} ${pts} ${xPos(last24.length-1)},${pad.t+iH}`} fill="url(#nwGrad)"/>
-            {/* Main line */}
-            <polyline points={pts} fill="none" stroke="#c9a84c" strokeWidth="2" strokeLinejoin="round"/>
-            {/* Today dot */}
-            <circle cx={xPos(last24.length-1)} cy={yPos(nwCur)} r="5" fill="#4caf9a" stroke="#0c1526" strokeWidth="1.5"/>
-            <line x1={xPos(last24.length-1)} y1={yPos(cumByMo[last24[last24.length-1]]||0)}
-              x2={xPos(last24.length-1)} y2={yPos(nwCur)}
-              stroke="#4caf9a" strokeWidth="1.2" strokeDasharray="3,2"/>
-            {/* Hover dots with value tooltip */}
-            {last24.map((m,i)=>{
-              const v=cumByMo[m]||0;
-              const cx=xPos(i),cy=yPos(v);
-              return <g key={m}>
-                <circle cx={cx} cy={cy} r="4" fill="#c9a84c" opacity="0" style={{cursor:"crosshair"}}
-                  onMouseEnter={()=>{if(window.__nwSetHov)window.__nwSetHov(i);}}/>
-                {/* Always show value above dot for every other point */}
-                {(i%2===0||i===last24.length-1)&&(
-                  <text x={cx} y={cy-8} textAnchor="middle" fill="rgba(201,168,76,.7)" fontSize="7.5" fontFamily="'DM Mono',monospace">
-                    {fmtCr(v)}
-                  </text>
-                )}
-              </g>;
-            })}
-            {/* X labels */}
-            {last24.map((m,i)=>labels.includes(m)?(
-              <text key={m} x={xPos(i)} y={H-4} textAnchor="middle" fill="#5E7A72" fontSize="8.5">
-                {new Date(m+"-01").toLocaleDateString("en-IN",{month:"short",year:"2-digit"})}
-              </text>
-            ):null)}
-          </svg>
-          <div style={{display:"flex",gap:"1.5rem",marginTop:".6rem",fontSize:".72rem"}}>
-            <div><span style={{color:"var(--text-dim)"}}>Invested: </span><span style={{fontFamily:"'DM Mono',monospace",color:"#c9a84c"}}>{fmtCr(nwInv)}</span></div>
-            <div><span style={{color:"var(--text-dim)"}}>Current: </span><span style={{fontFamily:"'DM Mono',monospace",color:"var(--text)"}}>{fmtCr(nwCur)}</span></div>
-            <div><span style={{color:"var(--text-dim)"}}>Gain: </span><span style={{fontFamily:"'DM Mono',monospace",color:nwCur>=nwInv?"#4caf9a":"#e07c5a"}}>{fmtCr(nwCur-nwInv)} ({fmtPct(nwInv>0?(nwCur-nwInv)/nwInv*100:0)})</span></div>
-          </div>
-        </div>);
       })()}
 
       {/* ── WEALTH PROGRESSION (from monthly snapshots) ── */}
