@@ -228,11 +228,18 @@ export default function App() {
   const allHoldings = holdings;
   const allMembers  = members;
 
+  // Member-scoped only — drives Overview, Goals, Calendar, Health Score, etc.
+  // Not affected by the Holdings type filter.
+  const memberH = useMemo(() =>
+    selMember === 'all' ? allHoldings : allHoldings.filter(h => h.member_id === selMember),
+    [allHoldings, selMember]
+  );
+
+  // Type-filtered on top of memberH — used exclusively by HoldingsTab grid.
   const visH = useMemo(() => {
-    let h = selMember === 'all' ? allHoldings : allHoldings.filter(h => h.member_id === selMember);
-    if (filterType !== 'ALL') h = h.filter(h => h.type === filterType);
-    return h;
-  }, [allHoldings, selMember, filterType]);
+    if (filterType === 'ALL') return memberH;
+    return memberH.filter(h => h.type === filterType);
+  }, [memberH, filterType]);
 
   const valINRCache = useMemo(() => {
     const m = new Map();
@@ -274,8 +281,9 @@ export default function App() {
     [allHoldings, invINRCache]
   );
 
-  const totCur  = useMemo(() => visH.reduce((s, h) => s + (valINRCache.get(h.id) || 0), 0), [visH, valINRCache]);
-  const totInv  = useMemo(() => visH.reduce((s, h) => { const v=invINRCache.get(h.id); return v==null ? s : s+v; }, 0), [visH, invINRCache]);
+  // totCur/totInv are member-scoped but NOT type-filtered — Overview always shows the full member picture.
+  const totCur  = useMemo(() => memberH.reduce((s, h) => s + (valINRCache.get(h.id) || 0), 0), [memberH, valINRCache]);
+  const totInv  = useMemo(() => memberH.reduce((s, h) => { const v=invINRCache.get(h.id); return v==null ? s : s+v; }, 0), [memberH, invINRCache]);
   const totGain = totCur - totInv;
   const totPct  = totInv > 0 ? ((totCur - totInv) / totInv) * 100 : 0;
 
@@ -285,7 +293,7 @@ export default function App() {
     let india_cur = 0, india_inv = 0;
     let us_cur = 0,    us_inv = 0;
     let us_inv_hist_inr = 0; // US invested at purchase-time rate (for FX impact)
-    for (const h of visH) {
+    for (const h of memberH) {
       const natVal = valNativeCache.get(h.id) || 0;
       const natInv = invNativeCache.get(h.id); // may be null
       if (isUSDHolding(h)) {
@@ -315,11 +323,11 @@ export default function App() {
       combined_cur, combined_inv, combined_gain, combined_pct,
       fx_gain, liveRate,
     };
-  }, [visH, valNativeCache, invNativeCache]);
+  }, [memberH, valNativeCache, invNativeCache]);
 
   const byType = useMemo(() => {
     const map = {};
-    for (const h of visH) {
+    for (const h of memberH) {
       if (!map[h.type]) map[h.type] = { cur: 0, inv: 0, count: 0 };
       map[h.type].cur   += valINRCache.get(h.id) || 0;
       map[h.type].inv   += invINRCache.get(h.id) || 0;
@@ -329,7 +337,7 @@ export default function App() {
     return Object.entries(map)
       .map(([t, v]) => ({ t, v: v.cur, i: v.inv, count: v.count, pct: total > 0 ? (v.cur / total) * 100 : 0 }))
       .sort((a, b) => b.v - a.v);
-  }, [visH, valINRCache, invINRCache]);
+  }, [memberH, valINRCache, invINRCache]);
 
   const mSum = useMemo(() =>
     allMembers.map(m => {

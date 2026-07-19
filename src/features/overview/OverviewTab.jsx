@@ -1,7 +1,7 @@
 // OverviewTab.jsx — lines 2480–2865 of App.jsx
 // Props: all from parent App component (no local-only state to extract)
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import LiabilitiesPanel from '../../components/shared/LiabilitiesPanel.jsx';
 import { computeOutstanding } from '../../lib/amortization.js';
 import { supabase } from '../../supabase.js';
@@ -10,16 +10,30 @@ import HealthScore from '../../components/shared/HealthScore.jsx';
 import SIPAnalytics from '../../components/shared/SIPAnalytics.jsx';
 
 // ─── AI Portfolio Morning Brief ───────────────────────────────────────────────
-const BRIEF_KEY = 'wl_portfolio_brief';
+function briefKey(selMember) {
+  return `wl_portfolio_brief_${selMember || 'all'}`;
+}
 
 function PortfolioBrief({ allHoldings, allCur, allInv, totPct, members, mSum,
-  goals, trigAlerts, valINRCache, invINRCache, fmtCr, AT }) {
-  const cached = sessionStorage.getItem(BRIEF_KEY) || '';
+  goals, trigAlerts, valINRCache, invINRCache, fmtCr, AT, selMember }) {
+
+  const key    = briefKey(selMember);
+  const cached = sessionStorage.getItem(key) || '';
   const [text,    setText]    = useState(cached);
   const [loading, setLoading] = useState(false);
   const [open,    setOpen]    = useState(!!cached);
-  const abortRef  = useRef(null);
-  const fullTextRef = useRef(cached); // accumulates chunks for sessionStorage write
+  const abortRef    = useRef(null);
+  const fullTextRef = useRef(cached);
+
+  // When member changes, load that member's cached brief (or clear if none)
+  useEffect(() => {
+    abortRef.current?.abort();
+    const c = sessionStorage.getItem(briefKey(selMember)) || '';
+    setText(c);
+    setOpen(!!c);
+    fullTextRef.current = c;
+    setLoading(false);
+  }, [selMember]);
 
   async function generate() {
     abortRef.current?.abort();
@@ -30,8 +44,17 @@ function PortfolioBrief({ allHoldings, allCur, allInv, totPct, members, mSum,
     setOpen(true);
     fullTextRef.current = '';
 
-    // Top 5 holdings by value
-    const topH = [...allHoldings]
+    // Scope holdings to selected member (or all)
+    const scopedHoldings = selMember && selMember !== 'all'
+      ? allHoldings.filter(h => h.member_id === selMember)
+      : allHoldings;
+
+    const memberName = selMember && selMember !== 'all'
+      ? members.find(m => m.id === selMember)?.name || 'this member'
+      : null;
+
+    // Top 5 holdings by value (scoped)
+    const topH = [...scopedHoldings]
       .map(h => ({
         ...h,
         cur: valINRCache.get(h.id) || 0,
@@ -41,13 +64,13 @@ function PortfolioBrief({ allHoldings, allCur, allInv, totPct, members, mSum,
       .slice(0, 5)
       .map(h => {
         const g = h.inv > 0 ? ((h.cur - h.inv) / h.inv * 100).toFixed(1) : '0';
-        const mem = members.find(m => m.id === h.member_id)?.name || '';
+        const mem = !memberName ? (members.find(m => m.id === h.member_id)?.name || '') : '';
         return `  ${h.name} (${AT[h.type]?.label || h.type}): ${fmtCr(h.cur)} · ${g >= 0 ? '+' : ''}${g}%${mem ? ` [${mem}]` : ''}`;
       }).join('\n');
 
-    // Upcoming in 30 days
+    // Upcoming in 30 days (scoped)
     const now = new Date();
-    const upcoming = allHoldings
+    const upcoming = scopedHoldings
       .filter(h => h.type === 'FD' && h.maturity_date)
       .map(h => ({ name: h.name, days: Math.round((new Date(h.maturity_date) - now) / 864e5), val: valINRCache.get(h.id) || 0 }))
       .filter(h => h.days >= 0 && h.days <= 30)
@@ -58,15 +81,27 @@ function PortfolioBrief({ allHoldings, allCur, allInv, totPct, members, mSum,
       .filter(g => g.days >= 0 && g.days <= 90)
       .map(g => `Goal "${g.name}" target in ${g.days}d`);
 
-    const memberLines = (mSum || []).map(m =>
-      `  ${m.name}: ${fmtCr(m.cur)} (${m.pct >= 0 ? '+' : ''}${m.pct.toFixed(1)}% overall gain)`
-    ).join('\n');
+    // Portfolio context — member view or family view
+    let portfolioContext;
+    if (memberName) {
+      const scopedCur = scopedHoldings.reduce((s, h) => s + (valINRCache.get(h.id) || 0), 0);
+      const scopedInv = scopedHoldings.reduce((s, h) => s + (invINRCache.get(h.id) || 0), 0);
+      const scopedPct = scopedInv > 0 ? ((scopedCur - scopedInv) / scopedInv * 100).toFixed(1) : 0;
+      portfolioContext = `Member: ${memberName}
+- Portfolio value: ${fmtCr(scopedCur)} | Invested: ${fmtCr(scopedInv)} | Overall gain: ${scopedPct}%`;
+    } else {
+      const memberLines = (mSum || []).map(m =>
+        `  ${m.name}: ${fmtCr(m.cur)} (${m.pct >= 0 ? '+' : ''}${m.pct.toFixed(1)}% overall gain)`
+      ).join('\n');
+      portfolioContext = `Family portfolio:
+- Total value: ${fmtCr(allCur)} | Invested: ${fmtCr(allInv)} | Overall gain: ${allInv > 0 ? ((allCur - allInv) / allInv * 100).toFixed(1) : 0}%
+- Members:\n${memberLines}`;
+    }
 
     const prompt = `You are a concise Indian wealth advisor. Write a 4-sentence portfolio morning brief — no headers, no bullets, flowing prose.
 
 PORTFOLIO:
-- Total value: ${fmtCr(allCur)} | Invested: ${fmtCr(allInv)} | Overall gain: ${allInv > 0 ? ((allCur - allInv) / allInv * 100).toFixed(1) : 0}%
-- Members:\n${memberLines}
+${portfolioContext}
 
 TOP HOLDINGS:\n${topH}
 
@@ -96,7 +131,7 @@ Cover: (1) overall portfolio health in one sentence, (2) one standout performer 
         fullTextRef.current += chunk;
         setText(p => p + chunk);
       }, ctrl.signal);
-      sessionStorage.setItem(BRIEF_KEY, fullTextRef.current);
+      sessionStorage.setItem(briefKey(selMember), fullTextRef.current);
     } catch (e) {
       if (e.name === 'AbortError') return;
       setText(`⚠ ${e.message}`);
@@ -324,6 +359,7 @@ export default function OverviewTab({
           invINRCache={invINRCache}
           fmtCr={fmtCr}
           AT={AT}
+          selMember={selMember}
         />
       )}
       {/* ── NRI Portfolio Summary — 3-panel view ── */}
