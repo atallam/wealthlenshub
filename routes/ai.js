@@ -15,6 +15,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { auth, sendError } from "../lib/auth.js";
 import { supabase }  from "../lib/db.js";
 import { currentFY, fyRange, computeGains, summarizeRealized } from "../lib/tax.js";
+import { decrypt } from "../lib/crypto.js";
 
 const router = Router();
 
@@ -85,6 +86,41 @@ const ADVISOR_TOOLS = [
       type: "object",
       properties: {
         fy: { type: "string", description: "Indian FY like '2025-26'. Defaults to current FY." },
+      },
+    },
+  },
+  {
+    name: "get_budget_summary",
+    description: "Get spending summary by category for recent months. Use when the user asks about expenses, spending habits, where their money is going, or budget vs investment balance.",
+    input_schema: {
+      type: "object",
+      properties: {
+        months: { type: "number", description: "How many recent months to summarise (default 3, max 12)" },
+      },
+    },
+  },
+  {
+    name: "get_watchlist",
+    description: "Get the user's watchlist — tickers they are tracking with target prices and current prices. Use when the user asks about stocks they are watching, target prices, or what to buy next.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_snapshot_history",
+    description: "Get net worth snapshot history showing how portfolio value has changed month by month. Use when the user asks about portfolio growth, wealth progression, or how much they have grown over time.",
+    input_schema: {
+      type: "object",
+      properties: {
+        months: { type: "number", description: "How many recent months to return (default 12, max 24)" },
+      },
+    },
+  },
+  {
+    name: "get_fd_maturities",
+    description: "Get upcoming FD (Fixed Deposit) maturities with amounts and dates. Use when the user asks about cash flow, reinvestment planning, or which FDs are maturing soon.",
+    input_schema: {
+      type: "object",
+      properties: {
+        days: { type: "number", description: "Look-ahead window in days (default 180)" },
       },
     },
   },
@@ -195,6 +231,158 @@ async function execTool(name, input, userId) {
           fy, stcg: Math.round(s.stcg), ltcg: Math.round(s.ltcg),
           ltcg_exemption: s.ltcg_exemption, ltcg_taxable: Math.round(s.ltcg_taxable),
           estimated_tax: Math.round(s.total_tax),
+        };
+      }
+
+      case "get_budget_summary": {
+        const lookbackMonths = Math.min(Math.max(input.months || 3, 1), 12);
+        const since = new Date();
+        since.setMonth(since.getMonth() - lookbackMonths);
+        const sinceStr = since.toISOString().slice(0, 10);
+
+        const { data: txns } = await supabase
+          .from("budget_transactions")
+          .select("category, amount, txn_type, txn_date, description")
+          .eq("user_id", userId)
+          .gte("txn_date", sinceStr)
+          .order("txn_date", { ascending: false })
+          .limit(2000);
+
+        if (!txns?.length) return { message: "No budget transactions found for this period." };
+
+        // Aggregate by category (debits = spending)
+        const byCategory = {};
+        let totalSpend = 0, totalIncome = 0;
+        for (const t of txns) {
+          const cat = t.category || "Uncategorised";
+          const amt = Number(t.amount || 0);
+          if (t.txn_type === "DEBIT") {
+            byCategory[cat] = (byCategory[cat] || 0) + amt;
+            totalSpend += amt;
+          } else {
+            totalIncome += amt;
+          }
+        }
+
+        const categories = Object.entries(byCategory)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([cat, amt]) => ({
+            category: cat,
+            amount: Math.round(amt),
+            pct_of_spend: totalSpend > 0 ? +((amt / totalSpend) * 100).toFixed(1) : 0,
+          }));
+
+        return {
+          period_months: lookbackMonths,
+          total_spend: Math.round(totalSpend),
+          total_income: Math.round(totalIncome),
+          net_cashflow: Math.round(totalIncome - totalSpend),
+          transaction_count: txns.length,
+          top_categories: categories,
+        };
+      }
+
+      case "get_watchlist": {
+        const { data: items } = await supabase
+          .from("watchlist")
+          .select("id, name, ticker, asset_type, target_price, notes, current_price, price_change_pct, created_at")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false });
+
+        if (!items?.length) return { watchlist: [], count: 0 };
+
+        return {
+          count: items.length,
+          watchlist: items.map(w => ({
+            name:             w.name,
+            ticker:           w.ticker,
+            asset_type:       w.asset_type,
+            target_price:     w.target_price ? Number(w.target_price) : null,
+            current_price:    w.current_price ? Number(w.current_price) : null,
+            price_change_pct: w.price_change_pct ? Number(w.price_change_pct).toFixed(2) : null,
+            hit_target:       w.target_price && w.current_price
+              ? Number(w.current_price) >= Number(w.target_price) : null,
+            notes: w.notes || null,
+          })),
+        };
+      }
+
+      case "get_snapshot_history": {
+        const lookbackMonths = Math.min(Math.max(input.months || 12, 2), 24);
+        const cutoff = new Date();
+        cutoff.setMonth(cutoff.getMonth() - lookbackMonths);
+        const cutoffMonth = cutoff.toISOString().slice(0, 7);
+
+        const { data: snaps } = await supabase
+          .from("net_worth_snapshots")
+          .select("snapshot_month, total_invested, total_current, source")
+          .eq("user_id", userId)
+          .gte("snapshot_month", cutoffMonth)
+          .order("snapshot_month", { ascending: true });
+
+        if (!snaps?.length) return { message: "No snapshot history found. Take a snapshot first via the Portfolio refresh button." };
+
+        const first = snaps[0];
+        const last  = snaps[snaps.length - 1];
+        const growthAmt = last.total_current - first.total_current;
+        const growthPct = first.total_current > 0
+          ? +((growthAmt / first.total_current) * 100).toFixed(1) : 0;
+
+        return {
+          months_covered: snaps.length,
+          from_month:     first.snapshot_month,
+          to_month:       last.snapshot_month,
+          start_value:    Math.round(first.total_current),
+          end_value:      Math.round(last.total_current),
+          growth_inr:     Math.round(growthAmt),
+          growth_pct:     growthPct,
+          snapshots:      snaps.map(s => ({
+            month:     s.snapshot_month,
+            invested:  Math.round(s.total_invested),
+            current:   Math.round(s.total_current),
+            gain:      Math.round(s.total_current - s.total_invested),
+            gain_pct:  s.total_invested > 0
+              ? +((( s.total_current - s.total_invested) / s.total_invested) * 100).toFixed(1) : 0,
+          })),
+        };
+      }
+
+      case "get_fd_maturities": {
+        const lookAheadDays = Math.min(Math.max(input.days || 180, 30), 730);
+        const today    = new Date().toISOString().slice(0, 10);
+        const maxDate  = new Date(Date.now() + lookAheadDays * 864e5).toISOString().slice(0, 10);
+
+        const { data: fds } = await supabase
+          .from("holdings")
+          .select("name, member_name, principal, current_value, interest_rate, start_date, maturity_date, currency")
+          .eq("user_id", userId)
+          .eq("type", "FD")
+          .gte("maturity_date", today)
+          .lte("maturity_date", maxDate)
+          .order("maturity_date", { ascending: true });
+
+        if (!fds?.length) return { message: `No FDs maturing in the next ${lookAheadDays} days.` };
+
+        const totalMaturingINR = fds.reduce((s, fd) => s + Number(fd.current_value || fd.principal || 0), 0);
+
+        return {
+          look_ahead_days: lookAheadDays,
+          count:           fds.length,
+          total_maturing_inr: Math.round(totalMaturingINR),
+          fds: fds.map(fd => {
+            const daysLeft = Math.round((new Date(fd.maturity_date) - new Date()) / 864e5);
+            return {
+              name:          fd.name,
+              member:        fd.member_name || null,
+              principal:     Math.round(Number(fd.principal || 0)),
+              maturity_value: Math.round(Number(fd.current_value || fd.principal || 0)),
+              interest_rate: fd.interest_rate ? Number(fd.interest_rate) : null,
+              maturity_date: fd.maturity_date,
+              days_left:     daysLeft,
+              currency:      fd.currency || "INR",
+            };
+          }),
         };
       }
 

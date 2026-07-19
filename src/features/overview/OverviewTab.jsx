@@ -7,6 +7,7 @@ import { computeOutstanding } from '../../lib/amortization.js';
 import { supabase } from '../../supabase.js';
 import { readSSEStream } from '../../hooks/useGoalAI.js';
 import HealthScore from '../../components/shared/HealthScore.jsx';
+import SIPAnalytics from '../../components/shared/SIPAnalytics.jsx';
 
 // ─── AI Portfolio Morning Brief ───────────────────────────────────────────────
 const BRIEF_KEY = 'wl_portfolio_brief';
@@ -296,6 +297,16 @@ export default function OverviewTab({
           goals={goals || []}
           valINRCache={valINRCache}
           AT={AT}
+        />
+      )}
+      {/* ── SIP Analytics Overview ── */}
+      {!demoMode && holdings.length > 0 && (
+        <SIPAnalytics
+          allHoldings={allHoldings}
+          valINRCache={valINRCache}
+          invINRCache={invINRCache}
+          fmtCr={fmtCr}
+          fmtPct={fmtPct}
         />
       )}
       {/* ── AI Portfolio Brief — above NRI panels ── */}
