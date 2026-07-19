@@ -1170,7 +1170,23 @@ ${alertsText}`;
       )}
 
       {/* ── Add / Edit Goal ─────────────────────────────────────── */}
-      {modal === 'goal' && (
+      {modal === 'goal' && (() => {
+          // Live "what would this goal count today" preview — mirrors goalCur() in GoalsTab.jsx
+          const lt = goalForm.linkedTypes    || [];
+          const lm = goalForm.linkedMembers  || ['all'];
+          const lh = new Set(goalForm.linkedHoldingIds || []);
+          const memberH = lm.includes('all') || lm.length === 0
+            ? allHoldings
+            : allHoldings.filter(h => lm.includes(h.member_id));
+          const typeSet = new Set(lt);
+          const typeMatched = new Set(
+            (lt.length > 0 ? memberH.filter(h => typeSet.has(h.type)) : memberH).map(h => h.id)
+          );
+          const matchedIds = new Set([...typeMatched, ...lh]);
+          const matchedHoldings = allHoldings.filter(h => matchedIds.has(h.id));
+          const previewVal = matchedHoldings.reduce((s, h) => s + (valINRCache.get(h.id) || 0), 0);
+          const isEntirePortfolio = lt.length === 0 && lh.size === 0;
+          return (
         <Overlay onClose={() => { setModal(null); setGoalForm(BG); setEditGoalId(null); }} wide>
           <div className="modtitle">{editGoalId ? 'Edit Goal' : 'New Goal'}</div>
           <div className="frow">
@@ -1249,6 +1265,31 @@ ${alertsText}`;
               currentGoalId={editGoalId}
             />
           </FG>
+
+          {/* Live funded-amount preview — recomputes as members/types/earmarks change above */}
+          <div style={{
+            display:'flex', alignItems:'center', gap:'.6rem', marginTop:'.2rem', marginBottom:'.9rem',
+            padding:'.6rem .8rem', borderRadius:6,
+            background: isEntirePortfolio ? 'rgba(224,124,90,.08)' : 'rgba(76,175,154,.08)',
+            border: `1px solid ${isEntirePortfolio ? 'rgba(224,124,90,.3)' : 'rgba(76,175,154,.25)'}`,
+          }}>
+            <span style={{fontSize:'.95rem'}}>{isEntirePortfolio ? '⚠️' : '✓'}</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:'.78rem', color:'var(--text)'}}>
+                This goal would currently count{' '}
+                <span style={{fontFamily:"'DM Mono',monospace", fontWeight:600}}>
+                  ₹{previewVal.toLocaleString('en-IN')}
+                </span>
+                {' '}across <strong>{matchedHoldings.length}</strong> holding{matchedHoldings.length === 1 ? '' : 's'}
+              </div>
+              <div style={{fontSize:'.68rem', color: isEntirePortfolio ? '#e07c5a' : 'var(--text-muted)', marginTop:'.15rem'}}>
+                {isEntirePortfolio
+                  ? 'No asset types or earmarked holdings selected — this counts your ENTIRE portfolio. Pick specific types above to scope it.'
+                  : `Scoped to ${lm.includes('all') || lm.length === 0 ? 'all members' : `${lm.length} member${lm.length === 1 ? '' : 's'}`}${lt.length ? `, ${lt.length} asset type${lt.length === 1 ? '' : 's'}` : ''}${lh.size ? `, ${lh.size} earmarked holding${lh.size === 1 ? '' : 's'}` : ''}.`}
+              </div>
+            </div>
+          </div>
+
           <FG label="Notes (optional)">
             <input className="fi" placeholder="Notes about this goal…" value={goalForm.notes}
               onChange={e => setGoalForm(p => ({ ...p, notes: e.target.value }))}/>
@@ -1260,7 +1301,8 @@ ${alertsText}`;
             </button>
           </MA>
         </Overlay>
-      )}
+          );
+        })()}
 
       {/* ── Add Alert ───────────────────────────────────────────── */}
       {modal === 'alert' && (
