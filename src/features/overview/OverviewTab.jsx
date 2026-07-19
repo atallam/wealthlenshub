@@ -6,6 +6,7 @@ import LiabilitiesPanel from '../../components/shared/LiabilitiesPanel.jsx';
 import { computeOutstanding } from '../../lib/amortization.js';
 import { supabase } from '../../supabase.js';
 import { readSSEStream } from '../../hooks/useGoalAI.js';
+import HealthScore from '../../components/shared/HealthScore.jsx';
 
 // ─── AI Portfolio Morning Brief ───────────────────────────────────────────────
 const BRIEF_KEY = 'wl_portfolio_brief';
@@ -285,6 +286,18 @@ export default function OverviewTab({
           ))}
         </div>
       </>)}
+      {/* ── Portfolio Health Score ── */}
+      {!demoMode && holdings.length > 0 && (
+        <HealthScore
+          allHoldings={allHoldings}
+          byType={byType}
+          totCur={totCur}
+          totPct={totPct}
+          goals={goals || []}
+          valINRCache={valINRCache}
+          AT={AT}
+        />
+      )}
       {/* ── AI Portfolio Brief — above NRI panels ── */}
       {!demoMode && holdings.length > 0 && (
         <PortfolioBrief

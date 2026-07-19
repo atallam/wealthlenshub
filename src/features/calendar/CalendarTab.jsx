@@ -1,6 +1,7 @@
 // CalendarTab.jsx — lines 4366–4579 of App.jsx
 
 import { useState } from 'react';
+import FDLadderPlanner from '../../components/shared/FDLadderPlanner.jsx';
 
 export default function CalendarTab({
   // Holdings data (only own holdings, not shared — SIPs are personal)
@@ -198,6 +199,7 @@ export default function CalendarTab({
           </div>
         </div>
       </div>
+      <FDLadderPlanner />
     </>
   );
 }

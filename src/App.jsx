@@ -72,6 +72,8 @@ import ErrorBoundary from './components/shared/ErrorBoundary.jsx';
 
 // ── PWA install prompt ───────────────────────────────────────────
 import InstallPrompt from './components/shared/InstallPrompt.jsx';
+import NotificationBell from './components/shared/NotificationBell.jsx';
+import ExportPanel from './components/shared/ExportPanel.jsx';
 import { useToast } from './components/shared/Toast.jsx';
 
 // ── API helper imported from lib/api.js (see top imports) ────────
@@ -606,13 +608,13 @@ ${alertsText}`;
           {syncSt === 'saved'  && <span className="sync-saved">saved</span>}
           {syncSt === 'error'  && <span className="sync-error">save error</span>}
 
-          {/* Triggered alerts badge */}
-          {trigAlerts.length > 0 && (
-            <button className="btn-o" style={{borderColor:'rgba(220,38,38,.3)',color:'var(--loss)'}}
-              onClick={() => setTab('strategy')}>
-              <AlertTriangle size={13} strokeWidth={2}/> {trigAlerts.length}
-            </button>
-          )}
+          {/* Triggered alerts — in-app notification bell */}
+          <NotificationBell
+            trigAlerts={trigAlerts}
+            alerts={alerts}
+            AT={AT}
+            onGoToStrategy={() => setTab('strategy')}
+          />
 
           {/* Price refresh */}
           <button className="btn-o"
@@ -625,6 +627,7 @@ ${alertsText}`;
           <button className="btn-o hdr-extra" onClick={() => setShowImportHub(true)} title="Import Holdings" aria-label="Import Holdings">
             <Download size={13} strokeWidth={2}/>
           </button>
+          <ExportPanel className="btn-o hdr-extra" />
           <button className="btn-o hdr-extra" onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings"><Settings size={13} strokeWidth={2}/></button>
           <button className="btn-o hdr-extra" onClick={signOut} title="Sign out" aria-label="Sign out"><LogOut size={13} strokeWidth={2}/></button>
         </div>
