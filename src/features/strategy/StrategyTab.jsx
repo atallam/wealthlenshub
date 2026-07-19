@@ -320,6 +320,34 @@ function HoldingsDrillDown({ type, rHoldings, valINRCache, invINRCache, fmtCr, i
   );
 }
 
+// ─── Strategy presets (module-level — no re-creation on each render) ─────────
+const PRESETS = [
+  {
+    name:   'Conservative',
+    risk:   'Low risk',
+    equity: 40, debt: 60, alt: 0,
+    alloc:  { IN_STOCK:15, MF:20, IN_ETF:5, US_STOCK:0,  US_ETF:0,  US_BOND:5, CRYPTO:0, FD:25, PPF:15, EPF:15, REAL_ESTATE:0 },
+  },
+  {
+    name:   'Balanced',
+    risk:   'Medium risk',
+    equity: 70, debt: 30, alt: 0,
+    alloc:  { IN_STOCK:25, MF:25, IN_ETF:5, US_STOCK:8,  US_ETF:5,  US_BOND:0, CRYPTO:2, FD:10, PPF:10, EPF:10, REAL_ESTATE:0 },
+  },
+  {
+    name:   'Aggressive',
+    risk:   'High risk',
+    equity: 85, debt: 15, alt: 0,
+    alloc:  { IN_STOCK:30, MF:25, IN_ETF:5, US_STOCK:15, US_ETF:5,  US_BOND:0, CRYPTO:5, FD:5,  PPF:5,  EPF:5,  REAL_ESTATE:0 },
+  },
+  {
+    name:   'Global',
+    risk:   'Diversified',
+    equity: 80, debt: 15, alt: 5,
+    alloc:  { IN_STOCK:20, MF:15, IN_ETF:5, US_STOCK:20, US_ETF:15, US_BOND:0, CRYPTO:5, FD:5,  PPF:5,  EPF:5,  REAL_ESTATE:5 },
+  },
+];
+
 // ════════════════════════════════════════════════════════════════════════════
 export default function StrategyTab({
   // Alert data
@@ -445,6 +473,20 @@ export default function StrategyTab({
     });
   }
 
+  // ── Mirror current allocation → set target = what you already hold ────────
+  function mirrorCurrentAlloc() {
+    const mirrored = {};
+    for (const [type, val] of Object.entries(curAlloc)) {
+      mirrored[type] = rTotal > 0 ? Math.round(val / rTotal * 100) : 0;
+    }
+    setTargetAlloc(p => ({ ...p, ...mirrored }));
+  }
+
+  // ── Clear all target allocations ──────────────────────────────────────────
+  function clearAlloc() {
+    setTargetAlloc(p => Object.fromEntries(Object.keys(p).map(k => [k, 0])));
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
@@ -509,7 +551,7 @@ export default function StrategyTab({
                 </div>
                 <button className="btn-o" onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
                   style={{ fontSize: '.65rem', color: 'rgba(224,124,90,.8)' }}>
-                  Snooze
+                  Pause
                 </button>
               </div>
             );
@@ -539,7 +581,7 @@ export default function StrategyTab({
                   <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', marginTop: 1 }}>{alertRuleDesc(a, AT)}</div>
                 </div>
                 <button className="btn-o" onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
-                  style={{ fontSize: '.65rem', color: '#4caf9a' }}>ON</button>
+                  style={{ fontSize: '.65rem', color: '#4caf9a' }}>Pause</button>
                 <button className="delbtn" onClick={() => deleteAlert(a.id)}>✕</button>
               </div>
             ))}
@@ -554,7 +596,7 @@ export default function StrategyTab({
                 </div>
                 <span style={{ fontSize: '.6rem', color: 'rgba(76,175,154,.6)', padding: '2px 7px', borderRadius: 3, background: 'rgba(76,175,154,.08)', border: '1px solid rgba(76,175,154,.15)', flexShrink: 0 }}>✓ Passing</span>
                 <button className="btn-o" onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
-                  style={{ fontSize: '.65rem', color: '#4caf9a' }}>ON</button>
+                  style={{ fontSize: '.65rem', color: '#4caf9a' }}>Pause</button>
                 <button className="delbtn" onClick={() => deleteAlert(a.id)}>✕</button>
               </div>
             ))}
@@ -575,7 +617,7 @@ export default function StrategyTab({
                       <div style={{ fontSize: '.6rem', color: 'var(--text-muted)', marginTop: 1 }}>{alertRuleDesc(a, AT)}</div>
                     </div>
                     <button className="btn-o" onClick={() => setAlerts(p => p.map(x => x.id === a.id ? { ...x, active: !x.active } : x))}
-                      style={{ fontSize: '.65rem' }}>OFF</button>
+                      style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>Activate</button>
                     <button className="delbtn" onClick={() => deleteAlert(a.id)}>✕</button>
                   </div>
                 ))}
@@ -589,14 +631,26 @@ export default function StrategyTab({
       <div style={{ height: 1, background: 'var(--bg-muted)', margin: '0.5rem 0 1.2rem' }} />
 
       {/* ═══ ASSET ALLOCATION HEADER ═══ */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '.8rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '.8rem', gap: '.5rem', flexWrap: 'wrap' }}>
         <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.05rem', color: 'var(--text)' }}>Asset Allocation</div>
-        {rTotal > 0 && (
-          <button className="btn-o" onClick={copyPlanText}
-            style={{ fontSize: '.65rem', color: copiedPlan ? '#4caf9a' : undefined, transition: 'color .2s' }}>
-            {copiedPlan ? '✓ Copied!' : '⎘ Copy plan'}
+        <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap' }}>
+          {rTotal > 0 && (
+            <button className="btn-o" onClick={mirrorCurrentAlloc}
+              style={{ fontSize: '.65rem' }} title="Set target = your current allocation">
+              ↺ Mirror current
+            </button>
+          )}
+          <button className="btn-o" onClick={clearAlloc}
+            style={{ fontSize: '.65rem', color: 'var(--text-muted)' }} title="Clear all target percentages">
+            ✕ Clear
           </button>
-        )}
+          {rTotal > 0 && (
+            <button className="btn-o" onClick={copyPlanText}
+              style={{ fontSize: '.65rem', color: copiedPlan ? '#4caf9a' : undefined, transition: 'color .2s' }}>
+              {copiedPlan ? '✓ Copied!' : '⎘ Copy plan'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Member selector + Cash */}
@@ -625,21 +679,42 @@ export default function StrategyTab({
         </div>
       </div>
 
-      {/* Strategy presets — Change 3: button.btn-o replaces inline div with hover simulation */}
-      <div style={{ display: 'flex', gap: '.4rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ fontSize: '.65rem', color: 'var(--text-muted)', marginRight: '.2rem' }}>STRATEGY:</span>
-        {[
-          { name: 'Conservative', desc: 'FD/PPF heavy, low risk',     alloc: { IN_STOCK:15, MF:20, IN_ETF:5, US_STOCK:0,  US_ETF:0,  US_BOND:5, CRYPTO:0, FD:25, PPF:15, EPF:15, REAL_ESTATE:0 } },
-          { name: 'Balanced',     desc: 'Mix of equity & debt',        alloc: { IN_STOCK:25, MF:25, IN_ETF:5, US_STOCK:8,  US_ETF:5,  US_BOND:0, CRYPTO:2, FD:10, PPF:10, EPF:10, REAL_ESTATE:0 } },
-          { name: 'Aggressive',   desc: 'Equity & crypto heavy',       alloc: { IN_STOCK:30, MF:25, IN_ETF:5, US_STOCK:15, US_ETF:5,  US_BOND:0, CRYPTO:5, FD:5,  PPF:5,  EPF:5,  REAL_ESTATE:0 } },
-          { name: 'Global',       desc: 'Cross-border diversified',    alloc: { IN_STOCK:20, MF:15, IN_ETF:5, US_STOCK:20, US_ETF:15, US_BOND:0, CRYPTO:5, FD:5,  PPF:5,  EPF:5,  REAL_ESTATE:5 } },
-        ].map(p => (
-          <button key={p.name} className="btn-o" onClick={() => setTargetAlloc(p.alloc)}
-            style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '.35rem .7rem', gap: '.05rem' }}>
-            <span style={{ fontSize: '.7rem' }}>{p.name}</span>
-            <span style={{ fontSize: '.65rem', color: 'var(--text-muted)', fontWeight: 400 }}>{p.desc}</span>
-          </button>
-        ))}
+      {/* Strategy preset cards — visual with stacked allocation bars */}
+      <div style={{ marginBottom: '.5rem' }}>
+        <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: '.5rem' }}>Strategy Presets</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: '.5rem', marginBottom: '.75rem' }}>
+          {PRESETS.map(p => (
+            <button key={p.name} onClick={() => setTargetAlloc(p.alloc)}
+              style={{
+                background: 'var(--bg-muted)', border: '1px solid var(--border)',
+                borderRadius: 8, padding: '.6rem .75rem', cursor: 'pointer',
+                textAlign: 'left', transition: 'border-color .15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(201,168,76,.5)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+            >
+              <div style={{ fontSize: '.75rem', color: 'var(--text)', fontWeight: 600, marginBottom: '.18rem' }}>{p.name}</div>
+              <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginBottom: '.45rem' }}>{p.risk}</div>
+              {/* Stacked mini bar: green = equity, blue = debt, purple = alt */}
+              <div style={{ height: 5, borderRadius: 3, overflow: 'hidden', display: 'flex', marginBottom: '.38rem', background: 'var(--border)' }}>
+                <div style={{ width: `${p.equity}%`, background: '#4caf9a', transition: 'width .3s' }} />
+                <div style={{ width: `${p.debt}%`,   background: '#5a9ce0', transition: 'width .3s' }} />
+                {p.alt > 0 && <div style={{ width: `${p.alt}%`, background: '#a084ca', transition: 'width .3s' }} />}
+              </div>
+              <div style={{ display: 'flex', gap: '.45rem', fontSize: '.62rem' }}>
+                <span style={{ color: '#4caf9a' }}>E {p.equity}%</span>
+                <span style={{ color: '#5a9ce0' }}>D {p.debt}%</span>
+                {p.alt > 0 && <span style={{ color: '#a084ca' }}>A {p.alt}%</span>}
+              </div>
+            </button>
+          ))}
+        </div>
+        {/* Legend for bar colours */}
+        <div style={{ display: 'flex', gap: '.75rem', fontSize: '.6rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '.25rem' }}><span style={{ width: 8, height: 5, borderRadius: 1, background: '#4caf9a', display: 'inline-block' }} /> Equity</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '.25rem' }}><span style={{ width: 8, height: 5, borderRadius: 1, background: '#5a9ce0', display: 'inline-block' }} /> Debt</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '.25rem' }}><span style={{ width: 8, height: 5, borderRadius: 1, background: '#a084ca', display: 'inline-block' }} /> Alt</span>
+        </div>
       </div>
 
       {/* Target % progress bar */}
@@ -661,14 +736,6 @@ export default function StrategyTab({
                 : `— add ${(100 - tSum).toFixed(0)}% more`}
           </div>
         </div>
-      )}
-
-      {/* AI explain panel */}
-      {rTotal > 0 && (
-        <AIExplainPanel
-          trades={trades} goals={goals || []} members={members}
-          rTotal={rTotal} rebalMember={rebalMember} AT={AT} fmtCr={fmtCr}
-        />
       )}
 
       {/* Allocation + Drift + Action table */}
@@ -838,6 +905,14 @@ export default function StrategyTab({
           </>
         )}
       </div>
+
+      {/* AI explain panel — below the table so the action area is immediately accessible */}
+      {rTotal > 0 && (
+        <AIExplainPanel
+          trades={trades} goals={goals || []} members={members}
+          rTotal={rTotal} rebalMember={rebalMember} AT={AT} fmtCr={fmtCr}
+        />
+      )}
 
       {/* Show hidden asset types — Change 5: div → button.btn-sm */}
       {Object.keys(AT).filter(t => !activeTypes.has(t) && (+targetAlloc[t] || 0) === 0).length > 0 && (
