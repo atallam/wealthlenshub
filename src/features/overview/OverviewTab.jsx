@@ -438,15 +438,26 @@ export default function OverviewTab({
       )}
 
       <div className="sg">
-        <div className="card"><div className="ctitle">Asset Allocation</div>
+        <div className="card">
+          <div className="ctitle">Asset Allocation</div>
           {byType.length===0&&<div className="empty">No holdings</div>}
-          {byType.map(row=>{
-            const a=AT[row.t],g=row.v-row.i;
-            // US asset types: show $ value; Indian/other: show ₹ value
-            const isUS=["US_STOCK","US_ETF","US_BOND","CRYPTO","CASH"].includes(row.t);
-            const dispVal=isUS?fmtCrUSD(row.v/(nriMetrics?.liveRate||94.5)):fmtCrINR(row.v);
-            return(<div key={row.t} className="arow"><div className="aicon">{a.icon}</div><div className="ainfo"><div className="aname">{a.label}</div><div className="abg"><div className="afill" style={{width:`${row.pct}%`,background:a.color}}/></div></div><div className="argt"><div className="aval">{dispVal}</div><div className={`apct${g>=0?" gain":" loss"}`}>{row.pct.toFixed(1)}% · {fmtPct(row.i>0?(g/row.i)*100:0)}</div></div></div>);
-          })}
+          {byType.length>0&&(
+            <div style={{display:"flex",gap:"1.25rem",alignItems:"flex-start",flexWrap:"wrap"}}>
+              {/* Left: allocation rows */}
+              <div style={{flex:"1 1 220px",minWidth:0}}>
+                {byType.map(row=>{
+                  const a=AT[row.t],g=row.v-row.i;
+                  const isUS=["US_STOCK","US_ETF","US_BOND","CRYPTO","CASH"].includes(row.t);
+                  const dispVal=isUS?fmtCrUSD(row.v/(nriMetrics?.liveRate||94.5)):fmtCrINR(row.v);
+                  return(<div key={row.t} className="arow"><div className="aicon">{a.icon}</div><div className="ainfo"><div className="aname">{a.label}</div><div className="abg"><div className="afill" style={{width:`${row.pct}%`,background:a.color}}/></div></div><div className="argt"><div className="aval">{dispVal}</div><div className={`apct${g>=0?" gain":" loss"}`}>{row.pct.toFixed(1)}% · {fmtPct(row.i>0?(g/row.i)*100:0)}</div></div></div>);
+                })}
+              </div>
+              {/* Right: donut chart */}
+              <div style={{flex:"0 0 auto",display:"flex",alignItems:"center",justifyContent:"center",minWidth:160}}>
+                <DonutChart data={byType} total={totCur} AT={AT}/>
+              </div>
+            </div>
+          )}
         </div>
         <div className="card"><div className="ctitle">Member Breakdown</div>
           {mSum.map(m=>{const share=totCur>0?(m.cur/totCur)*100:0;return(<div key={m.id} className="msrow">
@@ -469,7 +480,6 @@ export default function OverviewTab({
 </div>);})}
         </div>
       </div>
-      <div className="card"><div className="ctitle">Category Distribution</div><DonutChart data={byType} total={totCur} AT={AT}/></div>
 
       {/* ── PROTECTION COVERAGE CARD ── */}
       {(()=>{
