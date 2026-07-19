@@ -1,23 +1,36 @@
 // CalendarTab.jsx — Financial Events Calendar
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import FDLadderPlanner from '../../components/shared/FDLadderPlanner.jsx';
 
 const MONTH_NAMES = [
-  "January","February","March","April","May","June",
-  "July","August","September","October","November","December",
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+];
+const FILTER_TYPES = ['All','SIP','FD','Tax','Insurance','Goal','PPF'];
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+// Fixed Indian financial calendar — checked against every month we scan
+const FIN_CALENDAR = [
+  { mo: 3,  d: 31, label: 'FY End — ITR / Last 80C date',      color: '#e07c5a', icon: '📋', type: 'Tax'  },
+  { mo: 7,  d: 31, label: 'ITR Filing Deadline (non-audit)',    color: '#e07c5a', icon: '📋', type: 'Tax'  },
+  { mo: 9,  d: 15, label: 'Advance Tax Q2 (45%)',               color: '#e07c5a', icon: '📋', type: 'Tax'  },
+  { mo: 12, d: 15, label: 'Advance Tax Q3 (75%)',               color: '#e07c5a', icon: '📋', type: 'Tax'  },
+  { mo: 3,  d: 15, label: 'Advance Tax Q4 (100%)',              color: '#e07c5a', icon: '📋', type: 'Tax'  },
+  { mo: 4,  d: 5,  label: 'PPF — Deposit before 5th for full month interest', color: '#a084ca', icon: '💰', type: 'PPF' },
+  { mo: 3,  d: 31, label: 'PPF Annual Contribution Deadline',   color: '#a084ca', icon: '💰', type: 'PPF'  },
+  { mo: 3,  d: 31, label: 'ELSS / 80C — Last date for tax-saving investments', color: '#5a9ce0', icon: '📑', type: '80C' },
 ];
 
-const FILTER_TYPES = ['All','SIP','FD','Tax','Insurance','Goal','PPF'];
+// ── Pure helpers ─────────────────────────────────────────────────────────────
 
-// Maps an event type string → filter chip key
 function getFilterKey(type) {
-  if (type === 'SIP')                                       return 'SIP';
-  if (type === 'FD Maturity' || type === 'Policy Maturity') return 'FD';
-  if (type === 'Insurance')                                 return 'Insurance';
-  if (type === 'Tax' || type === '80C')                     return 'Tax';
-  if (type === 'Goal')                                      return 'Goal';
-  if (type === 'PPF')                                       return 'PPF';
+  if (type === 'SIP')                                        return 'SIP';
+  if (type === 'FD Maturity' || type === 'Policy Maturity')  return 'FD';
+  if (type === 'Insurance')                                  return 'Insurance';
+  if (type === 'Tax' || type === '80C')                      return 'Tax';
+  if (type === 'Goal')                                       return 'Goal';
+  if (type === 'PPF')                                        return 'PPF';
   return null;
 }
 
@@ -28,160 +41,222 @@ function fmtCr(v) {
   return `₹${Math.round(v).toLocaleString('en-IN')}`;
 }
 
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+/**
+ * Build the event map for a single calendar month.
+ * Returns: { "YYYY-MM-DD": [{type, label, color, icon, amount?}] }
+ *
+ * All event types are scoped to the supplied (y, mo) so this function
+ * can be called for any month — including future months not yet displayed —
+ * enabling the upcoming panel to scan multiple months correctly.
+ */
+function buildMonthEvents(y, mo, holdings, goals, now) {
+  const events      = {};
+  const monthStr    = `${y}-${pad2(mo)}`;
+  const nowMonthStr = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}`;
+
+  const addEvent = (dateStr, ev) => {
+    if (!dateStr) return;
+    const d = dateStr.slice(0, 10);
+    // Guard: only accept dates that belong to this month
+    if (d.slice(0, 7) !== monthStr) return;
+    if (!events[d]) events[d] = [];
+    events[d].push(ev);
+  };
+
+  for (const h of holdings) {
+    // ── FD maturity ──────────────────────────────────────────────────────────
+    if (h.type === 'FD' && h.maturity_date) {
+      const dLeft   = Math.ceil((new Date(h.maturity_date) - now) / 864e5);
+      const fdColor = dLeft > 90 ? '#4caf9a' : dLeft > 30 ? '#f0a050' : '#e07c5a';
+      addEvent(h.maturity_date, {
+        type:   'FD Maturity',
+        icon:   '🏦',
+        color:  fdColor,
+        label:  `${h.name}${h.interest_rate ? ` · ${h.interest_rate}%` : ''}`,
+        amount: +(h.current_value || h.invested_value || 0),
+      });
+    }
+
+    // ── Insurance: policy maturity ───────────────────────────────────────────
+    if (h.type === 'INSURANCE' && h.maturity_date)
+      addEvent(h.maturity_date, { type: 'Policy Maturity', label: h.name, color: '#e07b8c', icon: '🛡️' });
+
+    // ── Insurance: recurring premium ─────────────────────────────────────────
+    if (h.type === 'INSURANCE' && h.start_date) {
+      const freqMap  = { ANNUAL: 12, SEMI: 6, QUARTERLY: 3, MONTHLY: 1 };
+      const interval = freqMap[h.premium_frequency || h.ticker || 'ANNUAL'] || 12;
+      const startDt  = new Date(h.start_date);
+      const diff     = (y * 12 + (mo - 1)) - (startDt.getFullYear() * 12 + startDt.getMonth());
+      if (diff > 0 && diff % interval === 0) {
+        const premDay = Math.min(startDt.getDate(), new Date(y, mo, 0).getDate());
+        const premAmt = +(h.premium || h.interest_rate) || 0;
+        const short   = h.name.length > 22 ? h.name.slice(0, 22) + '…' : h.name;
+        addEvent(`${monthStr}-${pad2(premDay)}`, {
+          type:   'Insurance',
+          label:  `${short}${premAmt ? ` (₹${Math.round(premAmt / 1000)}K)` : ''}`,
+          color:  '#e07b8c',
+          icon:   '🛡️',
+          amount: premAmt,
+        });
+      }
+    }
+
+    // ── Active SIPs (only present + future months) ───────────────────────────
+    if (h.type === 'MF' && h.sip_active && h.sip_day && monthStr >= nowMonthStr) {
+      const day    = Math.min(h.sip_day, new Date(y, mo, 0).getDate());
+      const avgAmt = h.sip_avg_amount || 0;
+      const short  = h.name.length > 22 ? h.name.slice(0, 22) + '…' : h.name;
+      addEvent(`${monthStr}-${pad2(day)}`, {
+        type:   'SIP',
+        label:  `${short}${avgAmt ? ` (₹${Math.round(avgAmt / 1000)}K)` : ''}`,
+        color:  '#4caf9a',
+        icon:   '📈',
+        amount: avgAmt,
+      });
+    }
+  }
+
+  // ── Goal target dates ───────────────────────────────────────────────────────
+  for (const g of goals)
+    if (g.targetDate)
+      addEvent(g.targetDate, { type: 'Goal', label: g.name, color: g.color || '#c9a84c', icon: '🎯' });
+
+  // ── Indian financial calendar ───────────────────────────────────────────────
+  for (const e of FIN_CALENDAR)
+    if (e.mo === mo)
+      addEvent(`${monthStr}-${pad2(e.d)}`, { type: e.type, label: e.label, color: e.color, icon: e.icon });
+
+  return events;
+}
+
+/**
+ * Scan every calendar month between now and now+days, merge all event maps.
+ * This is what powers the Upcoming panel — it correctly picks up SIPs,
+ * insurance premiums, and tax dates that fall in months beyond the viewed one.
+ */
+function buildMultiMonthEvents(holdings, goals, now, days) {
+  const end    = new Date(Date.now() + days * 864e5);
+  const merged = {};
+  let y = now.getFullYear(), mo = now.getMonth() + 1;
+  const endY = end.getFullYear(), endMo = end.getMonth() + 1;
+  while (y < endY || (y === endY && mo <= endMo)) {
+    Object.assign(merged, buildMonthEvents(y, mo, holdings, goals, now));
+    if (++mo > 12) { mo = 1; y++; }
+  }
+  return merged;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) {
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const now      = new Date();
+  const todayStr = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
 
   const [calY, calMo] = calMonth.split('-').map(Number);
-  const firstDay    = new Date(calY, calMo - 1, 1).getDay(); // 0=Sun
-  const daysInMonth = new Date(calY, calMo, 0).getDate();
+  const firstDay      = new Date(calY, calMo - 1, 1).getDay();
+  const daysInMonth   = new Date(calY, calMo, 0).getDate();
 
-  // ── UI state ──────────────────────────────────────────────────────────────
-  const [expandedDay,    setExpandedDay]    = useState(null);   // "YYYY-MM-DD"
+  // ── UI state ────────────────────────────────────────────────────────────────
+  const [expandedDay,    setExpandedDay]    = useState(null);      // "YYYY-MM-DD"
   const [showYearPicker, setShowYearPicker] = useState(false);
   const [yearPickerY,    setYearPickerY]    = useState(calY);
   const [upcomingDays,   setUpcomingDays]   = useState(60);
   const [upcomingFilter, setUpcomingFilter] = useState('All');
   const [ladderAmount,   setLadderAmount]   = useState('');
+  const [view,           setView]           = useState('calendar'); // 'calendar' | 'agenda'
 
-  // ── Build events ──────────────────────────────────────────────────────────
-  const events = {}; // "YYYY-MM-DD" → [{type, label, color, icon, amount?}]
-  const addEvent = (date, ev) => {
-    if (!date) return;
-    const d = date.slice(0, 10);
-    if (!events[d]) events[d] = [];
-    events[d].push(ev);
-  };
+  // ── Memoised event maps ─────────────────────────────────────────────────────
 
-  const viewMonthStr = `${calY}-${String(calMo).padStart(2, '0')}`;
-  const nowMonthStr  = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  // Calendar grid: only the viewed month (fast, used for cell rendering + modal)
+  const calendarEvents = useMemo(
+    () => buildMonthEvents(calY, calMo, holdings, goals, now),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [calY, calMo, holdings, goals],
+  );
 
-  let monthInflows = 0, monthSIPOut = 0, monthPremiumOut = 0;
+  // Upcoming panel: scans ALL months in the selected window — fixes the scope
+  // bug where SIPs/insurance/tax events beyond the viewed month were missing.
+  const upcomingEvents = useMemo(
+    () => buildMultiMonthEvents(holdings, goals, now, upcomingDays),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [upcomingDays, holdings, goals],
+  );
 
-  for (const h of holdings) {
-    // FD maturity
-    if (h.type === 'FD' && h.maturity_date) {
-      const dLeft   = Math.ceil((new Date(h.maturity_date) - now) / 864e5);
-      const fdColor = dLeft > 90 ? '#4caf9a' : dLeft > 30 ? '#f0a050' : '#e07c5a';
-      const fdLabel = `${h.name}${h.interest_rate ? ` · ${h.interest_rate}%` : ''}`;
-      const fdAmt   = +(h.current_value || h.invested_value || 0);
-      addEvent(h.maturity_date, { type: 'FD Maturity', label: fdLabel, color: fdColor, icon: '🏦', amount: fdAmt });
-      if (h.maturity_date.slice(0, 7) === viewMonthStr) monthInflows += fdAmt;
-    }
-
-    // Insurance: policy maturity + recurring premium
-    if (h.type === 'INSURANCE' && h.start_date) {
-      if (h.maturity_date)
-        addEvent(h.maturity_date, { type: 'Policy Maturity', label: h.name, color: '#e07b8c', icon: '🛡️' });
-
-      const freqMap = { ANNUAL: 12, SEMI: 6, QUARTERLY: 3, MONTHLY: 1 };
-      const monthInterval = freqMap[h.premium_frequency || h.ticker || 'ANNUAL'] || 12;
-      const startDt    = new Date(h.start_date);
-      const startAbsMo = startDt.getFullYear() * 12 + startDt.getMonth();
-      const viewAbsMo  = calY * 12 + (calMo - 1);
-      const diff       = viewAbsMo - startAbsMo;
-
-      if (diff > 0 && diff % monthInterval === 0) {
-        const premDay   = Math.min(startDt.getDate(), new Date(calY, calMo, 0).getDate());
-        const d         = `${calY}-${String(calMo).padStart(2,'0')}-${String(premDay).padStart(2,'0')}`;
-        const premAmt   = +(h.premium || h.interest_rate) || 0;
-        const premLabel = `${h.name.length > 22 ? h.name.slice(0, 22) + '...' : h.name}${premAmt ? ` (₹${Math.round(premAmt / 1000)}K)` : ''}`;
-        addEvent(d, { type: 'Insurance', label: premLabel, color: '#e07b8c', icon: '🛡️' });
-        monthPremiumOut += premAmt;
+  // ── Cash flow for the viewed month only ─────────────────────────────────────
+  const { monthInflows, monthSIPOut, monthPremiumOut } = useMemo(() => {
+    let inflows = 0, sip = 0, premium = 0;
+    for (const evs of Object.values(calendarEvents)) {
+      for (const e of evs) {
+        if (e.type === 'FD Maturity') inflows  += e.amount || 0;
+        if (e.type === 'SIP')         sip       += e.amount || 0;
+        if (e.type === 'Insurance')   premium   += e.amount || 0;
       }
     }
+    return { monthInflows: inflows, monthSIPOut: sip, monthPremiumOut: premium };
+  }, [calendarEvents]);
 
-    // Active SIPs (only future/current months)
-    if (h.type === 'MF' && h.sip_active && h.sip_day) {
-      if (viewMonthStr >= nowMonthStr) {
-        const daysInCalMo = new Date(calY, calMo, 0).getDate();
-        const day = Math.min(h.sip_day, daysInCalMo);
-        const ds  = `${calY}-${String(calMo).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-        const avgAmt = h.sip_avg_amount || 0;
-        const lbl    = `${h.name.length > 22 ? h.name.slice(0, 22) + '...' : h.name}${avgAmt ? ` (₹${Math.round(avgAmt / 1000)}K)` : ''}`;
-        addEvent(ds, { type: 'SIP', label: lbl, color: '#4caf9a', icon: '📈' });
-        monthSIPOut += avgAmt;
-      }
+  // ── Upcoming sorted list ────────────────────────────────────────────────────
+  const { upcoming, filterCounts } = useMemo(() => {
+    const cutoff = new Date(Date.now() + upcomingDays * 864e5);
+    const list   = [];
+    for (const [d, evs] of Object.entries(upcomingEvents)) {
+      const dt = new Date(d);
+      if (dt >= now && dt <= cutoff)
+        evs.forEach(e => list.push({ date: d, ...e }));
     }
-  }
+    list.sort((a, b) => a.date.localeCompare(b.date));
 
-  // Goal target dates
-  for (const g of goals) {
-    if (g.targetDate)
-      addEvent(g.targetDate, { type: 'Goal', label: g.name, color: g.color || '#c9a84c', icon: '🎯' });
-  }
-
-  // Indian financial calendar — fixed annual events
-  const finCalendar = [
-    { mo: 3,  d: 31, label: 'FY End — File ITR / Last date for 80C investments', color: '#e07c5a', icon: '📋', type: 'Tax' },
-    { mo: 7,  d: 31, label: 'ITR Filing Deadline (non-audit)',                    color: '#e07c5a', icon: '📋', type: 'Tax' },
-    { mo: 9,  d: 15, label: 'Advance Tax Q2 (45%)',                               color: '#e07c5a', icon: '📋', type: 'Tax' },
-    { mo: 12, d: 15, label: 'Advance Tax Q3 (75%)',                               color: '#e07c5a', icon: '📋', type: 'Tax' },
-    { mo: 3,  d: 15, label: 'Advance Tax Q4 (100%)',                              color: '#e07c5a', icon: '📋', type: 'Tax' },
-    { mo: 4,  d: 5,  label: 'PPF — Deposit before 5th for full month interest',   color: '#a084ca', icon: '💰', type: 'PPF' },
-    { mo: 3,  d: 31, label: 'PPF Annual Contribution Deadline',                   color: '#a084ca', icon: '💰', type: 'PPF' },
-    { mo: 3,  d: 31, label: 'ELSS / 80C — Last date for tax-saving investments',  color: '#5a9ce0', icon: '📑', type: '80C' },
-  ];
-  for (const e of finCalendar) {
-    if (e.mo === calMo) {
-      const d = `${calY}-${String(e.mo).padStart(2,'0')}-${String(e.d).padStart(2,'0')}`;
-      addEvent(d, { type: e.type, label: e.label, color: e.color, icon: e.icon });
+    const counts = { All: list.length };
+    for (const e of list) {
+      const k = getFilterKey(e.type);
+      if (k) counts[k] = (counts[k] || 0) + 1;
     }
-  }
+    return { upcoming: list, filterCounts: counts };
+  }, [upcomingEvents, upcomingDays]);
 
-  // ── Upcoming list ─────────────────────────────────────────────────────────
-  const upcoming = [];
-  const cutoff   = new Date(Date.now() + upcomingDays * 864e5);
-  for (const [d, evs] of Object.entries(events)) {
-    const dt = new Date(d);
-    if (dt >= now && dt <= cutoff) evs.forEach(e => upcoming.push({ date: d, ...e }));
-  }
-  upcoming.sort((a, b) => a.date.localeCompare(b.date));
+  const filteredUpcoming = useMemo(
+    () => upcomingFilter === 'All' ? upcoming : upcoming.filter(e => getFilterKey(e.type) === upcomingFilter),
+    [upcoming, upcomingFilter],
+  );
 
-  // Filter counts for chip badges
-  const filterCounts = { All: upcoming.length };
-  for (const e of upcoming) {
-    const k = getFilterKey(e.type);
-    if (k) filterCounts[k] = (filterCounts[k] || 0) + 1;
-  }
+  // ── Agenda groups (month-grouped version of filteredUpcoming) ───────────────
+  const agendaGroups = useMemo(() => {
+    const groups = {};
+    for (const e of filteredUpcoming) {
+      const mo = e.date.slice(0, 7);
+      if (!groups[mo]) groups[mo] = [];
+      groups[mo].push(e);
+    }
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [filteredUpcoming]);
 
-  const filteredUpcoming = upcomingFilter === 'All'
-    ? upcoming
-    : upcoming.filter(e => getFilterKey(e.type) === upcomingFilter);
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  const isToday  = (y, m, d) =>
-    `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}` === todayStr;
-  const cellDate = (d) =>
-    `${calY}-${String(calMo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-
-  const monthName = new Date(calY, calMo - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-  const DAYS      = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-
-  const goToday = () =>
-    setCalMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2,'0')}`);
-  const prevMo = () => {
+  // ── Navigation ──────────────────────────────────────────────────────────────
+  const goToday = () => setCalMonth(`${now.getFullYear()}-${pad2(now.getMonth() + 1)}`);
+  const prevMo  = () => {
     let m = calMo - 1, y = calY;
     if (m < 1) { m = 12; y--; }
-    setCalMonth(`${y}-${String(m).padStart(2,'0')}`);
+    setCalMonth(`${y}-${pad2(m)}`);
   };
   const nextMo = () => {
     let m = calMo + 1, y = calY;
     if (m > 12) { m = 1; y++; }
-    setCalMonth(`${y}-${String(m).padStart(2,'0')}`);
+    setCalMonth(`${y}-${pad2(m)}`);
   };
-
   const jumpToLadder = (amt) => {
     setLadderAmount(String(Math.round(amt)));
     setTimeout(() => document.getElementById('fd-ladder')?.scrollIntoView({ behavior: 'smooth' }), 80);
   };
 
+  const isToday  = (y, m, d) => `${y}-${pad2(m)}-${pad2(d)}` === todayStr;
+  const cellDate = (d)        => `${calY}-${pad2(calMo)}-${pad2(d)}`;
+  const monthName = new Date(calY, calMo - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
   const showCashFlow = monthInflows > 0 || monthSIPOut > 0 || monthPremiumOut > 0;
   const netCashFlow  = monthInflows - monthSIPOut - monthPremiumOut;
 
-  // Shared modal overlay style
+  // ── Shared styles ────────────────────────────────────────────────────────────
   const overlayStyle = {
     position: 'fixed', inset: 0, zIndex: 200,
     background: 'rgba(0,0,0,.6)',
@@ -199,11 +274,18 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
     padding: '.25rem .55rem', cursor: 'pointer',
     fontSize: '.9rem', minHeight: 36, minWidth: 36, flexShrink: 0,
   };
+  const segBtn = (active) => ({
+    fontSize: '.72rem', padding: '.22rem .55rem', borderRadius: 4,
+    border: 'none', cursor: 'pointer',
+    background: active ? 'var(--bg-card)' : 'transparent',
+    color:      active ? 'var(--text)'    : 'var(--text-muted)',
+    fontWeight: active ? 600 : 400,
+  });
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* ── Day-expand modal ─────────────────────────────────────────────── */}
+      {/* ── Day-expand modal ──────────────────────────────────────────────── */}
       {expandedDay && (
         <div style={overlayStyle} onClick={() => setExpandedDay(null)}>
           <div style={boxStyle} onClick={e => e.stopPropagation()}>
@@ -212,24 +294,23 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
                 {new Date(expandedDay + 'T12:00:00').toLocaleDateString('en-IN',
                   { weekday:'long', day:'numeric', month:'long', year:'numeric' })}
               </div>
-              <button
-                onClick={() => setExpandedDay(null)}
-                style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', fontSize:'1.2rem', lineHeight:1, padding:'.1rem .4rem' }}
-              >×</button>
+              <button onClick={() => setExpandedDay(null)}
+                style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', fontSize:'1.2rem', lineHeight:1, padding:'.1rem .4rem' }}>
+                ×
+              </button>
             </div>
-
-            {(events[expandedDay] || []).map((e, i) => (
+            {(calendarEvents[expandedDay] || []).map((e, i) => (
               <div key={i} style={{ display:'flex', gap:'.65rem', padding:'.6rem 0', borderBottom:'1px solid var(--border)', alignItems:'flex-start' }}>
                 <div style={{ fontSize:'1.1rem', flexShrink:0, marginTop:'.1rem' }}>{e.icon}</div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:'.8rem', color:'var(--text)', lineHeight:1.45 }}>{e.label}</div>
-                  <div style={{ fontSize:'.67rem', color:e.color, marginTop:'.2rem' }}>{e.type}</div>
+                  <div style={{ fontSize:'.68rem', color:e.color, marginTop:'.2rem' }}>{e.type}</div>
                 </div>
                 {e.type === 'FD Maturity' && e.amount > 0 && (
-                  <button
-                    onClick={() => { jumpToLadder(e.amount); setExpandedDay(null); }}
-                    style={{ fontSize:'.65rem', padding:'.22rem .5rem', background:'rgba(74,175,154,.1)', border:'1px solid rgba(74,175,154,.3)', borderRadius:5, color:'#4caf9a', cursor:'pointer', whiteSpace:'nowrap', flexShrink:0 }}
-                  >🪜 Reinvest</button>
+                  <button onClick={() => { jumpToLadder(e.amount); setExpandedDay(null); }}
+                    style={{ fontSize:'.68rem', padding:'.22rem .5rem', background:'rgba(74,175,154,.1)', border:'1px solid rgba(74,175,154,.3)', borderRadius:5, color:'#4caf9a', cursor:'pointer', whiteSpace:'nowrap', flexShrink:0 }}>
+                    🪜 Reinvest
+                  </button>
                 )}
               </div>
             ))}
@@ -237,7 +318,7 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
         </div>
       )}
 
-      {/* ── Year/month picker modal ───────────────────────────────────────── */}
+      {/* ── Year/month picker modal ────────────────────────────────────────── */}
       {showYearPicker && (
         <div style={overlayStyle} onClick={() => setShowYearPicker(false)}>
           <div style={{ ...boxStyle, maxWidth: 270 }} onClick={e => e.stopPropagation()}>
@@ -251,17 +332,17 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
                 const mo       = idx + 1;
                 const isActive = mo === calMo && yearPickerY === calY;
                 return (
-                  <button
-                    key={m}
-                    onClick={() => { setCalMonth(`${yearPickerY}-${String(mo).padStart(2,'0')}`); setShowYearPicker(false); }}
+                  <button key={m}
+                    onClick={() => { setCalMonth(`${yearPickerY}-${pad2(mo)}`); setShowYearPicker(false); }}
                     style={{
                       background:   isActive ? 'rgba(201,168,76,.15)' : 'var(--bg-muted)',
                       border:       isActive ? '1px solid rgba(201,168,76,.4)' : '1px solid var(--border)',
                       borderRadius: 7, padding:'.45rem .3rem', cursor:'pointer',
                       fontSize:'.75rem', color: isActive ? '#c9a84c' : 'var(--text-dim)',
-                      fontWeight: isActive ? 600 : 400,
-                    }}
-                  >{m.slice(0, 3)}</button>
+                      fontWeight:   isActive ? 600 : 400,
+                    }}>
+                    {m.slice(0, 3)}
+                  </button>
                 );
               })}
             </div>
@@ -269,59 +350,66 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
         </div>
       )}
 
-      {/* ── Main layout ───────────────────────────────────────────────────── */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(min(280px,100%),1fr))', gap:'1rem', alignItems:'start' }}>
+      {/* ── Main layout ─────────────────────────────────────────────────────── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(min(320px,100%),1fr))', gap:'1rem', alignItems:'start' }}>
 
-        {/* ── Calendar card ──────────────────────────────────────────────── */}
+        {/* ── Left: Calendar card (grid or agenda) ─────────────────────────── */}
         <div className="card" style={{ padding:'1rem' }}>
 
-          {/* Header: ‹ | [month ▾] | › | Today */}
+          {/* Header: ‹ | [month ▾] | › | Today | view toggle */}
           <div style={{ display:'flex', alignItems:'center', gap:'.4rem', marginBottom:'.75rem' }}>
             <button onClick={prevMo} aria-label="Previous month" style={navBtnStyle}>‹</button>
 
-            <button
-              onClick={() => { setYearPickerY(calY); setShowYearPicker(true); }}
-              title="Jump to month"
-              style={{ flex:1, background:'none', border:'none', cursor:'pointer', textAlign:'center', fontFamily:"'Cormorant Garamond',serif", fontSize:'1.05rem', color:'var(--text)', display:'flex', alignItems:'center', justifyContent:'center', gap:'.3rem' }}
-            >
+            <button onClick={() => { setYearPickerY(calY); setShowYearPicker(true); }} title="Jump to month"
+              style={{ flex:1, background:'none', border:'none', cursor:'pointer', textAlign:'center', fontFamily:"'Cormorant Garamond',serif", fontSize:'1.05rem', color:'var(--text)', display:'flex', alignItems:'center', justifyContent:'center', gap:'.3rem' }}>
               {monthName}
               <span style={{ fontSize:'.6rem', color:'var(--text-muted)', marginTop:'.05rem' }}>▾</span>
             </button>
 
             <button onClick={nextMo} aria-label="Next month" style={navBtnStyle}>›</button>
 
-            <button
-              onClick={goToday}
-              style={{ ...navBtnStyle, fontSize:'.7rem', minWidth:'auto', padding:'.25rem .55rem', whiteSpace:'nowrap' }}
-            >Today</button>
+            <button onClick={goToday}
+              style={{ ...navBtnStyle, fontSize:'.7rem', minWidth:'auto', padding:'.25rem .55rem', whiteSpace:'nowrap' }}>
+              Today
+            </button>
+
+            {/* Calendar ↔ Agenda toggle */}
+            <div style={{ display:'flex', background:'var(--bg-muted)', border:'1px solid var(--border)', borderRadius:6, padding:2, gap:1, flexShrink:0 }}>
+              <button onClick={() => setView('calendar')} title="Month view" style={segBtn(view === 'calendar')}>🗓</button>
+              <button onClick={() => setView('agenda')}   title="Agenda view" style={segBtn(view === 'agenda')}>≡</button>
+            </div>
           </div>
 
-          {/* Cash flow summary strip */}
+          {/* Cash flow summary strip (always visible for the viewed month) */}
           {showCashFlow && (
             <div style={{ display:'flex', gap:'.4rem', marginBottom:'.75rem', flexWrap:'wrap' }}>
               {monthInflows > 0 && (
                 <div style={{ flex:'1 1 auto', background:'rgba(74,175,154,.07)', border:'1px solid rgba(74,175,154,.2)', borderRadius:7, padding:'.35rem .55rem', textAlign:'center' }}>
-                  <div style={{ fontSize:'.57rem', color:'var(--text-muted)', marginBottom:'.1rem', textTransform:'uppercase', letterSpacing:'.05em' }}>FD In</div>
-                  <div style={{ fontSize:'.75rem', color:'#4caf9a', fontFamily:"'DM Mono',monospace" }}>+{fmtCr(monthInflows)}</div>
+                  <div style={{ fontSize:'.65rem', color:'var(--text-muted)', marginBottom:'.1rem', textTransform:'uppercase', letterSpacing:'.05em' }}>FD In</div>
+                  <div style={{ fontSize:'.78rem', color:'#4caf9a', fontFamily:"'DM Mono',monospace" }}>+{fmtCr(monthInflows)}</div>
                 </div>
               )}
               {monthSIPOut > 0 && (
                 <div style={{ flex:'1 1 auto', background:'rgba(90,156,224,.07)', border:'1px solid rgba(90,156,224,.2)', borderRadius:7, padding:'.35rem .55rem', textAlign:'center' }}>
-                  <div style={{ fontSize:'.57rem', color:'var(--text-muted)', marginBottom:'.1rem', textTransform:'uppercase', letterSpacing:'.05em' }}>SIP Out</div>
-                  <div style={{ fontSize:'.75rem', color:'#5a9ce0', fontFamily:"'DM Mono',monospace" }}>−{fmtCr(monthSIPOut)}</div>
+                  <div style={{ fontSize:'.65rem', color:'var(--text-muted)', marginBottom:'.1rem', textTransform:'uppercase', letterSpacing:'.05em' }}>SIP Out</div>
+                  <div style={{ fontSize:'.78rem', color:'#5a9ce0', fontFamily:"'DM Mono',monospace" }}>−{fmtCr(monthSIPOut)}</div>
                 </div>
               )}
               {monthPremiumOut > 0 && (
                 <div style={{ flex:'1 1 auto', background:'rgba(224,123,140,.07)', border:'1px solid rgba(224,123,140,.2)', borderRadius:7, padding:'.35rem .55rem', textAlign:'center' }}>
-                  <div style={{ fontSize:'.57rem', color:'var(--text-muted)', marginBottom:'.1rem', textTransform:'uppercase', letterSpacing:'.05em' }}>Premium</div>
-                  <div style={{ fontSize:'.75rem', color:'#e07b8c', fontFamily:"'DM Mono',monospace" }}>−{fmtCr(monthPremiumOut)}</div>
+                  <div style={{ fontSize:'.65rem', color:'var(--text-muted)', marginBottom:'.1rem', textTransform:'uppercase', letterSpacing:'.05em' }}>Premium</div>
+                  <div style={{ fontSize:'.78rem', color:'#e07b8c', fontFamily:"'DM Mono',monospace" }}>−{fmtCr(monthPremiumOut)}</div>
                 </div>
               )}
-              {/* Net only shown when there is both an inflow and an outflow */}
               {monthInflows > 0 && (monthSIPOut > 0 || monthPremiumOut > 0) && (
-                <div style={{ flex:'1 1 auto', background: netCashFlow >= 0 ? 'rgba(74,175,154,.07)' : 'rgba(224,124,90,.07)', border:`1px solid ${netCashFlow >= 0 ? 'rgba(74,175,154,.2)' : 'rgba(224,124,90,.2)'}`, borderRadius:7, padding:'.35rem .55rem', textAlign:'center' }}>
-                  <div style={{ fontSize:'.57rem', color:'var(--text-muted)', marginBottom:'.1rem', textTransform:'uppercase', letterSpacing:'.05em' }}>Net</div>
-                  <div style={{ fontSize:'.75rem', color: netCashFlow >= 0 ? '#4caf9a' : '#e07c5a', fontFamily:"'DM Mono',monospace" }}>
+                <div style={{
+                  flex:'1 1 auto',
+                  background: netCashFlow >= 0 ? 'rgba(74,175,154,.07)' : 'rgba(224,124,90,.07)',
+                  border: `1px solid ${netCashFlow >= 0 ? 'rgba(74,175,154,.2)' : 'rgba(224,124,90,.2)'}`,
+                  borderRadius:7, padding:'.35rem .55rem', textAlign:'center',
+                }}>
+                  <div style={{ fontSize:'.65rem', color:'var(--text-muted)', marginBottom:'.1rem', textTransform:'uppercase', letterSpacing:'.05em' }}>Net</div>
+                  <div style={{ fontSize:'.78rem', color: netCashFlow >= 0 ? '#4caf9a' : '#e07c5a', fontFamily:"'DM Mono',monospace" }}>
                     {netCashFlow >= 0 ? '+' : ''}{fmtCr(netCashFlow)}
                   </div>
                 </div>
@@ -329,56 +417,128 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
             </div>
           )}
 
-          {/* Day headers */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, marginBottom:4 }}>
-            {DAYS.map(d => (
-              <div key={d} style={{ textAlign:'center', fontSize:'.62rem', color:'var(--text-muted)', letterSpacing:'.04em', padding:'.3rem 0' }}>{d}</div>
-            ))}
-          </div>
-
-          {/* Calendar cells — clickable when they have events */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
-            {Array.from({ length: firstDay }, (_, i) => <div key={'e' + i} />)}
-            {Array.from({ length: daysInMonth }, (_, i) => {
-              const day       = i + 1;
-              const key       = cellDate(day);
-              const dayEvents = events[key] || [];
-              const today     = isToday(calY, calMo, day);
-              const hasEvents = dayEvents.length > 0;
-
-              return (
-                <div
-                  key={day}
-                  onClick={() => hasEvents && setExpandedDay(key)}
-                  style={{
-                    minHeight: 56, padding: '.3rem .28rem', borderRadius: 5,
-                    background: today ? 'rgba(201,168,76,.12)' : 'var(--bg-muted)',
-                    border:     today ? '1px solid rgba(201,168,76,.3)' : '1px solid var(--border)',
-                    cursor:     hasEvents ? 'pointer' : 'default',
-                  }}
-                >
-                  <div style={{ fontSize:'.72rem', color: today ? '#c9a84c' : 'var(--text-dim)', fontWeight: today ? 600 : 400, marginBottom:'.2rem' }}>{day}</div>
-                  {dayEvents.slice(0, 2).map((e, idx) => (
-                    <div key={idx} title={e.label}
-                      style={{ fontSize:'.62rem', lineHeight:1.3, padding:'1px 3px', borderRadius:2, marginBottom:1,
-                        background:`${e.color}22`, color:e.color, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                      {e.icon} {e.label.slice(0, 13)}{e.label.length > 13 ? '…' : ''}
+          {/* ── Calendar grid view ──────────────────────────────────────────── */}
+          {view === 'calendar' && (
+            <>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, marginBottom:4 }}>
+                {DAYS.map(d => (
+                  <div key={d} style={{ textAlign:'center', fontSize:'.65rem', color:'var(--text-muted)', letterSpacing:'.04em', padding:'.3rem 0' }}>{d}</div>
+                ))}
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
+                {Array.from({ length: firstDay }, (_, i) => <div key={'e' + i} />)}
+                {Array.from({ length: daysInMonth }, (_, i) => {
+                  const day       = i + 1;
+                  const key       = cellDate(day);
+                  const dayEvents = calendarEvents[key] || [];
+                  const today     = isToday(calY, calMo, day);
+                  const hasEvents = dayEvents.length > 0;
+                  return (
+                    <div key={day} onClick={() => hasEvents && setExpandedDay(key)}
+                      style={{
+                        minHeight: 60, padding: '.3rem .28rem', borderRadius: 5,
+                        background: today ? 'rgba(201,168,76,.12)' : 'var(--bg-muted)',
+                        border:     today ? '1px solid rgba(201,168,76,.3)' : '1px solid var(--border)',
+                        cursor:     hasEvents ? 'pointer' : 'default',
+                      }}>
+                      <div style={{ fontSize:'.72rem', color: today ? '#c9a84c' : 'var(--text-dim)', fontWeight: today ? 600 : 400, marginBottom:'.2rem' }}>{day}</div>
+                      {dayEvents.slice(0, 2).map((e, idx) => (
+                        <div key={idx} title={e.label}
+                          style={{ fontSize:'.62rem', lineHeight:1.3, padding:'1px 3px', borderRadius:2, marginBottom:1,
+                            background:`${e.color}22`, color:e.color, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {e.icon} {e.label.slice(0, 13)}{e.label.length > 13 ? '…' : ''}
+                        </div>
+                      ))}
+                      {dayEvents.length > 2 && (
+                        <div style={{ fontSize:'.62rem', color:'var(--text-muted)' }}>+{dayEvents.length - 2} more</div>
+                      )}
                     </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* ── Agenda view ─────────────────────────────────────────────────── */}
+          {view === 'agenda' && (
+            <div>
+              {/* Reuse the same day-range + filter controls */}
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'.65rem', gap:'.5rem', flexWrap:'wrap' }}>
+                <div style={{ fontSize:'.72rem', color:'var(--text-muted)' }}>Next</div>
+                <div style={{ display:'flex', background:'var(--bg-muted)', border:'1px solid var(--border)', borderRadius:6, padding:2, gap:1 }}>
+                  {[30, 60, 90].map(d => (
+                    <button key={d} onClick={() => setUpcomingDays(d)} style={{
+                      fontSize:'.65rem', padding:'.2rem .45rem', borderRadius:4, border:'none', cursor:'pointer',
+                      background: upcomingDays === d ? 'var(--bg-card)' : 'transparent',
+                      color:      upcomingDays === d ? 'var(--text)'    : 'var(--text-muted)',
+                      fontWeight: upcomingDays === d ? 600 : 400,
+                    }}>{d}d</button>
                   ))}
-                  {dayEvents.length > 2 && (
-                    <div style={{ fontSize:'.62rem', color:'var(--text-muted)' }}>+{dayEvents.length - 2} more</div>
-                  )}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+              <div style={{ display:'flex', gap:'.3rem', flexWrap:'wrap', marginBottom:'.75rem' }}>
+                {FILTER_TYPES.filter(f => f === 'All' || filterCounts[f]).map(f => (
+                  <button key={f} onClick={() => setUpcomingFilter(f)} style={{
+                    fontSize:'.65rem', padding:'.2rem .5rem', borderRadius:12, cursor:'pointer',
+                    border:     upcomingFilter === f ? '1px solid rgba(201,168,76,.5)' : '1px solid var(--border)',
+                    background: upcomingFilter === f ? 'rgba(201,168,76,.1)'           : 'transparent',
+                    color:      upcomingFilter === f ? '#c9a84c'                        : 'var(--text-dim)',
+                    fontWeight: upcomingFilter === f ? 600 : 400,
+                  }}>
+                    {f}{f !== 'All' && filterCounts[f] ? ` · ${filterCounts[f]}` : ''}
+                  </button>
+                ))}
+              </div>
+
+              {agendaGroups.length === 0
+                ? <div className="empty" style={{ padding:'1.5rem 0' }}>No events in the next {upcomingDays} days</div>
+                : agendaGroups.map(([mo, evs]) => {
+                    const [yr, m] = mo.split('-').map(Number);
+                    const moLabel = new Date(yr, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+                    return (
+                      <div key={mo} style={{ marginBottom:'1rem' }}>
+                        <div style={{ fontSize:'.7rem', fontWeight:600, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'.4rem', paddingBottom:'.3rem', borderBottom:'1px solid var(--border)' }}>
+                          {moLabel}
+                        </div>
+                        {evs.map((e, i) => {
+                          const dt       = new Date(e.date);
+                          const daysLeft = Math.ceil((dt - now) / 864e5);
+                          return (
+                            <div key={i} style={{ display:'flex', gap:'.6rem', padding:'.45rem 0', borderBottom:'1px solid var(--border)', alignItems:'center' }}>
+                              <div style={{ fontSize:'.9rem', flexShrink:0 }}>{e.icon}</div>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontSize:'.76rem', color:'var(--text)', lineHeight:1.4 }}>{e.label}</div>
+                                <div style={{ fontSize:'.65rem', color:'var(--text-muted)' }}>{e.type}</div>
+                              </div>
+                              <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:'.15rem', flexShrink:0 }}>
+                                <div style={{ fontSize:'.7rem', fontFamily:"'DM Mono',monospace", color:e.color }}>
+                                  {daysLeft === 0 ? 'Today' : daysLeft === 1 ? 'Tomorrow' : `${daysLeft}d`}
+                                </div>
+                                <div style={{ fontSize:'.65rem', color:'var(--text-muted)' }}>
+                                  {dt.toLocaleDateString('en-IN', { day:'numeric', month:'short' })}
+                                </div>
+                                {e.type === 'FD Maturity' && e.amount > 0 && (
+                                  <button onClick={() => jumpToLadder(e.amount)}
+                                    style={{ fontSize:'.63rem', padding:'.15rem .4rem', background:'rgba(74,175,154,.1)', border:'1px solid rgba(74,175,154,.25)', borderRadius:4, color:'#4caf9a', cursor:'pointer', whiteSpace:'nowrap' }}>
+                                    🪜 Reinvest
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })
+              }
+            </div>
+          )}
         </div>
 
-        {/* ── Right panel ────────────────────────────────────────────────── */}
+        {/* ── Right panel ──────────────────────────────────────────────────── */}
         <div>
           {/* Upcoming events card */}
           <div className="card" style={{ marginBottom:'1rem' }}>
-            {/* Title + day-range toggle */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'.55rem', gap:'.5rem', flexWrap:'wrap' }}>
               <div className="ctitle" style={{ marginBottom:0 }}>Upcoming</div>
               <div style={{ display:'flex', background:'var(--bg-muted)', border:'1px solid var(--border)', borderRadius:6, padding:2, gap:1 }}>
@@ -387,7 +547,7 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
                     fontSize:'.65rem', padding:'.2rem .45rem', borderRadius:4, border:'none', cursor:'pointer',
                     background: upcomingDays === d ? 'var(--bg-card)' : 'transparent',
                     color:      upcomingDays === d ? 'var(--text)'    : 'var(--text-muted)',
-                    fontWeight: upcomingDays === d ? 600              : 400,
+                    fontWeight: upcomingDays === d ? 600 : 400,
                   }}>{d}d</button>
                 ))}
               </div>
@@ -397,7 +557,7 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
             <div style={{ display:'flex', gap:'.3rem', flexWrap:'wrap', marginBottom:'.75rem' }}>
               {FILTER_TYPES.filter(f => f === 'All' || filterCounts[f]).map(f => (
                 <button key={f} onClick={() => setUpcomingFilter(f)} style={{
-                  fontSize:'.64rem', padding:'.18rem .48rem', borderRadius:12, cursor:'pointer',
+                  fontSize:'.65rem', padding:'.2rem .5rem', borderRadius:12, cursor:'pointer',
                   border:     upcomingFilter === f ? '1px solid rgba(201,168,76,.5)' : '1px solid var(--border)',
                   background: upcomingFilter === f ? 'rgba(201,168,76,.1)'           : 'transparent',
                   color:      upcomingFilter === f ? '#c9a84c'                        : 'var(--text-dim)',
@@ -424,14 +584,14 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
                         <div style={{ fontFamily:"'DM Mono',monospace", fontSize:'.7rem', color:e.color }}>
                           {daysLeft === 0 ? 'Today' : daysLeft === 1 ? 'Tomorrow' : `${daysLeft}d`}
                         </div>
-                        <div style={{ fontSize:'.63rem', color:'var(--text-muted)' }}>
+                        <div style={{ fontSize:'.65rem', color:'var(--text-muted)' }}>
                           {dt.toLocaleDateString('en-IN', { day:'numeric', month:'short' })}
                         </div>
                         {e.type === 'FD Maturity' && e.amount > 0 && (
-                          <button
-                            onClick={() => jumpToLadder(e.amount)}
-                            style={{ fontSize:'.6rem', padding:'.15rem .4rem', background:'rgba(74,175,154,.1)', border:'1px solid rgba(74,175,154,.25)', borderRadius:4, color:'#4caf9a', cursor:'pointer', whiteSpace:'nowrap' }}
-                          >🪜 Reinvest</button>
+                          <button onClick={() => jumpToLadder(e.amount)}
+                            style={{ fontSize:'.63rem', padding:'.15rem .4rem', background:'rgba(74,175,154,.1)', border:'1px solid rgba(74,175,154,.25)', borderRadius:4, color:'#4caf9a', cursor:'pointer', whiteSpace:'nowrap' }}>
+                            🪜 Reinvest
+                          </button>
                         )}
                       </div>
                     </div>
@@ -455,7 +615,7 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
               <div key={l.label} style={{ display:'flex', alignItems:'center', gap:'.5rem', marginBottom:'.35rem' }}>
                 <div style={{ fontSize:'.85rem' }}>{l.icon}</div>
                 <div style={{ fontSize:'.73rem', color:'var(--text-dim)' }}>{l.label}</div>
-                <div style={{ width:8, height:8, borderRadius:'50%', background:l.color, marginLeft:'auto', flexShrink:0 }}/>
+                <div style={{ width:8, height:8, borderRadius:'50%', background:l.color, marginLeft:'auto', flexShrink:0 }} />
               </div>
             ))}
           </div>
