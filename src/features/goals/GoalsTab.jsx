@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   goalCagr, projectedFV, projectedCompletionYears, sipRequired,
-  goalStatusCalc, getTaxPath,
+  goalStatusCalc, getTaxPath, ASSET_CAGR,
 } from './goalMath.js';
 import { useGoalAI } from '../../hooks/useGoalAI.js';
 
@@ -540,14 +540,20 @@ export default function GoalsTab({
 
               {/* Projected completion */}
               {st.label !== 'Achieved' && yLeft > 0 && (
-                <div style={{ marginTop: '.45rem', padding: '.32rem .6rem', background: 'var(--bg-muted)', borderRadius: 5, fontSize: '.67rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span title={`Expected CAGR based on linked asset types${(g.linkedTypes||[]).length === 0 ? ' (default — no types linked)' : ''}`}>
-                    📅 Projected <span style={{ fontSize: '.62rem', opacity: .7 }}>@ {(r * 100).toFixed(1)}% p.a.</span>
-                  </span>
-                  {projDate !== null
-                    ? <span style={{ fontFamily: "'DM Mono',monospace", color: projDiff > 0 ? '#e07c5a' : '#1d9e75', fontWeight: 500 }}>{projDate} {projDiff > 0 ? `(${projDiff}y late)` : projDiff < 0 ? `(${Math.abs(projDiff)}y early)` : '(on time)'}</span>
-                    : <span style={{ color: '#e07c5a' }}>Won't reach at current rate</span>
-                  }
+                <div style={{ marginTop: '.45rem', padding: '.32rem .6rem', background: 'var(--bg-muted)', borderRadius: 5, fontSize: '.67rem', color: 'var(--text-muted)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>📅 Projected <span style={{ fontSize: '.62rem', opacity: .7 }}>@ {(r * 100).toFixed(1)}% p.a.</span></span>
+                    {projDate !== null
+                      ? <span style={{ fontFamily: "'DM Mono',monospace", color: projDiff > 0 ? '#e07c5a' : '#1d9e75', fontWeight: 500 }}>{projDate} {projDiff > 0 ? `(${projDiff}y late)` : projDiff < 0 ? `(${Math.abs(projDiff)}y early)` : '(on time)'}</span>
+                      : <span style={{ color: '#e07c5a' }}>Won't reach at current rate</span>
+                    }
+                  </div>
+                  <div style={{ fontSize: '.6rem', marginTop: '.2rem', opacity: .75 }}>
+                    {(g.linkedTypes || []).length > 0
+                      ? g.linkedTypes.map(t => `${AT[t]?.label || t} ${((ASSET_CAGR[t] || 0.08) * 100).toFixed(0)}%`).join(' · ')
+                      : 'Default 10% — link asset types for an accurate rate'
+                    }
+                  </div>
                 </div>
               )}
 
