@@ -229,18 +229,29 @@ export function usePortfolio(user) {
   // ── CRUD: Members ── Lines 1713–1820
   function saveMember(newMember, editingMemberId, members, onDone) {
     if (!newMember.name.trim()) return;
-    const email = (newMember.email || "").trim().toLowerCase();
-    const pan = (newMember.pan || "").trim().toUpperCase();
-    const dob = (newMember.dob || "").trim();
+    const email          = (newMember.email          || "").trim().toLowerCase();
+    const pan            = (newMember.pan            || "").trim().toUpperCase();
+    const dob            = (newMember.dob            || "").trim();
+    const nominee_name   = (newMember.nominee_name   || "").trim();
+    const nominee_relation = (newMember.nominee_relation || "").trim();
     if (editingMemberId) {
       setMembers(p => p.map(m => m.id === editingMemberId ? {
-        ...m, name: newMember.name.trim(), relation: newMember.relation, email: email || m.email || "",
-        ...(pan ? { pan } : {}), ...(dob ? { dob } : {}),
+        ...m,
+        name: newMember.name.trim(), relation: newMember.relation,
+        email: email || m.email || "",
+        ...(pan            ? { pan }            : {}),
+        ...(dob            ? { dob }            : {}),
+        ...(nominee_name   ? { nominee_name }   : {}),
+        ...(nominee_relation ? { nominee_relation } : {}),
       } : m));
     } else {
       setMembers(p => [...p, {
-        id: uid(), name: newMember.name.trim(), relation: newMember.relation, email: email || "",
-        ...(pan ? { pan } : {}), ...(dob ? { dob } : {}),
+        id: uid(), name: newMember.name.trim(), relation: newMember.relation,
+        email: email || "",
+        ...(pan            ? { pan }            : {}),
+        ...(dob            ? { dob }            : {}),
+        ...(nominee_name   ? { nominee_name }   : {}),
+        ...(nominee_relation ? { nominee_relation } : {}),
       }]);
     }
     if (onDone) onDone();

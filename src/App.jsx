@@ -83,7 +83,7 @@ const TABS = [
   { key: 'holdings',  label: 'Holdings',  Icon: BarChart2 },
   { key: 'goals',     label: 'Goals',     Icon: Target },
   { key: 'strategy',  label: 'Strategy',  Icon: Compass },
-  { key: 'members',   label: 'Members',   Icon: Users },
+  { key: 'members',   label: 'Family',    Icon: Users },
   { key: 'budget',    label: 'Budget',    Icon: Wallet },
   { key: 'calendar',  label: 'Calendar',  Icon: CalendarDays },
   // { key: 'tax',       label: 'Tax',       Icon: Receipt },       // hidden — not actively used
@@ -112,7 +112,7 @@ export default function App() {
   // ── Holding / member form state ───────────────────────────────
   const [form,            setForm]            = useState(BF);
   const [editHolding,     setEditHolding]     = useState(null);
-  const [newMember,       setNewMember]       = useState({ name: '', relation: '' });
+  const [newMember,       setNewMember]       = useState({ name: '', relation: '', dob: '', email: '', nominee_name: '', nominee_relation: '' });
   const [editingMemberId, setEditingMemberId] = useState(null);
   const [memberAction,    setMemberAction]    = useState(null);
   const [goalForm,        setGoalForm]        = useState(BG);
@@ -516,10 +516,15 @@ ${alertsText}`;
   function openMemberModal(memberId) {
     if (memberId) {
       const m = members.find(x => x.id === memberId);
-      setNewMember({ name: m?.name || '', relation: m?.relation || '', pan: '', pan_masked: m?.pan_masked || '' });
+      setNewMember({
+        name: m?.name || '', relation: m?.relation || '',
+        pan: '', pan_masked: m?.pan_masked || '',
+        dob: m?.dob || '', email: m?.email || '',
+        nominee_name: m?.nominee_name || '', nominee_relation: m?.nominee_relation || '',
+      });
       setEditingMemberId(memberId);
     } else {
-      setNewMember({ name: '', relation: '' });
+      setNewMember({ name: '', relation: '', dob: '', email: '', nominee_name: '', nominee_relation: '' });
       setEditingMemberId(null);
     }
     setModal('member');
@@ -729,6 +734,7 @@ ${alertsText}`;
               memberAction={memberAction}
               deleteMember={(id, reassignTo) => portfolio.deleteMember(id, reassignTo, holdings)}
               mergeMembers={portfolio.mergeMembers}
+              onViewHoldings={(memberId) => { setSelMember(memberId); setTab('holdings'); }}
             />
           </ErrorBoundary>
         )}
@@ -1345,30 +1351,59 @@ ${alertsText}`;
 
       {/* ── Add / Edit Member ───────────────────────────────────── */}
       {modal === 'member' && (
-        <Overlay onClose={() => { setModal(null); setNewMember({ name: '', relation: '' }); setEditingMemberId(null); }} narrow>
-          <div className="modtitle">{editingMemberId ? 'Edit Member' : 'Add Family Member'}</div>
+        <Overlay onClose={() => { setModal(null); setNewMember({ name: '', relation: '', dob: '', email: '', nominee_name: '', nominee_relation: '' }); setEditingMemberId(null); }} narrow>
+          <div className="modtitle">{editingMemberId ? 'Edit Family Member' : 'Add Family Member'}</div>
+
+          {/* ── Identity ── */}
+          <div style={{fontSize:'.68rem',color:'var(--text-muted)',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em',marginBottom:'.5rem'}}>Identity</div>
           <FG label="Name">
             <input className="fi" placeholder="e.g. Priya" value={newMember.name}
               onChange={e => setNewMember(p => ({ ...p, name: e.target.value }))}/>
           </FG>
-          <FG label="Relation">
-            <select className="fi fs" value={newMember.relation} onChange={e => setNewMember(p => ({ ...p, relation: e.target.value }))}>
-              {['Self','Spouse','Child','Parent','Sibling','Other'].map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </FG>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'.6rem'}}>
+            <FG label="Relation">
+              <select className="fi fs" value={newMember.relation} onChange={e => setNewMember(p => ({ ...p, relation: e.target.value }))}>
+                {['Self','Spouse','Child','Parent','Sibling','Other'].map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </FG>
+            <FG label="Date of birth">
+              <input className="fi" type="date" value={newMember.dob || ''}
+                onChange={e => setNewMember(p => ({ ...p, dob: e.target.value }))}/>
+            </FG>
+          </div>
           <FG label="PAN (optional)">
-            <input className="fi" style={{textTransform:'uppercase'}} maxLength={10}
+            <input className="fi" style={{textTransform:'uppercase',letterSpacing:'.08em'}} maxLength={10}
               placeholder={newMember.pan_masked ? `Saved: ${newMember.pan_masked} — type to replace` : 'e.g. ABCDE1234F'}
               value={newMember.pan || ''}
               onChange={e => setNewMember(p => ({ ...p, pan: e.target.value.toUpperCase() }))}/>
             <div style={{fontSize:'.65rem',color:'var(--text-muted)',marginTop:'.25rem'}}>
-              Used to unlock this member's CAS PDFs and auto-assign imported holdings. Stored encrypted.
+              Used for CAS import matching. Stored encrypted.
             </div>
           </FG>
+          <FG label="Email (optional)">
+            <input className="fi" type="email" placeholder="e.g. priya@gmail.com" value={newMember.email || ''}
+              onChange={e => setNewMember(p => ({ ...p, email: e.target.value }))}/>
+          </FG>
+
+          {/* ── Nominee ── */}
+          <div style={{fontSize:'.68rem',color:'var(--text-muted)',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em',margin:'.85rem 0 .5rem'}}>Nominee</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'.6rem'}}>
+            <FG label="Nominee name">
+              <input className="fi" placeholder="e.g. Rahul" value={newMember.nominee_name || ''}
+                onChange={e => setNewMember(p => ({ ...p, nominee_name: e.target.value }))}/>
+            </FG>
+            <FG label="Nominee relation">
+              <select className="fi fs" value={newMember.nominee_relation || ''} onChange={e => setNewMember(p => ({ ...p, nominee_relation: e.target.value }))}>
+                <option value="">— Select —</option>
+                {['Spouse','Child','Parent','Sibling','Other'].map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </FG>
+          </div>
+
           <MA>
-            <button className="btnc" onClick={() => { setModal(null); setNewMember({ name: '', relation: '' }); setEditingMemberId(null); }}>Cancel</button>
+            <button className="btnc" onClick={() => { setModal(null); setNewMember({ name: '', relation: '', dob: '', email: '', nominee_name: '', nominee_relation: '' }); setEditingMemberId(null); }}>Cancel</button>
             <button className="btns" onClick={() => portfolio.saveMember(newMember, editingMemberId, members, () => {
-              setModal(null); setNewMember({ name: '', relation: '' }); setEditingMemberId(null);
+              setModal(null); setNewMember({ name: '', relation: '', dob: '', email: '', nominee_name: '', nominee_relation: '' }); setEditingMemberId(null);
             })}>
               {editingMemberId ? 'Update' : 'Add Member'}
             </button>
