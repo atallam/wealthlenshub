@@ -458,6 +458,55 @@ export default function OverviewTab({
       </div>
       <div className="card"><div className="ctitle">Category Distribution</div><DonutChart data={byType} total={totCur} AT={AT}/></div>
 
+      {/* ── PROTECTION COVERAGE CARD ── */}
+      {(()=>{
+        const policies = (holdings||[]).filter(h => h.type === "INSURANCE" && (h.sum_assured || 0) > 0);
+        if (policies.length === 0) return null;
+        const LIFE_TYPES = new Set(["TERM", "ENDOWMENT", "ULIP", "WHOLE_LIFE"]);
+        const lifePolicies   = policies.filter(h => LIFE_TYPES.has(h.policy_type));
+        const otherPolicies  = policies.filter(h => !LIFE_TYPES.has(h.policy_type)); // HEALTH, VEHICLE
+        const sumBy = (arr) => arr.reduce((s, h) => s + (h.sum_assured || 0), 0);
+        const totalLifeCover  = sumBy(lifePolicies);
+        const healthCover     = sumBy(otherPolicies.filter(h => h.policy_type === "HEALTH"));
+        const vehicleCover    = sumBy(otherPolicies.filter(h => h.policy_type === "VEHICLE"));
+        const withExpiry = policies.filter(h => h.maturity_date).sort((a,b) => new Date(a.maturity_date) - new Date(b.maturity_date));
+        const nearest = withExpiry[0];
+        const dLeft = nearest ? Math.ceil((new Date(nearest.maturity_date) - Date.now()) / 864e5) : null;
+        const mc = dLeft === null ? "var(--text-muted)" : dLeft < 0 ? "#e07c5a" : dLeft > 180 ? "#4caf9a" : dLeft > 60 ? "#f0a050" : "#e07c5a";
+        return (
+          <div className="card">
+            <div className="ctitle">🛡️ Protection Coverage</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:".8rem",marginBottom:nearest?".7rem":0}}>
+              <div style={{flex:"1 1 140px"}}>
+                <div style={{fontSize:".68rem",color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:".05em"}}>Total Life Cover</div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.15rem",color:"var(--text)",marginTop:".15rem"}}>{fmtCrINR(totalLifeCover)}</div>
+                <div style={{fontSize:".68rem",color:"var(--text-dim)",marginTop:".1rem"}}>{lifePolicies.length} polic{lifePolicies.length===1?"y":"ies"}</div>
+              </div>
+              {healthCover>0&&<div style={{flex:"1 1 120px"}}>
+                <div style={{fontSize:".68rem",color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:".05em"}}>Health Cover</div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.15rem",color:"var(--text)",marginTop:".15rem"}}>{fmtCrINR(healthCover)}</div>
+              </div>}
+              {vehicleCover>0&&<div style={{flex:"1 1 120px"}}>
+                <div style={{fontSize:".68rem",color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:".05em"}}>Vehicle Cover</div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:"1.15rem",color:"var(--text)",marginTop:".15rem"}}>{fmtCrINR(vehicleCover)}</div>
+              </div>}
+            </div>
+            {nearest&&(
+              <div style={{display:"flex",alignItems:"center",gap:".5rem",padding:".45rem .65rem",background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:6}}>
+                <span style={{fontSize:".9rem"}}>⏰</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:".72rem",color:"var(--text)"}}>{nearest.name}</div>
+                  <div style={{fontSize:".65rem",color:"var(--text-dim)"}}>{(nearest.policy_type||"TERM").replace("_"," ")} · nearest renewal/maturity</div>
+                </div>
+                <span style={{fontFamily:"'DM Mono',monospace",fontSize:".72rem",fontWeight:600,color:mc}}>
+                  {dLeft<0?"Expired":`${dLeft}d`}
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ── DATA FRESHNESS CARD ── */}
       {(()=>{
         const srcMap = {};
