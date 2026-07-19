@@ -205,13 +205,6 @@ export default function GoalsTab({
     getAITaxPath,
   } = useGoalAI({ goals, members, allCur });
 
-  // Auto-load nudges once goals are present
-  useEffect(() => {
-    if (goals.length > 0 && !nudgesLoaded && !nudgesLoading) {
-      loadNudges();
-    }
-  }, [goals.length]); // eslint-disable-line
-
   // ── Helpers ────────────────────────────────────────────────────────────────
   function goalCur(g) {
     const lt = g.linkedTypes    || [];
