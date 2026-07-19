@@ -86,8 +86,8 @@ const TABS = [
   { key: 'members',   label: 'Members',   Icon: Users },
   { key: 'budget',    label: 'Budget',    Icon: Wallet },
   { key: 'calendar',  label: 'Calendar',  Icon: CalendarDays },
-  { key: 'tax',       label: 'Tax',       Icon: Receipt },
-  { key: 'watchlist', label: 'Watchlist', Icon: Bookmark },
+  // { key: 'tax',       label: 'Tax',       Icon: Receipt },       // hidden — not actively used
+  // { key: 'watchlist', label: 'Watchlist', Icon: Bookmark },      // hidden — not actively used
   { key: 'advisor',   label: 'Advisor',   Icon: MessageSquare },
 ];
 
