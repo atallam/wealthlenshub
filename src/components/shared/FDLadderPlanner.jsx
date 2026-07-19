@@ -11,7 +11,7 @@
  * Used inside CalendarTab as a collapsible section.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
 const DEFAULT_RATES = { 3: 7.0, 6: 7.25, 12: 7.5, 24: 7.75 };
@@ -37,11 +37,20 @@ function addMonths(date, n) {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export default function FDLadderPlanner() {
-  const [open,   setOpen]   = useState(false);
-  const [amount, setAmount] = useState('');
+export default function FDLadderPlanner({ initialAmount = '' }) {
+  const [open,   setOpen]   = useState(!!initialAmount);
+  const [amount, setAmount] = useState(initialAmount || '');
   const [rates,  setRates]  = useState(DEFAULT_RATES);
   const [splits, setSplits] = useState({ 3: 25, 6: 25, 12: 25, 24: 25 });
+
+  // When a "Reinvest" button in CalendarTab sets a new initialAmount,
+  // update the planner and open it.
+  useEffect(() => {
+    if (initialAmount) {
+      setAmount(String(Math.round(Number(String(initialAmount).replace(/,/g, '')))));
+      setOpen(true);
+    }
+  }, [initialAmount]);
 
   // Validate splits sum to 100
   const splitTotal = Object.values(splits).reduce((s, v) => s + Number(v || 0), 0);
