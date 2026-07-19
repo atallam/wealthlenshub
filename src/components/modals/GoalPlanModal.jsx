@@ -95,7 +95,7 @@ export default function GoalPlanModal({ open, onClose, goals, members, holdings,
 FAMILY PORTFOLIO SUMMARY:
 - Total portfolio value: ${fmtCr(allCur)}
 - Total invested: ${fmtCr(allInv)}
-- Total gain: ${fmtCr(allCur - allInv)} (${allInv > 0 ? ((allCur - allInv) / allInv * 100).toFixed(1) : 0}% simple return since inception — NOT the annual rate; do not use this as a future return assumption)
+- Unrealised gain: ${fmtCr(allCur - allInv)}
 
 MEMBER PORTFOLIOS:
 ${memberBreakdown}
