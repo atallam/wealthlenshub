@@ -547,9 +547,14 @@ export default function BudgetTab({
         {/* Manual Upload card */}
         <div className="card" style={{marginBottom:"1.2rem"}}>
           <div className="ctitle">Import Bank Statement</div>
-          <div style={{fontSize:".77rem",color:"var(--text-dim)",marginBottom:"1rem",lineHeight:1.7}}>
+          <div style={{fontSize:".77rem",color:"var(--text-dim)",marginBottom:"1.1rem",lineHeight:1.7}}>
             Upload CSV, Excel, or PDF statements from US banks (Chase, BofA, Wells Fargo, Citi, Capital One, Amex, Discover, US Bank) and Indian banks (HDFC, ICICI, Axis, SBI, Kotak).
             Transactions are <span style={{color:"#4caf9a"}}>AES-256 encrypted</span> before storage. Statements older than 1 year are automatically purged.
+          </div>
+
+          {/* ── Step 1: statement details ── */}
+          <div style={{fontSize:".68rem",letterSpacing:".08em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".55rem"}}>
+            1 · Statement Details
           </div>
           <div className="frow">
             <FG label="Region">
@@ -592,8 +597,8 @@ export default function BudgetTab({
                 onChange={e=>setBudgetUploadForm(p=>({...p,custom_label:e.target.value}))}/>
             </FG>
           </div>
-          {allMembers.length>1&&(
-            <div className="frow">
+          <div className="frow">
+            {allMembers.length>1&&(
               <FG label="Assign to">
                 <select className="fi fs" value={budgetUploadForm.member_id}
                   onChange={e=>setBudgetUploadForm(p=>({...p,member_id:e.target.value}))}>
@@ -601,21 +606,72 @@ export default function BudgetTab({
                   {allMembers.map(m=>(<option key={m.id} value={m.id}>{m.name}</option>))}
                 </select>
               </FG>
-            </div>
-          )}
-          <FG label="Statement File (CSV, XLSX, or PDF)">
+            )}
+            <FG label="Notes (optional)">
+              <input className="fi" placeholder="e.g. Jan–Mar 2026 statement"
+                value={budgetUploadForm.notes}
+                onChange={e=>setBudgetUploadForm(p=>({...p,notes:e.target.value}))}/>
+            </FG>
+          </div>
+
+          {/* ── Step 2: file ── */}
+          <div style={{fontSize:".68rem",letterSpacing:".08em",textTransform:"uppercase",color:"var(--text-muted)",
+            marginTop:".3rem",marginBottom:".55rem",paddingTop:"1rem",borderTop:"1px solid var(--border)"}}>
+            2 · Statement File
+          </div>
+          <FG label="CSV, XLSX, or PDF">
             <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="fi"
-              onChange={e=>setBudgetUploadFile(e.target.files[0])}
+              onChange={e=>{setBudgetUploadFile(e.target.files[0]); setBudgetUploadMsg("");}}
               style={{paddingTop:".4rem",color:"var(--text)"}}/>
           </FG>
-          <FG label="Notes (optional)">
-            <input className="fi" placeholder="e.g. Jan–Mar 2026 statement"
-              value={budgetUploadForm.notes}
-              onChange={e=>setBudgetUploadForm(p=>({...p,notes:e.target.value}))}/>
-          </FG>
+
+          {/* Diagnostic tools — deliberately de-emphasized (small, muted, no "btns"
+              class) so they read as "having trouble?" utilities, not alternatives
+              to the primary Upload action below. */}
+          {budgetUploadFile && (/\.(csv|xlsx|txt)$/i.test(budgetUploadFile.name) || budgetUploadFile.name.endsWith(".pdf")) && (
+            <div style={{display:"flex",alignItems:"center",gap:".6rem",marginTop:"-.3rem",marginBottom:"1rem",flexWrap:"wrap"}}>
+              <span style={{fontSize:".68rem",color:"var(--text-muted)"}}>Statement not importing correctly?</span>
+              {/\.(csv|xlsx|txt)$/i.test(budgetUploadFile.name) && (
+                <button style={{fontSize:".7rem",background:"none",border:"none",color:"#5a9ce0",cursor:"pointer",padding:0,textDecoration:"underline dotted"}}
+                  disabled={budgetUploading}
+                  onClick={()=>debugImportCSV(budgetUploadFile, budgetUploadForm)}
+                  title="Parses the file and shows what would be imported, without saving anything.">
+                  🔍 Check this file first
+                </button>
+              )}
+              {budgetUploadFile.name.endsWith(".pdf") && (
+                <button style={{fontSize:".7rem",background:"none",border:"none",color:"#5a9ce0",cursor:"pointer",padding:0,textDecoration:"underline dotted"}}
+                  disabled={budgetUploading}
+                  onClick={async()=>{
+                    setBudgetUploadMsg("Analyzing + importing PDF...");
+                    try{
+                      const fd=new FormData();
+                      fd.append("file",budgetUploadFile);
+                      fd.append("import","true");
+                      const data=await api("/api/budget/debug-pdf",{method:"POST",body:fd});
+                      let msg = `📄 ${data.pages} pages, ${data.totalLines} lines, ${data.totalChars} chars\n` +
+                        `US parser: ${data.usRowsParsed} rows | IN parser: ${data.inRowsParsed} rows\n`;
+                      if (data.imported > 0) {
+                        msg = `✓ Imported ${data.imported} transactions via debug endpoint\n` + msg;
+                        await loadBudget();
+                        setBudgetStatements(await api("/api/budget/statements") || []);
+                      } else {
+                        msg += `Import: ${data.imported} (${data.importError || "no rows to import"})\n`;
+                      }
+                      msg += `Sections: ${data.sectionHeaders?.join(" | ") || "none"}\n` +
+                        `Date lines: ${data.dateLines?.slice(0,5).join(" | ") || "none"}\n` +
+                        `--- First 15 lines ---\n${data.first80Lines?.slice(0,15).join("\n")}`;
+                      setBudgetUploadMsg(msg);
+                    }catch(e){setBudgetUploadMsg("⚠ Debug: "+e.message);}
+                  }}>
+                  🔍 Debug + import via PDF parser
+                </button>
+              )}
+            </div>
+          )}
 
           {budgetUploadMsg&&(
-            <div style={{padding:".6rem .85rem",borderRadius:6,marginBottom:".75rem",fontSize:".78rem",
+            <div style={{padding:".6rem .85rem",borderRadius:6,marginBottom:".9rem",fontSize:".78rem",
               whiteSpace:"pre-wrap",fontFamily:budgetUploadMsg.startsWith("📄")?"monospace":"inherit",
               maxHeight:budgetUploadMsg.startsWith("📄")?"400px":"none",overflow:"auto",
               background:budgetUploadMsg.startsWith("✓")?"rgba(76,175,154,.1)":budgetUploadMsg.startsWith("📄")?"rgba(90,156,224,.08)":"rgba(224,124,90,.1)",
@@ -625,45 +681,11 @@ export default function BudgetTab({
             </div>
           )}
 
+          {/* ── Primary action — alone, unambiguous ── */}
           <button className="btns" disabled={!budgetUploadFile||!budgetUploadForm.region||budgetUploading}
             onClick={()=>uploadBudgetStatement(budgetUploadFile, budgetUploadForm)}>
             {budgetUploading?"Importing…":"Upload & Parse"}
           </button>
-          {budgetUploadFile && /\.(csv|xlsx|txt)$/i.test(budgetUploadFile.name) && (
-            <button className="btnc" style={{marginLeft:".5rem",fontSize:".7rem"}}
-              disabled={budgetUploading}
-              onClick={()=>debugImportCSV(budgetUploadFile, budgetUploadForm)}
-              title="Parses the file and shows what would be imported, without saving anything — use this if a statement fails to import.">
-              🔍 Check This File First
-            </button>
-          )}
-          {budgetUploadFile && budgetUploadFile.name.endsWith(".pdf") && (
-            <button className="btnc" style={{marginLeft:".5rem",fontSize:".7rem"}}
-              onClick={async()=>{
-                setBudgetUploadMsg("Analyzing + importing PDF...");
-                try{
-                  const fd=new FormData();
-                  fd.append("file",budgetUploadFile);
-                  fd.append("import","true");
-                  const data=await api("/api/budget/debug-pdf",{method:"POST",body:fd});
-                  let msg = `📄 ${data.pages} pages, ${data.totalLines} lines, ${data.totalChars} chars\n` +
-                    `US parser: ${data.usRowsParsed} rows | IN parser: ${data.inRowsParsed} rows\n`;
-                  if (data.imported > 0) {
-                    msg = `✓ Imported ${data.imported} transactions via debug endpoint\n` + msg;
-                    await loadBudget();
-                    setBudgetStatements(await api("/api/budget/statements") || []);
-                  } else {
-                    msg += `Import: ${data.imported} (${data.importError || "no rows to import"})\n`;
-                  }
-                  msg += `Sections: ${data.sectionHeaders?.join(" | ") || "none"}\n` +
-                    `Date lines: ${data.dateLines?.slice(0,5).join(" | ") || "none"}\n` +
-                    `--- First 15 lines ---\n${data.first80Lines?.slice(0,15).join("\n")}`;
-                  setBudgetUploadMsg(msg);
-                }catch(e){setBudgetUploadMsg("⚠ Debug: "+e.message);}
-              }}>
-              🔍 Debug + Import PDF
-            </button>
-          )}
         </div>
 
         {/* Statement history */}
@@ -679,14 +701,20 @@ export default function BudgetTab({
                     <td><span style={{fontSize:".68rem",padding:"2px 7px",borderRadius:3,background:`${TYPE_COLORS[s.statement_type]||"#6b6356"}22`,color:TYPE_COLORS[s.statement_type]||"#6b6356",border:`1px solid ${TYPE_COLORS[s.statement_type]||"#6b6356"}44`}}>{TYPE_ICONS[s.statement_type]} {s.statement_type}</span></td>
                     {allMembers.length>1&&(
                       <td>
-                        <select className="fi" style={{fontSize:".72rem",padding:"2px 6px",
-                            border:s.member_id?"1px solid var(--border)":"1px solid #e07c5a88",
-                            background:s.member_id?"transparent":"rgba(224,124,90,.08)"}}
-                          value={s.member_id||""}
-                          onChange={e=>assignStatementMember?.(s.id, e.target.value)}>
-                          <option value="">Unassigned</option>
-                          {allMembers.map(m=>(<option key={m.id} value={m.id}>{m.name}</option>))}
-                        </select>
+                        <div style={{display:"flex",alignItems:"center",gap:".3rem"}}>
+                          <span style={{fontSize:".7rem",opacity:s.member_id?0.7:0.4}}>{s.member_id?"👤":"⚠️"}</span>
+                          <select className="fi" style={{fontSize:".73rem",padding:"3px 6px",minWidth:110,
+                              fontWeight:s.member_id?400:600,
+                              color:s.member_id?"var(--text-dim)":"#e07c5a",
+                              border:s.member_id?"1px solid var(--border)":"1px solid #e07c5a88",
+                              background:s.member_id?"transparent":"rgba(224,124,90,.08)"}}
+                            value={s.member_id||""}
+                            onChange={e=>assignStatementMember?.(s.id, e.target.value)}
+                            title={s.member_id?"Reassign this statement":"No family member matched automatically — assign one"}>
+                            <option value="">Unassigned</option>
+                            {allMembers.map(m=>(<option key={m.id} value={m.id}>{m.name}</option>))}
+                          </select>
+                        </div>
                       </td>
                     )}
                     <td className="dim" style={{fontSize:".75rem"}}>{s.period_start||"?"} → {s.period_end||"?"}</td>
