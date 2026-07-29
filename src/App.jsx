@@ -3,7 +3,7 @@ import {
   LayoutDashboard, BarChart2, Target, Compass,
   Users, Wallet, CalendarDays, MessageSquare,
   RefreshCw, Settings, LogOut, Eye, X, MoreHorizontal,
-  AlertTriangle, Download, Receipt, Bookmark,
+  AlertTriangle, Download, Receipt, Bookmark, Activity,
 } from 'lucide-react';
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
 import { api } from './lib/api.js';
@@ -45,6 +45,7 @@ import CalendarTab from './features/calendar/CalendarTab.jsx';
 import AdvisorTab from './features/advisor/AdvisorTab.jsx';
 import TaxTab from './features/tax/TaxTab.jsx';
 import WatchlistTab from './features/watchlist/WatchlistTab.jsx';
+import AuditLogPanel from './features/audit/AuditLogPanel.jsx';
 
 // ── Shared components ────────────────────────────────────────────
 import LoginScreen from './components/shared/LoginScreen.jsx';
@@ -191,6 +192,7 @@ export default function App() {
   } = ui;
   const { filterType, setFilterType, sortCol, setSortCol, sortDir, setSortDir, toggleSort } = useHoldingsView();
   const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [showAuditLog,   setShowAuditLog]   = useState(false);
 
   // ── Auth listener ─────────────────────────────────────────────
   useEffect(() => {
@@ -1420,6 +1422,11 @@ ${alertsText}`;
         </Overlay>
       )}
 
+      {/* ── Audit Log ───────────────────────────────────────────── */}
+      {showAuditLog && (
+        <AuditLogPanel onClose={() => setShowAuditLog(false)} api={api} />
+      )}
+
       {/* ── Settings ────────────────────────────────────────────── */}
       {showSettings && (
         <Overlay onClose={() => setShowSettings(false)}>
@@ -1428,9 +1435,12 @@ ${alertsText}`;
             <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.35rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Signed in as</div>
             <div style={{fontSize:'.85rem',color:'var(--text)',fontWeight:500}}>{user.email}</div>
           </div>
-          <div style={{marginBottom:'1rem'}}>
+          <div style={{marginBottom:'1rem',display:'flex',gap:'.5rem',flexWrap:'wrap'}}>
             <button className="btn-o" onClick={() => { setShowImportHub(true); setShowSettings(false); }}>
               <Download size={13} strokeWidth={2}/> Import Holdings
+            </button>
+            <button className="btn-o" onClick={() => { setShowAuditLog(true); setShowSettings(false); }}>
+              <Activity size={13} strokeWidth={2}/> Activity Log
             </button>
           </div>
 

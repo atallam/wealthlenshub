@@ -28,6 +28,8 @@ import concallRouter      from "./routes/concall.js";
 import exportRouter       from "./routes/export.js";
 import alertsRouter       from "./routes/alerts.js";
 import watchlistRouter    from "./routes/watchlist.js";
+import auditRouter        from "./routes/audit.js";
+import { auditMiddleware } from "./lib/auditLogger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -55,6 +57,7 @@ if (corsOrigins.length) {
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use("/api/", apiLimiter);
+app.use("/api/", auditMiddleware);   // ── Audit trail (fire-and-forget on all mutating routes)
 
 // ── Serve built React app ────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, "dist")));
@@ -82,6 +85,7 @@ app.use("/api/concall",       concallRouter);
 app.use("/api/export",        exportRouter);
 app.use("/api/alerts",        alertsRouter);
 app.use("/api/watchlist",     watchlistRouter);
+app.use("/api/audit-logs",    auditRouter);
 
 // ── Global API error handler ─────────────────────────────────────────────────
 app.use((err, req, res, next) => {
