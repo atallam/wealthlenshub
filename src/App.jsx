@@ -753,6 +753,7 @@ ${alertsText}`;
               {...budget}
               allCur={allCur} allInv={allInv} totInv={totInv} totPct={totPct}
               sipHoldings={allHoldings.filter(h=>h.type==='MF').slice(0,5).map(h=>({id:h.id,name:h.name}))}
+              allMembers={allMembers}
               fmtCr={fmtCr} fmtPct={fmtPct}
               api={api} FG={FG} MA={MA} Overlay={Overlay}
             />

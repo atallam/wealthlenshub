@@ -41,12 +41,14 @@ export default function BudgetTab({
   setSelectedTxnIds,
   bulkCatTarget,
   setBulkCatTarget,
+  budgetBanks = [],
   // Portfolio data for the spend-to-wealth bridge + nudge
   allCur,
   allInv,
   totInv,
   totPct,
   sipHoldings = [],
+  allMembers = [],
   fmtCr,
   fmtPct,
   // API helper
@@ -56,14 +58,20 @@ export default function BudgetTab({
   MA,
   Overlay,
   // Load handlers + upload handler from useBudget hook (avoids duplicate definitions)
+  loadBanks,
   loadBudget: loadBudgetHook,
   loadTxns:   loadTxnsHook,
   uploadBudgetStatement,
+  assignStatementMember,
 }) {
   const toast = useToast();
   // Wrap hook functions with current filter state so callers inside JSX don't need to pass args
   function loadBudget() { return loadBudgetHook(budgetSelMonth); }
   function loadTxns()   { return loadTxnsHook(budgetSelStmt, budgetSelCat, budgetSelMonth, budgetSearch); }
+
+  // Bank list is fetched once (server-driven, from BANK_REGISTRY) rather than hardcoded here,
+  // so the dropdown can never drift out of sync with what the parser actually supports.
+  useEffect(() => { if (!budgetBanks.length) loadBanks?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Editable CAGR for Spend-to-Wealth Bridge (default 12%)
   const [sipCagr, setSipCagr] = useState(12);
@@ -556,27 +564,13 @@ export default function BudgetTab({
               <select className="fi fs" value={budgetUploadForm.bank_key}
                 disabled={!budgetUploadForm.region}
                 onChange={e=>setBudgetUploadForm(p=>({...p,bank_key:e.target.value}))}>
-                {budgetUploadForm.region==="US"?(<>
-                  <option value="">Select bank…</option>
-                  <option value="chase">Chase</option>
-                  <option value="bofa">Bank of America</option>
-                  <option value="wells_fargo">Wells Fargo</option>
-                  <option value="citi">Citi</option>
-                  <option value="capital_one">Capital One</option>
-                  <option value="amex">Amex</option>
-                  <option value="discover">Discover</option>
-                  <option value="us_bank">US Bank</option>
-                  <option value="other_us">Other US Bank</option>
-                </>):budgetUploadForm.region==="IN"?(<>
-                  <option value="">Select bank…</option>
-                  <option value="hdfc">HDFC</option>
-                  <option value="icici">ICICI</option>
-                  <option value="axis">Axis</option>
-                  <option value="sbi">SBI</option>
-                  <option value="kotak">Kotak</option>
-                  <option value="other_in">Other Indian Bank</option>
-                </>):budgetUploadForm.region==="AUTO"?(<>
+                {budgetUploadForm.region==="AUTO"?(
                   <option value="auto">Auto-detect from file</option>
+                ):budgetUploadForm.region?(<>
+                  <option value="">Select bank…</option>
+                  {budgetBanks
+                    .filter(b=>b.region===budgetUploadForm.region)
+                    .map(b=>(<option key={b.key} value={b.key}>{b.label}</option>))}
                 </>):(<option value="">Pick a region first</option>)}
               </select>
             </FG>
@@ -597,6 +591,17 @@ export default function BudgetTab({
                 onChange={e=>setBudgetUploadForm(p=>({...p,custom_label:e.target.value}))}/>
             </FG>
           </div>
+          {allMembers.length>1&&(
+            <div className="frow">
+              <FG label="Assign to">
+                <select className="fi fs" value={budgetUploadForm.member_id}
+                  onChange={e=>setBudgetUploadForm(p=>({...p,member_id:e.target.value}))}>
+                  <option value="">🔍 Auto-detect from statement</option>
+                  {allMembers.map(m=>(<option key={m.id} value={m.id}>{m.name}</option>))}
+                </select>
+              </FG>
+            </div>
+          )}
           <FG label="Statement File (CSV, XLSX, or PDF)">
             <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="fi"
               onChange={e=>setBudgetUploadFile(e.target.files[0])}
@@ -657,12 +662,24 @@ export default function BudgetTab({
           <div className="ctitle">Statement History (1-year rolling)</div>
           {budgetStatements.length===0?<div className="empty">No statements imported yet</div>:(
             <table className="ht">
-              <thead><tr><th>Source</th><th>Type</th><th>Period</th><th className="r">Transactions</th><th>Uploaded</th><th>Notes</th><th/></tr></thead>
+              <thead><tr><th>Source</th><th>Type</th>{allMembers.length>1&&<th>Assigned to</th>}<th>Period</th><th className="r">Transactions</th><th>Uploaded</th><th>Notes</th><th/></tr></thead>
               <tbody>
                 {budgetStatements.map(s=>(
                   <tr key={s.id}>
                     <td style={{fontWeight:500,color:"var(--text)"}}>{s.source}</td>
                     <td><span style={{fontSize:".68rem",padding:"2px 7px",borderRadius:3,background:`${TYPE_COLORS[s.statement_type]||"#6b6356"}22`,color:TYPE_COLORS[s.statement_type]||"#6b6356",border:`1px solid ${TYPE_COLORS[s.statement_type]||"#6b6356"}44`}}>{TYPE_ICONS[s.statement_type]} {s.statement_type}</span></td>
+                    {allMembers.length>1&&(
+                      <td>
+                        <select className="fi" style={{fontSize:".72rem",padding:"2px 6px",
+                            border:s.member_id?"1px solid var(--border)":"1px solid #e07c5a88",
+                            background:s.member_id?"transparent":"rgba(224,124,90,.08)"}}
+                          value={s.member_id||""}
+                          onChange={e=>assignStatementMember?.(s.id, e.target.value)}>
+                          <option value="">Unassigned</option>
+                          {allMembers.map(m=>(<option key={m.id} value={m.id}>{m.name}</option>))}
+                        </select>
+                      </td>
+                    )}
                     <td className="dim" style={{fontSize:".75rem"}}>{s.period_start||"?"} → {s.period_end||"?"}</td>
                     <td className="r mono" style={{color:"#c9a84c"}}>{s.txn_count}</td>
                     <td className="dim" style={{fontSize:".72rem"}}>{s.upload_date?.slice(0,10)}</td>

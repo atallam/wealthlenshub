@@ -28,7 +28,8 @@ export function useBudget(user) {
   const [budgetSearch,      setBudgetSearch]      = useState("");
   const [budgetView,        setBudgetView]        = useState("overview"); // overview | transactions | categories | import
   const [budgetUploading,   setBudgetUploading]   = useState(false);
-  const [budgetUploadForm,  setBudgetUploadForm]  = useState({ region: "", bank_key: "", statement_type: "BANK", notes: "", custom_label: "" });
+  const [budgetUploadForm,  setBudgetUploadForm]  = useState({ region: "", bank_key: "", statement_type: "BANK", notes: "", custom_label: "", member_id: "" });
+  const [budgetBanks,       setBudgetBanks]       = useState([]); // [{key,region,label}] — drives the Bank dropdown; sourced from BANK_REGISTRY on the server
   const [budgetUploadFile,  setBudgetUploadFile]  = useState(null);
   const [budgetUploadMsg,   setBudgetUploadMsg]   = useState("");
   const [budgetEditCat,     setBudgetEditCat]     = useState(null);
@@ -43,6 +44,10 @@ export function useBudget(user) {
   const [plaidSyncing,  setPlaidSyncing]  = useState("");
 
   // ── Load functions ── Lines 3761–3783 (defined inline in budget tab JSX in App.jsx)
+  async function loadBanks() {
+    try { setBudgetBanks(await api("/api/budget/banks")); } catch (e) { console.error(e); }
+  }
+
   async function loadBudget(selMonth) {
     try {
       const [stmts, cats, analytics] = await Promise.all([
@@ -81,12 +86,16 @@ export function useBudget(user) {
       fd.append("source", uploadForm.custom_label || uploadForm.bank_key || "Auto");
       fd.append("statement_type", uploadForm.statement_type);
       fd.append("notes", uploadForm.notes || "");
+      if (uploadForm.member_id) fd.append("member_id", uploadForm.member_id); // omitted = let the server auto-detect
       const data = await api("/api/budget/upload", { method: "POST", body: fd });
       if (data.ok) {
         const dupNote = data.skipped_duplicates > 0 ? ` · ${data.skipped_duplicates} duplicate${data.skipped_duplicates > 1 ? "s" : ""} skipped` : "";
-        setBudgetUploadMsg(`✓ Imported ${data.txn_count} transactions (${data.period_start} to ${data.period_end})${dupNote}`);
+        const memberNote = data.member_auto_detected ? " · assigned automatically"
+          : data.needs_member_assignment ? " · couldn't tell who this belongs to — assign it below"
+          : "";
+        setBudgetUploadMsg(`✓ Imported ${data.txn_count} transactions (${data.period_start} to ${data.period_end})${dupNote}${memberNote}`);
         setBudgetUploadFile(null);
-        setBudgetUploadForm({ region: "", bank_key: "", statement_type: "BANK", notes: "", custom_label: "" });
+        setBudgetUploadForm({ region: "", bank_key: "", statement_type: "BANK", notes: "", custom_label: "", member_id: "" });
         await loadBudget(budgetSelMonth); // already re-fetches statements, categories, and analytics
       } else { setBudgetUploadMsg("⚠ " + data.error); }
     } catch (e) { setBudgetUploadMsg("⚠ " + e.message); }
@@ -151,6 +160,13 @@ export function useBudget(user) {
     await loadBudget(budgetSelMonth);
   }
 
+  async function assignStatementMember(statementId, memberId) {
+    try {
+      await api(`/api/budget/statements/${statementId}/member`, { method: "PATCH", body: JSON.stringify({ member_id: memberId || null }) });
+      setBudgetStatements(p => p.map(s => s.id === statementId ? { ...s, member_id: memberId || null } : s));
+    } catch (e) { console.error(e); }
+  }
+
   async function deleteBudgetStatement(stmt) {
     const ok = await toast.confirm(`Delete "${stmt.source}" statement and all its transactions?`, { confirmLabel: "Delete", danger: true });
     if (!ok) return;
@@ -178,12 +194,14 @@ export function useBudget(user) {
     budgetNewCat,     setBudgetNewCat,
     selectedTxnIds,   setSelectedTxnIds,
     bulkCatTarget,    setBulkCatTarget,
+    budgetBanks,
     // Plaid state
     plaidStatus,  setPlaidStatus,
     plaidLoading, setPlaidLoading,
     plaidMsg,     setPlaidMsg,
     plaidSyncing, setPlaidSyncing,
     // Handlers
+    loadBanks,
     loadBudget,
     loadTxns,
     uploadBudgetStatement,
@@ -193,5 +211,6 @@ export function useBudget(user) {
       saveBudgetCategory,
     deleteBudgetCategory,
     deleteBudgetStatement,
+    assignStatementMember,
   };
 }

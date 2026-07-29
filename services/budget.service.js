@@ -16,29 +16,46 @@ const err = (msg, status, extra = {}) => Object.assign(new Error(msg), { status,
 const stId = () => "bst_" + randomUUID().replace(/-/g, "").slice(0, 16);
 const txId = () => "btx_" + randomUUID().replace(/-/g, "").slice(0, 16);
 
+/**
+ * Scan the full statement text (CSV/XLSX sheet text, including any preamble
+ * rows like account-holder name/address, or extracted PDF text) for a family
+ * member's name. Returns a confident single match, or the list of members
+ * whose name appears (0 or 2+ — ambiguous) so the caller can ask the user.
+ */
+function detectMemberFromText(text, members) {
+  if (!text || !members?.length) return { memberId: null, matches: [] };
+  const lower = text.toLowerCase();
+  const matches = members.filter(m => m.name && m.name.trim().length > 2 && lower.includes(m.name.trim().toLowerCase()));
+  return { memberId: matches.length === 1 ? matches[0].id : null, matches };
+}
+
 /** Parse + persist a bank statement upload. Throws {status,extra} on bad input. */
 export async function uploadStatement(userId, file, body, isProd) {
-  const { source, statement_type, notes, bank_key } = body;
+  const { source, statement_type, notes, bank_key, member_id: memberIdInput } = body;
   const id = stId();
   const ext = file.originalname.split(".").pop().toLowerCase();
   const bankInfo = BANK_REGISTRY[bank_key] || BANK_REGISTRY.auto;
   let region = bankInfo.region;
 
   let rawRows = [];
+  let rawText = ""; // full statement text, used for member auto-detection below
   try {
     if (ext === "csv" || ext === "txt") {
-      const { rows, detectedBank } = parseCSV(file.buffer.toString("utf8"), bank_key);
+      rawText = file.buffer.toString("utf8");
+      const { rows, detectedBank } = parseCSV(rawText, bank_key, statement_type);
       rawRows = rows;
       if (detectedBank && BANK_REGISTRY[detectedBank]) region = BANK_REGISTRY[detectedBank].region;
     } else if (ext === "xlsx") {
-      const { rows, detectedBank } = parseCSV(await xlsxBufferToCSV(file.buffer), bank_key);
+      rawText = await xlsxBufferToCSV(file.buffer);
+      const { rows, detectedBank } = parseCSV(rawText, bank_key, statement_type);
       rawRows = rows;
       if (detectedBank && BANK_REGISTRY[detectedBank]) region = BANK_REGISTRY[detectedBank].region;
     } else if (ext === "xls") {
       throw err("Legacy .xls format is not supported. Please open in Excel and save as .xlsx, then retry.", 400);
     } else if (ext === "pdf") {
-      const { text: rawText } = await extractPDFText(file.buffer);
-      const usRows = parseUSPDF(rawText), inRows = parseIndianPDF(rawText);
+      const { text: pdfText } = await extractPDFText(file.buffer);
+      rawText = pdfText;
+      const usRows = parseUSPDF(pdfText), inRows = parseIndianPDF(pdfText);
       if (region === "US") rawRows = usRows.length ? usRows : inRows;
       else if (region === "IN") rawRows = inRows.length ? inRows : usRows;
       else { rawRows = usRows.length >= inRows.length ? usRows : inRows; region = usRows.length >= inRows.length ? "US" : "IN"; }
@@ -98,18 +115,55 @@ export async function uploadStatement(userId, file, body, isProd) {
   const newTxns     = txns.filter(t => !existingFps.has(t.fingerprint));
   const skippedDups = txns.length - newTxns.length;
 
+  // ── Member assignment: explicit choice wins; otherwise try to auto-detect the
+  // account holder's name from the statement text; otherwise leave unassigned
+  // and tell the caller so the UI can prompt.
+  const { data: portfolioRow } = await supabase.from("portfolio").select("members").eq("user_id", userId).single();
+  const members = portfolioRow?.members || [];
+  let memberId = null, memberAutoDetected = false, memberCandidates = [];
+  if (memberIdInput && members.some(m => m.id === memberIdInput)) {
+    memberId = memberIdInput;
+  } else if (members.length) {
+    const detection = detectMemberFromText(rawText, members);
+    if (detection.memberId) { memberId = detection.memberId; memberAutoDetected = true; }
+    else if (members.length > 1) memberCandidates = (detection.matches.length ? detection.matches : members).map(m => ({ id: m.id, name: m.name }));
+  }
+
   await supabase.from("budget_statements").delete().eq("user_id", userId).lt("upload_date", new Date(Date.now() - 365 * 24 * 3600_000).toISOString());
   const { error: stErr } = await supabase.from("budget_statements").insert({
     user_id: userId, id, source: source || bankInfo.label || "Unknown",
     statement_type: statement_type || "BANK", filename: file.originalname, file_size: file.size,
     period_start: periodStart, period_end: periodEnd, txn_count: newTxns.length, notes: notes || "", region: region || "AUTO",
+    member_id: memberId,
   });
   if (stErr) throw new Error(stErr.message);
   for (let i = 0; i < newTxns.length; i += 100) {
     const { error: txErr } = await supabase.from("budget_transactions").insert(newTxns.slice(i, i + 100));
     if (txErr) console.error("Batch insert error:", txErr.message);
   }
-  return { ok: true, statement_id: id, txn_count: newTxns.length, skipped_duplicates: skippedDups, period_start: periodStart, period_end: periodEnd, region, bank: bank_key || "auto" };
+  return {
+    ok: true, statement_id: id, txn_count: newTxns.length, skipped_duplicates: skippedDups,
+    period_start: periodStart, period_end: periodEnd, region, bank: bank_key || "auto",
+    member_id: memberId, member_auto_detected: memberAutoDetected,
+    needs_member_assignment: !memberId && members.length > 1,
+    member_candidates: memberCandidates,
+  };
+}
+
+/** Assign (or reassign) which family member a statement belongs to. */
+export async function updateStatementMember(userId, id, memberId) {
+  const { data: portfolioRow } = await supabase.from("portfolio").select("members").eq("user_id", userId).single();
+  const members = portfolioRow?.members || [];
+  if (memberId && !members.some(m => m.id === memberId)) throw err("Unknown member_id", 400);
+  const { error } = await supabase.from("budget_statements").update({ member_id: memberId || null }).eq("id", id).eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  return { ok: true };
+}
+
+/** Bank/region registry for the import form's dropdowns — single source of truth
+ *  shared with the parser, so the UI can never offer a bank the parser doesn't know. */
+export function listBanks() {
+  return Object.entries(BANK_REGISTRY).map(([key, v]) => ({ key, ...v }));
 }
 
 export async function listStatements(userId) {

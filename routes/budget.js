@@ -6,6 +6,10 @@ import * as budget from "../services/budget.service.js";
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
+router.get("/banks", auth, async (req, res) => {
+  try { res.json(budget.listBanks()); } catch (e) { sendError(res, e); }
+});
+
 router.post("/upload", auth, upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file" });
   try {
@@ -31,6 +35,9 @@ router.get("/statements", auth, async (req, res) => {
 });
 router.delete("/statements/:id", auth, async (req, res) => {
   try { res.json(await budget.deleteStatement(req.user.id, req.params.id)); } catch (e) { sendError(res, e); }
+});
+router.patch("/statements/:id/member", auth, async (req, res) => {
+  try { res.json(await budget.updateStatementMember(req.user.id, req.params.id, req.body.member_id)); } catch (e) { sendError(res, e); }
 });
 
 router.get("/transactions", auth, async (req, res) => {
