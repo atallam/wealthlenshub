@@ -29,9 +29,14 @@ function detectMemberFromText(text, members) {
   return { memberId: matches.length === 1 ? matches[0].id : null, matches };
 }
 
-/** Parse + persist a bank statement upload. Throws {status,extra} on bad input. */
+/** Parse + persist a bank statement upload. Throws {status,extra} on bad input.
+ *  If body.dry_run === "true", parses and reports diagnostics without writing
+ *  anything to the DB — this is what the "Check this file first" debug tool uses,
+ *  so a future statement that doesn't parse can be diagnosed (wrong header row
+ *  detected, wrong bank, dates not recognized, etc.) without guesswork. */
 export async function uploadStatement(userId, file, body, isProd) {
   const { source, statement_type, notes, bank_key, member_id: memberIdInput } = body;
+  const dryRun = body.dry_run === "true" || body.dry_run === true;
   const id = stId();
   const ext = file.originalname.split(".").pop().toLowerCase();
   const bankInfo = BANK_REGISTRY[bank_key] || BANK_REGISTRY.auto;
@@ -39,16 +44,17 @@ export async function uploadStatement(userId, file, body, isProd) {
 
   let rawRows = [];
   let rawText = ""; // full statement text, used for member auto-detection below
+  let detectedBankKey = null, headerRow = null, headerRowIdx = -1;
   try {
     if (ext === "csv" || ext === "txt") {
       rawText = file.buffer.toString("utf8");
-      const { rows, detectedBank } = parseCSV(rawText, bank_key, statement_type);
-      rawRows = rows;
+      const { rows, detectedBank, headerRow: hr, headerRowIdx: hi } = parseCSV(rawText, bank_key, statement_type);
+      rawRows = rows; detectedBankKey = detectedBank; headerRow = hr; headerRowIdx = hi;
       if (detectedBank && BANK_REGISTRY[detectedBank]) region = BANK_REGISTRY[detectedBank].region;
     } else if (ext === "xlsx") {
       rawText = await xlsxBufferToCSV(file.buffer);
-      const { rows, detectedBank } = parseCSV(rawText, bank_key, statement_type);
-      rawRows = rows;
+      const { rows, detectedBank, headerRow: hr, headerRowIdx: hi } = parseCSV(rawText, bank_key, statement_type);
+      rawRows = rows; detectedBankKey = detectedBank; headerRow = hr; headerRowIdx = hi;
       if (detectedBank && BANK_REGISTRY[detectedBank]) region = BANK_REGISTRY[detectedBank].region;
     } else if (ext === "xls") {
       throw err("Legacy .xls format is not supported. Please open in Excel and save as .xlsx, then retry.", 400);
@@ -68,8 +74,24 @@ export async function uploadStatement(userId, file, body, isProd) {
     throw err(isProd ? "Failed to parse file" : "Parse error: " + e.message, 400);
   }
 
-  if (!rawRows.length && (!bank_key || bank_key === "auto")) throw err("Could not auto-detect bank format. Please select your bank from the dropdown and try again.", 400, { code: "BANK_DETECT_FAILED" });
-  if (!rawRows.length) throw err(`No transactions found (ext=${ext}, bank=${bank_key}, region=${region}).`, 400);
+  // Diagnostics returned by the dry-run debug tool (and attached to real failures
+  // below) — the header row that was matched is the single most useful clue when
+  // a statement doesn't parse, since a wrong header row silently corrupts every
+  // column downstream (this is exactly what broke on Axis's credit-card export).
+  const diag = () => ({
+    detected_bank: detectedBankKey || bank_key || null, region,
+    header_row_index: headerRowIdx, header_row: headerRow,
+    rows_parsed: rawRows.length, sample_raw_rows: rawRows.slice(0, 5),
+  });
+
+  if (!rawRows.length && (!bank_key || bank_key === "auto")) {
+    if (dryRun) return { ok: false, dry_run: true, error: "Could not auto-detect bank format.", ...diag() };
+    throw err("Could not auto-detect bank format. Please select your bank from the dropdown and try again.", 400, { code: "BANK_DETECT_FAILED" });
+  }
+  if (!rawRows.length) {
+    if (dryRun) return { ok: false, dry_run: true, error: "No transactions found.", ...diag() };
+    throw err(`No transactions found (ext=${ext}, bank=${bank_key}, region=${region}).`, 400);
+  }
 
   // Load categories once — avoids N+1 DB query (one per transaction)
   const catList = await loadCategoriesForBulk(userId);
@@ -102,7 +124,26 @@ export async function uploadStatement(userId, file, body, isProd) {
       currency,
     });
   }
-  if (!txns.length) throw err(`Parsed ${rawRows.length} rows but none converted to transactions. Skipped: ${skippedNoDate} bad dates, ${skippedNoAmt} zero amounts, ${skippedNoDesc} empty descriptions. Region: ${region}`, 400, { rawSample: rawRows[0] || null });
+  if (!txns.length) {
+    const extra = { rawSample: rawRows[0] || null, skipped_no_date: skippedNoDate, skipped_no_amt: skippedNoAmt, skipped_no_desc: skippedNoDesc, ...diag() };
+    if (dryRun) return { ok: false, dry_run: true, error: "Parsed rows but none converted to transactions.", ...extra };
+    throw err(`Parsed ${rawRows.length} rows but none converted to transactions. Skipped: ${skippedNoDate} bad dates, ${skippedNoAmt} zero amounts, ${skippedNoDesc} empty descriptions. Region: ${region}`, 400, extra);
+  }
+
+  if (dryRun) {
+    // Report what WOULD happen — including duplicate-detection — without writing anything.
+    const fingerprints = txns.map(t => t.fingerprint);
+    const { data: existing } = await supabase.from("budget_transactions").select("fingerprint").eq("user_id", userId).in("fingerprint", fingerprints);
+    const existingFps = new Set((existing || []).map(r => r.fingerprint));
+    const wouldImport = txns.filter(t => !existingFps.has(t.fingerprint));
+    return {
+      ok: true, dry_run: true, ...diag(),
+      would_import_count: wouldImport.length, would_skip_duplicate_count: txns.length - wouldImport.length,
+      skipped_no_date: skippedNoDate, skipped_no_amt: skippedNoAmt, skipped_no_desc: skippedNoDesc,
+      sample_transactions: wouldImport.slice(0, 8).map(t => ({ date: t.txn_date, amount: t.amount, type: t.txn_type, category: t.category })),
+      period_start: periodStart, period_end: periodEnd,
+    };
+  }
 
   // ── Dedup: skip transactions already imported for this user ──
   const fingerprints = txns.map(t => t.fingerprint);
@@ -246,19 +287,89 @@ export async function deleteCategory(userId, id) {
   return { ok: true };
 }
 
-export async function analytics(userId, month) {
-  const from = month ? `${month}-01` : new Date(Date.now() - 30 * 24 * 3600_000).toISOString().slice(0, 10);
-  const to = month ? `${month}-31` : new Date().toISOString().slice(0, 10);
-  const { data: txns } = await supabase.from("budget_transactions").select("amount, txn_type, category, txn_date").eq("user_id", userId).gte("txn_date", from).lte("txn_date", to);
+export async function analytics(userId, month, { from: rangeFrom, to: rangeTo } = {}) {
+  // Determine date range for KPI totals
+  let qFrom, qTo;
+  if (month) {
+    qFrom = `${month}-01`;
+    qTo   = `${month}-31`;
+  } else if (rangeFrom) {
+    qFrom = rangeFrom;
+    qTo   = rangeTo || new Date().toISOString().slice(0, 10);
+  } else if (rangeFrom === null && rangeTo === null) {
+    // Explicit "all time" — no date filter
+    qFrom = null;
+    qTo   = null;
+  } else {
+    // Legacy default: last 30 days
+    qFrom = new Date(Date.now() - 30 * 24 * 3600_000).toISOString().slice(0, 10);
+    qTo   = new Date().toISOString().slice(0, 10);
+  }
+
+  let kpiQuery = supabase.from("budget_transactions").select("amount, txn_type, category, txn_date").eq("user_id", userId);
+  if (qFrom) kpiQuery = kpiQuery.gte("txn_date", qFrom);
+  if (qTo)   kpiQuery = kpiQuery.lte("txn_date", qTo);
+  const { data: txns } = await kpiQuery;
+
   const byCategory = {}; let totalDebit = 0, totalCredit = 0;
   for (const t of txns || []) {
     if (t.txn_type === "DEBIT") { totalDebit += t.amount; byCategory[t.category] = (byCategory[t.category] || 0) + t.amount; }
     else totalCredit += t.amount;
   }
+
+  // Monthly spending trend (last 6 months, debit only — for existing Budget tab)
   const { data: allTxns } = await supabase.from("budget_transactions").select("amount, txn_type, txn_date").eq("user_id", userId).gte("txn_date", new Date(Date.now() - 180 * 24 * 3600_000).toISOString().slice(0, 10)).eq("txn_type", "DEBIT");
   const monthly = {};
   for (const t of allTxns || []) { const mo = t.txn_date.slice(0, 7); monthly[mo] = (monthly[mo] || 0) + t.amount; }
-  return { byCategory, totalDebit, totalCredit, monthly };
+
+  // Dual cashflow trend (last 12 months, both debit + credit — for Budget 2 chart)
+  const { data: cfTxns } = await supabase.from("budget_transactions").select("amount, txn_type, txn_date").eq("user_id", userId).gte("txn_date", new Date(Date.now() - 365 * 24 * 3600_000).toISOString().slice(0, 10));
+  const cashflow = {}; // { "YYYY-MM": { debit, credit } }
+  for (const t of cfTxns || []) {
+    const mo = t.txn_date.slice(0, 7);
+    if (!cashflow[mo]) cashflow[mo] = { debit: 0, credit: 0 };
+    if (t.txn_type === "DEBIT") cashflow[mo].debit += t.amount;
+    else cashflow[mo].credit += t.amount;
+  }
+
+  return { byCategory, totalDebit, totalCredit, monthly, cashflow };
+}
+
+// ── Goals (Budget 2) ──────────────────────────────────────────────
+
+export async function listGoals(userId) {
+  const { data } = await supabase.from("budget_goals").select("*").eq("user_id", userId).order("created_at", { ascending: true });
+  return data || [];
+}
+
+export async function createGoal(userId, { name, target, saved, due_date, note, color, icon }) {
+  const id = `goal_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const { data, error } = await supabase.from("budget_goals").insert({
+    id, user_id: userId, name: String(name).slice(0, 100),
+    target: Number(target) || 0, saved: Number(saved) || 0,
+    due_date: due_date || null, note: String(note || "").slice(0, 500),
+    color: color || "#c9a84c", icon: icon || "🎯",
+  }).select().single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function updateGoal(userId, id, patch) {
+  const allowed = ["name", "target", "saved", "due_date", "note", "color", "icon"];
+  const safe = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
+  if (safe.name)   safe.name   = String(safe.name).slice(0, 100);
+  if (safe.target) safe.target = Number(safe.target) || 0;
+  if (safe.saved)  safe.saved  = Number(safe.saved)  || 0;
+  safe.updated_at = new Date().toISOString();
+  const { data, error } = await supabase.from("budget_goals").update(safe).eq("id", id).eq("user_id", userId).select().single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function deleteGoal(userId, id) {
+  const { error } = await supabase.from("budget_goals").delete().eq("id", id).eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  return { ok: true };
 }
 
 export async function benchmark(period = "1Y") {

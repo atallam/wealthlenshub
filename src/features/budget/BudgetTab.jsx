@@ -62,6 +62,7 @@ export default function BudgetTab({
   loadBudget: loadBudgetHook,
   loadTxns:   loadTxnsHook,
   uploadBudgetStatement,
+  debugImportCSV,
   assignStatementMember,
 }) {
   const toast = useToast();
@@ -628,6 +629,14 @@ export default function BudgetTab({
             onClick={()=>uploadBudgetStatement(budgetUploadFile, budgetUploadForm)}>
             {budgetUploading?"Importing…":"Upload & Parse"}
           </button>
+          {budgetUploadFile && /\.(csv|xlsx|txt)$/i.test(budgetUploadFile.name) && (
+            <button className="btnc" style={{marginLeft:".5rem",fontSize:".7rem"}}
+              disabled={budgetUploading}
+              onClick={()=>debugImportCSV(budgetUploadFile, budgetUploadForm)}
+              title="Parses the file and shows what would be imported, without saving anything — use this if a statement fails to import.">
+              🔍 Check This File First
+            </button>
+          )}
           {budgetUploadFile && budgetUploadFile.name.endsWith(".pdf") && (
             <button className="btnc" style={{marginLeft:".5rem",fontSize:".7rem"}}
               onClick={async()=>{

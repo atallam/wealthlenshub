@@ -102,6 +102,43 @@ export function useBudget(user) {
     setBudgetUploading(false);
   }
 
+  // Dry-run diagnostic for CSV/XLSX statements — parses (using the same code path
+  // as a real upload) but writes nothing, and reports exactly which row was read
+  // as the column header, which bank/columns matched, and a sample of the parsed
+  // rows. This is the self-serve tool for "why won't this statement import" —
+  // point it at any future bank's export without needing to hand-inspect the file.
+  async function debugImportCSV(file, uploadForm) {
+    if (!file) return;
+    setBudgetUploadMsg("Checking file...");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("bank_key", uploadForm.bank_key || (uploadForm.region === "AUTO" ? "auto" : ""));
+      fd.append("statement_type", uploadForm.statement_type);
+      fd.append("dry_run", "true");
+      const data = await api("/api/budget/upload", { method: "POST", body: fd });
+      const headerPreview = data.header_row ? data.header_row.filter(Boolean).join(" | ") : "(no header row detected)";
+      let msg = `🔍 Bank matched: ${data.detected_bank || "none"} · Region: ${data.region || "?"}\n` +
+        `Header row used (row ${data.header_row_index ?? "?"}): ${headerPreview}\n` +
+        `Rows parsed: ${data.rows_parsed ?? 0}\n`;
+      if (data.ok) {
+        msg = `✓ Would import ${data.would_import_count} transaction${data.would_import_count === 1 ? "" : "s"}` +
+          (data.would_skip_duplicate_count ? ` (${data.would_skip_duplicate_count} already imported)` : "") +
+          ` — nothing was saved, this is a preview.\n` + msg;
+        if (data.sample_transactions?.length) {
+          msg += `Sample: ` + data.sample_transactions.slice(0, 3).map(t => `${t.date} ${t.type} ₹${t.amount} (${t.category})`).join(" · ") + "\n";
+        }
+      } else {
+        msg = `⚠ ${data.error}\n` + msg +
+          `Skipped: ${data.skipped_no_date || 0} bad dates, ${data.skipped_no_amt || 0} zero amounts, ${data.skipped_no_desc || 0} empty descriptions\n`;
+      }
+      if (data.sample_raw_rows?.length) {
+        msg += `First parsed row: ${JSON.stringify(data.sample_raw_rows[0])}`;
+      }
+      setBudgetUploadMsg(msg);
+    } catch (e) { setBudgetUploadMsg("⚠ Debug: " + e.message); }
+  }
+
   async function debugImportPDF(file) {
     setBudgetUploadMsg("Analyzing + importing PDF...");
     try {
@@ -205,6 +242,7 @@ export function useBudget(user) {
     loadBudget,
     loadTxns,
     uploadBudgetStatement,
+    debugImportCSV,
     debugImportPDF,
     bulkCategorize,
     categorizeTxn,
