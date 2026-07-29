@@ -72,10 +72,30 @@ router.delete("/categories/:id", auth, async (req, res) => {
 });
 
 router.get("/analytics", auth, async (req, res) => {
-  try { res.json(await budget.analytics(req.user.id, req.query.month)); } catch (e) { sendError(res, e); }
+  const { month, from, to } = req.query;
+  // "alltime" sentinel → explicit null range (no date filter)
+  const rangeFrom = from === "alltime" ? null : (from || undefined);
+  const rangeTo   = from === "alltime" ? null : (to   || undefined);
+  try { res.json(await budget.analytics(req.user.id, month, { from: rangeFrom, to: rangeTo })); } catch (e) { sendError(res, e); }
 });
 router.get("/benchmark", auth, async (req, res) => {
   try { res.json(await budget.benchmark(req.query.period)); } catch (e) { sendError(res, e); }
+});
+
+// ── Goals (Budget 2) ─────────────────────────────────────────────
+router.get("/goals", auth, async (req, res) => {
+  try { res.json(await budget.listGoals(req.user.id)); } catch (e) { sendError(res, e); }
+});
+router.post("/goals", auth, async (req, res) => {
+  const { name, target } = req.body;
+  if (!name || !target) return res.status(400).json({ error: "name and target required" });
+  try { res.json(await budget.createGoal(req.user.id, req.body)); } catch (e) { sendError(res, e); }
+});
+router.put("/goals/:id", auth, async (req, res) => {
+  try { res.json(await budget.updateGoal(req.user.id, req.params.id, req.body)); } catch (e) { sendError(res, e); }
+});
+router.delete("/goals/:id", auth, async (req, res) => {
+  try { res.json(await budget.deleteGoal(req.user.id, req.params.id)); } catch (e) { sendError(res, e); }
 });
 
 export default router;

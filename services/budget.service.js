@@ -218,7 +218,7 @@ export async function deleteStatement(userId, id) {
 }
 
 export async function listTransactions(userId, query) {
-  const { statement_id, category, month, search } = query;
+  const { statement_id, category, month, search, from, limit } = query;
   let q = supabase.from("budget_transactions").select("*").eq("user_id", userId).order("txn_date", { ascending: false });
   if (statement_id) q = q.eq("statement_id", statement_id);
   if (category && category !== "All") q = q.eq("category", category);
@@ -226,10 +226,13 @@ export async function listTransactions(userId, query) {
     const [y, m] = month.split("-").map(Number);
     const lastDay = new Date(y, m, 0).getDate(); // correct last day for any month
     q = q.gte("txn_date", `${month}-01`).lte("txn_date", `${month}-${String(lastDay).padStart(2, "0")}`);
+  } else if (from) {
+    q = q.gte("txn_date", from);
   }
   // search_text is a plaintext index column; supports ilike without decrypting description
   if (search) q = q.ilike("search_text", `%${search.toLowerCase()}%`);
-  q = q.limit(500);
+  const maxRows = Math.min(Number(limit) || 500, 2000);
+  q = q.limit(maxRows);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   return (data || []).map((t) => ({ ...t, description: decrypt(t.description), balance: t.balance ? decrypt(t.balance) : null }));

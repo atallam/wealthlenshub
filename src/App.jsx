@@ -3,7 +3,7 @@ import {
   LayoutDashboard, BarChart2, Target, Compass,
   Users, Wallet, CalendarDays, MessageSquare,
   RefreshCw, Settings, LogOut, Eye, X, MoreHorizontal,
-  AlertTriangle, Download, Receipt, Bookmark, Activity,
+  AlertTriangle, Download, Receipt, Bookmark, Activity, PieChart,
 } from 'lucide-react';
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
 import { api } from './lib/api.js';
@@ -27,6 +27,7 @@ import './styles.css';
 // ── Hooks ────────────────────────────────────────────────────────
 import { usePortfolio } from './hooks/usePortfolio.js';
 import { useBudget } from './hooks/useBudget.js';
+import { useBudget2 } from './hooks/useBudget2.js';
 import { useImport } from './hooks/useImport.js';
 import { useCASImport } from './hooks/useCASImport.js';
 import { useAI } from './hooks/useAI.js';
@@ -41,6 +42,7 @@ import GoalsTab from './features/goals/GoalsTab.jsx';
 import StrategyTab from './features/strategy/StrategyTab.jsx';
 import MembersTab from './features/members/MembersTab.jsx';
 import BudgetTab from './features/budget/BudgetTab.jsx';
+import Budget2Tab from './features/budget/Budget2Tab.jsx';
 import CalendarTab from './features/calendar/CalendarTab.jsx';
 import AdvisorTab from './features/advisor/AdvisorTab.jsx';
 import TaxTab from './features/tax/TaxTab.jsx';
@@ -86,6 +88,7 @@ const TABS = [
   { key: 'strategy',  label: 'Strategy',  Icon: Compass },
   { key: 'members',   label: 'Family',    Icon: Users },
   { key: 'budget',    label: 'Budget',    Icon: Wallet },
+  { key: 'budget2',   label: 'Budget 2',  Icon: PieChart },
   { key: 'calendar',  label: 'Calendar',  Icon: CalendarDays },
   // { key: 'tax',       label: 'Tax',       Icon: Receipt },       // hidden — not actively used
   // { key: 'watchlist', label: 'Watchlist', Icon: Bookmark },      // hidden — not actively used
@@ -170,6 +173,7 @@ export default function App() {
   // ── Hooks ─────────────────────────────────────────────────────
   const portfolio  = usePortfolio(user);
   const budget     = useBudget(user);
+  const budget2    = useBudget2(user);
   const importHook = useImport(user, () => portfolio.reloadHoldings());
   const casImport  = useCASImport(user, () => portfolio.reloadHoldings());
   const ai         = useAI();
@@ -758,6 +762,16 @@ ${alertsText}`;
               allMembers={allMembers}
               fmtCr={fmtCr} fmtPct={fmtPct}
               api={api} FG={FG} MA={MA} Overlay={Overlay}
+            />
+          </ErrorBoundary>
+        )}
+
+        {loaded && tab === 'budget2' && (
+          <ErrorBoundary tab="Budget 2">
+            <Budget2Tab
+              {...budget2}
+              api={api}
+              Overlay={Overlay}
             />
           </ErrorBoundary>
         )}
