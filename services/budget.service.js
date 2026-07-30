@@ -15,18 +15,73 @@ import { yahooFetch } from "../lib/prices.js";
 const err = (msg, status, extra = {}) => Object.assign(new Error(msg), { status, extra });
 const stId = () => "bst_" + randomUUID().replace(/-/g, "").slice(0, 16);
 const txId = () => "btx_" + randomUUID().replace(/-/g, "").slice(0, 16);
+const aliasId = () => "baa_" + randomUUID().replace(/-/g, "").slice(0, 16);
+
+/** True if `name` appears in `lower` at least once WITHOUT being immediately
+ *  preceded by a "C/O"/"Care Of" address marker. A name that only shows up as
+ *  "C O <name>" in a mailing address (e.g. "KOLISETTY PRIYANKA C O TALLAM
+ *  AVINASH") is someone else's statement being routed via that person, not
+ *  proof they're the account holder — counting it as a match would silently
+ *  mis-assign the statement. */
+export function nameAppearsAsHolder(lower, name) {
+  let idx = -1;
+  while ((idx = lower.indexOf(name, idx + 1)) !== -1) {
+    const before = lower.slice(Math.max(0, idx - 15), idx);
+    if (!/\bc\s*\/?\s*o\s*$|care\s+of\s*$/i.test(before)) return true;
+  }
+  return false;
+}
 
 /**
  * Scan the full statement text (CSV/XLSX sheet text, including any preamble
  * rows like account-holder name/address, or extracted PDF text) for a family
  * member's name. Returns a confident single match, or the list of members
  * whose name appears (0 or 2+ — ambiguous) so the caller can ask the user.
+ * This is a fallback signal only — lookupAccountAlias (last-4-digits →
+ * member) is tried first and is far more reliable once it's been confirmed
+ * once for a given card/account.
  */
-function detectMemberFromText(text, members) {
+export function detectMemberFromText(text, members) {
   if (!text || !members?.length) return { memberId: null, matches: [] };
   const lower = text.toLowerCase();
-  const matches = members.filter(m => m.name && m.name.trim().length > 2 && lower.includes(m.name.trim().toLowerCase()));
+  const matches = members.filter(m => m.name && m.name.trim().length > 2 && nameAppearsAsHolder(lower, m.name.trim().toLowerCase()));
   return { memberId: matches.length === 1 ? matches[0].id : null, matches };
+}
+
+/** Pull the last 4 digits of a masked card/account number out of statement
+ *  text, e.g. "5305XXXXXXXX4371" → "4371", "A/c No. XXXXXXXX1234" → "1234",
+ *  "...ending in 4371" → "4371". Returns null if nothing recognizable is found
+ *  (very common for plain bank-account exports with no card number at all). */
+export function extractLast4(text) {
+  if (!text) return null;
+  const masked = text.match(/[Xx*]{4,}\s*(\d{4})\b/);
+  if (masked) return masked[1];
+  const ending = text.match(/ending\s*(?:in|with)?\s*[:\-]?\s*(\d{4})\b/i);
+  if (ending) return ending[1];
+  return null;
+}
+
+/** Look up a previously-confirmed card/account → member mapping. */
+async function lookupAccountAlias(userId, bankKey, last4) {
+  if (!last4) return null;
+  const { data } = await supabase.from("budget_account_aliases").select("member_id")
+    .eq("user_id", userId).eq("bank_key", bankKey || "").eq("last4", last4).maybeSingle();
+  return data?.member_id || null;
+}
+
+/** Save (or refresh) a card/account → member mapping so future imports from
+ *  the same card/account auto-assign without needing to re-detect anything. */
+async function saveAccountAlias(userId, bankKey, last4, memberId) {
+  if (!last4 || !memberId) return;
+  const { data: existing } = await supabase.from("budget_account_aliases").select("id,member_id")
+    .eq("user_id", userId).eq("bank_key", bankKey || "").eq("last4", last4).maybeSingle();
+  if (existing) {
+    if (existing.member_id !== memberId) {
+      await supabase.from("budget_account_aliases").update({ member_id: memberId, updated_at: new Date().toISOString() }).eq("id", existing.id);
+    }
+    return;
+  }
+  await supabase.from("budget_account_aliases").insert({ id: aliasId(), user_id: userId, bank_key: bankKey || "", last4, member_id: memberId });
 }
 
 /** Parse + persist a bank statement upload. Throws {status,extra} on bad input.
@@ -35,7 +90,7 @@ function detectMemberFromText(text, members) {
  *  so a future statement that doesn't parse can be diagnosed (wrong header row
  *  detected, wrong bank, dates not recognized, etc.) without guesswork. */
 export async function uploadStatement(userId, file, body, isProd) {
-  const { source, statement_type, notes, bank_key, member_id: memberIdInput } = body;
+  const { source, statement_type, notes, bank_key, member_id: memberIdInput, pdf_password: pdfPassword } = body;
   const dryRun = body.dry_run === "true" || body.dry_run === true;
   const id = stId();
   const ext = file.originalname.split(".").pop().toLowerCase();
@@ -59,7 +114,7 @@ export async function uploadStatement(userId, file, body, isProd) {
     } else if (ext === "xls") {
       throw err("Legacy .xls format is not supported. Please open in Excel and save as .xlsx, then retry.", 400);
     } else if (ext === "pdf") {
-      const { text: pdfText } = await extractPDFText(file.buffer);
+      const { text: pdfText } = await extractPDFText(file.buffer, pdfPassword);
       rawText = pdfText;
       const usRows = parseUSPDF(pdfText), inRows = parseIndianPDF(pdfText);
       if (region === "US") rawRows = usRows.length ? usRows : inRows;
@@ -70,6 +125,7 @@ export async function uploadStatement(userId, file, body, isProd) {
       throw err("Unsupported format. Use CSV, XLSX, or PDF.", 400);
     }
   } catch (e) {
+    if (e.code === "PDF_PASSWORD_REQUIRED") throw err(e.message, 400, { code: "PDF_PASSWORD_REQUIRED", incorrect: !!e.incorrect });
     if (e.status) throw e;
     throw err(isProd ? "Failed to parse file" : "Parse error: " + e.message, 400);
   }
@@ -156,26 +212,40 @@ export async function uploadStatement(userId, file, body, isProd) {
   const newTxns     = txns.filter(t => !existingFps.has(t.fingerprint));
   const skippedDups = txns.length - newTxns.length;
 
-  // ── Member assignment: explicit choice wins; otherwise try to auto-detect the
-  // account holder's name from the statement text; otherwise leave unassigned
-  // and tell the caller so the UI can prompt.
+  // ── Member assignment ──
+  // Priority: (1) explicit choice from the user always wins, (2) a previously-
+  // confirmed card/account fingerprint (last 4 digits) — far more reliable than
+  // text matching since it can't be fooled by a "C/O" address line or a joint
+  // holder's name, (3) name-substring matching over the statement text as a
+  // last resort. Whichever way we land on a member, if this statement has a
+  // last-4-digits we can extract and don't already have on file for them, save
+  // it — so the NEXT statement from this same card/account auto-assigns via
+  // (2) without needing (3) again.
   const { data: portfolioRow } = await supabase.from("portfolio").select("members").eq("user_id", userId).single();
   const members = portfolioRow?.members || [];
+  const last4 = extractLast4(rawText);
+  const effectiveBankKey = detectedBankKey || bank_key || "";
   let memberId = null, memberAutoDetected = false, memberCandidates = [];
   if (memberIdInput && members.some(m => m.id === memberIdInput)) {
     memberId = memberIdInput;
   } else if (members.length) {
-    const detection = detectMemberFromText(rawText, members);
-    if (detection.memberId) { memberId = detection.memberId; memberAutoDetected = true; }
-    else if (members.length > 1) memberCandidates = (detection.matches.length ? detection.matches : members).map(m => ({ id: m.id, name: m.name }));
+    const aliasMemberId = await lookupAccountAlias(userId, effectiveBankKey, last4);
+    if (aliasMemberId && members.some(m => m.id === aliasMemberId)) {
+      memberId = aliasMemberId; memberAutoDetected = true;
+    } else {
+      const detection = detectMemberFromText(rawText, members);
+      if (detection.memberId) { memberId = detection.memberId; memberAutoDetected = true; }
+      else if (members.length > 1) memberCandidates = (detection.matches.length ? detection.matches : members).map(m => ({ id: m.id, name: m.name }));
+    }
   }
+  if (memberId && last4 && !dryRun) await saveAccountAlias(userId, effectiveBankKey, last4, memberId);
 
   await supabase.from("budget_statements").delete().eq("user_id", userId).lt("upload_date", new Date(Date.now() - 365 * 24 * 3600_000).toISOString());
   const { error: stErr } = await supabase.from("budget_statements").insert({
     user_id: userId, id, source: source || bankInfo.label || "Unknown",
     statement_type: statement_type || "BANK", filename: file.originalname, file_size: file.size,
     period_start: periodStart, period_end: periodEnd, txn_count: newTxns.length, notes: notes || "", region: region || "AUTO",
-    member_id: memberId,
+    member_id: memberId, account_last4: last4 || null, bank_key: effectiveBankKey || null,
   });
   if (stErr) throw new Error(stErr.message);
   for (let i = 0; i < newTxns.length; i += 100) {
@@ -191,13 +261,20 @@ export async function uploadStatement(userId, file, body, isProd) {
   };
 }
 
-/** Assign (or reassign) which family member a statement belongs to. */
+/** Assign (or reassign) which family member a statement belongs to. Manually
+ *  fixing an unassigned/misassigned statement is exactly the "confirm once"
+ *  moment budget_account_aliases exists for — if this statement has a card/
+ *  account last-4 on file, seed (or correct) the alias so future imports from
+ *  the same card/account auto-assign without needing to be fixed again. */
 export async function updateStatementMember(userId, id, memberId) {
   const { data: portfolioRow } = await supabase.from("portfolio").select("members").eq("user_id", userId).single();
   const members = portfolioRow?.members || [];
   if (memberId && !members.some(m => m.id === memberId)) throw err("Unknown member_id", 400);
-  const { error } = await supabase.from("budget_statements").update({ member_id: memberId || null }).eq("id", id).eq("user_id", userId);
+  const { data: stmt, error } = await supabase.from("budget_statements")
+    .update({ member_id: memberId || null }).eq("id", id).eq("user_id", userId)
+    .select("bank_key, account_last4").single();
   if (error) throw new Error(error.message);
+  if (memberId && stmt?.account_last4) await saveAccountAlias(userId, stmt.bank_key || "", stmt.account_last4, memberId);
   return { ok: true };
 }
 

@@ -14,6 +14,7 @@ is idempotent (`IF NOT EXISTS` / `DO $$` guards) so re-running is safe.
 | — | `../security_migration.sql` | Enables RLS on all user-data tables. |
 | **0009** | `0009_reconcile_artifacts_and_security.sql` | **Reconciles schema drift:** adds/backfills `artifacts.user_id`, aligns RLS. Run after all of the above. |
 | **0010** | `0010_budget_member_assignment.sql` | Adds `budget_statements.member_id` so a statement can be attributed to a family member. Run after 0009. |
+| **0011** | `0011_budget_account_aliases.sql` | Adds `budget_account_aliases` (card/account last-4 → member), so imports from the same card/account auto-assign after the first confirmation. Run after 0010. |
 
 ## Important: RLS vs. the service key
 

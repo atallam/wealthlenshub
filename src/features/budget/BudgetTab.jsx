@@ -33,6 +33,10 @@ export default function BudgetTab({
   setBudgetUploadFile,
   budgetUploadMsg,
   setBudgetUploadMsg,
+  budgetPdfPasswordNeeded,
+  setBudgetPdfPasswordNeeded,
+  budgetPdfPassword,
+  setBudgetPdfPassword,
   budgetEditCat,
   setBudgetEditCat,
   budgetNewCat,
@@ -62,7 +66,7 @@ export default function BudgetTab({
   loadBudget: loadBudgetHook,
   loadTxns:   loadTxnsHook,
   uploadBudgetStatement,
-  debugImportCSV,
+  debugImportFile,
   assignStatementMember,
 }) {
   const toast = useToast();
@@ -621,52 +625,42 @@ export default function BudgetTab({
           </div>
           <FG label="CSV, XLSX, or PDF">
             <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="fi"
-              onChange={e=>{setBudgetUploadFile(e.target.files[0]); setBudgetUploadMsg("");}}
+              onChange={e=>{
+                setBudgetUploadFile(e.target.files[0]);
+                setBudgetUploadMsg("");
+                setBudgetPdfPasswordNeeded(false);
+                setBudgetPdfPassword("");
+              }}
               style={{paddingTop:".4rem",color:"var(--text)"}}/>
           </FG>
 
-          {/* Diagnostic tools — deliberately de-emphasized (small, muted, no "btns"
-              class) so they read as "having trouble?" utilities, not alternatives
-              to the primary Upload action below. */}
-          {budgetUploadFile && (/\.(csv|xlsx|txt)$/i.test(budgetUploadFile.name) || budgetUploadFile.name.endsWith(".pdf")) && (
+          {/* Most Indian bank/card PDF statements are encrypted (DOB/PAN/mobile
+              as password) — this field only appears once the server tells us a
+              password is actually needed, so it doesn't clutter the common
+              CSV/XLSX/unencrypted-PDF case. */}
+          {budgetPdfPasswordNeeded && (
+            <FG label="PDF Password">
+              <input type="password" className="fi" placeholder="e.g. your DOB as DDMMYYYY, or PAN"
+                value={budgetPdfPassword}
+                onChange={e=>setBudgetPdfPassword(e.target.value)}
+                autoFocus/>
+            </FG>
+          )}
+
+          {/* Diagnostic tool — deliberately de-emphasized (small, muted text link,
+              not a "btns" button) so it reads as a "having trouble?" utility, not
+              an alternative to the primary Upload action below. Runs the exact
+              same parsing path as a real upload (including PDF password), just
+              without saving anything. */}
+          {budgetUploadFile && (/\.(csv|xlsx|txt|pdf)$/i.test(budgetUploadFile.name)) && (
             <div style={{display:"flex",alignItems:"center",gap:".6rem",marginTop:"-.3rem",marginBottom:"1rem",flexWrap:"wrap"}}>
               <span style={{fontSize:".68rem",color:"var(--text-muted)"}}>Statement not importing correctly?</span>
-              {/\.(csv|xlsx|txt)$/i.test(budgetUploadFile.name) && (
-                <button style={{fontSize:".7rem",background:"none",border:"none",color:"#5a9ce0",cursor:"pointer",padding:0,textDecoration:"underline dotted"}}
-                  disabled={budgetUploading}
-                  onClick={()=>debugImportCSV(budgetUploadFile, budgetUploadForm)}
-                  title="Parses the file and shows what would be imported, without saving anything.">
-                  🔍 Check this file first
-                </button>
-              )}
-              {budgetUploadFile.name.endsWith(".pdf") && (
-                <button style={{fontSize:".7rem",background:"none",border:"none",color:"#5a9ce0",cursor:"pointer",padding:0,textDecoration:"underline dotted"}}
-                  disabled={budgetUploading}
-                  onClick={async()=>{
-                    setBudgetUploadMsg("Analyzing + importing PDF...");
-                    try{
-                      const fd=new FormData();
-                      fd.append("file",budgetUploadFile);
-                      fd.append("import","true");
-                      const data=await api("/api/budget/debug-pdf",{method:"POST",body:fd});
-                      let msg = `📄 ${data.pages} pages, ${data.totalLines} lines, ${data.totalChars} chars\n` +
-                        `US parser: ${data.usRowsParsed} rows | IN parser: ${data.inRowsParsed} rows\n`;
-                      if (data.imported > 0) {
-                        msg = `✓ Imported ${data.imported} transactions via debug endpoint\n` + msg;
-                        await loadBudget();
-                        setBudgetStatements(await api("/api/budget/statements") || []);
-                      } else {
-                        msg += `Import: ${data.imported} (${data.importError || "no rows to import"})\n`;
-                      }
-                      msg += `Sections: ${data.sectionHeaders?.join(" | ") || "none"}\n` +
-                        `Date lines: ${data.dateLines?.slice(0,5).join(" | ") || "none"}\n` +
-                        `--- First 15 lines ---\n${data.first80Lines?.slice(0,15).join("\n")}`;
-                      setBudgetUploadMsg(msg);
-                    }catch(e){setBudgetUploadMsg("⚠ Debug: "+e.message);}
-                  }}>
-                  🔍 Debug + import via PDF parser
-                </button>
-              )}
+              <button style={{fontSize:".7rem",background:"none",border:"none",color:"#5a9ce0",cursor:"pointer",padding:0,textDecoration:"underline dotted"}}
+                disabled={budgetUploading}
+                onClick={()=>debugImportFile(budgetUploadFile, budgetUploadForm, budgetPdfPassword)}
+                title="Parses the file and shows what would be imported, without saving anything.">
+                🔍 Check this file first
+              </button>
             </div>
           )}
 
@@ -682,9 +676,10 @@ export default function BudgetTab({
           )}
 
           {/* ── Primary action — alone, unambiguous ── */}
-          <button className="btns" disabled={!budgetUploadFile||!budgetUploadForm.region||budgetUploading}
-            onClick={()=>uploadBudgetStatement(budgetUploadFile, budgetUploadForm)}>
-            {budgetUploading?"Importing…":"Upload & Parse"}
+          <button className="btns"
+            disabled={!budgetUploadFile||!budgetUploadForm.region||budgetUploading||(budgetPdfPasswordNeeded&&!budgetPdfPassword)}
+            onClick={()=>uploadBudgetStatement(budgetUploadFile, budgetUploadForm, budgetPdfPassword)}>
+            {budgetUploading?"Importing…":budgetPdfPasswordNeeded?"Unlock & Upload":"Upload & Parse"}
           </button>
         </div>
 

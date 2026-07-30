@@ -8,7 +8,13 @@ async function api(path, opts = {}) {
   const isForm = opts.body instanceof FormData;
   const headers = { Authorization: `Bearer ${token}`, ...(isForm ? {} : { "Content-Type": "application/json" }), ...(opts.headers || {}) };
   const res = await fetch(path, { ...opts, headers });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.statusText); }
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    // Attach any extra fields (code, incorrect, header_row, etc.) onto the thrown
+    // Error so callers can branch on them (e.g. PDF_PASSWORD_REQUIRED) instead of
+    // just showing the message — a plain `new Error(e.error)` used to drop these.
+    throw Object.assign(new Error(e.error || res.statusText), e);
+  }
   return res.json();
 }
 
@@ -32,6 +38,8 @@ export function useBudget(user) {
   const [budgetBanks,       setBudgetBanks]       = useState([]); // [{key,region,label}] — drives the Bank dropdown; sourced from BANK_REGISTRY on the server
   const [budgetUploadFile,  setBudgetUploadFile]  = useState(null);
   const [budgetUploadMsg,   setBudgetUploadMsg]   = useState("");
+  const [budgetPdfPasswordNeeded, setBudgetPdfPasswordNeeded] = useState(false); // true once the server reports the PDF is encrypted
+  const [budgetPdfPassword,       setBudgetPdfPassword]       = useState("");
   const [budgetEditCat,     setBudgetEditCat]     = useState(null);
   const [budgetNewCat,      setBudgetNewCat]      = useState({ name: "", color: "#c9a84c", icon: "📁", monthly_limit: 0, keywords: "" });
   const [selectedTxnIds,    setSelectedTxnIds]    = useState(new Set());
@@ -74,7 +82,7 @@ export function useBudget(user) {
   }
 
   // ── Upload handler ── Lines 4280–4355 (inline in JSX in App.jsx)
-  async function uploadBudgetStatement(file, uploadForm) {
+  async function uploadBudgetStatement(file, uploadForm, pdfPassword) {
     if (!file || !uploadForm.region) return;
     const bankKey = uploadForm.bank_key || (uploadForm.region === "AUTO" ? "auto" : "");
     if (!bankKey) { setBudgetUploadMsg("⚠ Please select a bank"); return; }
@@ -87,6 +95,7 @@ export function useBudget(user) {
       fd.append("statement_type", uploadForm.statement_type);
       fd.append("notes", uploadForm.notes || "");
       if (uploadForm.member_id) fd.append("member_id", uploadForm.member_id); // omitted = let the server auto-detect
+      if (pdfPassword) fd.append("pdf_password", pdfPassword);
       const data = await api("/api/budget/upload", { method: "POST", body: fd });
       if (data.ok) {
         const dupNote = data.skipped_duplicates > 0 ? ` · ${data.skipped_duplicates} duplicate${data.skipped_duplicates > 1 ? "s" : ""} skipped` : "";
@@ -96,18 +105,29 @@ export function useBudget(user) {
         setBudgetUploadMsg(`✓ Imported ${data.txn_count} transactions (${data.period_start} to ${data.period_end})${dupNote}${memberNote}`);
         setBudgetUploadFile(null);
         setBudgetUploadForm({ region: "", bank_key: "", statement_type: "BANK", notes: "", custom_label: "", member_id: "" });
+        setBudgetPdfPasswordNeeded(false); setBudgetPdfPassword("");
         await loadBudget(budgetSelMonth); // already re-fetches statements, categories, and analytics
       } else { setBudgetUploadMsg("⚠ " + data.error); }
-    } catch (e) { setBudgetUploadMsg("⚠ " + e.message); }
+    } catch (e) {
+      if (e.code === "PDF_PASSWORD_REQUIRED") {
+        setBudgetPdfPasswordNeeded(true);
+        setBudgetUploadMsg(e.incorrect ? "⚠ Incorrect password — try again." : "🔒 This PDF is password-protected. Enter the password below and try again.");
+      } else {
+        setBudgetUploadMsg("⚠ " + e.message);
+      }
+    }
     setBudgetUploading(false);
   }
 
-  // Dry-run diagnostic for CSV/XLSX statements — parses (using the same code path
-  // as a real upload) but writes nothing, and reports exactly which row was read
-  // as the column header, which bank/columns matched, and a sample of the parsed
-  // rows. This is the self-serve tool for "why won't this statement import" —
-  // point it at any future bank's export without needing to hand-inspect the file.
-  async function debugImportCSV(file, uploadForm) {
+  // Dry-run diagnostic for CSV/XLSX/PDF statements — parses (using the exact same
+  // code path as a real upload, including PDF password handling) but writes
+  // nothing, and reports which row was read as the column header, which bank/
+  // columns matched, and a sample of the parsed rows. This is the self-serve tool
+  // for "why won't this statement import" — point it at any bank's export without
+  // needing to hand-inspect the file. Replaces the old PDF-only debug endpoint,
+  // which duplicated this logic and didn't share the same parsing path (so it
+  // could pass/fail differently than a real import for the same file).
+  async function debugImportFile(file, uploadForm, pdfPassword) {
     if (!file) return;
     setBudgetUploadMsg("Checking file...");
     try {
@@ -116,8 +136,9 @@ export function useBudget(user) {
       fd.append("bank_key", uploadForm.bank_key || (uploadForm.region === "AUTO" ? "auto" : ""));
       fd.append("statement_type", uploadForm.statement_type);
       fd.append("dry_run", "true");
+      if (pdfPassword) fd.append("pdf_password", pdfPassword);
       const data = await api("/api/budget/upload", { method: "POST", body: fd });
-      const headerPreview = data.header_row ? data.header_row.filter(Boolean).join(" | ") : "(no header row detected)";
+      const headerPreview = data.header_row ? data.header_row.filter(Boolean).join(" | ") : "(no header row detected — or not applicable to PDFs)";
       let msg = `🔍 Bank matched: ${data.detected_bank || "none"} · Region: ${data.region || "?"}\n` +
         `Header row used (row ${data.header_row_index ?? "?"}): ${headerPreview}\n` +
         `Rows parsed: ${data.rows_parsed ?? 0}\n`;
@@ -136,29 +157,14 @@ export function useBudget(user) {
         msg += `First parsed row: ${JSON.stringify(data.sample_raw_rows[0])}`;
       }
       setBudgetUploadMsg(msg);
-    } catch (e) { setBudgetUploadMsg("⚠ Debug: " + e.message); }
-  }
-
-  async function debugImportPDF(file) {
-    setBudgetUploadMsg("Analyzing + importing PDF...");
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("import", "true");
-      const data = await api("/api/budget/debug-pdf", { method: "POST", body: fd });
-      let msg = `📄 ${data.pages} pages, ${data.totalLines} lines, ${data.totalChars} chars\n` +
-        `US parser: ${data.usRowsParsed} rows | IN parser: ${data.inRowsParsed} rows\n`;
-      if (data.imported > 0) {
-        msg = `✓ Imported ${data.imported} transactions via debug endpoint\n` + msg;
-        await loadBudget(budgetSelMonth); // already re-fetches statements
+    } catch (e) {
+      if (e.code === "PDF_PASSWORD_REQUIRED") {
+        setBudgetPdfPasswordNeeded(true);
+        setBudgetUploadMsg(e.incorrect ? "⚠ Incorrect password — try again." : "🔒 This PDF is password-protected. Enter the password below and try again.");
       } else {
-        msg += `Import: ${data.imported} (${data.importError || "no rows to import"})\n`;
+        setBudgetUploadMsg("⚠ Debug: " + e.message);
       }
-      msg += `Sections: ${data.sectionHeaders?.join(" | ") || "none"}\n` +
-        `Date lines: ${data.dateLines?.slice(0, 5).join(" | ") || "none"}\n` +
-        `--- First 15 lines ---\n${data.first80Lines?.slice(0, 15).join("\n")}`;
-      setBudgetUploadMsg(msg);
-    } catch (e) { setBudgetUploadMsg("⚠ Debug: " + e.message); }
+    }
   }
 
   // ── Bulk categorize ── Lines 4068–4073 (inline in JSX)
@@ -227,6 +233,8 @@ export function useBudget(user) {
     budgetUploadForm, setBudgetUploadForm,
     budgetUploadFile, setBudgetUploadFile,
     budgetUploadMsg,  setBudgetUploadMsg,
+    budgetPdfPasswordNeeded, setBudgetPdfPasswordNeeded,
+    budgetPdfPassword,       setBudgetPdfPassword,
     budgetEditCat,    setBudgetEditCat,
     budgetNewCat,     setBudgetNewCat,
     selectedTxnIds,   setSelectedTxnIds,
@@ -242,8 +250,7 @@ export function useBudget(user) {
     loadBudget,
     loadTxns,
     uploadBudgetStatement,
-    debugImportCSV,
-    debugImportPDF,
+    debugImportFile,
     bulkCategorize,
     categorizeTxn,
       saveBudgetCategory,
