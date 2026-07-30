@@ -490,6 +490,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
   color: var(--text-dim);
   font-family: var(--font-ui);
   transition: all .18s;
+  /* .fchip is also used on <button> elements (for keyboard/a11y) — reset UA button defaults */
+  appearance: none;
+  line-height: normal;
 }
 .fchip.act {
   background: var(--primary);
@@ -897,6 +900,29 @@ a.btn-o { text-decoration: none; }
 }
 
 /* ══════════════════════════════════════════════════════════
+   MOBILE BUDGET STATEMENT CARDS (Statement History, Import view)
+   Same pattern as .m-hc above — desktop keeps the <table class="ht">,
+   mobile swaps to a stacked card list so the member-assignment dropdown
+   and delete action don't require horizontal table scrolling.
+   ══════════════════════════════════════════════════════════ */
+.m-budget-list { display: none; }
+.m-bsc {
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: .85rem .95rem;
+  margin-bottom: .55rem;
+  box-shadow: var(--shadow-sm);
+}
+.m-bsc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; margin-bottom: .5rem; }
+.m-bsc-name { font-size: .85rem; color: var(--text); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-bsc-period { font-size: .68rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: .1rem; }
+.m-bsc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem .7rem; margin-bottom: .5rem; }
+.m-bsc-lbl { font-size: .62rem; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); font-weight: 700; }
+.m-bsc-val { font-size: .76rem; font-family: var(--font-mono); color: var(--text); font-weight: 600; }
+.m-bsc-actions { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding-top: .5rem; border-top: 1px solid var(--border); }
+
+/* ══════════════════════════════════════════════════════════
    RESPONSIVE — TABLET 900px
    ══════════════════════════════════════════════════════════ */
 @media (max-width: 900px) {
@@ -913,6 +939,7 @@ a.btn-o { text-decoration: none; }
   .fab { display: flex; }
   .tabs { display: none; }
   .m-holdings-list { display: block; }
+  .m-budget-list { display: block; }
   .ht-desktop { display: none; }
 
   /* Hide non-essential header buttons on mobile (accessible via more sheet) */

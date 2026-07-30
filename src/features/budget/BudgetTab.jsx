@@ -4,6 +4,10 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useToast } from '../../components/shared/Toast.jsx';
+// Ported from Budget2 (see project notes): period presets + client-side recurring-
+// pattern detection are generic, analytics-shape-agnostic helpers with no
+// Budget2-specific state, so they're reused here directly rather than duplicated.
+import { PERIODS, periodToDateRange, detectRecurring } from '../../hooks/useBudget2.js';
 
 export default function BudgetTab({
   // Budget state
@@ -33,10 +37,12 @@ export default function BudgetTab({
   setBudgetUploadFile,
   budgetUploadMsg,
   setBudgetUploadMsg,
+  budgetUploadMsgKind,
   budgetPdfPasswordNeeded,
   setBudgetPdfPasswordNeeded,
   budgetPdfPassword,
   setBudgetPdfPassword,
+  budgetPwAttempt,
   budgetEditCat,
   setBudgetEditCat,
   budgetNewCat,
@@ -81,8 +87,95 @@ export default function BudgetTab({
   // Editable CAGR for Spend-to-Wealth Bridge (default 12%)
   const [sipCagr, setSipCagr] = useState(12);
 
+  // Drag-and-drop state + hidden file input ref for the Import file dropzone.
+  const [fileDragOver, setFileDragOver] = useState(false);
+  const fileInputRef = useRef(null);
+  function pickFile(f) {
+    if (!f) return;
+    setBudgetUploadFile(f);
+    setBudgetUploadMsg("");
+    setBudgetPdfPasswordNeeded(false);
+    setBudgetPdfPassword("");
+  }
+  const fmtBytes = n => n>=1e6?`${(n/1e6).toFixed(1)} MB`:n>=1e3?`${(n/1e3).toFixed(0)} KB`:`${n} B`;
+
+  // ── Period preset (Overview) — ported from Budget2 ──
+  // Independent of the month picker in the sub-nav (which also drives Transactions/
+  // Categories filtering): choosing a preset here fetches its own analytics snapshot
+  // so switching periods on Overview doesn't disturb the Transactions tab's filter.
+  const [ovPeriod, setOvPeriod] = useState("all-time");
+  const [ovAnalytics, setOvAnalytics] = useState(null);
+  const [ovLoading, setOvLoading] = useState(false);
+  async function loadOverviewPeriod(period) {
+    setOvLoading(true);
+    try {
+      const { from, to } = periodToDateRange(period);
+      const params = new URLSearchParams();
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      setOvAnalytics(await api(`/api/budget/analytics?${params}`));
+    } catch (e) { console.error(e); }
+    setOvLoading(false);
+  }
+  // Until the user picks a non-default period, fall back to the analytics already
+  // loaded by the hook (avoids a duplicate fetch on first render).
+  const overviewAnalytics = ovAnalytics || budgetAnalytics;
+
+  // ── Savings Goals — ported from Budget2 ──
+  const [budgetGoals, setBudgetGoals] = useState([]);
+  const [budgetGoalsLoaded, setBudgetGoalsLoaded] = useState(false);
+  const [budgetGoalForm, setBudgetGoalForm] = useState(null); // null | "new" | goal object
+  const [budgetNewGoal, setBudgetNewGoal] = useState({ name:"", target:"", saved:"", due_date:"", note:"", color:"#c9a84c", icon:"🎯" });
+  async function loadBudgetGoals() {
+    try { setBudgetGoals(await api("/api/budget/goals")); } catch (e) { console.error(e); }
+    setBudgetGoalsLoaded(true);
+  }
+  const isNewGoal = budgetGoalForm === "new";
+  const goalModalForm = isNewGoal ? budgetNewGoal : budgetGoalForm;
+  const setGoalModalForm = isNewGoal ? setBudgetNewGoal : (f=>setBudgetGoalForm(p=>typeof f==="function"?f(p):f));
+  async function saveBudgetGoal() {
+    if (!goalModalForm?.name || !goalModalForm?.target) return;
+    const payload = { ...goalModalForm, target: Number(goalModalForm.target), saved: Number(goalModalForm.saved||0) };
+    try {
+      if (isNewGoal) {
+        const created = await api("/api/budget/goals", { method:"POST", body: JSON.stringify(payload) });
+        setBudgetGoals(g=>[...g, created]);
+        setBudgetNewGoal({ name:"", target:"", saved:"", due_date:"", note:"", color:"#c9a84c", icon:"🎯" });
+      } else {
+        const updated = await api(`/api/budget/goals/${payload.id}`, { method:"PUT", body: JSON.stringify(payload) });
+        setBudgetGoals(g=>g.map(x=>x.id===payload.id?updated:x));
+      }
+      setBudgetGoalForm(null);
+    } catch (e) { toast.error("Failed to save goal: " + e.message); }
+  }
+  async function deleteBudgetGoal(id) {
+    const ok = await toast.confirm("Delete this goal?", { confirmLabel:"Delete", danger:true });
+    if (!ok) return;
+    try {
+      await api(`/api/budget/goals/${id}`, { method:"DELETE" });
+      setBudgetGoals(g=>g.filter(x=>x.id!==id));
+    } catch (e) { toast.error(e.message); }
+  }
+
+  // ── Recurring pattern detection — ported from Budget2 ──
+  const [budgetRecurring, setBudgetRecurring] = useState([]);
+  const [budgetRecurringLoaded, setBudgetRecurringLoaded] = useState(false);
+  const [budgetIgnoredKeys, setBudgetIgnoredKeys] = useState([]);
+  async function loadBudgetRecurring() {
+    try {
+      const from = new Date(Date.now() - 365*86400_000).toISOString().slice(0,10);
+      const txns = await api(`/api/budget/transactions?from=${from}&limit=2000`);
+      setBudgetRecurring(detectRecurring(txns||[], budgetIgnoredKeys));
+    } catch (e) { console.error(e); }
+    setBudgetRecurringLoaded(true);
+  }
+  function ignoreBudgetRecurringPattern(key) {
+    setBudgetIgnoredKeys(k=>[...k, key]);
+    setBudgetRecurring(r=>r.filter(p=>p.key!==key));
+  }
+
   // ── Charts ──
-  const analytics=budgetAnalytics;
+  const analytics=overviewAnalytics;
   const catData=analytics?Object.entries(analytics.byCategory||{}).map(([name,v])=>{
     const cat=budgetCategories.find(c=>c.name===name);
     return{name,value:v,color:cat?.color||"#6b6356",icon:cat?.icon||"📦"};
@@ -107,42 +200,70 @@ export default function BudgetTab({
 
   return (
     <>
+      {/* ── Page header ── */}
+      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"var(--text)",marginBottom:".7rem"}}>
+        Budget & Spending
+      </div>
+
       {/* ── Sub-nav ── */}
-      <div style={{display:"flex",gap:".4rem",marginBottom:"1.2rem",flexWrap:"wrap",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{display:"flex",gap:".35rem"}}>
-          {["overview","transactions","categories","import"].map(v=>(
-            <div key={v} onClick={async()=>{setBudgetView(v);if(v==="overview"||v==="categories")await loadBudget();if(v==="transactions")await loadTxns();}}
-              style={{padding:".3rem .75rem",borderRadius:5,cursor:"pointer",fontSize:".73rem",fontWeight:500,
-                background:budgetView===v?"rgba(201,168,76,.18)":"var(--text-muted)",
-                border:budgetView===v?"1px solid rgba(201,168,76,.5)":"1px solid var(--border)",
-                color:budgetView===v?"#c9a84c":"var(--text-dim)",transition:"all .15s",textTransform:"capitalize"}}>
-              {v==="overview"?"📊 Overview":v==="transactions"?"📋 Transactions":v==="categories"?"🏷️ Categories":"📤 Import"}
-            </div>
+      <div style={{display:"flex",gap:".4rem",marginBottom:".6rem",flexWrap:"wrap",alignItems:"center",justifyContent:"space-between"}}>
+        <div className="tbar" style={{marginBottom:0}}>
+          {["overview","goals","recurring","transactions","categories","import"].map(v=>(
+            <button key={v} type="button" role="tab" aria-selected={budgetView===v}
+              className={`fchip${budgetView===v?" act":""}`}
+              onClick={async()=>{
+                setBudgetView(v);
+                if(v==="overview"||v==="categories")await loadBudget();
+                if(v==="transactions")await loadTxns();
+                if(v==="goals"&&!budgetGoalsLoaded)await loadBudgetGoals();
+                if(v==="recurring"&&!budgetRecurringLoaded)await loadBudgetRecurring();
+              }}>
+              {v==="overview"?"📊 Overview":v==="goals"?"🎯 Goals":v==="recurring"?"🔁 Recurring":v==="transactions"?"📋 Transactions":v==="categories"?"🏷️ Categories":"📤 Import"}
+            </button>
           ))}
         </div>
-        {/* Month picker */}
-        <div style={{display:"flex",alignItems:"center",gap:".5rem"}}>
-          <input type="month" className="fi" style={{width:150,padding:".28rem .6rem",fontSize:".75rem"}}
-            value={budgetSelMonth}
-            onChange={async e=>{
-              const mo = e.target.value;
-              setBudgetSelMonth(mo);
-              await Promise.all([loadBudgetHook(mo), loadTxnsHook(budgetSelStmt, budgetSelCat, mo, budgetSearch)]);
-            }}
-            placeholder="All time"/>
-          {budgetSelMonth&&<button className="delbtn" aria-label="Clear month filter" onClick={async()=>{
-            setBudgetSelMonth("");
-            await Promise.all([loadBudgetHook(""), loadTxnsHook(budgetSelStmt, budgetSelCat, "", budgetSearch)]);
-          }} style={{color:"var(--text-muted)"}}>✕</button>}
-        </div>
+        {/* Month picker — filters Transactions/Categories only */}
+        {(budgetView==="transactions"||budgetView==="categories")&&(
+          <div style={{display:"flex",alignItems:"center",gap:".5rem"}}>
+            <input type="month" className="fi" style={{width:150,padding:".28rem .6rem",fontSize:".75rem"}}
+              value={budgetSelMonth}
+              onChange={async e=>{
+                const mo = e.target.value;
+                setBudgetSelMonth(mo);
+                await Promise.all([loadBudgetHook(mo), loadTxnsHook(budgetSelStmt, budgetSelCat, mo, budgetSearch)]);
+              }}
+              placeholder="All time"/>
+            {budgetSelMonth&&<button className="delbtn" aria-label="Clear month filter" onClick={async()=>{
+              setBudgetSelMonth("");
+              await Promise.all([loadBudgetHook(""), loadTxnsHook(budgetSelStmt, budgetSelCat, "", budgetSearch)]);
+            }} style={{color:"var(--text-muted)"}}>✕</button>}
+          </div>
+        )}
+        {/* Period preset — filters the Overview analytics only */}
+        {budgetView==="overview"&&(
+          <div className="tbar" style={{marginBottom:0}}>
+            {PERIODS.map(p=>(
+              <button key={p.key} type="button" className={`fchip${ovPeriod===p.key?" act":""}`}
+                onClick={async()=>{setOvPeriod(p.key);await loadOverviewPeriod(p.key);}}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ═══ OVERVIEW ═══ */}
       {budgetView==="overview"&&(()=>{
-        if(!analytics) return(<div style={{textAlign:"center",padding:"3rem",color:"var(--text-muted)"}}>
-          <div style={{fontSize:"2rem",marginBottom:".5rem"}}>📊</div>
-          <div>Import a bank statement to see your spending overview</div>
-          <button className="btns" style={{marginTop:"1rem"}} onClick={()=>setBudgetView("import")}>+ Import Statement</button>
+        if(!analytics) return(<div className="card" style={{textAlign:"center",padding:"2.5rem 1.5rem"}}>
+          <div style={{fontSize:"2.2rem",marginBottom:".7rem"}}>📊</div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.15rem",color:"var(--text)",marginBottom:".4rem"}}>
+            See where your money goes
+          </div>
+          <div style={{fontSize:".78rem",color:"var(--text-muted)",maxWidth:380,margin:"0 auto 1.2rem",lineHeight:1.6}}>
+            Import a bank or credit-card statement (CSV, Excel, or PDF) and WealthLens will auto-categorise your
+            spending, track it against monthly budgets, and surface a spend-to-wealth view of what you could be investing instead.
+          </div>
+          <button className="btns" onClick={()=>setBudgetView("import")}>+ Import Statement</button>
         </div>);
         return(<>
           {/* KPI row */}
@@ -152,12 +273,19 @@ export default function BudgetTab({
               {label:"Total Credited",val:analytics.totalCredit,color:"#4caf9a"},
               {label:"Net Flow",val:analytics.totalCredit-analytics.totalDebit,color:(analytics.totalCredit-analytics.totalDebit)>=0?"#4caf9a":"#e07c5a"},
               {label:"Categories",val:catData.length,color:"#c9a84c",isCnt:true},
+              {label:"Savings Rate",val:analytics.totalCredit>0?((analytics.totalCredit-analytics.totalDebit)/analytics.totalCredit)*100:null,
+                color:analytics.totalCredit<=0?"var(--text-muted)":((analytics.totalCredit-analytics.totalDebit)/analytics.totalCredit)*100>=20?"#4caf9a":((analytics.totalCredit-analytics.totalDebit)/analytics.totalCredit)*100>0?"#c9a84c":"#e07c5a",isPct:true},
             ].map(k=>(
               <div key={k.label} className="card" style={{padding:".85rem 1rem"}}>
                 <div style={{fontSize:".65rem",letterSpacing:".1em",textTransform:"uppercase",color:"var(--text-muted)",marginBottom:".4rem"}}>{k.label}</div>
-                <div style={{fontFamily:"'DM Mono',monospace",fontSize:k.isCnt?"1.4rem":"1.1rem",color:k.color}}>
-                  {k.isCnt?k.val:fmtAmt(Math.abs(k.val),domCur)}
+                <div style={{fontFamily:"var(--font-mono)",fontSize:k.isCnt?"1.4rem":"1.1rem",color:k.color}}>
+                  {k.isCnt?k.val:k.isPct?(k.val==null?"—":`${k.val.toFixed(1)}%`):fmtAmt(Math.abs(k.val),domCur)}
                 </div>
+                {k.isPct&&k.val!=null&&(
+                  <div style={{height:4,background:"var(--bg-muted)",borderRadius:2,marginTop:".4rem"}}>
+                    <div style={{height:"100%",width:`${Math.min(Math.max(k.val,0),100)}%`,background:k.color,borderRadius:2,transition:"width .5s"}}/>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -222,10 +350,35 @@ export default function BudgetTab({
             </div>
           </div>
 
-          {/* Category budget buckets */}
+          {/* Category budget buckets + health ring */}
           {catData.length>0&&(
             <div className="card">
-              <div className="ctitle">Budget Buckets</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:".75rem",marginBottom:"1rem"}}>
+                <div className="ctitle" style={{margin:0}}>Budget Buckets</div>
+                {(()=>{
+                  const budgeted = budgetCategories.filter(c=>c.monthly_limit>0);
+                  if(!budgeted.length) return null;
+                  const onBudget = budgeted.filter(c=>(analytics.byCategory?.[c.name]||0)<=c.monthly_limit).length;
+                  const score = Math.round((onBudget/budgeted.length)*100);
+                  const ringColor = score>=80?"#4caf9a":score>=50?"#c9a84c":"#e07c5a";
+                  const r=22,cx=28,cy=28,circ=2*Math.PI*r,dash=(score/100)*circ;
+                  return(
+                    <div style={{display:"flex",alignItems:"center",gap:".55rem"}}>
+                      <svg width={56} height={56} viewBox="0 0 56 56">
+                        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--bg-muted)" strokeWidth={6}/>
+                        <circle cx={cx} cy={cy} r={r} fill="none" stroke={ringColor} strokeWidth={6}
+                          strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+                          transform={`rotate(-90 ${cx} ${cy})`} style={{transition:"stroke-dasharray .7s ease"}}/>
+                        <text x={cx} y={cy+4} textAnchor="middle" fill={ringColor} fontSize="12" fontFamily="var(--font-mono)" fontWeight="bold">{score}%</text>
+                      </svg>
+                      <div style={{fontSize:".68rem",color:"var(--text-muted)",lineHeight:1.4}}>
+                        <div style={{color:"var(--text)",fontWeight:500}}>Budget Health</div>
+                        {onBudget} of {budgeted.length} categories on track
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(260px,100%),1fr))",gap:".75rem"}}>
                 {catData.map(d=>{
                   const cat=budgetCategories.find(c=>c.name===d.name);
@@ -233,7 +386,7 @@ export default function BudgetTab({
                   const pct=limit>0?Math.min((d.value/limit)*100,100):0;
                   const over=limit>0&&d.value>limit;
                   return(
-                  <div key={d.name} style={{padding:".75rem .9rem",background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:7}}>
+                  <div key={d.name} style={{padding:".75rem .9rem",background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:"var(--radius-sm)"}}>
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:".45rem"}}>
                       <span style={{fontSize:".8rem",color:"var(--text)"}}>{d.icon} {d.name}</span>
                       <span style={{fontFamily:"'DM Mono',monospace",fontSize:".78rem",color:over?"#e07c5a":"#c9a84c"}}>{fmtAmt(d.value,domCur)}</span>
@@ -268,8 +421,8 @@ export default function BudgetTab({
                   type="number" min="1" max="40" step="0.5"
                   value={sipCagr}
                   onChange={e=>setSipCagr(Math.min(40,Math.max(1,+e.target.value||12)))}
-                  style={{width:58,padding:".2rem .4rem",fontSize:".75rem",fontFamily:"'DM Mono',monospace",
-                    background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:4,color:"#c9a84c",textAlign:"right"}}
+                  style={{width:58,padding:".2rem .4rem",fontSize:".75rem",fontFamily:"var(--font-mono)",
+                    background:"var(--bg-muted)",border:"1px solid var(--border)",borderRadius:"var(--radius-sm)",color:"var(--gold)",textAlign:"right"}}
                 />
                 {totInv>0&&allCur>allInv&&(
                   <button
@@ -352,7 +505,7 @@ export default function BudgetTab({
                 const fv10=d.monthlyOver*((Math.pow(1+r,n)-1)/r)*(1+r);
                 return(
                 <div key={d.name} style={{padding:".85rem 1rem",background:"var(--bg-muted)",
-                  border:"1px solid rgba(76,175,154,.2)",borderLeft:`3px solid ${d.color}`,borderRadius:7}}>
+                  border:"1px solid rgba(76,175,154,.2)",borderLeft:`3px solid ${d.color}`,borderRadius:"var(--radius-sm)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:".55rem"}}>
                     <div>
                       <div style={{fontSize:".82rem",color:"var(--text)",fontWeight:500}}>{d.icon} {d.name}</div>
@@ -386,6 +539,193 @@ export default function BudgetTab({
         </>);
       })()}
 
+      {/* ═══ GOALS ═══ */}
+      {budgetView==="goals"&&(<>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem",flexWrap:"wrap",gap:".6rem"}}>
+          <div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.05rem",color:"var(--text)"}}>Savings Goals</div>
+            <div style={{fontSize:".72rem",color:"var(--text-muted)",marginTop:".2rem"}}>Track progress toward your financial targets</div>
+          </div>
+          <button className="btns" onClick={()=>setBudgetGoalForm("new")}>+ New Goal</button>
+        </div>
+
+        {budgetGoals.length===0?(
+          <div className="card" style={{padding:"2.5rem 1.5rem",textAlign:"center"}}>
+            <div style={{fontSize:"2.2rem",marginBottom:".7rem"}}>🎯</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.1rem",color:"var(--text)",marginBottom:".4rem"}}>Set your first savings goal</div>
+            <div style={{fontSize:".78rem",color:"var(--text-muted)",maxWidth:340,margin:"0 auto 1.2rem",lineHeight:1.6}}>
+              Track an emergency fund, a big purchase, or any target amount — with a due date and progress bar.
+            </div>
+            <button className="btns" onClick={()=>setBudgetGoalForm("new")}>+ Create Goal</button>
+          </div>
+        ):(<>
+          {budgetGoals.length>1&&(
+            <div className="card" style={{padding:".75rem 1rem",marginBottom:"1rem",display:"flex",gap:"2rem",flexWrap:"wrap"}}>
+              {[
+                {label:"Total target",val:fmtAmt(budgetGoals.reduce((s,g)=>s+g.target,0),domCur)},
+                {label:"Total saved",val:fmtAmt(budgetGoals.reduce((s,g)=>s+g.saved,0),domCur),color:"#4caf9a"},
+                {label:"Remaining",val:fmtAmt(budgetGoals.reduce((s,g)=>s+Math.max(g.target-g.saved,0),0),domCur)},
+              ].map(k=>(
+                <div key={k.label}>
+                  <div style={{fontSize:".65rem",textTransform:"uppercase",color:"var(--text-muted)",letterSpacing:".08em"}}>{k.label}</div>
+                  <div style={{fontFamily:"var(--font-mono)",fontSize:".95rem",color:k.color||"var(--text)"}}>{k.val}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(320px,100%),1fr))",gap:".85rem"}}>
+            {budgetGoals.map(g=>{
+              const progress = g.target>0?Math.min((g.saved/g.target)*100,100):0;
+              const remaining = Math.max(g.target-g.saved,0);
+              const daysLeft = g.due_date?Math.ceil((new Date(g.due_date)-Date.now())/86400_000):null;
+              return(
+                <div key={g.id} className="card" style={{borderLeft:`3px solid ${g.color}`,padding:".9rem 1rem"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:".6rem"}}>
+                    <div>
+                      <div style={{fontSize:".88rem",color:"var(--text)",fontWeight:500}}>{g.icon} {g.name}</div>
+                      {g.due_date&&(
+                        <div style={{fontSize:".68rem",color:daysLeft<30?"#e07c5a":"var(--text-muted)",marginTop:".15rem"}}>
+                          {daysLeft>0?`${daysLeft} days left`:daysLeft===0?"Due today":"Overdue"} · {g.due_date}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{display:"flex",gap:".3rem"}}>
+                      <button className="delbtn" onClick={()=>setBudgetGoalForm(g)} title="Edit" aria-label="Edit goal">✎</button>
+                      <button className="delbtn" onClick={()=>deleteBudgetGoal(g.id)} title="Delete" aria-label="Delete goal">✕</button>
+                    </div>
+                  </div>
+                  <div style={{height:8,background:"var(--bg-muted)",borderRadius:4,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:`${progress}%`,background:g.target>0&&g.saved>g.target?"#e07c5a":g.color,borderRadius:4,transition:"width .5s ease"}}/>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",marginTop:".4rem",fontSize:".72rem",color:"var(--text-muted)"}}>
+                    <span style={{fontFamily:"var(--font-mono)",color:g.color}}>{fmtAmt(g.saved,domCur)}</span>
+                    <span>{Math.round(progress)}%</span>
+                    <span style={{fontFamily:"var(--font-mono)"}}>of {fmtAmt(g.target,domCur)}</span>
+                  </div>
+                  {remaining>0&&<div style={{fontSize:".68rem",color:"var(--text-muted)",marginTop:".25rem",textAlign:"right"}}>{fmtAmt(remaining,domCur)} remaining</div>}
+                  {g.note&&<div style={{fontSize:".68rem",color:"var(--text-muted)",marginTop:".4rem",fontStyle:"italic"}}>{g.note}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </>)}
+
+        {budgetGoalForm&&(
+          <Overlay onClose={()=>setBudgetGoalForm(null)} narrow>
+            <div className="modtitle">{isNewGoal?"🎯 New Goal":"✎ Edit Goal"}</div>
+            <div style={{display:"flex",gap:".75rem",marginBottom:".75rem"}}>
+              <div style={{flex:"0 0 auto"}}>
+                <label className="flbl">Icon</label>
+                <input className="fi" style={{width:60}} value={goalModalForm.icon||"🎯"} onChange={e=>setGoalModalForm(p=>({...p,icon:e.target.value}))}/>
+              </div>
+              <div style={{flex:1}}>
+                <label className="flbl">Goal name</label>
+                <input className="fi" placeholder="e.g. Emergency Fund" value={goalModalForm.name||""} onChange={e=>setGoalModalForm(p=>({...p,name:e.target.value}))}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:".75rem",marginBottom:".75rem"}}>
+              <div style={{flex:1}}>
+                <label className="flbl">Target amount</label>
+                <input type="number" className="fi" placeholder="500000" value={goalModalForm.target||""} onChange={e=>setGoalModalForm(p=>({...p,target:e.target.value}))}/>
+              </div>
+              <div style={{flex:1}}>
+                <label className="flbl">Amount saved so far</label>
+                <input type="number" className="fi" placeholder="0" value={goalModalForm.saved||""} onChange={e=>setGoalModalForm(p=>({...p,saved:e.target.value}))}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:".75rem",marginBottom:".75rem"}}>
+              <div style={{flex:1}}>
+                <label className="flbl">Target date (optional)</label>
+                <input type="date" className="fi" value={goalModalForm.due_date||""} onChange={e=>setGoalModalForm(p=>({...p,due_date:e.target.value}))}/>
+              </div>
+              <div style={{flex:"0 0 auto"}}>
+                <label className="flbl">Color</label>
+                <input type="color" className="fi" value={goalModalForm.color||"#c9a84c"} onChange={e=>setGoalModalForm(p=>({...p,color:e.target.value}))} style={{height:40,padding:"4px 8px",cursor:"pointer",width:70}}/>
+              </div>
+            </div>
+            <div style={{marginBottom:".75rem"}}>
+              <label className="flbl">Note (optional)</label>
+              <input className="fi" placeholder="What is this goal for?" value={goalModalForm.note||""} onChange={e=>setGoalModalForm(p=>({...p,note:e.target.value}))}/>
+            </div>
+            <MA>
+              <button className="btnc" onClick={()=>setBudgetGoalForm(null)}>Cancel</button>
+              <button className="btns" onClick={saveBudgetGoal} disabled={!goalModalForm.name||!goalModalForm.target}>Save Goal</button>
+            </MA>
+          </Overlay>
+        )}
+      </>)}
+
+      {/* ═══ RECURRING ═══ */}
+      {budgetView==="recurring"&&(<>
+        <div style={{marginBottom:"1rem"}}>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.05rem",color:"var(--text)"}}>Recurring Pattern Detection</div>
+          <div style={{fontSize:".72rem",color:"var(--text-muted)",marginTop:".25rem",lineHeight:1.6}}>
+            Auto-detected from the last 12 months of transactions. Patterns need ≥2 occurrences at a consistent interval.
+          </div>
+        </div>
+
+        {budgetRecurring.length>0&&(
+          <div className="card" style={{padding:".85rem 1rem",marginBottom:"1rem",display:"flex",gap:"2rem",flexWrap:"wrap"}}>
+            <div>
+              <div style={{fontSize:".65rem",textTransform:"uppercase",color:"var(--text-muted)",letterSpacing:".08em"}}>Est. monthly</div>
+              <div style={{fontFamily:"var(--font-mono)",fontSize:".95rem",color:"#e07c5a"}}>{fmtAmt(Math.round(budgetRecurring.reduce((s,r)=>s+r.monthlyEquivalent,0)),domCur)}</div>
+            </div>
+            <div>
+              <div style={{fontSize:".65rem",textTransform:"uppercase",color:"var(--text-muted)",letterSpacing:".08em"}}>Est. annual</div>
+              <div style={{fontFamily:"var(--font-mono)",fontSize:".95rem",color:"#c9a84c"}}>{fmtAmt(Math.round(budgetRecurring.reduce((s,r)=>s+r.monthlyEquivalent*12,0)),domCur)}</div>
+            </div>
+            <div>
+              <div style={{fontSize:".65rem",textTransform:"uppercase",color:"var(--text-muted)",letterSpacing:".08em"}}>Patterns</div>
+              <div style={{fontFamily:"var(--font-mono)",fontSize:".95rem",color:"var(--text)"}}>{budgetRecurring.length}</div>
+            </div>
+          </div>
+        )}
+
+        {budgetRecurring.length===0?(
+          <div className="card" style={{padding:"2.5rem 1.5rem",textAlign:"center"}}>
+            <div style={{fontSize:"2.2rem",marginBottom:".7rem"}}>🔁</div>
+            <div style={{fontSize:".78rem",color:"var(--text-muted)"}}>No recurring patterns detected yet. Import more statements to enable detection.</div>
+          </div>
+        ):(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(340px,100%),1fr))",gap:".75rem"}}>
+            {budgetRecurring.map(r=>(
+              <div key={r.key} className="card" style={{padding:".9rem 1rem",borderLeft:`3px solid ${r.isSubscription?"#a084ca":"#5a9ce0"}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:".5rem"}}>
+                  <div>
+                    <div style={{fontSize:".82rem",color:"var(--text)",fontWeight:500,marginBottom:".15rem"}}>{r.isSubscription?"📦":"🔄"} {r.merchant}</div>
+                    <div style={{display:"flex",gap:".5rem",flexWrap:"wrap"}}>
+                      <span style={{fontSize:".63rem",padding:"2px 6px",borderRadius:3,
+                        background:r.isSubscription?"rgba(160,132,202,.15)":"rgba(90,156,224,.15)",
+                        color:r.isSubscription?"#a084ca":"#5a9ce0",
+                        border:`1px solid ${r.isSubscription?"rgba(160,132,202,.3)":"rgba(90,156,224,.3)"}`}}>
+                        {r.isSubscription?"Subscription":"Recurring"}
+                      </span>
+                      <span style={{fontSize:".63rem",padding:"2px 6px",borderRadius:3,
+                        background:r.confidence==="High"?"rgba(76,175,154,.12)":"rgba(201,168,76,.12)",
+                        color:r.confidence==="High"?"#4caf9a":"#c9a84c",
+                        border:`1px solid ${r.confidence==="High"?"rgba(76,175,154,.25)":"rgba(201,168,76,.25)"}`}}>
+                        {r.confidence} confidence
+                      </span>
+                    </div>
+                  </div>
+                  <button onClick={()=>ignoreBudgetRecurringPattern(r.key)} title="Hide this pattern"
+                    style={{background:"none",border:"1px solid var(--border)",borderRadius:4,padding:"2px 8px",cursor:"pointer",color:"var(--text-muted)",fontSize:".68rem"}}>
+                    Ignore
+                  </button>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:".4rem",fontSize:".72rem",color:"var(--text-dim)",marginTop:".5rem"}}>
+                  <div><span style={{color:"var(--text-muted)"}}>Cadence: </span>{r.cadence}</div>
+                  <div><span style={{color:"var(--text-muted)"}}>Occurrences: </span>{r.occurrences}</div>
+                  <div><span style={{color:"var(--text-muted)"}}>Avg charge: </span><span style={{fontFamily:"var(--font-mono)",color:"#e07c5a"}}>{fmtAmt(Math.round(r.avgAmount),domCur)}</span></div>
+                  <div><span style={{color:"var(--text-muted)"}}>≈ Monthly: </span><span style={{fontFamily:"var(--font-mono)",color:"#c9a84c"}}>{fmtAmt(Math.round(r.monthlyEquivalent),domCur)}</span></div>
+                  <div style={{gridColumn:"1/-1"}}><span style={{color:"var(--text-muted)"}}>Next expected: </span><span style={{color:"#5a9ce0"}}>{r.nextDate}</span></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </>)}
+
       {/* ═══ TRANSACTIONS ═══ */}
       {budgetView==="transactions"&&(()=>{
         return(<>
@@ -416,7 +756,7 @@ export default function BudgetTab({
 
           {/* Bulk actions */}
           {selectedTxnIds.size>0&&(
-            <div style={{display:"flex",alignItems:"center",gap:".7rem",padding:".6rem .9rem",background:"rgba(201,168,76,.08)",border:"1px solid rgba(201,168,76,.25)",borderRadius:7,marginBottom:".75rem"}}>
+            <div style={{display:"flex",alignItems:"center",gap:".7rem",padding:".6rem .9rem",background:"rgba(201,168,76,.08)",border:"1px solid rgba(201,168,76,.25)",borderRadius:"var(--radius-sm)",marginBottom:".75rem"}}>
               <span style={{fontSize:".78rem",color:"#c9a84c"}}>{selectedTxnIds.size} selected</span>
               <select className="fi fs" style={{width:200,marginBottom:0}} value={bulkCatTarget} onChange={e=>setBulkCatTarget(e.target.value)}>
                 <option value="">Move to category…</option>
@@ -550,7 +890,7 @@ export default function BudgetTab({
 
         {/* Manual Upload card */}
         <div className="card" style={{marginBottom:"1.2rem"}}>
-          <div className="ctitle">Import Bank Statement</div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.05rem",color:"var(--text)",marginBottom:"1rem"}}>Import Bank Statement</div>
           <div style={{fontSize:".77rem",color:"var(--text-dim)",marginBottom:"1.1rem",lineHeight:1.7}}>
             Upload CSV, Excel, or PDF statements from US banks (Chase, BofA, Wells Fargo, Citi, Capital One, Amex, Discover, US Bank) and Indian banks (HDFC, ICICI, Axis, SBI, Kotak).
             Transactions are <span style={{color:"#4caf9a"}}>AES-256 encrypted</span> before storage. Statements older than 1 year are automatically purged.
@@ -624,23 +964,50 @@ export default function BudgetTab({
             2 · Statement File
           </div>
           <FG label="CSV, XLSX, or PDF">
-            <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="fi"
-              onChange={e=>{
-                setBudgetUploadFile(e.target.files[0]);
-                setBudgetUploadMsg("");
-                setBudgetPdfPasswordNeeded(false);
-                setBudgetPdfPassword("");
-              }}
-              style={{paddingTop:".4rem",color:"var(--text)"}}/>
+            <div
+              onClick={()=>fileInputRef.current?.click()}
+              onDragOver={e=>{e.preventDefault();setFileDragOver(true);}}
+              onDragLeave={()=>setFileDragOver(false)}
+              onDrop={e=>{e.preventDefault();setFileDragOver(false);pickFile(e.dataTransfer.files?.[0]);}}
+              style={{
+                border:`1.5px dashed ${fileDragOver?"var(--primary)":"var(--border)"}`,
+                borderRadius:"var(--radius-sm)",
+                background:fileDragOver?"var(--primary-dim)":"var(--bg-muted)",
+                padding:budgetUploadFile?".65rem .85rem":"1.3rem 1rem",
+                textAlign:budgetUploadFile?"left":"center",
+                cursor:"pointer",transition:"all .15s"}}>
+              <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls,.pdf" style={{display:"none"}}
+                onChange={e=>pickFile(e.target.files[0])}/>
+              {budgetUploadFile?(
+                <div style={{display:"flex",alignItems:"center",gap:".6rem"}}>
+                  <span style={{fontSize:"1.1rem"}}>{/\.pdf$/i.test(budgetUploadFile.name)?"📕":/\.(xlsx|xls)$/i.test(budgetUploadFile.name)?"📗":"📄"}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:".8rem",color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{budgetUploadFile.name}</div>
+                    <div style={{fontSize:".65rem",color:"var(--text-muted)"}}>{fmtBytes(budgetUploadFile.size)}</div>
+                  </div>
+                  <button type="button" className="delbtn" aria-label="Remove file" title="Remove file"
+                    onClick={e=>{e.stopPropagation();setBudgetUploadFile(null);setBudgetUploadMsg("");setBudgetPdfPasswordNeeded(false);setBudgetPdfPassword("");}}>
+                    ✕
+                  </button>
+                </div>
+              ):(
+                <>
+                  <div style={{fontSize:"1.4rem",marginBottom:".3rem"}}>📥</div>
+                  <div style={{fontSize:".78rem",color:"var(--text-dim)"}}>Drag & drop a statement here, or click to browse</div>
+                  <div style={{fontSize:".65rem",color:"var(--text-muted)",marginTop:".2rem"}}>CSV, XLSX, or PDF</div>
+                </>
+              )}
+            </div>
           </FG>
 
           {/* Most Indian bank/card PDF statements are encrypted (DOB/PAN/mobile
               as password) — this field only appears once the server tells us a
               password is actually needed, so it doesn't clutter the common
-              CSV/XLSX/unencrypted-PDF case. */}
+              CSV/XLSX/unencrypted-PDF case. `key` is bumped on every wrong-password
+              retry so the input remounts and `autoFocus` fires again. */}
           {budgetPdfPasswordNeeded && (
             <FG label="PDF Password">
-              <input type="password" className="fi" placeholder="e.g. your DOB as DDMMYYYY, or PAN"
+              <input key={budgetPwAttempt} type="password" className="fi" placeholder="e.g. your DOB as DDMMYYYY, or PAN"
                 value={budgetPdfPassword}
                 onChange={e=>setBudgetPdfPassword(e.target.value)}
                 autoFocus/>
@@ -651,26 +1018,28 @@ export default function BudgetTab({
               not a "btns" button) so it reads as a "having trouble?" utility, not
               an alternative to the primary Upload action below. Runs the exact
               same parsing path as a real upload (including PDF password), just
-              without saving anything. */}
-          {budgetUploadFile && (/\.(csv|xlsx|txt|pdf)$/i.test(budgetUploadFile.name)) && (
-            <div style={{display:"flex",alignItems:"center",gap:".6rem",marginTop:"-.3rem",marginBottom:"1rem",flexWrap:"wrap"}}>
-              <span style={{fontSize:".68rem",color:"var(--text-muted)"}}>Statement not importing correctly?</span>
-              <button style={{fontSize:".7rem",background:"none",border:"none",color:"#5a9ce0",cursor:"pointer",padding:0,textDecoration:"underline dotted"}}
-                disabled={budgetUploading}
-                onClick={()=>debugImportFile(budgetUploadFile, budgetUploadForm, budgetPdfPassword)}
-                title="Parses the file and shows what would be imported, without saving anything.">
-                🔍 Check this file first
-              </button>
-            </div>
-          )}
+              without saving anything. Visible as a standing hint even before a
+              file is picked, so first-time users know it exists before hitting
+              a failed import — not just as an afterthought once something's wrong. */}
+          <div style={{display:"flex",alignItems:"center",gap:".6rem",marginTop:budgetUploadFile?"-.3rem":".5rem",marginBottom:"1rem",flexWrap:"wrap"}}>
+            <span style={{fontSize:".68rem",color:"var(--text-muted)"}}>
+              {budgetUploadFile?"Statement not importing correctly?":"Not sure this file will parse cleanly?"}
+            </span>
+            <button style={{fontSize:".7rem",background:"none",border:"none",color:"var(--primary)",cursor:budgetUploadFile?"pointer":"not-allowed",padding:0,textDecoration:"underline dotted",opacity:budgetUploadFile?1:.55}}
+              disabled={budgetUploading||!budgetUploadFile}
+              onClick={()=>debugImportFile(budgetUploadFile, budgetUploadForm, budgetPdfPassword)}
+              title={budgetUploadFile?"Parses the file and shows what would be imported, without saving anything.":"Pick a file above first"}>
+              🔍 Check this file first
+            </button>
+          </div>
 
           {budgetUploadMsg&&(
-            <div style={{padding:".6rem .85rem",borderRadius:6,marginBottom:".9rem",fontSize:".78rem",
-              whiteSpace:"pre-wrap",fontFamily:budgetUploadMsg.startsWith("📄")?"monospace":"inherit",
-              maxHeight:budgetUploadMsg.startsWith("📄")?"400px":"none",overflow:"auto",
-              background:budgetUploadMsg.startsWith("✓")?"rgba(76,175,154,.1)":budgetUploadMsg.startsWith("📄")?"rgba(90,156,224,.08)":"rgba(224,124,90,.1)",
-              border:`1px solid ${budgetUploadMsg.startsWith("✓")?"rgba(76,175,154,.3)":budgetUploadMsg.startsWith("📄")?"rgba(90,156,224,.2)":"rgba(224,124,90,.3)"}`,
-              color:budgetUploadMsg.startsWith("✓")?"#4caf9a":budgetUploadMsg.startsWith("📄")?"var(--text-dim)":"#e07c5a"}}>
+            <div role={budgetUploadMsgKind==="error"?"alert":"status"} style={{padding:".6rem .85rem",borderRadius:"var(--radius-sm)",marginBottom:".9rem",fontSize:".78rem",
+              whiteSpace:"pre-wrap",fontFamily:budgetUploadMsgKind==="debug"?"var(--font-mono)":"inherit",
+              maxHeight:budgetUploadMsgKind==="debug"?"400px":"none",overflow:"auto",
+              background:budgetUploadMsgKind==="success"?"var(--gain-dim)":budgetUploadMsgKind==="debug"?"rgba(90,156,224,.08)":budgetUploadMsgKind==="error"?"var(--loss-dim)":"var(--primary-dim)",
+              border:`1px solid ${budgetUploadMsgKind==="success"?"rgba(5,150,105,.3)":budgetUploadMsgKind==="debug"?"rgba(90,156,224,.2)":budgetUploadMsgKind==="error"?"rgba(220,38,38,.3)":"var(--border)"}`,
+              color:budgetUploadMsgKind==="success"?"var(--gain)":budgetUploadMsgKind==="debug"?"var(--text-dim)":budgetUploadMsgKind==="error"?"var(--loss)":"var(--text-dim)"}}>
               {budgetUploadMsg}
             </div>
           )}
@@ -685,9 +1054,9 @@ export default function BudgetTab({
 
         {/* Statement history */}
         <div className="card">
-          <div className="ctitle">Statement History (1-year rolling)</div>
-          {budgetStatements.length===0?<div className="empty">No statements imported yet</div>:(
-            <table className="ht">
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.05rem",color:"var(--text)",marginBottom:"1rem"}}>Statement History <span style={{fontFamily:"var(--font-ui)",fontSize:".68rem",color:"var(--text-muted)",fontWeight:500}}>(1-year rolling)</span></div>
+          {budgetStatements.length===0?<div className="empty">No statements imported yet</div>:(<>
+            <table className="ht ht-desktop">
               <thead><tr><th>Source</th><th>Type</th>{allMembers.length>1&&<th>Assigned to</th>}<th>Period</th><th className="r">Transactions</th><th>Uploaded</th><th>Notes</th><th/></tr></thead>
               <tbody>
                 {budgetStatements.map(s=>(
@@ -726,7 +1095,50 @@ export default function BudgetTab({
                 ))}
               </tbody>
             </table>
-          )}
+
+            {/* Mobile card list — avoids horizontal table scroll on small screens */}
+            <div className="m-budget-list">
+              {budgetStatements.map(s=>(
+                <div key={s.id} className="m-bsc">
+                  <div className="m-bsc-top">
+                    <div style={{flex:1,minWidth:0}}>
+                      <div className="m-bsc-name">{s.source}</div>
+                      <div className="m-bsc-period">{s.period_start||"?"} → {s.period_end||"?"}</div>
+                    </div>
+                    <span style={{fontSize:".65rem",padding:"2px 7px",borderRadius:3,flexShrink:0,background:`${TYPE_COLORS[s.statement_type]||"#6b6356"}22`,color:TYPE_COLORS[s.statement_type]||"#6b6356",border:`1px solid ${TYPE_COLORS[s.statement_type]||"#6b6356"}44`}}>{TYPE_ICONS[s.statement_type]} {s.statement_type}</span>
+                  </div>
+                  <div className="m-bsc-grid">
+                    <div><div className="m-bsc-lbl">Transactions</div><div className="m-bsc-val" style={{color:"var(--gold)"}}>{s.txn_count}</div></div>
+                    <div><div className="m-bsc-lbl">Uploaded</div><div className="m-bsc-val">{s.upload_date?.slice(0,10)}</div></div>
+                    {s.notes&&<div style={{gridColumn:"1 / -1"}}><div className="m-bsc-lbl">Notes</div><div className="m-bsc-val" style={{fontWeight:400,fontFamily:"var(--font-ui)"}}>{s.notes}</div></div>}
+                  </div>
+                  <div className="m-bsc-actions">
+                    {allMembers.length>1?(
+                      <div style={{display:"flex",alignItems:"center",gap:".3rem",flex:1,minWidth:0}}>
+                        <span style={{fontSize:".7rem",opacity:s.member_id?0.7:0.4,flexShrink:0}}>{s.member_id?"👤":"⚠️"}</span>
+                        <select className="fi" style={{fontSize:".73rem",padding:"5px 6px",minHeight:38,width:"100%",
+                            fontWeight:s.member_id?400:600,
+                            color:s.member_id?"var(--text-dim)":"#e07c5a",
+                            border:s.member_id?"1px solid var(--border)":"1px solid #e07c5a88",
+                            background:s.member_id?"transparent":"rgba(224,124,90,.08)"}}
+                          value={s.member_id||""}
+                          onChange={e=>assignStatementMember?.(s.id, e.target.value)}>
+                          <option value="">Unassigned</option>
+                          {allMembers.map(m=>(<option key={m.id} value={m.id}>{m.name}</option>))}
+                        </select>
+                      </div>
+                    ):<span/>}
+                    <button className="delbtn" aria-label="Delete statement" style={{minWidth:42,minHeight:38}} onClick={async()=>{
+                      const ok = await toast.confirm(`Delete "${s.source}" statement and all its transactions?`, { confirmLabel: "Delete", danger: true });
+                      if(!ok)return;
+                      await api(`/api/budget/statements/${s.id}`,{method:"DELETE"});
+                      await loadBudget();
+                    }}>✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>)}
         </div>
 
       </>)}

@@ -18,6 +18,22 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
+// Last-used Region/Bank/Type for the import form, remembered across sessions so
+// a repeat import (the common case — same person, same card, every month) doesn't
+// require re-selecting Region → Bank from scratch every time.
+const LAST_IMPORT_KEY = "wlh_budget_last_import";
+function loadLastImportDefaults() {
+  const blank = { region: "", bank_key: "", statement_type: "BANK", notes: "", custom_label: "", member_id: "" };
+  try {
+    const saved = JSON.parse(localStorage.getItem(LAST_IMPORT_KEY) || "null");
+    if (saved && typeof saved === "object") return { ...blank, region: saved.region || "", bank_key: saved.bank_key || "", statement_type: saved.statement_type || "BANK" };
+  } catch { /* ignore corrupt/old value */ }
+  return blank;
+}
+function saveLastImportDefaults(form) {
+  try { localStorage.setItem(LAST_IMPORT_KEY, JSON.stringify({ region: form.region, bank_key: form.bank_key, statement_type: form.statement_type })); } catch { /* ignore quota/private-mode errors */ }
+}
+
 // Lines 1052–1095 (budget state) + inline budget functions defined within the tab render (lines 3761–4355)
 // NOTE: loadBudget, loadTxns, and upload handlers are defined inline inside the budget tab JSX in App.jsx.
 // They are extracted here as standalone async functions and exposed so the budget tab can call them.
@@ -34,12 +50,20 @@ export function useBudget(user) {
   const [budgetSearch,      setBudgetSearch]      = useState("");
   const [budgetView,        setBudgetView]        = useState("overview"); // overview | transactions | categories | import
   const [budgetUploading,   setBudgetUploading]   = useState(false);
-  const [budgetUploadForm,  setBudgetUploadForm]  = useState({ region: "", bank_key: "", statement_type: "BANK", notes: "", custom_label: "", member_id: "" });
+  const [budgetUploadForm,  setBudgetUploadForm]  = useState(loadLastImportDefaults);
   const [budgetBanks,       setBudgetBanks]       = useState([]); // [{key,region,label}] — drives the Bank dropdown; sourced from BANK_REGISTRY on the server
   const [budgetUploadFile,  setBudgetUploadFile]  = useState(null);
   const [budgetUploadMsg,   setBudgetUploadMsg]   = useState("");
+  // Structured status kind alongside the message text — drives BudgetTab's status
+  // box styling directly instead of sniffing string prefixes ("✓"/"📄"/"⚠"), which
+  // was brittle and mixed presentation logic into the message content itself.
+  const [budgetUploadMsgKind, setBudgetUploadMsgKind] = useState(""); // "" | "info" | "success" | "debug" | "error"
   const [budgetPdfPasswordNeeded, setBudgetPdfPasswordNeeded] = useState(false); // true once the server reports the PDF is encrypted
   const [budgetPdfPassword,       setBudgetPdfPassword]       = useState("");
+  // Bumped on every wrong-password retry so the password <input>'s `key` changes,
+  // forcing a remount (and therefore its `autoFocus` to refire) — a plain autoFocus
+  // prop only fires once on first mount, so a second wrong attempt wouldn't refocus.
+  const [budgetPwAttempt, setBudgetPwAttempt] = useState(0);
   const [budgetEditCat,     setBudgetEditCat]     = useState(null);
   const [budgetNewCat,      setBudgetNewCat]      = useState({ name: "", color: "#c9a84c", icon: "📁", monthly_limit: 0, keywords: "" });
   const [selectedTxnIds,    setSelectedTxnIds]    = useState(new Set());
@@ -85,8 +109,8 @@ export function useBudget(user) {
   async function uploadBudgetStatement(file, uploadForm, pdfPassword) {
     if (!file || !uploadForm.region) return;
     const bankKey = uploadForm.bank_key || (uploadForm.region === "AUTO" ? "auto" : "");
-    if (!bankKey) { setBudgetUploadMsg("⚠ Please select a bank"); return; }
-    setBudgetUploading(true); setBudgetUploadMsg("");
+    if (!bankKey) { setBudgetUploadMsg("⚠ Please select a bank"); setBudgetUploadMsgKind("error"); return; }
+    setBudgetUploading(true); setBudgetUploadMsg(""); setBudgetUploadMsgKind("");
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -103,17 +127,24 @@ export function useBudget(user) {
           : data.needs_member_assignment ? " · couldn't tell who this belongs to — assign it below"
           : "";
         setBudgetUploadMsg(`✓ Imported ${data.txn_count} transactions (${data.period_start} to ${data.period_end})${dupNote}${memberNote}`);
+        setBudgetUploadMsgKind("success");
         setBudgetUploadFile(null);
-        setBudgetUploadForm({ region: "", bank_key: "", statement_type: "BANK", notes: "", custom_label: "", member_id: "" });
+        // Remember Region/Bank/Type for next time — the fields that stay the same
+        // on a repeat import — but not the one-off fields (notes/label/member).
+        saveLastImportDefaults(uploadForm);
+        setBudgetUploadForm(p => ({ region: p.region, bank_key: p.bank_key, statement_type: p.statement_type, notes: "", custom_label: "", member_id: "" }));
         setBudgetPdfPasswordNeeded(false); setBudgetPdfPassword("");
         await loadBudget(budgetSelMonth); // already re-fetches statements, categories, and analytics
-      } else { setBudgetUploadMsg("⚠ " + data.error); }
+      } else { setBudgetUploadMsg("⚠ " + data.error); setBudgetUploadMsgKind("error"); }
     } catch (e) {
       if (e.code === "PDF_PASSWORD_REQUIRED") {
         setBudgetPdfPasswordNeeded(true);
+        if (e.incorrect) setBudgetPwAttempt(n => n + 1); // forces the password field to remount + refocus
         setBudgetUploadMsg(e.incorrect ? "⚠ Incorrect password — try again." : "🔒 This PDF is password-protected. Enter the password below and try again.");
+        setBudgetUploadMsgKind(e.incorrect ? "error" : "info");
       } else {
         setBudgetUploadMsg("⚠ " + e.message);
+        setBudgetUploadMsgKind("error");
       }
     }
     setBudgetUploading(false);
@@ -129,7 +160,7 @@ export function useBudget(user) {
   // could pass/fail differently than a real import for the same file).
   async function debugImportFile(file, uploadForm, pdfPassword) {
     if (!file) return;
-    setBudgetUploadMsg("Checking file...");
+    setBudgetUploadMsg("Checking file..."); setBudgetUploadMsgKind("info");
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -157,12 +188,16 @@ export function useBudget(user) {
         msg += `First parsed row: ${JSON.stringify(data.sample_raw_rows[0])}`;
       }
       setBudgetUploadMsg(msg);
+      setBudgetUploadMsgKind("debug");
     } catch (e) {
       if (e.code === "PDF_PASSWORD_REQUIRED") {
         setBudgetPdfPasswordNeeded(true);
+        if (e.incorrect) setBudgetPwAttempt(n => n + 1);
         setBudgetUploadMsg(e.incorrect ? "⚠ Incorrect password — try again." : "🔒 This PDF is password-protected. Enter the password below and try again.");
+        setBudgetUploadMsgKind(e.incorrect ? "error" : "info");
       } else {
         setBudgetUploadMsg("⚠ Debug: " + e.message);
+        setBudgetUploadMsgKind("error");
       }
     }
   }
@@ -233,8 +268,10 @@ export function useBudget(user) {
     budgetUploadForm, setBudgetUploadForm,
     budgetUploadFile, setBudgetUploadFile,
     budgetUploadMsg,  setBudgetUploadMsg,
+    budgetUploadMsgKind, setBudgetUploadMsgKind,
     budgetPdfPasswordNeeded, setBudgetPdfPasswordNeeded,
     budgetPdfPassword,       setBudgetPdfPassword,
+    budgetPwAttempt,
     budgetEditCat,    setBudgetEditCat,
     budgetNewCat,     setBudgetNewCat,
     selectedTxnIds,   setSelectedTxnIds,
