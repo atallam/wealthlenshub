@@ -92,6 +92,40 @@ describe("Axis — credit-card statement (preamble + amount/label columns)", () 
   });
 });
 
+describe("Merged-cell section divider doesn't outscore the real header row", () => {
+  // Real-world bug: a section-divider row like "Transaction Summary" that spans a
+  // merged Excel cell across all columns gets that same text repeated into every
+  // column when converted to rows. Before the fix, each repeat counted as a
+  // separate keyword match, so this repeated phrase (score = column count) beat
+  // the real header row below it (score = number of *distinct* column names),
+  // and the parser tried to read transactions starting from the divider row —
+  // reporting "Rows parsed: 0" against a completely wrong header.
+  const rowsData = [
+    ["Payment Summary", "", "", "", "", ""],
+    ["Transaction Summary", "Transaction Summary", "Transaction Summary", "Transaction Summary", "Transaction Summary", "Transaction Summary"],
+    ["Date", "Transaction Details", "", "Amount (INR)", "Debit/Credit", ""],
+    ["07 Jul '26", "FIRSTCRY,Pune", "", "₹ 830.45", "Debit", ""],
+    ["03 Jul '26", "AMAZON PAY INDIA PRIVA,Bangalore", "", "₹ 340.00", "Credit", ""],
+  ];
+  const toCsvCell = (v) => {
+    const s = String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const csv = rowsData.map((r) => r.map(toCsvCell).join(",")).join("\n");
+
+  it("picks the real header row (distinct column names), not the repeated merged-cell divider", () => {
+    const { headerRow, headerRowIdx } = parseCSV(csv, "axis", "CREDIT_CARD");
+    expect(headerRowIdx).toBe(2);
+    expect(headerRow[0]).toBe("Date");
+  });
+
+  it("still parses the transaction rows correctly", () => {
+    const { rows } = parseCSV(csv, "axis", "CREDIT_CARD");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ desc: "FIRSTCRY,Pune", debit: "830.45", credit: "" });
+  });
+});
+
 describe("Unregistered future bank — same amount/label layout, no config needed", () => {
   // Proves the fix generalizes: a bank with no BANK_COLUMN_MAP entry at all
   // (bank_key "other_in") still parses a preamble + single-amount + Dr/Cr-label
