@@ -4,7 +4,7 @@
  * only here when reading back.
  */
 import { randomUUID } from "crypto";
-import { supabase } from "../lib/db.js";
+import { supabase, describeDbError } from "../lib/db.js";
 import { encrypt, decrypt } from "../lib/crypto.js";
 import {
   xlsxBufferToCSV, autoCategorise, loadCategoriesForBulk, BANK_REGISTRY, parseCSV,
@@ -61,11 +61,15 @@ export function extractLast4(text) {
   return null;
 }
 
-/** Look up a previously-confirmed card/account → member mapping. */
+/** Look up a previously-confirmed card/account → member mapping. Degrades
+ *  gracefully (returns null, falls through to text-based detection) if
+ *  budget_account_aliases doesn't exist yet — but logs clearly so a missing
+ *  migration shows up in the server log instead of silently never firing. */
 async function lookupAccountAlias(userId, bankKey, last4) {
   if (!last4) return null;
-  const { data } = await supabase.from("budget_account_aliases").select("member_id")
+  const { data, error } = await supabase.from("budget_account_aliases").select("member_id")
     .eq("user_id", userId).eq("bank_key", bankKey || "").eq("last4", last4).maybeSingle();
+  if (error) { console.error("lookupAccountAlias:", describeDbError(error).friendly); return null; }
   return data?.member_id || null;
 }
 
@@ -73,15 +77,18 @@ async function lookupAccountAlias(userId, bankKey, last4) {
  *  the same card/account auto-assign without needing to re-detect anything. */
 async function saveAccountAlias(userId, bankKey, last4, memberId) {
   if (!last4 || !memberId) return;
-  const { data: existing } = await supabase.from("budget_account_aliases").select("id,member_id")
+  const { data: existing, error: selErr } = await supabase.from("budget_account_aliases").select("id,member_id")
     .eq("user_id", userId).eq("bank_key", bankKey || "").eq("last4", last4).maybeSingle();
+  if (selErr) { console.error("saveAccountAlias (select):", describeDbError(selErr).friendly); return; }
   if (existing) {
     if (existing.member_id !== memberId) {
-      await supabase.from("budget_account_aliases").update({ member_id: memberId, updated_at: new Date().toISOString() }).eq("id", existing.id);
+      const { error } = await supabase.from("budget_account_aliases").update({ member_id: memberId, updated_at: new Date().toISOString() }).eq("id", existing.id);
+      if (error) console.error("saveAccountAlias (update):", describeDbError(error).friendly);
     }
     return;
   }
-  await supabase.from("budget_account_aliases").insert({ id: aliasId(), user_id: userId, bank_key: bankKey || "", last4, member_id: memberId });
+  const { error } = await supabase.from("budget_account_aliases").insert({ id: aliasId(), user_id: userId, bank_key: bankKey || "", last4, member_id: memberId });
+  if (error) console.error("saveAccountAlias (insert):", describeDbError(error).friendly);
 }
 
 /** Parse + persist a bank statement upload. Throws {status,extra} on bad input.
@@ -247,10 +254,15 @@ export async function uploadStatement(userId, file, body, isProd) {
     period_start: periodStart, period_end: periodEnd, txn_count: newTxns.length, notes: notes || "", region: region || "AUTO",
     member_id: memberId, account_last4: last4 || null, bank_key: effectiveBankKey || null,
   });
-  if (stErr) throw new Error(stErr.message);
+  if (stErr) {
+    const { isSchemaDrift, friendly } = describeDbError(stErr);
+    const e2 = new Error(friendly);
+    if (isSchemaDrift) e2.code = "SCHEMA_DRIFT";
+    throw e2;
+  }
   for (let i = 0; i < newTxns.length; i += 100) {
     const { error: txErr } = await supabase.from("budget_transactions").insert(newTxns.slice(i, i + 100));
-    if (txErr) console.error("Batch insert error:", txErr.message);
+    if (txErr) console.error("Batch insert error:", describeDbError(txErr).friendly);
   }
   return {
     ok: true, statement_id: id, txn_count: newTxns.length, skipped_duplicates: skippedDups,
@@ -273,7 +285,12 @@ export async function updateStatementMember(userId, id, memberId) {
   const { data: stmt, error } = await supabase.from("budget_statements")
     .update({ member_id: memberId || null }).eq("id", id).eq("user_id", userId)
     .select("bank_key, account_last4").single();
-  if (error) throw new Error(error.message);
+  if (error) {
+    const { isSchemaDrift, friendly } = describeDbError(error);
+    const e2 = new Error(friendly);
+    if (isSchemaDrift) e2.code = "SCHEMA_DRIFT";
+    throw e2;
+  }
   if (memberId && stmt?.account_last4) await saveAccountAlias(userId, stmt.bank_key || "", stmt.account_last4, memberId);
   return { ok: true };
 }

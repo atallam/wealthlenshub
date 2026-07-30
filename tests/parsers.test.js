@@ -3,7 +3,10 @@ import { describe, it, expect, vi } from "vitest";
 // lib/parsers.js imports lib/db.js (supabase client) purely for autoCategorise's
 // bulk-load helper, which none of these tests touch — mock it out so the suite
 // runs without real Supabase credentials, same pattern as tests/guards.test.js.
-vi.mock("../lib/db.js", () => ({ supabase: { from: vi.fn() } }));
+vi.mock("../lib/db.js", () => ({
+  supabase: { from: vi.fn() },
+  describeDbError: (e) => ({ isSchemaDrift: false, friendly: e?.message || "Database error" }),
+}));
 
 import { parseCSV, autoDetectBank, parseDateIN, parseDateForRegion, BANK_COLUMN_MAP, BANK_REGISTRY, parseIndianPDF, extractPDFText } from "../lib/parsers.js";
 
@@ -310,6 +313,17 @@ describe("Phase 3 — member-detection text helpers", () => {
     const members = [{ id: "m1", name: "Avinash Tallam" }, { id: "m2", name: "Priyanka Kolisetty" }];
     expect(detectMemberFromText("Statement for SOMEONE ELSE", members).memberId).toBeNull();
     expect(detectMemberFromText("AVINASH TALLAM and PRIYANKA KOLISETTY joint account", members).memberId).toBeNull();
+  });
+
+  it("describeDbError flags schema-drift error shapes (missing migration) distinctly from other DB errors", async () => {
+    // Import the real (unmocked) implementation directly — the file-level mock
+    // above stands in for lib/db.js only where budget.service.js imports it.
+    const { describeDbError } = await vi.importActual("../lib/db.js");
+    expect(describeDbError({ code: "42703", message: "column budget_statements.account_last4 does not exist" }).isSchemaDrift).toBe(true);
+    expect(describeDbError({ code: "PGRST204", message: "Could not find the 'account_last4' column of 'budget_statements' in the schema cache" }).isSchemaDrift).toBe(true);
+    expect(describeDbError({ code: "42P01", message: 'relation "budget_account_aliases" does not exist' }).isSchemaDrift).toBe(true);
+    expect(describeDbError({ code: "23505", message: "duplicate key value violates unique constraint" }).isSchemaDrift).toBe(false);
+    expect(describeDbError({ message: "network timeout" }).isSchemaDrift).toBe(false);
   });
 
   it("extractLast4 pulls the trailing 4 digits from masked card/account formats", async () => {
