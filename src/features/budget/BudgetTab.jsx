@@ -117,17 +117,20 @@ export default function BudgetTab({
     } catch (e) { console.error(e); }
     setOvLoading(false);
   }
-  // Until the user picks a non-default period, fall back to the analytics already
-  // loaded by the hook (avoids a duplicate fetch on first render).
-  const overviewAnalytics = ovAnalytics || budgetAnalytics;
-  // BUG FIX: once ovAnalytics was set (by clicking any period chip, including
-  // "All time"), it permanently shadowed overviewAnalytics — a fresh import
-  // updates budgetAnalytics via loadBudget(), but ovAnalytics never refreshed on
-  // its own, so the Overview looked frozen on whatever snapshot was last fetched.
-  // Re-fetch (or clear) the period snapshot every time the underlying analytics
-  // change, so a new import is reflected regardless of which period is selected.
+  // BUG FIX (two-part): this used to fall back to `budgetAnalytics` (the hook's
+  // month-filter-driven fetch) whenever ovAnalytics was empty, as an optimization
+  // to skip a duplicate fetch for the default "All time" period. But when the
+  // hook's own month filter is blank (the normal "All time" state), its backing
+  // endpoint call carries no month/from/to params at all, and services/budget.
+  // service.js's analytics() treats "no params" as a **legacy default of the last
+  // 30 days** — not true all-time. So the "All time" preset was silently showing
+  // a rolling 30-day window; a statement outside that window updated the
+  // Transactions tab correctly but never appeared in the Overview, even after a
+  // hard reload. Overview now always uses its own explicit period-scoped fetch
+  // (which correctly requests true all-time via `from=alltime`), for every
+  // period including the default — never the hook's ambiguous legacy fallback.
+  const overviewAnalytics = ovAnalytics;
   useEffect(() => {
-    if (ovPeriod === "all-time") { setOvAnalytics(null); return; }
     loadOverviewPeriod(ovPeriod);
   }, [budgetAnalytics]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -224,6 +227,7 @@ export default function BudgetTab({
               onClick={async()=>{
                 setBudgetView(v);
                 if(v==="overview"||v==="categories")await loadBudget();
+                if(v==="overview")await loadOverviewPeriod(ovPeriod);
                 if(v==="transactions")await loadTxns();
                 if(v==="goals"&&!budgetGoalsLoaded)await loadBudgetGoals();
                 if(v==="recurring"&&!budgetRecurringLoaded)await loadBudgetRecurring();
@@ -264,6 +268,13 @@ export default function BudgetTab({
 
       {/* ═══ OVERVIEW ═══ */}
       {budgetView==="overview"&&(()=>{
+        // ovAnalytics starts null until the period-scoped fetch resolves (see the
+        // effect above) — show a loading state instead of the "no data yet" empty
+        // state so a brief fetch doesn't look like "you have no statements".
+        if(!analytics&&ovLoading) return(<div className="card" style={{textAlign:"center",padding:"2.5rem 1.5rem",color:"var(--text-muted)"}}>
+          <div style={{fontSize:"1.5rem",marginBottom:".5rem"}}>⏳</div>
+          Loading…
+        </div>);
         if(!analytics) return(<div className="card" style={{textAlign:"center",padding:"2.5rem 1.5rem"}}>
           <div style={{fontSize:"2.2rem",marginBottom:".7rem"}}>📊</div>
           <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:"1.15rem",color:"var(--text)",marginBottom:".4rem"}}>
