@@ -52,6 +52,9 @@ export default function BudgetTab({
   bulkCatTarget,
   setBulkCatTarget,
   budgetBanks = [],
+  budgetRecatRunning,
+  budgetRecatMsg,
+  recategoriseAllTxns,
   // Portfolio data for the spend-to-wealth bridge + nudge
   allCur,
   allInv,
@@ -838,10 +841,26 @@ export default function BudgetTab({
 
       {/* ═══ CATEGORIES ═══ */}
       {budgetView==="categories"&&(<>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".6rem",flexWrap:"wrap",gap:".6rem"}}>
           <div className="ctitle" style={{margin:0}}>Spending Categories</div>
-          <button className="btn-sm" onClick={()=>setBudgetEditCat("new")}>+ New Category</button>
+          <div style={{display:"flex",gap:".5rem",alignItems:"center"}}>
+            <button className="btn-o" style={{fontSize:".72rem",padding:".3rem .7rem"}}
+              disabled={budgetRecatRunning}
+              title="Re-run keyword matching against transactions currently in 'Other' — useful after adding categories or editing keywords."
+              onClick={()=>recategoriseAllTxns(true)}>
+              {budgetRecatRunning?"Recategorising…":"🔄 Recategorise \"Other\""}
+            </button>
+            <button className="btn-sm" onClick={()=>setBudgetEditCat("new")}>+ New Category</button>
+          </div>
         </div>
+        {budgetRecatMsg&&(
+          <div style={{fontSize:".72rem",marginBottom:".85rem",padding:".5rem .75rem",borderRadius:"var(--radius-sm)",
+            background:budgetRecatMsg.startsWith("⚠")?"var(--loss-dim)":"var(--gain-dim)",
+            color:budgetRecatMsg.startsWith("⚠")?"var(--loss)":"var(--gain)",
+            border:`1px solid ${budgetRecatMsg.startsWith("⚠")?"rgba(220,38,38,.3)":"rgba(5,150,105,.3)"}`}}>
+            {budgetRecatMsg}
+          </div>
+        )}
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(280px,100%),1fr))",gap:".75rem"}}>
           {budgetCategories.map(cat=>(
             <div key={cat.id} className="card" style={{borderLeft:`3px solid ${cat.color}`,padding:".85rem 1rem"}}>

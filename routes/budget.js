@@ -54,6 +54,13 @@ router.post("/recategorise", auth, async (req, res) => {
   if (ids.length > 500) return res.status(400).json({ error: "Too many IDs (max 500)" });
   try { res.json(await budget.recategorise(req.user.id, ids, category)); } catch (e) { sendError(res, e); }
 });
+// Re-run keyword auto-categorisation over existing transactions (e.g. after seeding
+// default categories that didn't exist at import time, or after editing a category's
+// keyword list). Defaults to only touching "Other" transactions — pass
+// { only_other: false } to re-run over everything.
+router.post("/recategorise-all", auth, async (req, res) => {
+  try { res.json(await budget.recategoriseAll(req.user.id, { onlyOther: req.body?.only_other !== false })); } catch (e) { sendError(res, e); }
+});
 
 router.get("/categories", auth, async (req, res) => {
   try { res.json(await budget.listCategories(req.user.id)); } catch (e) { sendError(res, e); }

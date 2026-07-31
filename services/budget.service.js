@@ -342,6 +342,45 @@ export async function recategorise(userId, ids, category) {
   return { ok: true, updated: ids.length };
 }
 
+/** Re-run keyword-based auto-categorisation against a user's existing transactions.
+ *  Needed for a common gap: transactions imported before any budget_categories rows
+ *  existed (e.g. the default-category seed insert was never run against this
+ *  Supabase project) all landed in "Other" — autoCategorise() has nothing to match
+ *  against with 0 categories loaded. Seeding categories afterward only fixes *future*
+ *  imports; this fixes the ones already sitting in the database. Only touches rows
+ *  whose category is exactly "Other" by default, so manual recategorisations a user
+ *  already made are never overwritten (pass onlyOther=false to re-run over every
+ *  transaction, e.g. after adding new keywords to an existing category).
+ *  Uses the plaintext `search_text` column (already stored for ilike search) instead
+ *  of decrypting `description` for every row — much cheaper for a bulk pass. */
+export async function recategoriseAll(userId, { onlyOther = true } = {}) {
+  const catList = await loadCategoriesForBulk(userId);
+  if (!catList.length) return { ok: false, error: "No categories found — seed default categories first.", updated: 0, scanned: 0 };
+
+  let q = supabase.from("budget_transactions").select("id, search_text, category").eq("user_id", userId);
+  if (onlyOther) q = q.eq("category", "Other");
+  const { data: txns, error } = await q;
+  if (error) throw new Error(error.message);
+
+  const changes = [];
+  for (const t of txns || []) {
+    const newCat = autoCategorise(t.search_text || "", catList);
+    if (newCat !== t.category) changes.push({ id: t.id, category: newCat });
+  }
+
+  // Group by target category so each batch is a single UPDATE ... WHERE id IN (...)
+  // rather than one round-trip per transaction.
+  const byCategory = {};
+  for (const c of changes) (byCategory[c.category] ||= []).push(c.id);
+  for (const [category, ids] of Object.entries(byCategory)) {
+    for (let i = 0; i < ids.length; i += 200) {
+      const { error: upErr } = await supabase.from("budget_transactions").update({ category }).in("id", ids.slice(i, i + 200)).eq("user_id", userId);
+      if (upErr) throw new Error(upErr.message);
+    }
+  }
+  return { ok: true, scanned: (txns || []).length, updated: changes.length };
+}
+
 export async function listCategories(userId) {
   // Returns system defaults (user_id IS NULL) + user's own categories (user_id = userId)
   const { data, error } = await supabase

@@ -202,6 +202,31 @@ export function useBudget(user) {
     }
   }
 
+  // Re-run keyword auto-categorisation over already-imported transactions — the
+  // fix for "everything is stuck in Other" when categories didn't exist yet at
+  // import time (e.g. the default-category seed never ran), or after editing a
+  // category's keywords. Only touches "Other" transactions by default so manual
+  // recategorisations are never clobbered.
+  const [budgetRecatRunning, setBudgetRecatRunning] = useState(false);
+  const [budgetRecatMsg,     setBudgetRecatMsg]     = useState("");
+  async function recategoriseAllTxns(onlyOther = true) {
+    setBudgetRecatRunning(true); setBudgetRecatMsg("");
+    try {
+      const data = await api("/api/budget/recategorise-all", { method: "POST", body: JSON.stringify({ only_other: onlyOther }) });
+      if (data.ok) {
+        setBudgetRecatMsg(data.updated > 0
+          ? `✓ Recategorised ${data.updated} of ${data.scanned} transaction${data.scanned === 1 ? "" : "s"} scanned.`
+          : `No changes — scanned ${data.scanned} transaction${data.scanned === 1 ? "" : "s"}, all already matched their best category.`);
+        await loadBudget(budgetSelMonth);
+      } else {
+        setBudgetRecatMsg("⚠ " + (data.error || "Failed to recategorise."));
+      }
+    } catch (e) {
+      setBudgetRecatMsg("⚠ " + e.message);
+    }
+    setBudgetRecatRunning(false);
+  }
+
   // ── Bulk categorize ── Lines 4068–4073 (inline in JSX)
   async function bulkCategorize(ids, category) {
     if (!category) return;
@@ -277,6 +302,8 @@ export function useBudget(user) {
     selectedTxnIds,   setSelectedTxnIds,
     bulkCatTarget,    setBulkCatTarget,
     budgetBanks,
+    budgetRecatRunning, budgetRecatMsg,
+    recategoriseAllTxns,
     // Plaid state
     plaidStatus,  setPlaidStatus,
     plaidLoading, setPlaidLoading,
