@@ -120,6 +120,16 @@ export default function BudgetTab({
   // Until the user picks a non-default period, fall back to the analytics already
   // loaded by the hook (avoids a duplicate fetch on first render).
   const overviewAnalytics = ovAnalytics || budgetAnalytics;
+  // BUG FIX: once ovAnalytics was set (by clicking any period chip, including
+  // "All time"), it permanently shadowed overviewAnalytics — a fresh import
+  // updates budgetAnalytics via loadBudget(), but ovAnalytics never refreshed on
+  // its own, so the Overview looked frozen on whatever snapshot was last fetched.
+  // Re-fetch (or clear) the period snapshot every time the underlying analytics
+  // change, so a new import is reflected regardless of which period is selected.
+  useEffect(() => {
+    if (ovPeriod === "all-time") { setOvAnalytics(null); return; }
+    loadOverviewPeriod(ovPeriod);
+  }, [budgetAnalytics]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Savings Goals — ported from Budget2 ──
   const [budgetGoals, setBudgetGoals] = useState([]);
