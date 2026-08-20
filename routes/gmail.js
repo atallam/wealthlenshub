@@ -125,7 +125,8 @@ async function getMemberPANMap(userId) {
     }
     if (m.name) nameMap.set(m.name.trim().toUpperCase(), m);
   }
-  console.log(`[gmail-cas] ${userId}: panMap has ${panMap.size} entries, nameMap has ${nameMap.size} entries`);
+  const maskedKeys = [...panMap.keys()].map(p => p.slice(0, 5) + "***" + p.slice(-1));
+  console.log(`[gmail-cas] ${userId}: panMap has ${panMap.size} entries: [${maskedKeys.join(", ")}], nameMap has ${nameMap.size} entries`);
   return { members, panMap, nameMap };
 }
 
