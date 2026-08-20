@@ -1,5 +1,3 @@
-
-Gmail · JS
 import { Router }          from "express";
 import crypto              from "crypto";
 import { spawn }           from "child_process";
@@ -13,12 +11,12 @@ import { auth, sendError } from "../lib/auth.js";
 import { encrypt, decrypt } from "../lib/crypto.js";
 // OLD parser — kept for reference; casparser is used instead (see runCasparser below)
 // import { pdfjsLib, _pdfjsFontPath, parseNSDLCASStatement } from "../lib/parsers.js";
- 
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
- 
+
 const router = Router();
- 
+
 // ── OAuth state signing ──────────────────────────────────────────────────────
 const STATE_SECRET = process.env.GMAIL_STATE_SECRET || process.env.GMAIL_CLIENT_SECRET || "";
 function signState(userId) {
@@ -36,9 +34,9 @@ function verifyState(state, maxAgeMs = 10 * 60 * 1000) {
   if (!userId || !ts || Date.now() - ts > maxAgeMs) throw new Error("Expired OAuth state");
   return { userId };
 }
- 
+
 const GMAIL_ENABLED = !!(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET);
- 
+
 // Subject keywords used to find CAS emails.
 const CAS_SUBJECT_KEYWORDS = [
   "Consolidated Account Statement",
@@ -49,13 +47,13 @@ const CAS_SUBJECT_KEYWORDS = [
   "Consolidated Mutual Fund Statement",
   "CAS",
 ];
- 
+
 // ── Smart CAS parser (Python casparser library) ───────────────────────────────
 function runCasparser(pdfPath, password) {
   return new Promise((resolve, reject) => {
     const scriptPath = join(__dirname, "..", "services", "cas_casparser_service.py");
     const pythonBin  = process.platform === "win32" ? "python" : "python3";
- 
+
     function spawnWith(bin) {
       const child = spawn(bin, [scriptPath, pdfPath, password ?? ""], {
         timeout: 60_000,
@@ -79,11 +77,11 @@ function runCasparser(pdfPath, password) {
         catch { reject(new Error(`Invalid JSON from casparser: ${stdout.slice(0, 200)}`)); }
       });
     }
- 
+
     spawnWith(pythonBin);
   });
 }
- 
+
 function makeGmailOAuth2Client() {
   return new google.auth.OAuth2(
     process.env.GMAIL_CLIENT_ID,
@@ -91,7 +89,7 @@ function makeGmailOAuth2Client() {
     process.env.GMAIL_REDIRECT_URI || `${process.env.RENDER_EXTERNAL_URL || "http://localhost:3000"}/api/gmail/callback`
   );
 }
- 
+
 async function getGmailClientForUser(userId) {
   const { data: profile } = await supabase.from("profiles").select("gmail_token").eq("id", userId).single();
   if (!profile?.gmail_token) throw new Error("Gmail not connected");
@@ -106,7 +104,7 @@ async function getGmailClientForUser(userId) {
   });
   return oauth2;
 }
- 
+
 async function getMemberPANMap(userId) {
   const { data: portfolio } = await supabase.from("portfolio").select("members").eq("user_id", userId).single();
   const members = portfolio?.members || [];
@@ -130,23 +128,23 @@ async function getMemberPANMap(userId) {
   console.log(`[gmail-cas] ${userId}: panMap has ${panMap.size} entries, nameMap has ${nameMap.size} entries`);
   return { members, panMap, nameMap };
 }
- 
+
 export async function checkCasEmail(userId) {
   return autoImportCASForUser(userId);
 }
- 
+
 async function autoImportCASForUser(userId) {
   const summary = { checked: 0, imported: 0, updated: 0, skipped: 0, errors: [] };
   try {
     const oauth2 = await getGmailClientForUser(userId);
     const gmail = google.gmail({ version: "v1", auth: oauth2 });
- 
+
     const { members, panMap, nameMap } = await getMemberPANMap(userId);
     const { data: profile } = await supabase.from("profiles").select("encrypted_pan, encrypted_dob").eq("id", userId).single();
     const primaryPAN = profile?.encrypted_pan ? decrypt(profile.encrypted_pan) : null;
- 
+
     const allPANs = [...new Set([...(primaryPAN ? [primaryPAN.toUpperCase()] : []), ...Array.from(panMap.keys())])];
- 
+
     const subjectQuery = CAS_SUBJECT_KEYWORDS.map(s => `subject:"${s}"`).join(" OR ");
     const listRes = await gmail.users.messages.list({
       userId: "me",
@@ -155,11 +153,11 @@ async function autoImportCASForUser(userId) {
     });
     const messages = listRes.data.messages || [];
     summary.checked = messages.length;
- 
+
     // Only skip emails that were successfully imported — errors/skips are retried on next check.
     const { data: processed } = await supabase.from("email_imports").select("email_id").eq("user_id", userId).eq("status", "success");
     const processedIds = new Set((processed || []).map(r => r.email_id));
- 
+
     for (const msg of messages) {
       if (processedIds.has(msg.id)) { summary.skipped++; continue; }
       let importRecord = { user_id: userId, email_id: msg.id, status: "pending" };
@@ -169,13 +167,13 @@ async function autoImportCASForUser(userId) {
         importRecord.email_from    = headers.find(h => h.name === "From")?.value || "";
         importRecord.email_subject = headers.find(h => h.name === "Subject")?.value || "";
         importRecord.email_date    = new Date(parseInt(fullMsg.data.internalDate)).toISOString();
- 
+
         const allParts = [];
         const flatten = ps => { for (const p of ps) { allParts.push(p); if (p.parts) flatten(p.parts); } };
         flatten(fullMsg.data.payload?.parts || []);
         const pdfPart = allParts.find(p => p.mimeType === "application/pdf" || (p.filename||"").toLowerCase().endsWith(".pdf"));
         if (!pdfPart) { importRecord.status = "skipped"; importRecord.error_message = "No PDF attachment"; summary.skipped++; continue; }
- 
+
         let pdfBuffer;
         const attachmentId = pdfPart.body?.attachmentId;
         if (attachmentId) {
@@ -184,11 +182,11 @@ async function autoImportCASForUser(userId) {
         } else if (pdfPart.body?.data) {
           pdfBuffer = Buffer.from(pdfPart.body.data, "base64url");
         } else { importRecord.status = "skipped"; importRecord.error_message = "Cannot read attachment"; summary.skipped++; continue; }
- 
+
         // ── Smart CAS parser (casparser) ─────────────────────────────────────
         const tmpFile = join(tmpdir(), `cas_${crypto.randomBytes(8).toString("hex")}.pdf`);
         await writeFile(tmpFile, pdfBuffer);
- 
+
         let parseResult = null;
         const passwordsToTry = ["", ...allPANs];
         for (const pwd of passwordsToTry) {
@@ -211,7 +209,7 @@ async function autoImportCASForUser(userId) {
           }
         }
         await unlink(tmpFile).catch(() => {});
- 
+
         if (!parseResult) {
           if (!importRecord.status || importRecord.status === "pending") {
             importRecord.status = "error";
@@ -223,12 +221,12 @@ async function autoImportCASForUser(userId) {
           continue;
         }
         if (!parseResult.holdings?.length) { importRecord.status = "skipped"; importRecord.error_message = "No holdings found in CAS"; summary.skipped++; continue; }
- 
+
         // CAS period metadata
         const casPeriodStart = parseResult.period_start || null;
         const casPeriodEnd   = parseResult.period_end   || parseResult.statement_date || null;
         const sourceDate     = casPeriodEnd;
- 
+
         // ── Per-account member matching (keyed by _pan on each holding) ─────
         // casparser sets _pan = the account-specific owner PAN on every holding.
         // An NSDL family CAS has multiple accounts (one per member), each with its
@@ -242,10 +240,10 @@ async function autoImportCASForUser(userId) {
           holdingsByPan.get(pan).push(h);
         }
         console.log(`[gmail-cas] ${userId}: CAS has ${holdingsByPan.size} PAN group(s): ${[...holdingsByPan.keys()].join(", ")}`);
- 
+
         let totalAdded = 0;
         const matchedMembers = [];
- 
+
         for (const [pan, panHoldings] of holdingsByPan) {
           // 1. Exact PAN lookup
           let targetMember = null;
@@ -254,7 +252,7 @@ async function autoImportCASForUser(userId) {
             targetMember = panMap.get(pan);
             matchedBy    = "pan";
           }
- 
+
           // 2. Fallback: match by holder name on the first holding in this group
           if (!targetMember) {
             const holderName = (panHoldings[0]?._holder_name || "").trim().toUpperCase();
@@ -263,7 +261,7 @@ async function autoImportCASForUser(userId) {
               matchedBy    = "name";
             }
           }
- 
+
           // 3. No match — log and SKIP (never silently assign to self)
           if (!targetMember) {
             const label = pan === "__no_pan__" ? "(no PAN)" : pan;
@@ -278,11 +276,11 @@ async function autoImportCASForUser(userId) {
             );
             continue;
           }
- 
+
           const memberId = targetMember.id;
           console.log(`[gmail-cas] ${userId}: PAN ${pan} → member "${targetMember.name}" (${memberId}) via ${matchedBy} — ${panHoldings.length} holdings`);
           matchedMembers.push({ memberId, memberName: targetMember.name, pan, matchedBy, count: panHoldings.length });
- 
+
           // ── Flush-and-fill scoped to this member only ──────────────────────
           const { error: delErr } = await supabase.from("holdings")
             .delete()
@@ -290,7 +288,7 @@ async function autoImportCASForUser(userId) {
             .eq("source",    "cas")
             .eq("member_id", memberId);
           if (delErr) throw new Error(`Failed to flush CAS holdings for member ${memberId}: ${delErr.message}`);
- 
+
           // Defensive: also remove legacy gmail_auto rows that predate the source column
           await supabase.from("holdings")
             .delete()
@@ -298,7 +296,7 @@ async function autoImportCASForUser(userId) {
             .eq("import_method", "gmail_auto")
             .eq("member_id",     memberId)
             .is("source",        null);
- 
+
           const now = new Date().toISOString();
           const toInsert = panHoldings.map(h => ({
             id:               `h_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -321,7 +319,7 @@ async function autoImportCASForUser(userId) {
             cas_period_end:   casPeriodEnd,
             created_at:       now,
           }));
- 
+
           const CHUNK = 100;
           for (let i = 0; i < toInsert.length; i += CHUNK) {
             const { error: insErr } = await supabase.from("holdings").insert(toInsert.slice(i, i + CHUNK));
@@ -329,7 +327,7 @@ async function autoImportCASForUser(userId) {
           }
           totalAdded += toInsert.length;
         }
- 
+
         const added = totalAdded;
         importRecord.status           = "success";
         importRecord.holdings_added   = added;
@@ -351,7 +349,7 @@ async function autoImportCASForUser(userId) {
   }
   return summary;
 }
- 
+
 router.get("/auth", auth, async (req, res) => {
   if (!GMAIL_ENABLED) return res.status(501).json({ error: "Gmail integration not configured" });
   const oauth2 = makeGmailOAuth2Client();
@@ -362,7 +360,7 @@ router.get("/auth", auth, async (req, res) => {
   });
   res.json({ url });
 });
- 
+
 router.get("/callback", async (req, res) => {
   if (!GMAIL_ENABLED) return res.status(501).send("Gmail not configured");
   const { code, state, error: oauthError } = req.query;
@@ -389,13 +387,13 @@ router.get("/callback", async (req, res) => {
     res.redirect("/?gmail_connected=1");
   } catch (err) { res.redirect(`/?gmail_error=${encodeURIComponent(err.message)}`); }
 });
- 
+
 router.get("/status", auth, async (req, res) => {
   const { data: prof } = await supabase.from("profiles").select("gmail_email,gmail_connected_at,gmail_last_check,gmail_auto_import,gmail_token").eq("id", req.user.id).single();
   const { data: imports } = await supabase.from("email_imports").select("status,holdings_added,holdings_updated,processed_at").eq("user_id", req.user.id).order("processed_at", { ascending: false }).limit(10);
   res.json({ enabled: GMAIL_ENABLED, connected: !!(prof?.gmail_token), gmail_email: prof?.gmail_email || null, connected_at: prof?.gmail_connected_at || null, last_check: prof?.gmail_last_check || null, auto_import: prof?.gmail_auto_import ?? true, recent_imports: imports || [] });
 });
- 
+
 router.delete("/disconnect", auth, async (req, res) => {
   try {
     const { data: prof } = await supabase.from("profiles").select("gmail_token").eq("id", req.user.id).single();
@@ -404,16 +402,15 @@ router.delete("/disconnect", auth, async (req, res) => {
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
- 
+
 router.post("/toggle-auto", auth, async (req, res) => {
   await supabase.from("profiles").update({ gmail_auto_import: !!req.body.enabled }).eq("id", req.user.id);
   res.json({ ok: true });
 });
- 
+
 router.post("/check-now", auth, async (req, res) => {
   if (!GMAIL_ENABLED) return res.status(501).json({ error: "Gmail integration not configured" });
   res.json(await autoImportCASForUser(req.user.id));
 });
- 
+
 export default router;
- 
