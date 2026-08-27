@@ -8,12 +8,12 @@
  */
 import { Router } from "express";
 import { supabase } from "../lib/db.js";
-import { requireAuth } from "../lib/auth.js";
+import { auth } from "../lib/auth.js";
 
 const router = Router();
 
 // ── List notifications ────────────────────────────────────────────────────────
-router.get("/", requireAuth, async (req, res) => {
+router.get("/", auth, async (req, res) => {
   try {
     const userId = req.user.id;
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
@@ -42,7 +42,7 @@ router.get("/", requireAuth, async (req, res) => {
 });
 
 // ── Mark one as read ──────────────────────────────────────────────────────────
-router.post("/:id/read", requireAuth, async (req, res) => {
+router.post("/:id/read", auth, async (req, res) => {
   try {
     const { error } = await supabase
       .from("notifications")
@@ -57,7 +57,7 @@ router.post("/:id/read", requireAuth, async (req, res) => {
 });
 
 // ── Mark all as read ──────────────────────────────────────────────────────────
-router.post("/read-all", requireAuth, async (req, res) => {
+router.post("/read-all", auth, async (req, res) => {
   try {
     const { error } = await supabase
       .from("notifications")
@@ -72,7 +72,7 @@ router.post("/read-all", requireAuth, async (req, res) => {
 });
 
 // ── Clear all read notifications ──────────────────────────────────────────────
-router.delete("/clear", requireAuth, async (req, res) => {
+router.delete("/clear", auth, async (req, res) => {
   try {
     const { error } = await supabase
       .from("notifications")
