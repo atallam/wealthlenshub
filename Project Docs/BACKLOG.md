@@ -1,123 +1,111 @@
 # WealthLens Hub — Product Backlog
 
 > Last reviewed: August 2026  
-> All items in the "Completed" section are shipped and live.  
-> Items below represent genuine open work identified from code review, known issues, and architectural gaps.
-
----
-
-## 🔴 P0 — Critical / Security
-
-> ✅ **Audit complete — August 2026. All 5 P0 items confirmed resolved in the codebase.**
-
-### ✅ 1. PAN Exposure in API Response — RESOLVED
-`GET /api/profile/cas-credentials` already returns only `pan_masked` (e.g. `ABCD****Z`) via `services/profile.service.js`. The raw PAN is decrypted server-side solely to produce the masked display value and is never included in any API response.
-
-### ✅ 2. SnapTrade Disconnect Wipes All Holdings — RESOLVED
-`DELETE /api/snaptrade/connections/:authId` in `routes/snaptrade.js` fetches the remaining SnapTrade accounts after the authorization is removed, builds a `remainingAccountIds` Set, and only deletes holdings whose `source_account` is not in that set. Other broker accounts are untouched.
-
-### ✅ 3. AI Chat — No Per-User Rate Limiting — RESOLVED
-`routes/ai.js` defines `aiLimiter` with `keyGenerator: (req) => req.user?.id || ipKeyGenerator(req)` — per-authenticated-user limiting at 20 requests / 60 seconds. A model allowlist (`ALLOWED_MODELS`) also prevents arbitrary model selection.
-
-### ✅ 4. Missing Cascade Delete for Transactions — RESOLVED
-`migrations/transactions_migration.sql` declares `holding_id text not null references holdings(id) on delete cascade`. Deleting a holding removes its transactions at the database level.
-
-### ✅ 5. ENCRYPTION_KEY Not Documented — RESOLVED
-`lib/crypto.js` uses `BUDGET_ENCRYPT_KEY` (the correct variable name), which is documented in `.env.example` with a generation command. In production mode the server **throws at startup** if the key is absent, preventing silent data loss.
+> P0 security items were audited and all confirmed resolved — removed from backlog.  
+> All items in the "Completed" section are shipped and live in the codebase.
 
 ---
 
 ## 🟠 P1 — High Value / Near-term
 
-### 6. Mobile App (React Native / PWA Enhancements)
-The current PWA works on mobile but lacks native-feel gestures, push notifications (beyond email), and offline write capability. Consider:
-- True push notifications via Web Push API for price alerts and FD reminders.
-- Swipe-to-delete / swipe-to-edit on holdings rows.
-- Offline queue for adding transactions when connectivity is poor.
+### 1. Mobile PWA Enhancements
+The current PWA works on mobile but lacks native-feel capabilities. Priority additions:
+- **Web Push notifications** — price alerts and FD reminders via the Push API (currently email-only)
+- **Swipe gestures** — swipe-to-delete / swipe-to-edit on holdings rows
+- **Offline write queue** — allow adding transactions when connectivity is poor; sync on reconnect
 
-### 7. Multi-Currency Portfolio View
-Currently all values are normalised to INR. Users with significant US holdings want to toggle between INR and USD views without affecting the stored data.  
-**Scope:** Add a currency toggle (INR / USD) to the global header; re-compute KPI tiles using the live FX rate.
+### 2. Multi-Currency Portfolio View Toggle
+All values are normalised to INR at rest. Users with significant US holdings want to flip the entire dashboard to USD without touching stored data.  
+**Scope:** Global INR / USD toggle in the header; KPI tiles and charts re-computed using the live FX rate already fetched by the backend. Settings already expose a base currency field — wire it up to all display components.
 
-### 8. Recurring Transaction Templates (SIP Automation)
-Users manually log monthly SIP transactions. A recurring-transaction template would auto-create a transaction entry on a set schedule (monthly, quarterly) with a confirmation step.
+### 3. Recurring Transaction Templates (SIP Automation)
+Users manually log every monthly SIP transaction. A recurring-transaction template would:
+- Let users define a template (fund, amount, day-of-month)
+- Auto-create a pending transaction entry on schedule with a one-click confirm step
+- Distinct from Budget2Tab's recurring *detection* — this creates portfolio transactions
 
-### 9. Plaid Transaction Categorisation Improvement
-Auto-categorisation relies on keyword rules. A short ML or LLM-assisted categorisation pass (using the transaction description + merchant name) would significantly reduce manual recategorisation effort.
+### 4. Plaid Transaction Categorisation Improvement
+Auto-categorisation currently relies on keyword rules. An LLM-assisted pass using the transaction description + merchant name would significantly reduce manual recategorisation.  
+**Scope:** POST categorisation requests to `/api/ai/chat` after import; cache results by description hash to avoid re-calling for known merchants.
 
-### 10. Portfolio Rebalancing Advisor
-Given a target asset allocation (e.g. 60% equity / 30% debt / 10% gold), compute the buy/sell amounts needed to rebalance. Surface as an AI-generated rebalancing order list in the Strategy tab.
+### 5. Mutual Fund Overlap Analysis
+For users holding multiple MFs, show the stock-level overlap across schemes (which stocks appear in more than one fund, and by what weight).  
+**Scope:** Fetch top-10 holdings per scheme from an AMFI/BSE data source; compute intersection; surface as a heat-table in the Holdings or Strategy tab.
 
-### 11. Mutual Fund Overlap Analysis
-For users holding multiple MFs, show stock-level overlap across funds (what % of holdings are duplicated across schemes). Useful for avoiding unintentional concentration.
-
-### 12. Family Consolidated Tax Report (Excel)
-Export a per-member and consolidated LTCG/STCG summary as an Excel workbook formatted for CA filing, including grandfathering calculations.
+### 6. Family Consolidated Tax Report (Excel)
+Export a per-member and consolidated LTCG/STCG summary as a multi-sheet Excel workbook formatted for CA filing — including grandfathering calculations and a summary row matching ITR Schedule 112A format.
 
 ---
 
 ## 🟡 P2 — Medium Priority
 
-### 13. Unified Notification Centre (In-App)
-All alerts currently go only to email. An in-app notification bell with unread count and a notification drawer would surface FD maturities, price alerts, and stale nudges without requiring the user to check email.
+### 7. Unified In-App Notification Centre
+All alerts go to email only. An in-app notification bell with unread count and a slide-in drawer would surface FD maturities, price alerts, and stale nudges without requiring the user to check email.  
+**Scope:** `notifications` table; bell icon in the header; mark-as-read; clear-all.
 
-### 14. Dark Mode
-The UI uses hardcoded light-mode colours throughout App.jsx and the feature tabs. A CSS variable-based theme system would enable dark mode toggling, improving mobile night-time usability.
+### 8. Dark Mode
+The app uses CSS variables (`--bg`, `--text`, etc.) but only defines a light palette. Adding dark mode requires:
+- A second set of CSS variable values under `@media (prefers-color-scheme: dark)` and a `[data-theme="dark"]` attribute
+- A theme toggle button in Settings
+- Testing across all tabs for hardcoded colour values that need to move to variables
 
-### 15. Audit Log Filtering & Export
-The AuditLogPanel shows recent events but lacks filtering by date range, action type, or member. Add filter controls and an export-to-CSV button.
+### 9. Audit Log Filtering & Export
+The AuditLogPanel shows recent events but has no filter controls. Add:
+- Filters by date range, action type (create / update / delete / import), and member
+- Export to CSV button for compliance or personal records
 
-### 16. SnapTrade Holdings Sync Frequency Control
-Currently SnapTrade sync is manual (user triggers it). Add an optional automatic background sync (e.g. every 24 hours) so US brokerage holdings stay fresh without manual intervention.
+### 10. SnapTrade Auto-Sync (Background Frequency Control)
+SnapTrade sync is currently manual (user triggers it). Add an optional scheduled background sync (every 24 hours) so US brokerage holdings stay current without manual intervention.
 
-### 17. Watchlist Price Alerts
-The Watchlist tab shows live prices but has no alert capability. Extend the existing alert system to watchlist items so users get notified when a target price is hit.
+### 11. Watchlist Price Alerts
+The Watchlist tab shows live prices but has no alert capability. Extend the existing holding-alert system to watchlist items so users get notified (email/in-app) when a target price is hit.
 
-### 18. SIP / SWP Return Attribution
-Currently, XIRR captures the aggregate effect of SIPs, but there is no breakdown showing which SIP installments contributed most to total return. A contribution-weighted return view would help users evaluate the SIP strategy.
+### 12. SIP / SWP Return Attribution
+XIRR captures the aggregate effect of SIPs but there is no breakdown showing which installments contributed most. A contribution-weighted return view would help users evaluate SIP timing decisions.
 
-### 19. Goal Progress Notifications
-When a goal crosses a milestone (25%, 50%, 75%, 100%), send a celebratory email/push notification. Low effort, high motivation value.
+### 13. Goal Progress Milestone Notifications
+When a goal crosses 25%, 50%, 75%, or 100%, send a celebratory email or in-app notification. Low effort, high motivation value.
 
-### 20. Insurance Premium Reminder
-Insurance renewal dates are tracked but no in-app or email reminder is triggered. Add a cron job similar to FD alerts that sends reminders 30 and 7 days before renewal.
+### 14. Insurance Premium Renewal Reminders
+Insurance renewal dates are tracked but no cron job fires reminder emails. Add a job similar to `fd-alerts` that sends reminders 30 and 7 days before an insurance policy renewal date.
 
 ---
 
 ## 🔵 P3 — Nice-to-Have / Research
 
-### 21. NPS (National Pension System) Support
-Add NPS as a 14th asset type with tier-I / tier-II distinction, contribution tracking, and government-co-contribution modelling.
+### 15. NPS (National Pension System) Support
+Add NPS as a 14th asset type with Tier-I / Tier-II distinction, contribution tracking, government co-contribution modelling, and 60/40 corpus tax split projection.
 
-### 22. SGBs (Sovereign Gold Bonds) Tracking
-SGBs have fixed tenors, interest payouts, and premature redemption windows. A dedicated SGB tracker with maturity countdown and interest calendar would be useful.
+### 16. SGBs (Sovereign Gold Bonds) Tracking
+SGBs have fixed tenors, semi-annual interest payouts, and premature redemption windows. A dedicated SGB tracker with maturity countdown and interest calendar would surface these clearly.
 
-### 23. EPF / PPF Auto-Import via Setu
-EPFO and PPF portals expose limited APIs. Explore whether Setu AA or a UMANG integration can auto-pull EPF balance and statement, removing the need for manual updates.
+### 17. EPF / PPF Auto-Import via Setu
+Explore whether the Setu AA or UMANG integration can auto-pull EPF balance and passbook, removing the need for manual EPF/PPF updates.
 
-### 24. Alternative Investment Tracking (AIF / PMS)
+### 18. Alternative Investment Tracking (AIF / PMS)
 High-net-worth users may hold AIF or PMS products. Model these as a new asset type with quarterly NAV updates and benchmark comparison.
 
-### 25. Broker-Native Ledger Reconciliation
-Compare the transactions recorded in WealthLens Hub against the broker contract note PDFs to surface any discrepancies (missing trades, price differences).
+### 19. Broker-Native Ledger Reconciliation
+Compare transactions recorded in WealthLens Hub against broker contract note PDFs to surface discrepancies — missing trades, price differences, or quantity mismatches.
 
-### 26. Embedded Financial News Feed
-Pull a curated news feed (NSE announcements, corporate actions, RBI circulars) filtered to holdings in the portfolio. Surface inside the Overview tab or as a dedicated News tab.
+### 20. Embedded Financial News Feed
+Pull a curated, portfolio-filtered news feed (NSE announcements, corporate actions, RBI circulars) and surface it in the Overview tab or a dedicated News tab.
 
-### 27. Collaborative Budget (Shared Budget View)
-Extend portfolio sharing to the Budget tab so a couple or family can view and categorise joint expenses together in real time.
+### 21. Collaborative Budget (Shared Budget View)
+Extend portfolio sharing to the Budget tab so couples or families can view, categorise, and annotate joint expenses together.
 
 ---
 
 ## ✅ Completed (Reference)
 
-All items below are shipped and should not be re-added to the active backlog.
+These are shipped and should not be re-added to the active backlog.
 
-- PAN masking in `casCredentials` (never returns plaintext PAN) — `services/profile.service.js`
+- PAN masking in `casCredentials` — `services/profile.service.js`
 - SnapTrade disconnect scoped to removed broker accounts only — `routes/snaptrade.js`
 - Per-user AI rate limiting (20 req/min, keyed on `req.user.id`) + model allowlist — `routes/ai.js`
-- Transactions `ON DELETE CASCADE` FK constraint — `migrations/transactions_migration.sql`
-- `BUDGET_ENCRYPT_KEY` documented in `.env.example`; production fail-fast guard in `lib/crypto.js`
+- Transactions `ON DELETE CASCADE` FK — `migrations/transactions_migration.sql`
+- `BUDGET_ENCRYPT_KEY` documented + production fail-fast guard — `lib/crypto.js` + `.env.example`
+- **Portfolio Rebalancing Advisor** — StrategyTab has target allocation sliders, buy/sell amounts, and AI rebalancing explanation (✦ Explain this rebalance plan)
 - Multi-member family portfolio with per-member filtered views
 - Live price refresh (Indian stocks, US stocks, MF NAV, FX)
 - XIRR → CAGR → Simple return cascade
@@ -153,4 +141,4 @@ All items below are shipped and should not be re-added to the active backlog.
 - PWA (service worker, install prompt, mobile UX audit)
 - AES-256-GCM encryption for PAN, Plaid tokens, budget data
 - Rate limiting and security headers (express-rate-limit, helmet)
-- .env.example with all 20+ env vars documented
+- .env.example with all env vars documented
