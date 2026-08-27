@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { ClipboardList, Paperclip, Pencil, X as XIcon, Bell } from "lucide-react";
 import ConcallPanel from "./ConcallPanel.jsx";
+import SwipeableRow from "../../components/shared/SwipeableRow.jsx";
+import MFOverlapPanel from "./MFOverlapPanel.jsx";
 
 // ── Per-holding alert panel ───────────────────────────────────────────────────
 
@@ -651,7 +653,10 @@ export default function HoldingsTab({
                   const nativeSym=isUS?"$":"₹";
                   const isExp=expandedHolding===h.id;
                   const rawPrice=h.type==="MF"?(h.current_nav||h.purchase_nav||null):(h.current_price||h.purchase_price||null);
-                  return(<div key={h.id} className="m-hc" onClick={()=>setExpandedHolding(isExp?null:h.id)}>
+                  return(<SwipeableRow key={h.id}
+                      onEdit={(!h.source||h.source==="manual")?()=>editH(h):null}
+                      onDelete={(!h.source||h.source==="manual")?()=>deleteHolding(h.id):null}
+                    ><div className="m-hc" onClick={()=>setExpandedHolding(isExp?null:h.id)}>
                     <div className="m-hc-top">
                       <div style={{flex:1,minWidth:0}}>
                         <div className="m-hc-name">{h.name}</div>
@@ -726,14 +731,8 @@ export default function HoldingsTab({
                         <Paperclip size={16} strokeWidth={1.8}/>
                         {(h.artifacts||[]).length>0&&<span>{h.artifacts.length}</span>}
                       </button>
-                      {(!h.source||h.source==="manual")&&<button title="Edit" aria-label="Edit" onClick={()=>editH(h)} style={{color:"rgba(90,156,224,.65)"}}>
-                        <Pencil size={16} strokeWidth={1.8}/>
-                      </button>}
-                      {(!h.source||h.source==="manual")&&<button title="Delete" aria-label="Delete" onClick={()=>deleteHolding(h.id)} style={{color:"var(--loss)"}}>
-                        <XIcon size={16} strokeWidth={2}/>
-                      </button>}
                     </div>}
-                  </div>);
+                  </div></SwipeableRow>);
                 })}
               </div>);
             });
@@ -750,6 +749,13 @@ export default function HoldingsTab({
           })()}
         </div>
       </>)}
+      {/* ── MF Overlap Analysis ─────────────────────── */}
+      {visH.filter(h=>h.type==="MF"&&h.scheme_code).length>=2&&(
+        <div style={{marginTop:"1.25rem",borderTop:"1px solid var(--border)",paddingTop:"1rem"}}>
+          <MFOverlapPanel mfHoldings={visH.filter(h=>h.type==="MF"&&h.scheme_code)} />
+        </div>
+      )}
+
       <div style={{marginTop:"1rem",padding:".75rem 1rem",background:"var(--bg-muted)",borderRadius:8,fontSize:".72rem",color:"var(--text-dim)",lineHeight:1.6}}>
         <strong style={{color:"var(--text)"}}>Live prices:</strong> Add NSE ticker (e.g. <code style={{color:"#c9a84c"}}>RELIANCE</code>) or AMFI scheme code (e.g. <code style={{color:"#c9a84c"}}>119551</code>) when adding a holding, then click <strong style={{color:"var(--text)"}}>⟳ Live Prices</strong> to auto-fetch. 📎 button attaches contract notes, statements, or receipts to any holding.
       </div>

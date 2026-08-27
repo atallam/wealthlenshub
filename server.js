@@ -28,7 +28,9 @@ import concallRouter      from "./routes/concall.js";
 import exportRouter       from "./routes/export.js";
 import alertsRouter       from "./routes/alerts.js";
 import watchlistRouter    from "./routes/watchlist.js";
-import auditRouter        from "./routes/audit.js";
+import auditRouter       from "./routes/audit.js";
+import pushRouter        from "./routes/push.js";
+import mfRouter          from "./routes/mf.js";
 import { auditMiddleware } from "./lib/auditLogger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -86,6 +88,8 @@ app.use("/api/export",        exportRouter);
 app.use("/api/alerts",        alertsRouter);
 app.use("/api/watchlist",     watchlistRouter);
 app.use("/api/audit-logs",    auditRouter);
+app.use("/api/push",          pushRouter);
+app.use("/api/mf",            mfRouter);
 
 // ── Global API error handler ─────────────────────────────────────────────────
 app.use((err, req, res, next) => {

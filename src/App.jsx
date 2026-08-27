@@ -76,6 +76,7 @@ import ErrorBoundary from './components/shared/ErrorBoundary.jsx';
 // ── PWA install prompt ───────────────────────────────────────────
 import InstallPrompt from './components/shared/InstallPrompt.jsx';
 import NotificationBell from './components/shared/NotificationBell.jsx';
+import { usePushNotifications } from './hooks/usePushNotifications.js';
 import ExportPanel from './components/shared/ExportPanel.jsx';
 import { useToast } from './components/shared/Toast.jsx';
 
@@ -216,6 +217,8 @@ export default function App() {
     setMoreSheetOpen(false);
     setExpandedHolding(null);
   }, [tab]);
+
+  const { supported: pushSupported, subscribed: pushSubscribed, loading: pushLoading, toggle: togglePush } = usePushNotifications();
 
   // Fetch Gmail status whenever Settings panel opens
   useEffect(() => {
@@ -1581,7 +1584,23 @@ ${alertsText}`;
           </div>
 
           <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',display:'flex',alignItems:'center',gap:'.6rem',flexWrap:'wrap'}}>
-            {confirmSignOut ? (
+            {/* ── Push Notifications ── */}
+          {pushSupported && (
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',marginBottom:'1rem'}}>
+              <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Push Notifications</div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'1rem'}}>
+                <div style={{fontSize:'.8rem',color:'var(--text)'}}>
+                  {pushSubscribed ? 'Notifications are enabled on this device.' : 'Get price alerts and reminders on this device.'}
+                </div>
+                <button className="btn-o" onClick={togglePush} disabled={pushLoading}
+                  style={{flexShrink:0,minWidth:80,color:pushSubscribed?'var(--loss)':'#4caf9a',borderColor:pushSubscribed?'rgba(220,38,38,.25)':'rgba(76,175,154,.3)'}}>
+                  {pushLoading ? '…' : pushSubscribed ? 'Disable' : 'Enable'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {confirmSignOut ? (
               <>
                 <span style={{fontSize:'.8rem',color:'var(--text-dim)',fontWeight:600}}>Sign out?</span>
                 <button className="btn-o" style={{color:'#fff',background:'var(--loss)',borderColor:'var(--loss)'}} onClick={() => { signOut(); setConfirmSignOut(false); }}>

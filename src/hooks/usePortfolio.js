@@ -3,6 +3,7 @@ import { supabase } from '../supabase.js';
 import { uid, setLiveUsdInr, getLiveUsdInr, setPpfRate, setEpfRate } from '../utils.js';
 import { BF, BG, BA, BT } from '../constants.js';
 import { api } from '../lib/api.js';
+import { isOnline, queueRequest, registerSync } from '../lib/offlineQueue.js';
 import { useToast } from '../components/shared/Toast.jsx';
 
 // api() imported from src/lib/api.js above
@@ -185,8 +186,7 @@ export function usePortfolio(user) {
 
     if (txnSavingRef) txnSavingRef.current = true;
     try {
-      await api("/api/transactions", {
-        method: "POST", body: JSON.stringify({
+      const txnBody = JSON.stringify({
           holding_id: txnForm.holding_id,
           txn_type:   txnForm.txn_type,
           units:      finalUnits,
@@ -195,8 +195,18 @@ export function usePortfolio(user) {
           price_usd:  txnForm.price_usd ? +txnForm.price_usd : undefined,
           txn_date:   txnForm.txn_date,
           notes:      txnForm.notes || "",
-        })
-      });
+        });
+
+      if (!isOnline()) {
+        // Queue for background sync when connectivity returns
+        await queueRequest("/api/transactions", "POST", { "Content-Type": "application/json" }, txnBody);
+        await registerSync();
+        showToast?.("Offline — transaction queued and will sync automatically.", "info");
+        if (txnSavingRef) txnSavingRef.current = false;
+        return;
+      }
+
+      await api("/api/transactions", { method: "POST", body: txnBody });
       const hlds = await api("/api/holdings");
       setHoldings(hlds || []);
       return { hlds };

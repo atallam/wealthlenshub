@@ -8,12 +8,6 @@
 
 ## 🟠 P1 — High Value / Near-term
 
-### 1. Mobile PWA Enhancements
-The current PWA works on mobile but lacks native-feel capabilities. Priority additions:
-- **Web Push notifications** — price alerts and FD reminders via the Push API (currently email-only)
-- **Swipe gestures** — swipe-to-delete / swipe-to-edit on holdings rows
-- **Offline write queue** — allow adding transactions when connectivity is poor; sync on reconnect
-
 ### 2. Multi-Currency Portfolio View Toggle
 All values are normalised to INR at rest. Users with significant US holdings want to flip the entire dashboard to USD without touching stored data.  
 **Scope:** Global INR / USD toggle in the header; KPI tiles and charts re-computed using the live FX rate already fetched by the backend. Settings already expose a base currency field — wire it up to all display components.
@@ -27,10 +21,6 @@ Users manually log every monthly SIP transaction. A recurring-transaction templa
 ### 4. Plaid Transaction Categorisation Improvement
 Auto-categorisation currently relies on keyword rules. An LLM-assisted pass using the transaction description + merchant name would significantly reduce manual recategorisation.  
 **Scope:** POST categorisation requests to `/api/ai/chat` after import; cache results by description hash to avoid re-calling for known merchants.
-
-### 5. Mutual Fund Overlap Analysis
-For users holding multiple MFs, show the stock-level overlap across schemes (which stocks appear in more than one fund, and by what weight).  
-**Scope:** Fetch top-10 holdings per scheme from an AMFI/BSE data source; compute intersection; surface as a heat-table in the Holdings or Strategy tab.
 
 ### 6. Family Consolidated Tax Report (Excel)
 Export a per-member and consolidated LTCG/STCG summary as a multi-sheet Excel workbook formatted for CA filing — including grandfathering calculations and a summary row matching ITR Schedule 112A format.
@@ -97,6 +87,18 @@ Extend portfolio sharing to the Budget tab so couples or families can view, cate
 ---
 
 ## ✅ Completed (Reference)
+
+### Mobile PWA Enhancements (was P1 Item 1)
+Shipped August 2026.
+- **Web Push notifications** — `routes/push.js` (VAPID), `src/hooks/usePushNotifications.js`, `public/sw.js` push handler; toggle in Settings; wired into cron alert digest via `sendPushToUser()`
+- **Swipe gestures** — `src/components/shared/SwipeableRow.jsx`; integrated into HoldingsTab mobile card list
+- **Offline write queue** — `src/lib/offlineQueue.js` (IndexedDB); `sw.js` Background Sync handler; offline-aware transaction POST in `usePortfolio.js`
+- **DB migration** — `migrations/0024_push_subscriptions.sql`
+
+### Mutual Fund Overlap Analysis (was P1 Item 5)
+Shipped August 2026.
+- Backend `POST /api/mf/overlap` in `routes/mf.js` — fetches AMFI monthly portfolio disclosures, 7-day cache, pairwise Jaccard + weighted overlap computation
+- Frontend `src/features/holdings/MFOverlapPanel.jsx` — auto-appears in HoldingsTab when ≥ 2 MF holdings with scheme codes; expandable pair cards with shared-stock breakdown
 
 These are shipped and should not be re-added to the active backlog.
 

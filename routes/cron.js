@@ -4,6 +4,7 @@ import { fetchUsdInr, mfNav, stockPrice, yahooPrice } from "../lib/prices.js";
 import { takeSnapshot } from "../lib/snapshot.js";
 import { getCrossingHoldings } from "../lib/stale-holdings.js";
 import { sendStaleNudge, sendAlertDigest } from "../services/alert-mailer.js";
+import { sendPushToUser, pushEnabled } from "./push.js";
 
 // Concurrency limiter — same pattern as routes/prices.js
 async function pLimit(fns, concurrency = 5) {
@@ -366,6 +367,10 @@ router.post("/alert-check", cronAuth, async (req, res) => {
 
     try {
       await sendAlertDigest(toEmail, triggered, portfolioSummary);
+      if (pushEnabled()) {
+        const pushPayload = { title: "WealthLens Alert", body: `${triggered.length} alert${triggered.length>1?"s":""} triggered`, url: "/alerts" };
+        await sendPushToUser(port.user_id, pushPayload).catch(()=>{});
+      }
       results.push({ userId: port.user_id, email: toEmail, triggered: triggered.length, status: "sent" });
     } catch (e) {
       results.push({ userId: port.user_id, email: toEmail, triggered: triggered.length, status: "error", error: e.message });
