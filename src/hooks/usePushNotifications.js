@@ -5,7 +5,7 @@
  *   const { supported, subscribed, loading, toggle } = usePushNotifications();
  */
 import { useState, useEffect, useCallback } from "react";
-import { apiFetch } from "../lib/api.js";
+import { api as apiFetch } from "../lib/api.js";
 
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
