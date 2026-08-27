@@ -156,19 +156,28 @@ export function getXIRR(h){
   return { value: null, method: null };
 }
 
+// ── Value masker ─────────────────────────────────────────────────
+// Call setMasked(true) to make every monetary formatter return MASK.
+// React components re-render via MaskContext — the module flag is read
+// fresh on each render call, so toggling works without extra wiring.
+export const MASK = '••••';
+let _masked = false;
+export function setMasked(v) { _masked = !!v; }
+export function getMasked() { return _masked; }
+
 // ── Currency formatting ──────────────────────────────────────────
-export const fmtINR = n => "₹" + Math.abs(n).toLocaleString("en-IN", {maximumFractionDigits:0});
-export const fmtUSD = n => "$" + Math.abs(n).toLocaleString("en-US", {maximumFractionDigits:0});
-export const fmtCrINR = n => { const a=Math.abs(n); return a>=1e7?`₹${(a/1e7).toFixed(2)}Cr`:a>=1e5?`₹${(a/1e5).toFixed(2)}L`:fmtINR(a); };
-export const fmtCrUSD = n => { const a=Math.abs(n); return a>=1e6?`$${(a/1e6).toFixed(2)}M`:a>=1e3?`$${(a/1e3).toFixed(1)}K`:fmtUSD(a); };
-export const fmtNative = (n, h) => isUSDHolding(h) ? fmtUSD(n) : fmtINR(n);
-export const fmtCrNative = (n, h) => isUSDHolding(h) ? fmtCrUSD(n) : fmtCrINR(n);
+export const fmtINR = n => _masked ? MASK : "₹" + Math.abs(n).toLocaleString("en-IN", {maximumFractionDigits:0});
+export const fmtUSD = n => _masked ? MASK : "$" + Math.abs(n).toLocaleString("en-US", {maximumFractionDigits:0});
+export const fmtCrINR = n => { if (_masked) return MASK; const a=Math.abs(n); return a>=1e7?`₹${(a/1e7).toFixed(2)}Cr`:a>=1e5?`₹${(a/1e5).toFixed(2)}L`:fmtINR(a); };
+export const fmtCrUSD = n => { if (_masked) return MASK; const a=Math.abs(n); return a>=1e6?`$${(a/1e6).toFixed(2)}M`:a>=1e3?`$${(a/1e3).toFixed(1)}K`:fmtUSD(a); };
+export const fmtNative = (n, h) => _masked ? MASK : isUSDHolding(h) ? fmtUSD(n) : fmtINR(n);
+export const fmtCrNative = (n, h) => _masked ? MASK : isUSDHolding(h) ? fmtCrUSD(n) : fmtCrINR(n);
 // Portfolio totals: ₹ primary (NRI view — all combined totals shown in INR)
 export const fmt = n => fmtINR(n);
 export const fmtCr = n => fmtCrINR(n);
 // Secondary line: $ equivalent (divide INR total by live rate)
-export const fmtSec = n => fmtUSD(n / _liveUsdInr);
-export const fmtCrSec = n => fmtCrUSD(n / _liveUsdInr);
+export const fmtSec = n => _masked ? MASK : fmtUSD(n / _liveUsdInr);
+export const fmtCrSec = n => _masked ? MASK : fmtCrUSD(n / _liveUsdInr);
 export const fmtPct=n=>n==null?"—":`${n>=0?"+":""}${n.toFixed(2)}%`;
 export const uid=()=>"x"+Date.now()+Math.random().toString(36).slice(2,6);
 export const ago=d=>{if(!d)return"Never";const s=Math.floor((Date.now()-new Date(d))/1000);if(s<60)return`${s}s ago`;if(s<3600)return`${Math.floor(s/60)}m ago`;if(s<86400)return`${Math.floor(s/3600)}h ago`;return`${Math.floor(s/86400)}d ago`;};

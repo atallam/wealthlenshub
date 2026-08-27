@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   LayoutDashboard, BarChart2, Target, Compass,
   Users, Wallet, CalendarDays, MessageSquare,
-  RefreshCw, Settings, LogOut, Eye, X, MoreHorizontal,
+  RefreshCw, Settings, LogOut, Eye, EyeOff, X, MoreHorizontal,
   AlertTriangle, Download, Receipt, Bookmark, Activity, PieChart,
 } from 'lucide-react';
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
@@ -69,6 +69,7 @@ import ImportHub from './components/modals/ImportHub.jsx';
 
 // ── Context ──────────────────────────────────────────────────────
 import { PortfolioProvider } from './contexts/PortfolioContext.jsx';
+import { useMask } from './contexts/MaskContext.jsx';
 
 // ── Error boundary ───────────────────────────────────────────────
 import ErrorBoundary from './components/shared/ErrorBoundary.jsx';
@@ -103,6 +104,7 @@ const MORE_SHEET_TABS = TABS.filter(t => !BOTTOM_NAV_KEYS.includes(t.key));
 
 export default function App() {
   const toast = useToast();
+  const { masked, toggleMask } = useMask();
 
   // ── Auth ──────────────────────────────────────────────────────
   const [user,        setUser]        = useState(null);
@@ -650,6 +652,12 @@ ${alertsText}`;
             <Download size={13} strokeWidth={2}/>
           </button>
           <ExportPanel className="btn-o hdr-extra" />
+          <button className="btn-o hdr-extra" onClick={toggleMask}
+            title={masked ? "Show values" : "Hide values (privacy)"}
+            aria-label={masked ? "Show values" : "Hide values"}
+            style={masked ? {color:'var(--accent-2)',background:'var(--accent-2-dim)'} : {}}>
+            {masked ? <EyeOff size={13} strokeWidth={2}/> : <Eye size={13} strokeWidth={2}/>}
+          </button>
           <button className="btn-o hdr-extra" onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings"><Settings size={13} strokeWidth={2}/></button>
           <button className="btn-o hdr-extra" onClick={signOut} title="Sign out" aria-label="Sign out"><LogOut size={13} strokeWidth={2}/></button>
         </div>
@@ -858,6 +866,11 @@ ${alertsText}`;
               <button className="more-sheet-item" onClick={() => { setShowImportHub(true); setMoreSheetOpen(false); }}>
                 <span className="msi-icon"><Download size={22} strokeWidth={1.6}/></span>
                 <span className="msi-label">Import</span>
+              </button>
+              <button className="more-sheet-item" onClick={() => { toggleMask(); setMoreSheetOpen(false); }}
+                style={masked ? {color:'var(--accent-2)'} : {}}>
+                <span className="msi-icon">{masked ? <EyeOff size={22} strokeWidth={1.6}/> : <Eye size={22} strokeWidth={1.6}/>}</span>
+                <span className="msi-label">{masked ? "Show" : "Privacy"}</span>
               </button>
               <button className="more-sheet-item" onClick={() => { setShowSettings(true); setMoreSheetOpen(false); }}>
                 <span className="msi-icon"><Settings size={22} strokeWidth={1.6}/></span>

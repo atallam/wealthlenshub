@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import { ToastProvider } from "./components/shared/Toast.jsx";
+import { MaskProvider } from "./contexts/MaskContext.jsx";
 
 // Service Worker registration
 if ('serviceWorker' in navigator) {
@@ -18,8 +19,10 @@ if ('serviceWorker' in navigator) {
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <ToastProvider>
-      <App />
-    </ToastProvider>
+    <MaskProvider>
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    </MaskProvider>
   </StrictMode>
 );
