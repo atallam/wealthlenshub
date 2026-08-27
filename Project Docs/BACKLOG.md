@@ -8,27 +8,22 @@
 
 ## 🔴 P0 — Critical / Security
 
-These should be addressed before any public or wider family release.
+> ✅ **Audit complete — August 2026. All 5 P0 items confirmed resolved in the codebase.**
 
-### 1. PAN Exposure in API Response
-**Issue:** `GET /api/profile/cas-credentials` returns the decrypted PAN in the response body, meaning the raw PAN is transmitted to the browser on every profile load.  
-**Fix:** Return only the last 4 characters (`ABCDE****F`) for display; the full value should stay server-side and used only for CAS decryption.
+### ✅ 1. PAN Exposure in API Response — RESOLVED
+`GET /api/profile/cas-credentials` already returns only `pan_masked` (e.g. `ABCD****Z`) via `services/profile.service.js`. The raw PAN is decrypted server-side solely to produce the masked display value and is never included in any API response.
 
-### 2. SnapTrade Disconnect Wipes All Holdings
-**Issue:** `DELETE /api/snaptrade/connections/:authId` deletes ALL SnapTrade-synced holdings for the user, not just those belonging to the disconnected broker account.  
-**Fix:** Scope the delete to `source_broker = :authId` (or equivalent) so disconnecting one broker leaves others intact.
+### ✅ 2. SnapTrade Disconnect Wipes All Holdings — RESOLVED
+`DELETE /api/snaptrade/connections/:authId` in `routes/snaptrade.js` fetches the remaining SnapTrade accounts after the authorization is removed, builds a `remainingAccountIds` Set, and only deletes holdings whose `source_account` is not in that set. Other broker accounts are untouched.
 
-### 3. AI Chat — No Per-User Rate Limiting
-**Issue:** `/api/ai/chat` and `/api/ai/chat/stream` proxy requests to Anthropic verbatim with no per-user token or request cap. A single user could exhaust the shared Anthropic quota.  
-**Fix:** Add per-user sliding-window rate limiting (e.g. 20 requests / hour) and optionally a per-request max-token cap.
+### ✅ 3. AI Chat — No Per-User Rate Limiting — RESOLVED
+`routes/ai.js` defines `aiLimiter` with `keyGenerator: (req) => req.user?.id || ipKeyGenerator(req)` — per-authenticated-user limiting at 20 requests / 60 seconds. A model allowlist (`ALLOWED_MODELS`) also prevents arbitrary model selection.
 
-### 4. Missing Cascade Delete for Transactions
-**Issue:** When a holding is deleted, the code relies on a database FK cascade to clean up transactions. If the FK is missing or misconfigured in a migration, orphaned transaction rows accumulate silently.  
-**Fix:** Add an explicit `ON DELETE CASCADE` check in `database.sql` and a test that deleting a holding removes its transactions.
+### ✅ 4. Missing Cascade Delete for Transactions — RESOLVED
+`migrations/transactions_migration.sql` declares `holding_id text not null references holdings(id) on delete cascade`. Deleting a holding removes its transactions at the database level.
 
-### 5. ENCRYPTION_KEY Not Documented
-**Issue:** `ENCRYPTION_KEY` env var is used in `lib/crypto.js` but was missing from README and `.env.example` at points during development.  
-**Fix:** Confirm it is present in `.env.example` with generation instructions (`openssl rand -hex 32`) and test that startup fails fast if it is absent.
+### ✅ 5. ENCRYPTION_KEY Not Documented — RESOLVED
+`lib/crypto.js` uses `BUDGET_ENCRYPT_KEY` (the correct variable name), which is documented in `.env.example` with a generation command. In production mode the server **throws at startup** if the key is absent, preventing silent data loss.
 
 ---
 
@@ -118,6 +113,11 @@ Extend portfolio sharing to the Budget tab so a couple or family can view and ca
 
 All items below are shipped and should not be re-added to the active backlog.
 
+- PAN masking in `casCredentials` (never returns plaintext PAN) — `services/profile.service.js`
+- SnapTrade disconnect scoped to removed broker accounts only — `routes/snaptrade.js`
+- Per-user AI rate limiting (20 req/min, keyed on `req.user.id`) + model allowlist — `routes/ai.js`
+- Transactions `ON DELETE CASCADE` FK constraint — `migrations/transactions_migration.sql`
+- `BUDGET_ENCRYPT_KEY` documented in `.env.example`; production fail-fast guard in `lib/crypto.js`
 - Multi-member family portfolio with per-member filtered views
 - Live price refresh (Indian stocks, US stocks, MF NAV, FX)
 - XIRR → CAGR → Simple return cascade
