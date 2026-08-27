@@ -2,28 +2,39 @@
 
 > Last reviewed: August 2026  
 > P0 security items audited — all confirmed resolved, removed from backlog.  
-> Items 1 (Mobile PWA) and 5 (MF Overlap) shipped August 2026 and moved to Completed.  
+> Items 1 (Mobile PWA) and 5 (MF Overlap) shipped August 2026 and moved to Completed.
+> Value Masker added as P1 Item 1; existing P1 items renumbered.  
 > All items in the Completed section are live in the codebase.
 
 ---
 
 ## 🟠 P1 — High Value / Near-term
 
-### 1. Multi-Currency Portfolio View Toggle
+### 1. Value Masker (Privacy Toggle)
+A single-click toggle that instantly hides every monetary value across the entire app — portfolio values, P&L figures, invested amounts, budget totals, goal progress amounts, net worth — replacing them with `••••`. Clicking again restores all values. Useful when working in public, on a screen share, or when handing the device to someone.
+
+**Scope:**
+- Add a toggle button (eye / eye-off icon) in the header next to Settings, visible on both desktop and mobile
+- Store the masked state in React context (or a simple global atom) so all tabs read it without prop drilling
+- Every currency/value display component checks the context and renders `••••` when masked
+- State is session-only — resets to unmasked on page reload (no persistence needed)
+- Masked state should also suppress values in chart tooltips, table cells, and KPI tiles
+
+### 2. Multi-Currency Portfolio View Toggle
 All values are normalised to INR at rest. Users with significant US holdings want to flip the entire dashboard to USD without touching stored data.  
 **Scope:** Global INR / USD toggle in the header; KPI tiles and charts re-computed using the live FX rate already fetched by the backend. Settings already expose a base currency field — wire it up to all display components.
 
-### 2. Recurring Transaction Templates (SIP Automation)
+### 3. Recurring Transaction Templates (SIP Automation)
 Users manually log every monthly SIP transaction. A recurring-transaction template would:
 - Let users define a template (fund, amount, day-of-month)
 - Auto-create a pending transaction entry on schedule with a one-click confirm step
 - Distinct from Budget2Tab's recurring *detection* — this creates portfolio transactions
 
-### 3. Plaid Transaction Categorisation Improvement
+### 4. Plaid Transaction Categorisation Improvement
 Auto-categorisation currently relies on keyword rules. An LLM-assisted pass using the transaction description + merchant name would significantly reduce manual recategorisation.  
 **Scope:** POST categorisation requests to `/api/ai/chat` after import; cache results by description hash to avoid re-calling for known merchants.
 
-### 4. Family Consolidated Tax Report (Excel)
+### 5. Family Consolidated Tax Report (Excel)
 Export a per-member and consolidated LTCG/STCG summary as a multi-sheet Excel workbook formatted for CA filing — including grandfathering calculations and a summary row matching ITR Schedule 112A format.
 
 ---
