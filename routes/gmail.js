@@ -340,7 +340,17 @@ async function autoImportCASForUser(userId) {
         importRecord.status = "error"; importRecord.error_message = err.message;
         summary.errors.push(err.message);
       } finally {
-        await supabase.from("email_imports").upsert(importRecord, { onConflict: "user_id,email_id" });
+        // Always stamp processed_at so upsert updates it on conflict too
+        importRecord.processed_at = new Date().toISOString();
+        const { error: upsertErr } = await supabase
+          .from("email_imports")
+          .upsert(importRecord, { onConflict: "user_id,email_id" });
+        if (upsertErr) {
+          // Surface DB errors (e.g. missing column) so they don't silently
+          // prevent emails being marked success and cause infinite re-imports.
+          console.error(`[gmail-cas] email_imports upsert failed for ${msg.id}:`, upsertErr.message);
+          summary.errors.push(`DB upsert error: ${upsertErr.message}`);
+        }
         await supabase.from("profiles").update({ gmail_last_check: new Date().toISOString() }).eq("id", userId);
       }
     }
