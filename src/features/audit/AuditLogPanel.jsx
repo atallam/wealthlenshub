@@ -14,7 +14,7 @@ import { Overlay } from '../../components/shared/Overlay.jsx';
 import {
   Activity, Shield, TrendingUp, FileText, Users, RefreshCw,
   Brain, Wallet, Bell, Star, ChevronLeft, ChevronRight,
-  CheckCircle, AlertCircle, Filter, X
+  CheckCircle, AlertCircle, Filter, X, Calendar, Download
 } from 'lucide-react';
 
 // ── Action metadata ──────────────────────────────────────────────────────────
@@ -138,8 +138,10 @@ export default function AuditLogPanel({ onClose, api }) {
   const [category,   setCategory]   = useState('');
   const [statusFilter, setStatusFilter] = useState(''); // '' | 'ok' | 'error'
   const [expanded,   setExpanded]   = useState(null);   // log id with open detail
+  const [dateFrom,   setDateFrom]   = useState('');
+  const [dateTo,     setDateTo]     = useState('');
 
-  const fetchLogs = useCallback(async (pg = 0, cat = '', sf = '') => {
+  const fetchLogs = useCallback(async (pg = 0, cat = '', sf = '', df = '', dt = '') => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -147,6 +149,8 @@ export default function AuditLogPanel({ onClose, api }) {
         offset: pg * PAGE_SIZE,
         ...(cat ? { category: cat } : {}),
         ...(sf  ? { status: sf }    : {}),
+        ...(df  ? { from: df }      : {}),
+        ...(dt  ? { to: dt }        : {}),
       });
       const data = await api(`/api/audit-logs?${params}`);
       setLogs(data.logs || []);
@@ -160,19 +164,49 @@ export default function AuditLogPanel({ onClose, api }) {
 
   useEffect(() => { fetchLogs(0, category, statusFilter); }, []);  // eslint-disable-line
 
-  function applyFilter(cat, sf) {
+  function applyFilter(cat, sf, df = dateFrom, dt = dateTo) {
     setCategory(cat);
     setStatusFilter(sf);
+    setDateFrom(df);
+    setDateTo(dt);
     setPage(0);
     setExpanded(null);
-    fetchLogs(0, cat, sf);
+    fetchLogs(0, cat, sf, df, dt);
+  }
+
+  async function exportCsv() {
+    try {
+      const params = new URLSearchParams({
+        limit: 9999, offset: 0,
+        ...(category    ? { category }        : {}),
+        ...(statusFilter ? { status: statusFilter } : {}),
+        ...(dateFrom    ? { from: dateFrom }  : {}),
+        ...(dateTo      ? { to: dateTo }      : {}),
+      });
+      const data = await api(`/api/audit-logs?${params}`);
+      const rows = data.logs || [];
+      const header = ['Timestamp','Action','Method','Path','Status Code','Duration (ms)','Entity ID','IP Address'];
+      const csvRows = [header, ...rows.map(l => [
+        fmtFull(l.created_at), getMeta(l.action).label,
+        l.method || '', l.path || '', l.status_code || '',
+        l.duration_ms != null ? l.duration_ms : '', l.entity_id || '', l.ip_address || '',
+      ])];
+      const csv = csvRows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audit-log-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { console.error('CSV export failed', e); }
   }
 
   function goPage(dir) {
     const next = page + dir;
     setPage(next);
     setExpanded(null);
-    fetchLogs(next, category, statusFilter);
+    fetchLogs(next, category, statusFilter, dateFrom, dateTo);
   }
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -311,6 +345,34 @@ export default function AuditLogPanel({ onClose, api }) {
         </div>
       )}
 
+
+      {/* Date range + Export */}
+      <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '.6rem' }}>
+        <Calendar size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }}/>
+        <input type="date" className="fi" value={dateFrom}
+          onChange={e => applyFilter(category, statusFilter, e.target.value, dateTo)}
+          style={{ fontSize: '.72rem', padding: '.18rem .45rem', width: 'auto', flex: '1 1 120px', maxWidth: 160 }}
+          title="From date"/>
+        <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>→</span>
+        <input type="date" className="fi" value={dateTo}
+          onChange={e => applyFilter(category, statusFilter, dateFrom, e.target.value)}
+          style={{ fontSize: '.72rem', padding: '.18rem .45rem', width: 'auto', flex: '1 1 120px', maxWidth: 160 }}
+          title="To date"/>
+        {(dateFrom || dateTo) && (
+          <button onClick={() => applyFilter(category, statusFilter, '', '')}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: 2, padding: 0 }}>
+            <X size={10}/> clear dates
+          </button>
+        )}
+        <button onClick={exportCsv}
+          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '.3rem',
+            padding: '.2rem .55rem', borderRadius: 99, fontSize: '.7rem', cursor: 'pointer',
+            border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)',
+            fontWeight: 500, transition: 'all .15s' }}
+          title="Export current view as CSV">
+          <Download size={11}/> Export CSV
+        </button>
+      </div>
       {/* Timeline */}
       {loading ? (
         <div style={S.empty}>Loading activity…</div>

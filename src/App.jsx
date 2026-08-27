@@ -4,10 +4,12 @@ import {
   Users, Wallet, CalendarDays, MessageSquare,
   RefreshCw, Settings, LogOut, Eye, EyeOff, X, MoreHorizontal,
   AlertTriangle, Download, Receipt, Bookmark, Activity, PieChart,
+  Moon, Sun,
 } from 'lucide-react';
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
 import { api } from './lib/api.js';
 import SnapTradeImport from './SnapTradeImport.jsx';
+import NotificationCentre from './components/notifications/NotificationCentre.jsx';
 // KiteImport and BreezeImport decommissioned — integrations removed
 // SetuAAImport — disabled until Setu integration is ready
 // import SetuAAImport from './SetuAAImport.jsx';
@@ -105,6 +107,11 @@ const MORE_SHEET_TABS = TABS.filter(t => !BOTTOM_NAV_KEYS.includes(t.key));
 export default function App() {
   const toast = useToast();
   const { masked, toggleMask } = useMask();
+  const [theme, setTheme] = useState(() => localStorage.getItem('wl-theme') || 'light');
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('wl-theme', theme);
+  }, [theme]);
 
   // ── Auth ──────────────────────────────────────────────────────
   const [user,        setUser]        = useState(null);
@@ -658,6 +665,7 @@ ${alertsText}`;
             style={masked ? {color:'var(--accent-2)',background:'var(--accent-2-dim)'} : {}}>
             {masked ? <EyeOff size={13} strokeWidth={2}/> : <Eye size={13} strokeWidth={2}/>}
           </button>
+          <NotificationCentre api={api} />
           <button className="btn-o hdr-extra" onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings"><Settings size={13} strokeWidth={2}/></button>
           <button className="btn-o hdr-extra" onClick={signOut} title="Sign out" aria-label="Sign out"><LogOut size={13} strokeWidth={2}/></button>
         </div>
@@ -1472,6 +1480,23 @@ ${alertsText}`;
             <button className="btn-o" onClick={() => { setShowAuditLog(true); setShowSettings(false); }}>
               <Activity size={13} strokeWidth={2}/> Activity Log
             </button>
+          </div>
+
+          {/* ── Appearance ── */}
+          <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',marginBottom:'1rem'}}>
+            <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Appearance</div>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span style={{fontSize:'.82rem',color:'var(--text)'}}>Theme</span>
+              <button
+                onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+                style={{display:'flex',alignItems:'center',gap:'.35rem',padding:'.3rem .75rem',borderRadius:99,
+                  border:'1px solid var(--border)',background:'var(--bg-muted)',cursor:'pointer',
+                  fontSize:'.78rem',color:'var(--text)',fontWeight:600,transition:'all .15s'}}>
+                {theme === 'dark'
+                  ? <><Sun size={13} strokeWidth={2}/> Light Mode</>
+                  : <><Moon size={13} strokeWidth={2}/> Dark Mode</>}
+              </button>
+            </div>
           </div>
 
           {/* ── PPF / EPF rate config ── */}

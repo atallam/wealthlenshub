@@ -4,6 +4,7 @@
 > P0 security items audited — all confirmed resolved, removed from backlog.  
 > Items 1 (Mobile PWA) and 5 (MF Overlap) shipped August 2026 and moved to Completed.
 > Value Masker (P1 Item 1) shipped August 2026 and moved to Completed; remaining P1 items renumbered.  
+> P2 items 5, 6, 7, 11, 12 shipped August 2026 and moved to Completed; remaining P2 items renumbered.  
 > All items in the Completed section are live in the codebase.
 
 ---
@@ -31,35 +32,14 @@ Export a per-member and consolidated LTCG/STCG summary as a multi-sheet Excel wo
 
 ## 🟡 P2 — Medium Priority
 
-### 5. Unified In-App Notification Centre
-All alerts go to email only. An in-app notification bell with unread count and a slide-in drawer would surface FD maturities, price alerts, and stale nudges without requiring the user to check email.  
-**Scope:** `notifications` table; bell icon in the header; mark-as-read; clear-all.
-
-### 6. Dark Mode
-The app uses CSS variables (`--bg`, `--text`, etc.) but only defines a light palette. Adding dark mode requires:
-- A second set of CSS variable values under `@media (prefers-color-scheme: dark)` and a `[data-theme="dark"]` attribute
-- A theme toggle button in Settings
-- Testing across all tabs for hardcoded colour values that need to move to variables
-
-### 7. Audit Log Filtering & Export
-The AuditLogPanel shows recent events but has no filter controls. Add:
-- Filters by date range, action type (create / update / delete / import), and member
-- Export to CSV button for compliance or personal records
-
-### 8. SnapTrade Auto-Sync (Background Frequency Control)
+### 5. SnapTrade Auto-Sync (Background Frequency Control)
 SnapTrade sync is currently manual (user triggers it). Add an optional scheduled background sync (every 24 hours) so US brokerage holdings stay current without manual intervention.
 
-### 9. Watchlist Price Alerts
+### 6. Watchlist Price Alerts
 The Watchlist tab shows live prices but has no alert capability. Extend the existing holding-alert system to watchlist items so users get notified (email/in-app) when a target price is hit.
 
-### 10. SIP / SWP Return Attribution
+### 7. SIP / SWP Return Attribution
 XIRR captures the aggregate effect of SIPs but there is no breakdown showing which installments contributed most. A contribution-weighted return view would help users evaluate SIP timing decisions.
-
-### 11. Goal Progress Milestone Notifications
-When a goal crosses 25%, 50%, 75%, or 100%, send a celebratory email or in-app notification. Low effort, high motivation value.
-
-### 12. Insurance Premium Renewal Reminders
-Insurance renewal dates are tracked but no cron job fires reminder emails. Add a job similar to `fd-alerts` that sends reminders 30 and 7 days before an insurance policy renewal date.
 
 ---
 
@@ -91,6 +71,34 @@ Extend portfolio sharing to the Budget tab so couples or families can view, cate
 ## ✅ Completed (Reference)
 
 > These are shipped and live — do not re-add to the active backlog.
+
+
+### Unified In-App Notification Centre
+Shipped August 2026 (was P2 Item 5).
+- **DB migration** — `migrations/0025_notifications.sql`; `notifications` table with `user_id`, `kind`, `title`, `body`, `url`, `read`, `created_at`; RLS enabled
+- **Backend** — `routes/notifications.js`; GET `/api/notifications`, POST `/:id/read`, POST `/read-all`, DELETE `/clear`; `insertNotification()` helper exported for cron use
+- **Frontend** — `src/components/notifications/NotificationCentre.jsx`; bell icon in desktop header with unread badge; slide-in drawer with mark-read-on-click, Mark-all-read, Clear-read buttons; polls every 60s
+- **Cron integration** — `fd-alerts`, `alert-check`, `insurance-reminders`, `goal-milestones` all call `insertNotification()` after sending email
+
+### Dark Mode
+Shipped August 2026 (was P2 Item 6).
+- **CSS variables** — `src/styles.css`; dark palette under `@media (prefers-color-scheme: dark)` + `[data-theme="dark"]`; explicit light override under `[data-theme="light"]`; uses deep sage dark tones matching the app's editorial design
+- **Theme toggle** — Appearance section added in Settings panel; Moon/Sun icon button; theme persisted to `localStorage` under key `wl-theme`; applied via `document.documentElement.dataset.theme`
+
+### Audit Log Date Range Filter & CSV Export
+Shipped August 2026 (was P2 Item 7).
+- **Date inputs** — `from`/`to` date pickers in `AuditLogPanel.jsx`; wired to existing backend `from`/`to` query params in `routes/audit.js`
+- **CSV export** — "Export CSV" button fetches all filtered logs (limit 9999) and triggers browser download via `Blob` + `URL.createObjectURL`; filename includes ISO date
+
+### Goal Progress Milestone Notifications
+Shipped August 2026 (was P2 Item 11).
+- **Cron endpoint** — `POST /api/cron/goal-milestones` in `routes/cron.js`; scans all portfolios with goals; computes portfolio total value vs `targetAmount`; detects 25/50/75/100% milestone crossings; persists `notified_milestone` back into JSONB so each milestone fires only once
+- **Delivery** — Resend email with per-goal milestone cards; web push via `sendPushToUser()`; `insertNotification()` for in-app centre
+
+### Insurance Premium Renewal Reminders
+Shipped August 2026 (was P2 Item 12).
+- **Cron endpoint** — `POST /api/cron/insurance-reminders` in `routes/cron.js`; queries all INSURANCE holdings with `premium` + `start_date`; computes next premium due date by advancing `start_date` by `premium_frequency` (ANNUAL/HALF_YEARLY/QUARTERLY/MONTHLY) until future
+- **Windows** — 7-day and 30-day reminders; skips already-matured policies; Resend email with premium details; `insertNotification()` for in-app centre
 
 ### Mobile PWA Enhancements
 Shipped August 2026 (was P1 Item 1).

@@ -126,32 +126,8 @@ async function fetchMfPatch(h) {
   if (!sc) return null;
   const nav = await mfNav(sc);
   if (!nav) return null;
+  // purchase_nav repair deferred to background — keeps refresh fast
   const patch = { scheme_code: sc, current_nav: nav, current_value: (h.units||0)*nav, price_fetched_at: new Date().toISOString() };
-  // Repair implausible purchase_nav (CAS parser error guard — ratio >10x or <0.05x)
-  const pNav = h.purchase_nav || 0;
-  const ratio = pNav > 0 ? pNav / nav : 0;
-  if (ratio > 10 || (ratio > 0 && ratio < 0.05)) {
-    let fixedNav = null;
-    if (h.start_date) {
-      try {
-        const r = await timedFetch(`https://api.mfapi.in/mf/${sc}`, {}, 8000);
-        if (r.ok) {
-          const { data: history } = await r.json();
-          const target = new Date(h.start_date);
-          let best = null, bestDiff = Infinity;
-          for (const entry of (history || [])) {
-            const parts = entry.date.split("-");
-            const d = parts.length === 3 ? new Date(`${parts[2]}-${parts[1]}-${parts[0]}`) : new Date(entry.date);
-            const diff = Math.abs(d - target);
-            if (diff < bestDiff) { bestDiff = diff; best = parseFloat(entry.nav); }
-          }
-          if (best && bestDiff < 30 * 86400000) fixedNav = best;
-        }
-      } catch { /* fall through */ }
-    }
-    patch.purchase_nav  = fixedNav;
-    patch.purchase_value = fixedNav != null ? (h.units||0) * fixedNav : null;
-  }
   return patch;
 }
 
@@ -161,10 +137,11 @@ router.post("/prices/refresh", auth, async (req, res) => {
     .eq("user_id", req.user.id);
   if (!holdings?.length) return res.json({ updated: 0 });
 
-  const { rate: usdInr, source: fxSource } = await fetchUsdInr();
+  // FX and price tasks start in parallel — no serial wait for FX before equities
+  const fxPromise = fetchUsdInr();
   const now = new Date().toISOString();
 
-  // Build fetch tasks — grouped so MF (AMFI cache warm) runs first, then equities in parallel
+  // Build fetch tasks — MF tasks resolve from in-process AMFI cache (fast); stocks hit external APIs
   const tasks = holdings.map(h => async () => {
     let patch = null;
     if (h.type === "MF") {
@@ -175,28 +152,30 @@ router.post("/prices/refresh", auth, async (req, res) => {
       if (price) patch = { current_price: price, current_value: (h.units||0)*price, price_fetched_at: now };
     } else if ((h.type === "US_STOCK" || h.type === "US_ETF" || h.type === "US_BOND") && h.ticker) {
       const q = await stockPrice(h.ticker.toUpperCase());
-      if (q?.price) patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: now };
+      if (q?.price) { const { rate: usdInr } = await fxPromise; patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: now }; }
     } else if (h.type === "CRYPTO" && h.ticker) {
       const sym = h.ticker.toUpperCase().includes("-") ? h.ticker.toUpperCase() : `${h.ticker.toUpperCase()}-USD`;
       const q = await stockPrice(sym);
-      if (q?.price) patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: now };
-    } else if (h.type === "CASH" && h.usd_inr_rate && Math.abs(h.usd_inr_rate - usdInr) > 0.01) {
+      if (q?.price) { const { rate: usdInr } = await fxPromise; patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: now }; }
+    } else if (h.type === "CASH") { const { rate: usdInr } = await fxPromise; if (h.usd_inr_rate && Math.abs(h.usd_inr_rate - usdInr) > 0.01) {
       patch = { usd_inr_rate: usdInr, price_fetched_at: now };
-    }
+    } }
     return { h, patch };
   });
 
-  // Run all fetches concurrently (max 5 at once to respect API rate limits)
-  const results = await pLimit(tasks, 5);
+  // Run all fetches concurrently — 8 slots (MF is cache-fast; stock slots rate-limit external APIs)
+  const results = await pLimit(tasks, 8);
 
-  // Batch DB writes (sequential to avoid Supabase write conflicts, but no sleep needed)
-  const updates = [];
-  for (const item of results) {
-    if (!item || item._err || !item.patch) continue;
-    await supabase.from("holdings").update(item.patch).eq("id", item.h.id);
-    updates.push({ id: item.h.id, ...item.patch });
-  }
+  // Parallel DB writes — Promise.all eliminates sequential Supabase round-trips
+  const validResults = results.filter(item => item && !item._err && item.patch);
+  const updates = await Promise.all(
+    validResults.map(async item => {
+      await supabase.from("holdings").update(item.patch).eq("id", item.h.id);
+      return { id: item.h.id, ...item.patch };
+    })
+  );
 
+  const { rate: usdInr, source: fxSource } = await fxPromise;
   res.json({ updated: updates.length, usdInr, fxSource, results: updates });
   // Auto-snapshot (direct call — no self-HTTP round-trip)
   takeSnapshot(req.user.id, { source: "price_refresh" })

@@ -50,6 +50,83 @@
   --font-mono:   'JetBrains Mono', 'DM Mono', monospace;
 }
 
+
+/* ── Dark Mode ──────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:          #0D1B1A;
+    --bg-card:     #142120;
+    --bg-muted:    #1C2E2B;
+    --bg-hover:    #243B37;
+    --border:      #2A4540;
+    --border-mid:  #35574F;
+    --primary:     #14B8A6;
+    --primary-dim: rgba(20,184,166,.15);
+    --primary-hover: #0D9488;
+    --text:        #E4F0EC;
+    --text-dim:    #BADECD;
+    --text-muted:  #7AADA3;
+    --gold:        #D4B06A;
+    --gold-dim:    rgba(212,176,106,.14);
+    --gold-border: rgba(212,176,106,.38);
+    --gain:        #34D399;
+    --gain-dim:    rgba(52,211,153,.12);
+    --loss:        #F87171;
+    --loss-dim:    rgba(248,113,113,.12);
+    --accent-2:    #C4A8E8;
+    --accent-2-dim: rgba(196,168,232,.14);
+    --warning:     #FBBF24;
+    --warning-dim: rgba(251,191,36,.12);
+    --shadow-sm:   0 1px 3px rgba(0,0,0,.4), 0 1px 2px rgba(0,0,0,.3);
+    --shadow-md:   0 4px 14px rgba(0,0,0,.45), 0 2px 4px rgba(0,0,0,.3);
+    --shadow-lg:   0 8px 28px rgba(0,0,0,.5), 0 4px 8px rgba(0,0,0,.35);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg:          #0D1B1A;
+  --bg-card:     #142120;
+  --bg-muted:    #1C2E2B;
+  --bg-hover:    #243B37;
+  --border:      #2A4540;
+  --border-mid:  #35574F;
+  --primary:     #14B8A6;
+  --primary-dim: rgba(20,184,166,.15);
+  --primary-hover: #0D9488;
+  --text:        #E4F0EC;
+  --text-dim:    #BADECD;
+  --text-muted:  #7AADA3;
+  --gold:        #D4B06A;
+  --gold-dim:    rgba(212,176,106,.14);
+  --gold-border: rgba(212,176,106,.38);
+  --gain:        #34D399;
+  --gain-dim:    rgba(52,211,153,.12);
+  --loss:        #F87171;
+  --loss-dim:    rgba(248,113,113,.12);
+  --accent-2:    #C4A8E8;
+  --accent-2-dim: rgba(196,168,232,.14);
+  --warning:     #FBBF24;
+  --warning-dim: rgba(251,191,36,.12);
+  --shadow-sm:   0 1px 3px rgba(0,0,0,.4), 0 1px 2px rgba(0,0,0,.3);
+  --shadow-md:   0 4px 14px rgba(0,0,0,.45), 0 2px 4px rgba(0,0,0,.3);
+  --shadow-lg:   0 8px 28px rgba(0,0,0,.5), 0 4px 8px rgba(0,0,0,.35);
+}
+
+:root[data-theme="light"] {
+  --bg:          #EDF4F1;
+  --bg-card:     #F7FAF8;
+  --bg-muted:    #E2EDE9;
+  --bg-hover:    #D5E8E2;
+  --border:      #BFD9D2;
+  --border-mid:  #A3C8BE;
+  --primary:     #0D9488;
+  --primary-dim: rgba(13,148,136,.13);
+  --primary-hover: #0B7C71;
+  --text:        #0F3D38;
+  --text-dim:    #1B5E57;
+  --text-muted:  #5E8A80;
+}
+
 /* ── Reset ───────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { overflow-x: hidden; width: 100%; }

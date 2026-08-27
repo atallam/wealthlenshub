@@ -5,6 +5,7 @@ import { takeSnapshot } from "../lib/snapshot.js";
 import { getCrossingHoldings } from "../lib/stale-holdings.js";
 import { sendStaleNudge, sendAlertDigest } from "../services/alert-mailer.js";
 import { sendPushToUser, pushEnabled } from "./push.js";
+import { insertNotification } from "./notifications.js";
 
 // Concurrency limiter — same pattern as routes/prices.js
 async function pLimit(fns, concurrency = 5) {
@@ -174,6 +175,7 @@ router.post("/fd-alerts", cronAuth, async (req, res) => {
         }),
       });
       const rj = await r.json();
+      if (r.ok) await insertNotification(fd.user_id, "fd_alert", `FD Alert: "${fd.name}" matures in ${dLeft} day${dLeft!==1?"s":""}`, `Your Fixed Deposit "${fd.name}" matures on ${matFormatted}.`, "/holdings");
       results.push({ fd: fd.id, name: fd.name, dLeft, status: r.ok ? "sent" : "failed", resendId: rj.id });
     } catch (e) {
       results.push({ fd: fd.id, name: fd.name, dLeft, status: "error", error: e.message });
@@ -371,6 +373,7 @@ router.post("/alert-check", cronAuth, async (req, res) => {
         const pushPayload = { title: "WealthLens Alert", body: `${triggered.length} alert${triggered.length>1?"s":""} triggered`, url: "/alerts" };
         await sendPushToUser(port.user_id, pushPayload).catch(()=>{});
       }
+      await insertNotification(port.user_id, "alert_triggered", `${triggered.length} portfolio alert${triggered.length>1?"s":""} triggered`, triggered.map(a => a.type).join(", "), "/alerts");
       results.push({ userId: port.user_id, email: toEmail, triggered: triggered.length, status: "sent" });
     } catch (e) {
       results.push({ userId: port.user_id, email: toEmail, triggered: triggered.length, status: "error", error: e.message });
@@ -381,6 +384,255 @@ router.post("/alert-check", cronAuth, async (req, res) => {
   const totalTrigs = results.reduce((s, r) => s + (r.triggered || 0), 0);
   console.log(`Alert check cron: ${(portfolios||[]).length} users, ${totalTrigs} alerts triggered, ${sent} digests sent`);
   res.json({ users: (portfolios||[]).length, emailsSent: sent, totalTriggered: totalTrigs, results });
+});
+
+
+// ── Insurance Premium Renewal Reminders (7 / 30 day windows) ─────────────────
+// POST /api/cron/insurance-reminders  (x-cron-secret header required)
+// Env: CRON_SECRET, RESEND_API_KEY, APP_URL
+
+router.post("/insurance-reminders", cronAuth, async (req, res) => {
+  const resendKey = process.env.RESEND_API_KEY;
+  if (!resendKey) return res.status(500).json({ error: "RESEND_API_KEY not configured" });
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const WINDOWS = [7, 30];
+
+  // Fetch all INSURANCE holdings with premium fields
+  const { data: policies, error } = await supabase
+    .from("holdings")
+    .select("id, name, user_id, premium, premium_frequency, start_date, maturity_date, sum_assured")
+    .eq("type", "INSURANCE")
+    .not("premium", "is", null)
+    .not("start_date", "is", null);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Compute next due date from start_date + frequency
+  function nextDueDate(startDateStr, frequency) {
+    const start = new Date(startDateStr); start.setHours(0, 0, 0, 0);
+    const freqMonths = { ANNUAL: 12, HALF_YEARLY: 6, QUARTERLY: 3, MONTHLY: 1 }[frequency] || 12;
+    let due = new Date(start);
+    const today2 = new Date(); today2.setHours(0, 0, 0, 0);
+    while (due <= today2) {
+      due = new Date(due);
+      due.setMonth(due.getMonth() + freqMonths);
+    }
+    return due;
+  }
+
+  const results = [];
+
+  for (const policy of policies || []) {
+    if (!policy.premium_frequency) continue;
+
+    // Skip if policy has already matured
+    if (policy.maturity_date) {
+      const mat = new Date(policy.maturity_date); mat.setHours(0, 0, 0, 0);
+      if (mat < today) { results.push({ policy: policy.id, status: "matured_skip" }); continue; }
+    }
+
+    const nextDue = nextDueDate(policy.start_date, policy.premium_frequency);
+    const daysUntil = Math.round((nextDue - today) / 864e5);
+    if (!WINDOWS.includes(daysUntil)) continue;
+
+    const { data: profile } = await supabase.from("profiles").select("email").eq("id", policy.user_id).single();
+    const toEmail = profile?.email;
+    if (!toEmail) { results.push({ policy: policy.id, status: "no_email" }); continue; }
+
+    const dueFmt = nextDue.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+    const premiumFmt = policy.premium ? `₹${Number(policy.premium).toLocaleString("en-IN")}` : "N/A";
+    const sumFmt = policy.sum_assured ? `₹${Number(policy.sum_assured).toLocaleString("en-IN")}` : "N/A";
+    const urgencyColor = daysUntil <= 7 ? "#e07c5a" : "#f0a050";
+    const freqLabel = { ANNUAL: "Annual", HALF_YEARLY: "Half-Yearly", QUARTERLY: "Quarterly", MONTHLY: "Monthly" }[policy.premium_frequency] || policy.premium_frequency;
+    const appUrl = process.env.APP_URL || "https://app.wealthlenshub.com";
+
+    const html = `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#134E4A">
+        <div style="background:#0D9488;padding:1.5rem;border-radius:12px 12px 0 0;text-align:center">
+          <div style="font-size:2rem">🛡️</div>
+          <div style="color:#fff;font-size:1.1rem;font-weight:600;margin-top:.5rem">Insurance Premium Due</div>
+        </div>
+        <div style="background:#F4F7F5;padding:1.5rem;border-radius:0 0 12px 12px;border:1px solid #D1E8E0">
+          <p>Your insurance premium for <strong>${policy.name}</strong> is due in
+            <span style="color:${urgencyColor};font-weight:700"> ${daysUntil} day${daysUntil !== 1 ? "s" : ""}</span>.
+          </p>
+          <table style="width:100%;border-collapse:collapse;margin:1rem 0">
+            <tr style="border-bottom:1px solid #D1E8E0">
+              <td style="padding:.5rem;color:#5E7A72;font-size:.85rem">Premium Due</td>
+              <td style="padding:.5rem;font-weight:600;color:${urgencyColor}">${dueFmt}</td>
+            </tr>
+            <tr style="border-bottom:1px solid #D1E8E0">
+              <td style="padding:.5rem;color:#5E7A72;font-size:.85rem">Premium Amount</td>
+              <td style="padding:.5rem;font-weight:600">${premiumFmt}</td>
+            </tr>
+            <tr style="border-bottom:1px solid #D1E8E0">
+              <td style="padding:.5rem;color:#5E7A72;font-size:.85rem">Frequency</td>
+              <td style="padding:.5rem;font-weight:600">${freqLabel}</td>
+            </tr>
+            <tr>
+              <td style="padding:.5rem;color:#5E7A72;font-size:.85rem">Sum Assured</td>
+              <td style="padding:.5rem;font-weight:600">${sumFmt}</td>
+            </tr>
+          </table>
+          <p style="font-size:.85rem;color:#5E7A72">Pay your premium on time to keep your coverage active.
+            View your portfolio at <a href="${appUrl}" style="color:#0D9488">${appUrl}</a>.</p>
+        </div>
+      </div>`;
+
+    try {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({
+          from: "WealthLens Hub <alerts@wealthlenshub.com>",
+          to: [toEmail],
+          subject: `🛡️ Insurance Reminder: "${policy.name}" premium due in ${daysUntil} day${daysUntil !== 1 ? "s" : ""}`,
+          html,
+        }),
+      });
+      const rj = await r.json();
+      if (r.ok) await insertNotification(policy.user_id, "insurance_reminder", `Insurance premium due: "${policy.name}"`, `Premium of ${premiumFmt} due in ${daysUntil} day${daysUntil!==1?"s":""} on ${dueFmt}.`, "/holdings");
+      results.push({ policy: policy.id, name: policy.name, daysUntil, status: r.ok ? "sent" : "failed", resendId: rj.id });
+    } catch (e) {
+      results.push({ policy: policy.id, name: policy.name, daysUntil, status: "error", error: e.message });
+    }
+  }
+
+  const sent = results.filter(r => r.status === "sent").length;
+  console.log(`Insurance reminders: scanned ${(policies||[]).length} policies, sent ${sent} emails`);
+  res.json({ scanned: (policies||[]).length, sent, results });
+});
+
+// ── Goal Progress Milestone Notifications (25 / 50 / 75 / 100 %) ─────────────
+// POST /api/cron/goal-milestones  (x-cron-secret header required)
+// Persists notified_milestone back into the goal JSONB so each milestone fires
+// only once. Sends email + push for every new crossing.
+// Env: CRON_SECRET, RESEND_API_KEY, APP_URL
+
+router.post("/goal-milestones", cronAuth, async (req, res) => {
+  const resendKey = process.env.RESEND_API_KEY;
+  if (!resendKey) return res.status(500).json({ error: "RESEND_API_KEY not configured" });
+
+  const MILESTONES = [25, 50, 75, 100];
+  const appUrl = process.env.APP_URL || "https://app.wealthlenshub.com";
+
+  // Fetch all portfolios with goals
+  const { data: portfolios, error: pErr } = await supabase
+    .from("portfolio")
+    .select("user_id, goals");
+  if (pErr) return res.status(500).json({ error: pErr.message });
+
+  const results = [];
+
+  for (const port of portfolios || []) {
+    const goals = (port.goals || []).filter(g => g.targetAmount > 0);
+    if (!goals.length) { results.push({ userId: port.user_id, status: "no_goals" }); continue; }
+
+    // Fetch total current value for this user
+    const { data: holdings } = await supabase
+      .from("holdings")
+      .select("current_value, type")
+      .eq("user_id", port.user_id);
+    if (!holdings?.length) continue;
+
+    const totalValue = holdings.reduce((s, h) => s + (Number(h.current_value) || 0), 0);
+
+    let goalsUpdated = false;
+    const newGoals = [...goals];
+    const notifications = [];
+
+    for (let i = 0; i < newGoals.length; i++) {
+      const goal = { ...newGoals[i] };
+      const pct = Math.min((totalValue / goal.targetAmount) * 100, 100);
+      const prevMilestone = goal.notified_milestone || 0;
+
+      // Find the highest new milestone crossed
+      const newMilestone = MILESTONES.filter(m => m > prevMilestone && pct >= m).pop();
+      if (!newMilestone) continue;
+
+      notifications.push({ goal, milestone: newMilestone, pct: pct.toFixed(1) });
+      goal.notified_milestone = newMilestone;
+      newGoals[i] = goal;
+      goalsUpdated = true;
+    }
+
+    if (!notifications.length) { results.push({ userId: port.user_id, status: "no_new_milestones" }); continue; }
+
+    // Persist updated notified_milestone values
+    if (goalsUpdated) {
+      await supabase.from("portfolio").update({ goals: newGoals }).eq("user_id", port.user_id).catch(e => console.error("goal update failed", e));
+    }
+
+    // Resolve email
+    const { data: profile } = await supabase.from("profiles").select("email").eq("id", port.user_id).single();
+    const toEmail = profile?.email;
+    if (!toEmail) { results.push({ userId: port.user_id, status: "no_email" }); continue; }
+
+    // Build email for all new milestone notifications
+    const milestoneRows = notifications.map(n => {
+      const emoji = n.milestone >= 100 ? "🏆" : n.milestone >= 75 ? "🎯" : n.milestone >= 50 ? "⭐" : "🌱";
+      const color = n.milestone >= 100 ? "#059669" : n.milestone >= 75 ? "#0D9488" : n.milestone >= 50 ? "#5b9bd5" : "#A084CA";
+      return `<div style="background:#fff;border:1px solid #D1E8E0;border-radius:8px;padding:1rem;margin:.5rem 0">
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <span style="font-size:1.4rem">${emoji}</span>
+          <div>
+            <div style="font-weight:600;color:#134E4A">${n.goal.label || "Goal"}</div>
+            <div style="color:${color};font-weight:700;font-size:1.1rem">${n.milestone}% Milestone Reached</div>
+            <div style="color:#5E7A72;font-size:.85rem">Portfolio is at ${n.pct}% of target ₹${Number(n.goal.targetAmount).toLocaleString("en-IN")}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join("");
+
+    const html = `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#134E4A">
+        <div style="background:#0D9488;padding:1.5rem;border-radius:12px 12px 0 0;text-align:center">
+          <div style="font-size:2rem">🎯</div>
+          <div style="color:#fff;font-size:1.1rem;font-weight:600;margin-top:.5rem">Goal Milestone${notifications.length > 1 ? "s" : ""} Reached!</div>
+        </div>
+        <div style="background:#F4F7F5;padding:1.5rem;border-radius:0 0 12px 12px;border:1px solid #D1E8E0">
+          <p>You've crossed a new milestone on your financial goal${notifications.length > 1 ? "s" : ""}. Keep going!</p>
+          ${milestoneRows}
+          <p style="margin-top:1rem;font-size:.85rem;color:#5E7A72">
+            View your goals at <a href="${appUrl}" style="color:#0D9488">${appUrl}</a>
+          </p>
+        </div>
+      </div>`;
+
+    try {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({
+          from: "WealthLens Hub <alerts@wealthlenshub.com>",
+          to: [toEmail],
+          subject: `🎯 Goal milestone${notifications.length > 1 ? "s" : ""} reached — ${notifications.map(n => n.milestone + "%").join(", ")}`,
+          html,
+        }),
+      });
+      const rj = await r.json();
+
+      // Also push notification
+      if (pushEnabled()) {
+        const pushMsg = notifications.map(n => `${n.milestone}% — ${n.goal.label || "Goal"}`).join(", ");
+        await sendPushToUser(port.user_id, {
+          title: "Goal Milestone Reached! 🎯",
+          body: pushMsg,
+          url: "/goals",
+        }).catch(() => {});
+      }
+
+      if (r.ok) { for (const n of notifications) { await insertNotification(port.user_id, "goal_milestone", `Goal milestone reached: ${n.milestone}%`, `"${n.goal.label || "Goal"}" is at ${n.pct}% of target.`, "/goals"); } }
+      results.push({ userId: port.user_id, milestones: notifications.map(n => n.milestone), status: r.ok ? "sent" : "failed", resendId: rj.id });
+    } catch (e) {
+      results.push({ userId: port.user_id, status: "error", error: e.message });
+    }
+  }
+
+  const sent = results.filter(r => r.status === "sent").length;
+  console.log(`Goal milestones: ${(portfolios||[]).length} portfolios scanned, ${sent} emails sent`);
+  res.json({ portfolios: (portfolios||[]).length, sent, results });
 });
 
 export default router;

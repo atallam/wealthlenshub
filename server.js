@@ -30,6 +30,7 @@ import alertsRouter       from "./routes/alerts.js";
 import watchlistRouter    from "./routes/watchlist.js";
 import auditRouter       from "./routes/audit.js";
 import pushRouter        from "./routes/push.js";
+import notificationsRouter from "./routes/notifications.js";
 import mfRouter          from "./routes/mf.js";
 import { auditMiddleware } from "./lib/auditLogger.js";
 
@@ -88,6 +89,7 @@ app.use("/api/export",        exportRouter);
 app.use("/api/alerts",        alertsRouter);
 app.use("/api/watchlist",     watchlistRouter);
 app.use("/api/audit-logs",    auditRouter);
+app.use("/api/notifications",  notificationsRouter);
 app.use("/api/push",          pushRouter);
 app.use("/api/mf",            mfRouter);
 
