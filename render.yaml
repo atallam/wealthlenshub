@@ -66,17 +66,32 @@ services:
     name: wealthlens-hub-price-cron
     runtime: node
     region: singapore
-    schedule: "30 0 * * 1-5"
+    # 8:00 AM IST = 02:30 UTC — runs every day including weekends
+    schedule: "30 2 * * *"
     buildCommand: echo "no build"
     startCommand: >
       node -e "
-        const h={method:'POST',headers:{'x-cron-secret':process.env.CRON_SECRET}};
+        const h={method:'POST',headers:{'x-cron-secret':process.env.CRON_SECRET,'Content-Type':'application/json'}};
         const base='https://wealthlens.pro';
-        fetch(base+'/api/cron/refresh-all-prices',h)
-          .then(r=>r.json()).then(d=>{console.log('prices',JSON.stringify(d));
-            return fetch(base+'/api/cron/nudge-stale',h);
-          }).then(r=>r.json()).then(d=>console.log('nudge',JSON.stringify(d)))
-          .catch(e=>console.error('cron error',e.message));
+        async function run(){
+          try{
+            const p=await fetch(base+'/api/cron/refresh-all-prices',h);
+            console.log('prices',JSON.stringify(await p.json()));
+          }catch(e){console.error('prices error',e.message);}
+          try{
+            const s=await fetch(base+'/api/cron/nudge-stale',h);
+            console.log('nudge',JSON.stringify(await s.json()));
+          }catch(e){console.error('nudge error',e.message);}
+          try{
+            const f=await fetch(base+'/api/cron/fd-alerts',h);
+            console.log('fd-alerts',JSON.stringify(await f.json()));
+          }catch(e){console.error('fd-alerts error',e.message);}
+          try{
+            const a=await fetch(base+'/api/cron/alert-check',h);
+            console.log('alert-check',JSON.stringify(await a.json()));
+          }catch(e){console.error('alert-check error',e.message);}
+        }
+        run();
       "
     envVars:
       - key: CRON_SECRET
@@ -86,10 +101,21 @@ services:
     name: wealthlens-hub-cas-email-cron
     runtime: node
     region: singapore
-    schedule: "0 3 * * 1"
+    # 8:00 AM IST Sunday = 02:30 UTC Sunday — weekly CAS file check
+    schedule: "30 2 * * 0"
     buildCommand: echo "no build"
     startCommand: >
-      node -e "fetch('https://wealthlens.pro/api/cron/check-cas-email',{method:'POST',headers:{'x-cron-secret':process.env.CRON_SECRET}}).then(r=>r.json()).then(console.log)"
+      node -e "
+        async function run(){
+          try{
+            const r=await fetch('https://wealthlens.pro/api/cron/check-cas-email',{method:'POST',headers:{'x-cron-secret':process.env.CRON_SECRET,'Content-Type':'application/json'}});
+            const d=await r.json();
+            console.log('cas-email',JSON.stringify(d));
+            if(!r.ok) process.exit(1);
+          }catch(e){console.error('cas error',e.message);process.exit(1);}
+        }
+        run();
+      "
     envVars:
       - key: CRON_SECRET
         sync: false
