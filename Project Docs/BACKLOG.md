@@ -7,6 +7,7 @@
 > P2 items 5, 6, 7, 11, 12 shipped August 2026 and moved to Completed; remaining P2 items renumbered.  
 > All items in the Completed section are live in the codebase.  
 > August 2026: Items 1, 3, 6, 7 moved to Won't Do / Deprioritized; remaining items renumbered.
+> August 2026: SnapTrade Auto-Sync (P2 Item 3) also moved to Won't Do — SnapTrade is already a live connection.
 
 ---
 
@@ -25,8 +26,7 @@ Export a per-member and consolidated LTCG/STCG summary as a multi-sheet Excel wo
 
 ## 🟡 P2 — Medium Priority
 
-### 3. SnapTrade Auto-Sync (Background Frequency Control)
-SnapTrade sync is currently manual (user triggers it). Add an optional scheduled background sync (every 24 hours) so US brokerage holdings stay current without manual intervention.
+*No active P2 items.*
 
 ---
 
@@ -70,6 +70,10 @@ Auto-categorisation currently relies on keyword rules. An LLM-assisted pass usin
 ### Watchlist Price Alerts *(was P2 Item 6)*
 The Watchlist tab shows live prices but has no alert capability. Extend the existing holding-alert system to watchlist items so users get notified (email/in-app) when a target price is hit.  
 **Reason deprioritized:** The Watchlist feature itself has low engagement relative to the holdings-level alert system already in place. Adding alerts to watchlist items duplicates effort without clear portfolio action tied to the trigger.
+
+### SnapTrade Auto-Sync *(was P2 Item 3)*
+SnapTrade sync is currently manual (user triggers it). Add an optional scheduled background sync (every 24 hours) so US brokerage holdings stay current without manual intervention.  
+**Reason deprioritized:** SnapTrade is a live connection — `GET /snaptrade/holdings/:accountId` fetches real-time positions directly from the broker on every call. A background cron sync would replicate what the user already gets on demand with no real benefit, and adds unnecessary cron complexity.
 
 ### SIP / SWP Return Attribution *(was P2 Item 7)*
 XIRR captures the aggregate effect of SIPs but there is no breakdown showing which installments contributed most. A contribution-weighted return view would help users evaluate SIP timing decisions.  
