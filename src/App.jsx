@@ -4,7 +4,7 @@ import {
   Users, Wallet, CalendarDays, MessageSquare,
   RefreshCw, Settings, LogOut, Eye, EyeOff, X, MoreHorizontal,
   AlertTriangle, Download, Receipt, Bookmark, Activity, PieChart,
-  Moon, Sun,
+  Moon, Sun, Newspaper,
 } from 'lucide-react';
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
 import { api } from './lib/api.js';
@@ -49,6 +49,7 @@ import CalendarTab from './features/calendar/CalendarTab.jsx';
 import AdvisorTab from './features/advisor/AdvisorTab.jsx';
 import TaxTab from './features/tax/TaxTab.jsx';
 import WatchlistTab from './features/watchlist/WatchlistTab.jsx';
+import NewsTab      from './features/news/NewsTab.jsx';
 import AuditLogPanel from './features/audit/AuditLogPanel.jsx';
 
 // ── Shared components ────────────────────────────────────────────
@@ -97,6 +98,7 @@ const TABS = [
   // { key: 'tax',       label: 'Tax',       Icon: Receipt },       // hidden — not actively used
   // { key: 'watchlist', label: 'Watchlist', Icon: Bookmark },      // hidden — not actively used
   { key: 'advisor',   label: 'Advisor',   Icon: MessageSquare },
+  { key: 'news',      label: 'News',      Icon: Newspaper },
 ];
 
 // Mobile bottom nav: 4 highest-value tabs — rest go into ··· more sheet
@@ -816,6 +818,12 @@ ${alertsText}`;
         {loaded && tab === 'watchlist' && (
           <ErrorBoundary tab="Watchlist">
             <WatchlistTab />
+          </ErrorBoundary>
+        )}
+
+        {loaded && tab === 'news' && (
+          <ErrorBoundary tab="News">
+            <NewsTab holdings={holdings} api={api} />
           </ErrorBoundary>
         )}
 

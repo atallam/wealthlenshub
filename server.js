@@ -32,6 +32,7 @@ import auditRouter       from "./routes/audit.js";
 import pushRouter        from "./routes/push.js";
 import notificationsRouter from "./routes/notifications.js";
 import mfRouter          from "./routes/mf.js";
+import newsRouter        from "./routes/news.js";
 import { auditMiddleware } from "./lib/auditLogger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -92,6 +93,7 @@ app.use("/api/audit-logs",    auditRouter);
 app.use("/api/notifications",  notificationsRouter);
 app.use("/api/push",          pushRouter);
 app.use("/api/mf",            mfRouter);
+app.use("/api",               newsRouter);     // mounts /api/news
 
 // ── Global API error handler ─────────────────────────────────────────────────
 app.use((err, req, res, next) => {
