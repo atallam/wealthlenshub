@@ -9,6 +9,7 @@
 > August 2026: Items 1, 3, 6, 7 moved to Won't Do / Deprioritized; remaining items renumbered.
 > August 2026: SnapTrade Auto-Sync (P2 Item 3) also moved to Won't Do — SnapTrade is already a live connection.
 > August 2026: Embedded Financial News Feed (P3 Item 9) shipped and moved to Completed; Item 10 renumbered to 9.
+> August 2026: Financial News Feed upgraded — Indian market RSS sources (ET Markets, Livemint), macro RSS sources (SEBI, ET Economy), and per-stock filter UI added.
 
 ---
 
@@ -84,10 +85,10 @@ XIRR captures the aggregate effect of SIPs but there is no breakdown showing whi
 > These are shipped and live — do not re-add to the active backlog.
 
 
-### Embedded Financial News Feed
-Shipped August 2026 (was P3 Item 9).
-- **Backend** — `routes/news.js`; `GET /api/news?tickers=...`; fetches Yahoo Finance news for up to 8 holding tickers in parallel; regex-based RSS 2.0 parser for RBI notification feed; 15-minute in-process cache per ticker; deduplicates by UUID, sorts newest-first, returns up to 50 articles
-- **Frontend** — `src/features/news/NewsTab.jsx`; auto-extracts market tickers from holdings (IN_STOCK→.NS, US_STOCK, CRYPTO, ETFs); filter chips: All / 🇮🇳 Indian / 🇺🇸 US / 📋 Macro with live counts; news cards with thumbnail, title, publisher, time ago, category badge; 15-min cache, manual Refresh, loading skeleton
+### Embedded Financial News Feed (Enhanced)
+Shipped August 2026 (was P3 Item 9). Enhanced August 2026 with Indian market RSS sources, additional macro feeds, and per-stock filtering.
+- **Backend** — `routes/news.js`; `GET /api/news?tickers=...`; Yahoo Finance news for up to 12 portfolio tickers; RSS feeds added: ET Markets + Livemint (Indian market), RBI + SEBI + ET Economy (macro); regex RSS 2.0 parser; 15-min in-process cache per source; deduplicates, sorts newest-first, returns up to 60 articles; `rssSources` list in response distinguishes portfolio tickers from feed sources
+- **Frontend** — `src/features/news/NewsTab.jsx`; two-row filter UI — Row 1 Market category (All / Indian / US / Macro); Row 2 per-stock chips (All Stocks + one chip per portfolio ticker with articles, colour-coded by market); clicking a ticker filters to that stock only; active filter summary bar with Clear; ticker tag on each card is clickable; `rssSources` set suppresses ticker tags on RSS articles
 - **Wiring** — `server.js` mounts `/api/news`; `App.jsx` adds News tab (Newspaper icon) to nav
 
 ### Unified In-App Notification Centre
