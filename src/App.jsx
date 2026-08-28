@@ -4,7 +4,7 @@ import {
   Users, Wallet, CalendarDays, MessageSquare,
   RefreshCw, Settings, LogOut, Eye, EyeOff, X, MoreHorizontal,
   AlertTriangle, Download, Receipt, Bookmark, Activity, PieChart,
-  Moon, Sun, Newspaper,
+  Moon, Sun, Newspaper, TrendingUp,
 } from 'lucide-react';
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
 import { api } from './lib/api.js';
@@ -45,6 +45,7 @@ import StrategyTab from './features/strategy/StrategyTab.jsx';
 import MembersTab from './features/members/MembersTab.jsx';
 import BudgetTab from './features/budget/BudgetTab.jsx';
 import Budget2Tab from './features/budget/Budget2Tab.jsx';
+import FamilyBudgetTab from './features/budget/FamilyBudgetTab.jsx';
 import CalendarTab from './features/calendar/CalendarTab.jsx';
 import AdvisorTab from './features/advisor/AdvisorTab.jsx';
 import TaxTab from './features/tax/TaxTab.jsx';
@@ -94,6 +95,7 @@ const TABS = [
   { key: 'members',   label: 'Family',    Icon: Users },
   { key: 'budget',    label: 'Budget',    Icon: Wallet },
   { key: 'budget2',   label: 'Budget 2',  Icon: PieChart },
+  { key: 'familybudget', label: 'Family Budget', Icon: TrendingUp },
   { key: 'calendar',  label: 'Calendar',  Icon: CalendarDays },
   // { key: 'tax',       label: 'Tax',       Icon: Receipt },       // hidden — not actively used
   // { key: 'watchlist', label: 'Watchlist', Icon: Bookmark },      // hidden — not actively used
@@ -792,6 +794,16 @@ ${alertsText}`;
             <Budget2Tab
               {...budget2}
               api={api}
+              Overlay={Overlay}
+            />
+          </ErrorBoundary>
+        )}
+
+        {loaded && tab === 'familybudget' && (
+          <ErrorBoundary tab="Family Budget">
+            <FamilyBudgetTab
+              user={user}
+              members={members}
               Overlay={Overlay}
             />
           </ErrorBoundary>

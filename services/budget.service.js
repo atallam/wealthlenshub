@@ -391,23 +391,25 @@ export async function listCategories(userId) {
   if (error) throw new Error(error.message);
   return data || [];
 }
-export async function createCategory(userId, name, keywords, icon, color, monthly_limit) {
+export async function createCategory(userId, name, keywords, icon, color, monthly_limit, is_essential) {
   const id = "cat_" + Date.now().toString(36);
   const row = { id, user_id: userId, name, keywords: keywords || "" };
   if (icon          !== undefined) row.icon          = icon;
   if (color         !== undefined) row.color         = color;
   if (monthly_limit !== undefined) row.monthly_limit = Number(monthly_limit) || 0;
+  if (is_essential !== undefined) row.is_essential = Boolean(is_essential);
   const { error } = await supabase.from("budget_categories").insert(row);
   if (error) throw new Error(error.message);
   return { ok: true, id };
 }
-export async function updateCategory(userId, id, name, keywords, icon, color, monthly_limit) {
+export async function updateCategory(userId, id, name, keywords, icon, color, monthly_limit, is_essential) {
   const patch = {};
   if (name          !== undefined) patch.name          = name;
   if (keywords      !== undefined) patch.keywords      = keywords;
   if (icon          !== undefined) patch.icon          = icon;
   if (color         !== undefined) patch.color         = color;
   if (monthly_limit !== undefined) patch.monthly_limit = Number(monthly_limit) || 0;
+  if (is_essential !== undefined) patch.is_essential = Boolean(is_essential);
   // Only allow editing user-owned categories (user_id = userId); system defaults (NULL) are read-only
   const { error } = await supabase
     .from("budget_categories")
@@ -559,4 +561,250 @@ export async function debugPdf(userId, file, body) {
     } catch (ie) { importError = ie.message; }
   }
   return { pages: undefined, totalChars: rawText.length, totalLines: lines.length, usRowsParsed: usRows.length, inRowsParsed: inRows.length, sectionHeaders, dateLines, first80Lines: sampleLines, usRowsSample: usRows.slice(0, 5), inRowsSample: inRows.slice(0, 5), imported, importError };
+}
+
+// ── Family Budget — new service functions ─────────────────────────────────────
+// These power the FamilyBudgetTab (Phases 1-5). They extend the existing budget
+// service by adding member_id filtering (via statement join), merchant rollup,
+// and recurring-transaction detection.
+
+/** Resolve statement IDs that belong to a given member (or all statements for
+ *  the user when memberId is falsy). Used to scope analytics + transactions to
+ *  a specific family member without duplicating filter logic. */
+async function resolveStatementIds(userId, memberId) {
+  const q = supabase.from("budget_statements").select("id").eq("user_id", userId);
+  if (memberId) {
+    // Explicit member filter — only their statements
+    const { data } = await q.eq("member_id", memberId);
+    return (data || []).map(r => r.id);
+  }
+  // No filter — all statements; return null to signal "don't filter"
+  return null;
+}
+
+/** Full analytics for FamilyBudget — supports member_id, custom date range,
+ *  and returns both KPIs (totalDebit, totalCredit, savingsRate, byCategory)
+ *  and trend data (monthly cashflow for 12 months, per-member comparison).
+ *  The `memberId` param scopes everything through the statements join. */
+export async function familyAnalytics(userId, memberId, month, { from: rangeFrom, to: rangeTo } = {}) {
+  // Determine date window
+  let qFrom, qTo;
+  if (month) {
+    const [y, m] = month.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    qFrom = `${month}-01`;
+    qTo   = `${month}-${String(lastDay).padStart(2, "0")}`;
+  } else if (rangeFrom) {
+    qFrom = rangeFrom;
+    qTo   = rangeTo || new Date().toISOString().slice(0, 10);
+  } else {
+    // Default: current calendar month
+    const now = new Date();
+    const y = now.getFullYear(), m = String(now.getMonth() + 1).padStart(2, "0");
+    const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+    qFrom = `${y}-${m}-01`;
+    qTo   = `${y}-${m}-${String(lastDay).padStart(2, "0")}`;
+  }
+
+  const stmtIds = await resolveStatementIds(userId, memberId);
+  // If member has no statements yet, return empty result
+  if (Array.isArray(stmtIds) && stmtIds.length === 0) {
+    return { byCategory: {}, totalDebit: 0, totalCredit: 0, savingsRate: 0,
+             monthly: {}, cashflow: {}, memberBreakdown: [], qFrom, qTo };
+  }
+
+  // KPI query for current window
+  let kpiQ = supabase.from("budget_transactions").select("amount,txn_type,category").eq("user_id", userId);
+  if (Array.isArray(stmtIds)) kpiQ = kpiQ.in("statement_id", stmtIds);
+  if (qFrom) kpiQ = kpiQ.gte("txn_date", qFrom);
+  if (qTo)   kpiQ = kpiQ.lte("txn_date", qTo);
+  const { data: kpiTxns } = await kpiQ;
+
+  const byCategory = {}; let totalDebit = 0, totalCredit = 0;
+  for (const t of kpiTxns || []) {
+    if (t.txn_type === "DEBIT") {
+      totalDebit += t.amount;
+      byCategory[t.category] = (byCategory[t.category] || 0) + t.amount;
+    } else {
+      totalCredit += t.amount;
+    }
+  }
+  const savingsRate = totalCredit > 0 ? Math.max(0, ((totalCredit - totalDebit) / totalCredit) * 100) : 0;
+
+  // 12-month cashflow trend
+  const cfFrom = new Date(Date.now() - 365 * 24 * 3600_000).toISOString().slice(0, 10);
+  let cfQ = supabase.from("budget_transactions").select("amount,txn_type,txn_date").eq("user_id", userId).gte("txn_date", cfFrom);
+  if (Array.isArray(stmtIds)) cfQ = cfQ.in("statement_id", stmtIds);
+  const { data: cfTxns } = await cfQ;
+  const cashflow = {}, monthly = {};
+  for (const t of cfTxns || []) {
+    const mo = t.txn_date.slice(0, 7);
+    if (!cashflow[mo]) cashflow[mo] = { debit: 0, credit: 0 };
+    if (t.txn_type === "DEBIT") { cashflow[mo].debit += t.amount; monthly[mo] = (monthly[mo] || 0) + t.amount; }
+    else cashflow[mo].credit += t.amount;
+  }
+
+  // Per-member breakdown (only when viewing "All")
+  let memberBreakdown = [];
+  if (!memberId) {
+    const { data: portfolioRow } = await supabase.from("portfolio").select("members").eq("user_id", userId).single();
+    const members = portfolioRow?.members || [];
+    for (const mem of members) {
+      const mIds = await resolveStatementIds(userId, mem.id);
+      if (!mIds || mIds.length === 0) continue;
+      let mQ = supabase.from("budget_transactions").select("amount,txn_type").eq("user_id", userId).in("statement_id", mIds);
+      if (qFrom) mQ = mQ.gte("txn_date", qFrom);
+      if (qTo)   mQ = mQ.lte("txn_date", qTo);
+      const { data: mTxns } = await mQ;
+      let mDebit = 0, mCredit = 0;
+      for (const t of mTxns || []) { if (t.txn_type === "DEBIT") mDebit += t.amount; else mCredit += t.amount; }
+      if (mDebit > 0 || mCredit > 0) memberBreakdown.push({ id: mem.id, name: mem.name, avatar: mem.avatar, debit: mDebit, credit: mCredit });
+    }
+  }
+
+  return { byCategory, totalDebit, totalCredit, savingsRate, monthly, cashflow, memberBreakdown, qFrom, qTo };
+}
+
+/** Transactions endpoint for FamilyBudget — same as listTransactions but adds
+ *  member_id filtering via statement join, and accepts an `offset` for pagination. */
+export async function familyTransactions(userId, query) {
+  const { member_id, category, month, search, from, limit, offset } = query;
+  const stmtIds = await resolveStatementIds(userId, member_id || null);
+  if (Array.isArray(stmtIds) && stmtIds.length === 0) return [];
+
+  let q = supabase.from("budget_transactions").select("*").eq("user_id", userId).order("txn_date", { ascending: false });
+  if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
+  if (category && category !== "All") q = q.eq("category", category);
+  if (month) {
+    const [y, m] = month.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    q = q.gte("txn_date", `${month}-01`).lte("txn_date", `${month}-${String(lastDay).padStart(2, "0")}`);
+  } else if (from) {
+    q = q.gte("txn_date", from);
+  }
+  if (search) q = q.ilike("search_text", `%${search.toLowerCase()}%`);
+  const maxRows = Math.min(Number(limit) || 500, 2000);
+  const startRow = Number(offset) || 0;
+  q = q.range(startRow, startRow + maxRows - 1);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return (data || []).map(t => ({ ...t, description: decrypt(t.description), balance: t.balance ? decrypt(t.balance) : null }));
+}
+
+/** Normalize a transaction description to extract the core merchant name.
+ *  Handles common Indian + US bank description patterns:
+ *  - UPI: "UPI/CR/123456789012/SWIGGY FOOD" → "SWIGGY FOOD"
+ *  - NEFT/RTGS/IMPS: "NEFT/HDFC123/AMAZON PAY" → "AMAZON PAY"
+ *  - POS: "POS/TXN/BIGBASKET" → "BIGBASKET"
+ *  - Generic: strips trailing dates, ref numbers, slashes */
+function normalizeMerchant(desc) {
+  if (!desc) return "Unknown";
+  let s = String(desc).toUpperCase().trim();
+  // Strip leading UPI/NEFT/IMPS/RTGS/POS markers + slash-delimited codes
+  s = s.replace(/^(UPI|NEFT|RTGS|IMPS|POS|ACH|ECS|EMI|ENQ|CLG|TFR|NACH|ATM|INB|MOB|CHQ|DD|DEBIT CARD|CREDIT CARD|PURCHASE)\b[\s/\-]*/i, "");
+  // Strip slash-delimited ref codes (all-numeric or alphanumeric >=6 chars) that appear in UPI refs
+  s = s.replace(/\/[A-Z0-9]{6,}(?=\/|$)/g, "");
+  // Strip trailing date patterns like 07-08, 2024-08-07
+  s = s.replace(/\s*\d{2}[-/]\d{2}(?:[-/]\d{2,4})?\s*$/, "");
+  // Strip trailing transaction IDs (long numeric strings)
+  s = s.replace(/\s+\d{8,}\s*$/, "");
+  // Remove leading/trailing slashes and trim
+  s = s.replace(/^[\/\s]+|[\/\s]+$/g, "").trim();
+  // Collapse multiple spaces
+  s = s.replace(/\s{2,}/g, " ");
+  // Title-case
+  return s.split(" ").map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(" ") || "Unknown";
+}
+
+/** Top merchants by spend. Groups by normalized description and sums amounts.
+ *  Only considers DEBIT transactions. Returns top 20 by amount. */
+export async function merchantRollup(userId, memberId, month, { from: rangeFrom, to: rangeTo } = {}) {
+  let qFrom, qTo;
+  if (month) {
+    const [y, m] = month.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    qFrom = `${month}-01`;
+    qTo   = `${month}-${String(lastDay).padStart(2, "0")}`;
+  } else if (rangeFrom) {
+    qFrom = rangeFrom; qTo = rangeTo || new Date().toISOString().slice(0, 10);
+  } else {
+    const now = new Date();
+    const y = now.getFullYear(), m = String(now.getMonth() + 1).padStart(2, "0");
+    const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+    qFrom = `${y}-${m}-01`; qTo = `${y}-${m}-${String(lastDay).padStart(2, "0")}`;
+  }
+
+  const stmtIds = await resolveStatementIds(userId, memberId || null);
+  if (Array.isArray(stmtIds) && stmtIds.length === 0) return [];
+
+  let q = supabase.from("budget_transactions")
+    .select("amount, description, search_text, category").eq("user_id", userId).eq("txn_type", "DEBIT");
+  if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
+  if (qFrom) q = q.gte("txn_date", qFrom);
+  if (qTo)   q = q.lte("txn_date", qTo);
+  q = q.limit(5000);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+
+  const grouped = {};
+  for (const t of data || []) {
+    const rawDesc = decrypt(t.description) || t.search_text || "";
+    const merchant = normalizeMerchant(rawDesc);
+    if (!grouped[merchant]) grouped[merchant] = { merchant, total: 0, count: 0, category: t.category };
+    grouped[merchant].total += t.amount;
+    grouped[merchant].count += 1;
+  }
+  return Object.values(grouped)
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 20);
+}
+
+/** Detect recurring transactions — transactions with the same normalized merchant
+ *  appearing in 2+ distinct calendar months at a broadly similar amount (within ±30%).
+ *  Returns a list of suspected recurring entries sorted by typical monthly cost desc. */
+export async function detectRecurring(userId, memberId) {
+  const stmtIds = await resolveStatementIds(userId, memberId || null);
+  if (Array.isArray(stmtIds) && stmtIds.length === 0) return [];
+
+  const cutoff = new Date(Date.now() - 365 * 24 * 3600_000).toISOString().slice(0, 10);
+  let q = supabase.from("budget_transactions")
+    .select("amount, description, search_text, category, txn_date")
+    .eq("user_id", userId).eq("txn_type", "DEBIT").gte("txn_date", cutoff).limit(5000);
+  if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+
+  // Group by merchant → month → list of amounts
+  const byMerchant = {};
+  for (const t of data || []) {
+    const rawDesc = decrypt(t.description) || t.search_text || "";
+    const merchant = normalizeMerchant(rawDesc);
+    const mo = t.txn_date.slice(0, 7);
+    if (!byMerchant[merchant]) byMerchant[merchant] = {};
+    if (!byMerchant[merchant][mo]) byMerchant[merchant][mo] = [];
+    byMerchant[merchant][mo].push({ amount: t.amount, category: t.category });
+  }
+
+  const results = [];
+  for (const [merchant, months] of Object.entries(byMerchant)) {
+    const moKeys = Object.keys(months).sort();
+    if (moKeys.length < 2) continue; // must appear in at least 2 months
+
+    // Representative amount per month = sum (usually just 1 transaction)
+    const monthAmounts = moKeys.map(mo => months[mo].reduce((s, t) => s + t.amount, 0));
+    const avg = monthAmounts.reduce((s, v) => s + v, 0) / monthAmounts.length;
+    const allInRange = monthAmounts.every(a => Math.abs(a - avg) / avg <= 0.30); // within ±30%
+    if (!allInRange) continue;
+
+    const latestCategory = months[moKeys[moKeys.length - 1]][0].category;
+    results.push({
+      merchant,
+      typicalAmount: Math.round(avg),
+      monthCount: moKeys.length,
+      months: moKeys,
+      category: latestCategory,
+      isSubscription: avg < 5000, // heuristic: <₹5000 = likely subscription
+    });
+  }
+  return results.sort((a, b) => b.typicalAmount - a.typicalAmount).slice(0, 30);
 }
