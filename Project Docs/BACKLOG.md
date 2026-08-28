@@ -5,66 +5,75 @@
 > Items 1 (Mobile PWA) and 5 (MF Overlap) shipped August 2026 and moved to Completed.
 > Value Masker (P1 Item 1) shipped August 2026 and moved to Completed; remaining P1 items renumbered.  
 > P2 items 5, 6, 7, 11, 12 shipped August 2026 and moved to Completed; remaining P2 items renumbered.  
-> All items in the Completed section are live in the codebase.
+> All items in the Completed section are live in the codebase.  
+> August 2026: Items 1, 3, 6, 7 moved to Won't Do / Deprioritized; remaining items renumbered.
 
 ---
 
 ## 🟠 P1 — High Value / Near-term
 
-### 1. Multi-Currency Portfolio View Toggle
-All values are normalised to INR at rest. Users with significant US holdings want to flip the entire dashboard to USD without touching stored data.  
-**Scope:** Global INR / USD toggle in the header; KPI tiles and charts re-computed using the live FX rate already fetched by the backend. Settings already expose a base currency field — wire it up to all display components.
-
-### 2. Recurring Transaction Templates (SIP Automation)
+### 1. Recurring Transaction Templates (SIP Automation)
 Users manually log every monthly SIP transaction. A recurring-transaction template would:
 - Let users define a template (fund, amount, day-of-month)
 - Auto-create a pending transaction entry on schedule with a one-click confirm step
 - Distinct from Budget2Tab's recurring *detection* — this creates portfolio transactions
 
-### 3. Plaid Transaction Categorisation Improvement
-Auto-categorisation currently relies on keyword rules. An LLM-assisted pass using the transaction description + merchant name would significantly reduce manual recategorisation.  
-**Scope:** POST categorisation requests to `/api/ai/chat` after import; cache results by description hash to avoid re-calling for known merchants.
-
-### 4. Family Consolidated Tax Report (Excel)
+### 2. Family Consolidated Tax Report (Excel)
 Export a per-member and consolidated LTCG/STCG summary as a multi-sheet Excel workbook formatted for CA filing — including grandfathering calculations and a summary row matching ITR Schedule 112A format.
 
 ---
 
 ## 🟡 P2 — Medium Priority
 
-### 5. SnapTrade Auto-Sync (Background Frequency Control)
+### 3. SnapTrade Auto-Sync (Background Frequency Control)
 SnapTrade sync is currently manual (user triggers it). Add an optional scheduled background sync (every 24 hours) so US brokerage holdings stay current without manual intervention.
-
-### 6. Watchlist Price Alerts
-The Watchlist tab shows live prices but has no alert capability. Extend the existing holding-alert system to watchlist items so users get notified (email/in-app) when a target price is hit.
-
-### 7. SIP / SWP Return Attribution
-XIRR captures the aggregate effect of SIPs but there is no breakdown showing which installments contributed most. A contribution-weighted return view would help users evaluate SIP timing decisions.
 
 ---
 
 ## 🔵 P3 — Nice-to-Have / Research
 
-### 13. NPS (National Pension System) Support
+### 4. NPS (National Pension System) Support
 Add NPS as a 14th asset type with Tier-I / Tier-II distinction, contribution tracking, government co-contribution modelling, and 60/40 corpus tax split projection.
 
-### 14. SGBs (Sovereign Gold Bonds) Tracking
+### 5. SGBs (Sovereign Gold Bonds) Tracking
 SGBs have fixed tenors, semi-annual interest payouts, and premature redemption windows. A dedicated SGB tracker with maturity countdown and interest calendar would surface these clearly.
 
-### 15. EPF / PPF Auto-Import via Setu
+### 6. EPF / PPF Auto-Import via Setu
 Explore whether the Setu AA or UMANG integration can auto-pull EPF balance and passbook, removing the need for manual EPF/PPF updates.
 
-### 16. Alternative Investment Tracking (AIF / PMS)
+### 7. Alternative Investment Tracking (AIF / PMS)
 High-net-worth users may hold AIF or PMS products. Model these as a new asset type with quarterly NAV updates and benchmark comparison.
 
-### 17. Broker-Native Ledger Reconciliation
+### 8. Broker-Native Ledger Reconciliation
 Compare transactions recorded in WealthLens Hub against broker contract note PDFs to surface discrepancies — missing trades, price differences, or quantity mismatches.
 
-### 18. Embedded Financial News Feed
+### 9. Embedded Financial News Feed
 Pull a curated, portfolio-filtered news feed (NSE announcements, corporate actions, RBI circulars) and surface it in the Overview tab or a dedicated News tab.
 
-### 19. Collaborative Budget (Shared Budget View)
+### 10. Collaborative Budget (Shared Budget View)
 Extend portfolio sharing to the Budget tab so couples or families can view, categorise, and annotate joint expenses together.
+
+---
+
+## 🚫 Won't Do / Deprioritized
+
+These items have been reviewed and deprioritized — either low ROI relative to effort, superseded by other capabilities, or out of current product scope.
+
+### Multi-Currency Portfolio View Toggle *(was P1 Item 1)*
+All values are normalised to INR at rest. Users with significant US holdings want to flip the entire dashboard to USD without touching stored data.  
+**Reason deprioritized:** The live USD/INR FX rate is already displayed alongside INR values on KPI tiles. Full currency toggle adds significant display complexity across all components for limited incremental value given the India-first user base.
+
+### Plaid Transaction Categorisation Improvement *(was P1 Item 3)*
+Auto-categorisation currently relies on keyword rules. An LLM-assisted pass using the transaction description + merchant name would significantly reduce manual recategorisation.  
+**Reason deprioritized:** Plaid is US-only and used by a small subset of users. LLM categorisation latency on import would degrade UX. The existing keyword rules cover 80%+ of common merchants adequately.
+
+### Watchlist Price Alerts *(was P2 Item 6)*
+The Watchlist tab shows live prices but has no alert capability. Extend the existing holding-alert system to watchlist items so users get notified (email/in-app) when a target price is hit.  
+**Reason deprioritized:** The Watchlist feature itself has low engagement relative to the holdings-level alert system already in place. Adding alerts to watchlist items duplicates effort without clear portfolio action tied to the trigger.
+
+### SIP / SWP Return Attribution *(was P2 Item 7)*
+XIRR captures the aggregate effect of SIPs but there is no breakdown showing which installments contributed most. A contribution-weighted return view would help users evaluate SIP timing decisions.  
+**Reason deprioritized:** XIRR already provides the correct time-weighted return for SIPs. Per-installment attribution is analytically complex, hard to explain to non-finance users, and risks confusion more than insight.
 
 ---
 
