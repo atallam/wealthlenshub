@@ -206,10 +206,13 @@ router.post("/import/:accountId", auth, async (req, res) => {
     // Build fresh rows from live positions.
     const newRows = [];
     let skipped = 0;
-    for (const p of posResp.data || []) {
+    const rawPositions = posResp.data || [];
+    console.log(`[SnapTrade import] account=${acctId} raw_positions=${rawPositions.length}`);
+    if (rawPositions.length > 0) console.log("[SnapTrade import] sample:", JSON.stringify(rawPositions[0]).slice(0,400));
+    for (const p of rawPositions) {
       const ticker = p.symbol?.symbol?.symbol || "UNKNOWN";
       const units = Number(p.units || 0), price = Number(p.price || 0), avg = Number(p.average_purchase_price || 0);
-      if (units <= 0) continue;
+      if (units <= 0) { console.log(`[ST skip] ${ticker} units=${units}`); continue; }
       const descLow = (p.symbol?.symbol?.description || "").toLowerCase();
       const typeCode = _extractTypeCode(p.symbol?.symbol?.type);
       const isCashSweep = CASH_SWEEP_TICKERS.has(ticker.toUpperCase()) || (typeCode === "oef" && (descLow.includes("money market") || descLow.includes("cash") || descLow.includes("sweep")));
@@ -222,10 +225,12 @@ router.post("/import/:accountId", auth, async (req, res) => {
       newRows.push({ id: `snap_${acctId}_CASH_${cur}`, user_id: req.user.id, type: "CASH", ticker: `CASH-${cur}`, name: `Cash (${cur})`, units: 1, purchase_price: cash, current_price: cash, currency: cur, source: "snaptrade", source_account: acctId, brokerage_name: brokerageName, ...(memberId && { member_id: memberId }), last_synced: now, price_fetched_at: now, start_date: now.slice(0, 10) });
     }
 
+    console.log(`[SnapTrade import] to_insert=${newRows.length} skipped=${skipped} member_id=${memberId}`);
+    if (newRows.length > 0) console.log("[ST row0]", JSON.stringify(newRows[0]).slice(0,300));
     let imported = 0;
     if (newRows.length > 0) {
       const { error } = await supabase.from("holdings").insert(newRows);
-      if (error) { console.error("SnapTrade insert error:", error.message); return res.status(500).json({ error: error.message }); }
+      if (error) { console.error("[ST insert ERR]:", error.message, error.details, error.hint); return res.status(500).json({ error: error.message, details: error.details, hint: error.hint }); }
       imported = newRows.length;
     }
     await supabase.from("snaptrade_connections").update({ last_synced_at: now }).eq("owner_id", req.user.id);
