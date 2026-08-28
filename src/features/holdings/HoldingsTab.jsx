@@ -163,7 +163,9 @@ export default function HoldingsTab({
   const displayH = showStaleOnly ? visH.filter(h => staleIds.has(h.id)) : visH;
 
   // ── Price freshness badge helpers ─────────────────────────────
-  const livePriceHoldings = visH.filter(h => h.price_fetched_at);
+  // Only market-price types get live feeds — exclude manual types (FD/PPF/EPF/REAL_ESTATE/CASH/OTHER/INSURANCE)
+  const LIVE_PRICE_TYPES = new Set(["US_STOCK","US_ETF","IN_STOCK","IN_ETF","MF","CRYPTO","US_BOND"]);
+  const livePriceHoldings = visH.filter(h => h.price_fetched_at && LIVE_PRICE_TYPES.has(h.type));
   const priceFreshnessEl = (() => {
     if (!livePriceHoldings.length) return null;
     const oldest = new Date(Math.min(...livePriceHoldings.map(h => new Date(h.price_fetched_at))));

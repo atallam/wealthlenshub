@@ -157,9 +157,12 @@ router.post("/prices/refresh", auth, async (req, res) => {
       const sym = h.ticker.toUpperCase().includes("-") ? h.ticker.toUpperCase() : `${h.ticker.toUpperCase()}-USD`;
       const q = await stockPrice(sym);
       if (q?.price) { const { rate: usdInr } = await fxPromise; patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: now }; }
-    } else if (h.type === "CASH") { const { rate: usdInr } = await fxPromise; if (h.usd_inr_rate && Math.abs(h.usd_inr_rate - usdInr) > 0.01) {
-      patch = { usd_inr_rate: usdInr, price_fetched_at: now };
-    } }
+    } else if (h.type === "CASH") {
+      const { rate: usdInr } = await fxPromise;
+      // Always stamp price_fetched_at so CASH freshness reflects last refresh
+      patch = { price_fetched_at: now };
+      if (h.usd_inr_rate && Math.abs(h.usd_inr_rate - usdInr) > 0.01) { patch.usd_inr_rate = usdInr; }
+    }
     return { h, patch };
   });
 
