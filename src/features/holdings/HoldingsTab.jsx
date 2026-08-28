@@ -95,6 +95,11 @@ const CONCALL_TYPES = new Set(["IN_STOCK", "IN_ETF", "US_STOCK", "US_ETF"]);
 // Manual holdings — no live feed, need periodic user updates
 const STALE_THRESHOLDS = { FD:90, PPF:90, EPF:90, REAL_ESTATE:180, CASH:14, INSURANCE:365, OTHER:60 };
 
+function daysSinceUpdate(h) {
+  const last = h.updated_at ? new Date(h.updated_at) : h.created_at ? new Date(h.created_at) : new Date(0);
+  return Math.floor((Date.now() - last) / 864e5);
+}
+
 function computeStale(holdings) {
   const now = Date.now();
   return holdings.filter(h => {
@@ -263,12 +268,27 @@ export default function HoldingsTab({
           }}>
             <div style={{fontSize:"1.1rem",lineHeight:1}}>⚠️</div>
             <div style={{flex:1,minWidth:0}}>
-              <span style={{fontSize:".78rem",color:"#c9a84c",fontWeight:600}}>
-                {staleH.length} holding{staleH.length > 1 ? "s" : ""} need updating
-              </span>
-              <span style={{fontSize:".7rem",color:"var(--text-muted)",marginLeft:".5rem"}}>
-                — manually tracked assets with no live price feed
-              </span>
+              <div>
+                <span style={{fontSize:".78rem",color:"#c9a84c",fontWeight:600}}>
+                  {staleH.length} holding{staleH.length > 1 ? "s" : ""} need a balance refresh
+                </span>
+                <span style={{fontSize:".7rem",color:"var(--text-muted)",marginLeft:".5rem"}}>
+                  — no live feed
+                </span>
+              </div>
+              <div style={{fontSize:".7rem",marginTop:".2rem",display:"flex",flexWrap:"wrap",gap:".1rem .65rem"}}>
+                {staleH.slice(0,4).map(h => {
+                  const days = daysSinceUpdate(h);
+                  const color = days >= STALE_THRESHOLDS[h.type] ? "#F85149" : "#F0883E";
+                  return (
+                    <span key={h.id}>
+                      <span style={{color:"var(--text)"}}>{h.name}</span>
+                      {" "}<span style={{color, fontWeight:600}}>{days}d ago</span>
+                    </span>
+                  );
+                })}
+                {staleH.length > 4 && <span style={{color:"var(--text-muted)"}}>+{staleH.length - 4} more</span>}
+              </div>
             </div>
             <div style={{display:"flex",gap:".4rem",flexShrink:0}}>
               <button
@@ -428,8 +448,14 @@ export default function HoldingsTab({
                   const src = h.source || "manual";
                   const srcLabel = src === "snaptrade" ? "SnapTrade" : src === "csv" || src === "import" ? "CSV" : src === "cas" ? "CAS" : "Manual";
 
+                  const _staleDays = STALE_THRESHOLDS[h.type] ? daysSinceUpdate(h) : 0;
+                  const _rowBg = _staleDays >= (STALE_THRESHOLDS[h.type]||9999)
+                    ? "rgba(248,81,73,0.04)"
+                    : _staleDays >= 30 && STALE_THRESHOLDS[h.type]
+                      ? "rgba(240,136,62,0.04)"
+                      : undefined;
                   return [
-                    <tr key={h.id}>
+                    <tr key={h.id} style={_rowBg ? {background:_rowBg} : undefined}>
                       <td>
                         <div className="hn">{h.name}</div>
                         <div className="hm">{mn}</div>
@@ -505,6 +531,28 @@ export default function HoldingsTab({
                       <td className="r">
                         <div>{curPriceDisplay}</div>
                         {isLive&&<div style={{fontSize:".65rem",color:"#4caf9a",marginTop:1}}>● {ago(h.price_fetched_at)}</div>}
+                        {!isLive && STALE_THRESHOLDS[h.type] && (()=>{
+                          const days = daysSinceUpdate(h);
+                          if (days < 14) return null;
+                          const thresh = STALE_THRESHOLDS[h.type];
+                          const isCrit = days >= thresh;
+                          const color = isCrit ? "#F85149" : "#F0883E";
+                          const updated = (h.updated_at||h.created_at)
+                            ? new Date(h.updated_at||h.created_at).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"2-digit"})
+                            : "—";
+                          return (
+                            <div
+                              title={`Last updated: ${updated} — click to update balance`}
+                              onClick={e=>{e.stopPropagation();if(!h.source||h.source==="manual")editH(h);}}
+                              style={{marginTop:3,display:"inline-flex",alignItems:"center",gap:3,
+                                fontSize:".65rem",fontWeight:600,padding:"2px 6px",borderRadius:20,
+                                background:`${color}18`,color,border:`1px solid ${color}33`,
+                                cursor:"pointer",userSelect:"none"}}>
+                              <span style={{width:5,height:5,borderRadius:"50%",background:color,display:"inline-block"}}/>
+                              {days}d ago
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="r">
                         <div style={{fontFamily:"'DM Mono',monospace",fontWeight:500,fontSize:".78rem"}}>{fmtCrNative(cur, h)}</div>
@@ -704,6 +752,23 @@ export default function HoldingsTab({
                         <div className="m-hc-cell" style={{textAlign:"right"}}>
                           <span className="m-hc-lbl">Source</span>
                           <span className="m-hc-val" style={{fontSize:".68rem"}}>{h.source==="snaptrade"?"SnapTrade":h.source==="csv"||h.source==="import"?"CSV":h.source==="cas"?"CAS":"Manual"}</span>
+                        
+                          {STALE_THRESHOLDS[h.type] && (()=>{
+                            const days = daysSinceUpdate(h);
+                            if (days < 14) return null;
+                            const thresh = STALE_THRESHOLDS[h.type];
+                            const color = days >= thresh ? "#F85149" : "#F0883E";
+                            return (
+                              <span
+                                onClick={e=>{e.stopPropagation();if(!h.source||h.source==="manual")editH(h);}}
+                                style={{marginTop:4,display:"inline-flex",alignItems:"center",gap:3,
+                                  fontSize:".65rem",fontWeight:600,padding:"2px 6px",borderRadius:20,
+                                  background:`${color}18`,color,border:`1px solid ${color}33`,cursor:"pointer"}}>
+                                <span style={{width:5,height:5,borderRadius:"50%",background:color,display:"inline-block"}}/>
+                                {days}d ago · tap to update
+                              </span>
+                            );
+                          })()}
                         </div>
                         {(h.type==="FD"||h.type==="CD")&&h.maturity_date&&(()=>{
                           const dLeft=Math.ceil((new Date(h.maturity_date)-Date.now())/864e5);
