@@ -93,8 +93,8 @@ const TABS = [
   { key: 'goals',     label: 'Goals',     Icon: Target },
   { key: 'strategy',  label: 'Strategy',  Icon: Compass },
   { key: 'members',   label: 'Family',    Icon: Users },
-  { key: 'budget',    label: 'Budget',    Icon: Wallet },
-  { key: 'budget2',   label: 'Budget 2',  Icon: PieChart },
+  // { key: 'budget',    label: 'Budget',    Icon: Wallet },   // hidden — using Family Budget
+  // { key: 'budget2',   label: 'Budget 2',  Icon: PieChart }, // hidden — using Family Budget
   { key: 'familybudget', label: 'Family Budget', Icon: TrendingUp },
   { key: 'calendar',  label: 'Calendar',  Icon: CalendarDays },
   // { key: 'tax',       label: 'Tax',       Icon: Receipt },       // hidden — not actively used
@@ -104,7 +104,7 @@ const TABS = [
 ];
 
 // Mobile bottom nav: 4 highest-value tabs — rest go into ··· more sheet
-const BOTTOM_NAV_KEYS = ['overview', 'holdings', 'budget', 'advisor'];
+const BOTTOM_NAV_KEYS = ['overview', 'holdings', 'familybudget', 'advisor'];
 const BOTTOM_NAV_TABS = BOTTOM_NAV_KEYS.map(k => TABS.find(t => t.key === k));
 const MORE_SHEET_TABS = TABS.filter(t => !BOTTOM_NAV_KEYS.includes(t.key));
 
