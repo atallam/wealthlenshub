@@ -8,6 +8,7 @@
 > All items in the Completed section are live in the codebase.  
 > August 2026: Items 1, 3, 6, 7 moved to Won't Do / Deprioritized; remaining items renumbered.
 > August 2026: SnapTrade Auto-Sync (P2 Item 3) also moved to Won't Do — SnapTrade is already a live connection.
+> August 2026: Embedded Financial News Feed (P3 Item 9) shipped and moved to Completed; Item 10 renumbered to 9.
 
 ---
 
@@ -47,10 +48,7 @@ High-net-worth users may hold AIF or PMS products. Model these as a new asset ty
 ### 8. Broker-Native Ledger Reconciliation
 Compare transactions recorded in WealthLens Hub against broker contract note PDFs to surface discrepancies — missing trades, price differences, or quantity mismatches.
 
-### 9. Embedded Financial News Feed
-Pull a curated, portfolio-filtered news feed (NSE announcements, corporate actions, RBI circulars) and surface it in the Overview tab or a dedicated News tab.
-
-### 10. Collaborative Budget (Shared Budget View)
+### 9. Collaborative Budget (Shared Budget View)
 Extend portfolio sharing to the Budget tab so couples or families can view, categorise, and annotate joint expenses together.
 
 ---
@@ -85,6 +83,12 @@ XIRR captures the aggregate effect of SIPs but there is no breakdown showing whi
 
 > These are shipped and live — do not re-add to the active backlog.
 
+
+### Embedded Financial News Feed
+Shipped August 2026 (was P3 Item 9).
+- **Backend** — `routes/news.js`; `GET /api/news?tickers=...`; fetches Yahoo Finance news for up to 8 holding tickers in parallel; regex-based RSS 2.0 parser for RBI notification feed; 15-minute in-process cache per ticker; deduplicates by UUID, sorts newest-first, returns up to 50 articles
+- **Frontend** — `src/features/news/NewsTab.jsx`; auto-extracts market tickers from holdings (IN_STOCK→.NS, US_STOCK, CRYPTO, ETFs); filter chips: All / 🇮🇳 Indian / 🇺🇸 US / 📋 Macro with live counts; news cards with thumbnail, title, publisher, time ago, category badge; 15-min cache, manual Refresh, loading skeleton
+- **Wiring** — `server.js` mounts `/api/news`; `App.jsx` adds News tab (Newspaper icon) to nav
 
 ### Unified In-App Notification Centre
 Shipped August 2026 (was P2 Item 5).
