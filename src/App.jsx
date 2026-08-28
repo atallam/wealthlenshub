@@ -1693,9 +1693,9 @@ ${alertsText}`;
 
       {/* ── SnapTrade Import ─────────────────────────────────────── */}
       {showSnapTrade && (
-        <Overlay onClose={() => setShowSnapTrade(false)} wide>
+        <Overlay onClose={() => { portfolio.reloadHoldings(); setShowSnapTrade(false); }} wide>
           <SnapTradeImport
-            onClose={() => setShowSnapTrade(false)}
+            onClose={() => { portfolio.reloadHoldings(); setShowSnapTrade(false); }}
             members={members}
           />
         </Overlay>
