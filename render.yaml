@@ -90,6 +90,14 @@ services:
             const a=await fetch(base+'/api/cron/alert-check',h);
             console.log('alert-check',JSON.stringify(await a.json()));
           }catch(e){console.error('alert-check error',e.message);}
+          try{
+            const i=await fetch(base+'/api/cron/insurance-reminders',h);
+            console.log('insurance-reminders',JSON.stringify(await i.json()));
+          }catch(e){console.error('insurance-reminders error',e.message);}
+          try{
+            const g=await fetch(base+'/api/cron/goal-milestones',h);
+            console.log('goal-milestones',JSON.stringify(await g.json()));
+          }catch(e){console.error('goal-milestones error',e.message);}
         }
         run();
       "
