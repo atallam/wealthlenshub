@@ -1172,3 +1172,98 @@ a.btn-o { text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ══════════════════════════════════════════════════════════
+   MOBILE AUDIT FIXES — August 2026
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Strategy: allocation table scroll wrapper ── */
+.strat-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Subtle right-fade scroll hint */
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 1.5rem), transparent 100%);
+  mask-image: linear-gradient(to right, black calc(100% - 1.5rem), transparent 100%);
+}
+/* Remove fade when scrolled to end (JS-free: only shows on overflow) */
+.strat-table-wrap .ht { min-width: 520px; }
+
+/* ── Strategy: undo toast above bottom nav ── */
+.strat-undo { position: fixed; right: 1rem; z-index: 300;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: .55rem .85rem;
+  display: flex; align-items: center; gap: .65rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,.22); font-size: .78rem; }
+
+/* ── Calendar: day cell sizing ── */
+.cal-day-cell {
+  min-height: 58px;
+  padding: .28rem .22rem;
+  border-radius: 5px;
+  cursor: default;
+  position: relative;
+}
+.cal-day-cell.has-events { cursor: pointer; }
+
+/* ── Advisor: responsive chat shell ── */
+.advisor-shell {
+  display: flex; flex-direction: column;
+  height: calc(100dvh - 280px);
+  min-height: 380px;
+}
+
+/* ── Members grid: safe minmax ── */
+.members-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px,100%), 1fr)); gap: .75rem; }
+
+@media (max-width: 600px) {
+  /* ── Strategy table scrollable ── */
+  .strat-table-wrap { margin: 0 -.8rem; padding: 0 .8rem; }
+  .strat-table-wrap .ht { min-width: 460px; }
+  /* Undo toast: sit above bottom nav */
+  .strat-undo { bottom: calc(4.5rem + env(safe-area-inset-bottom)) !important; right: .75rem !important; }
+
+  /* ── Calendar: smaller cells so full month fits without huge scroll ── */
+  .cal-day-cell { min-height: 44px !important; padding: .18rem .14rem !important; }
+  .cal-day-cell .cal-day-num { font-size: .68rem; }
+  .cal-day-cell .cal-ev-chip {
+    font-size: .58rem; padding: 1px 2px;
+    /* show icon only on tiny screens */
+  }
+
+  /* ── Settings: 2-col grids go single column ── */
+  .settings-grid-2 { grid-template-columns: 1fr !important; }
+
+  /* ── Advisor: smaller shell on mobile ── */
+  .advisor-shell {
+    height: calc(100dvh - 200px);
+    min-height: 300px;
+    max-height: calc(100dvh - 180px);
+  }
+
+  /* ── Budget: donut + legend row wraps ── */
+  .budget-donut-row { flex-wrap: wrap !important; }
+  .budget-donut-row > * { flex: 1 1 100% !important; min-width: 0 !important; }
+
+  /* ── Budget: category analysis row wraps ── */
+  .budget-cat-row { flex-wrap: wrap !important; }
+  .budget-cat-row > * { flex: 1 1 100% !important; min-width: 0 !important; }
+
+  /* ── FamilyBudget: control bar wraps ── */
+  .fbudget-ctrl { flex-wrap: wrap !important; gap: .5rem !important; }
+  .fbudget-ctrl > * { min-width: 0 !important; flex: 1 1 auto !important; }
+
+  /* ── Budget2: donut+detail layout ── */
+  .b2-donut-grid { grid-template-columns: 1fr !important; }
+
+  /* ── Bar chart: ensure horizontal scroll ── */
+  .chart-scroll-outer { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
+@media (max-width: 400px) {
+  .cal-day-cell { min-height: 38px !important; padding: .12rem .1rem !important; }
+}
+
+/* ── Calendar: show agenda nudge only on mobile ── */
+@media (max-width: 480px) {
+  .cal-agenda-nudge { display: block !important; }
+}

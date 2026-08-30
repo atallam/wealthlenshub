@@ -492,7 +492,7 @@ export default function StrategyTab({
     <>
       {/* ═══ UNDO TOAST ═══ */}
       {undoStack.map(u => (
-        <div key={u.alert.id} style={{
+        <div key={u.alert.id} className="strat-undo" style={{
           position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 2000,
           display: 'flex', alignItems: 'center', gap: '.85rem',
           background: 'var(--bg)', border: '1px solid var(--border)',
@@ -739,11 +739,12 @@ export default function StrategyTab({
       )}
 
       {/* Allocation + Drift + Action table */}
-      <div className="card" style={{ marginBottom: '1rem', overflow: 'hidden' }}>
+      <div className="card" style={{ marginBottom: '1rem' }}>
         {rTotal === 0 ? (
           <div className="empty">Add holdings to see your allocation plan</div>
         ) : (
           <>
+            <div className="strat-table-wrap">
             <table className="ht" style={{ fontSize: '.78rem' }}>
               <thead>
                 <tr>
@@ -882,6 +883,7 @@ export default function StrategyTab({
                 })}
               </tbody>
             </table>
+            </div>{/* end strat-table-wrap */}
 
             {/* Summary row */}
             <div style={{ marginTop: '.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '.5rem' }}>

@@ -120,7 +120,7 @@ function CashflowChart({ cashflow }) {
   if (!months.length) return <div style={{ color: 'var(--text-muted)', fontSize: '.8rem', padding: '1rem', textAlign: 'center' }}>No data</div>;
   const maxVal = Math.max(...months.flatMap(m => [cashflow[m].debit, cashflow[m].credit]), 1);
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="chart-scroll-outer" style={{ overflowX: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: '.25rem', height: 130, minWidth: months.length * 48, padding: '.5rem 0' }}>
         {months.map(mo => {
           const { debit = 0, credit = 0 } = cashflow[mo];
@@ -514,7 +514,7 @@ function TransactionList({ fb }) {
     <div>
       {/* Filters */}
       <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', marginBottom: '.75rem' }}>
-        <input className="fi" placeholder="Search transactions…" value={search} onChange={e => setFbTxnSearch(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+        <input className="fi" placeholder="Search transactions…" value={search} onChange={e => setFbTxnSearch(e.target.value)} style={{ flex: '1 1 160px', minWidth: 0 }} />
         <select className="fi" value={cat} onChange={e => setFbTxnCat(e.target.value)} style={{ minWidth: 130 }}>
           <option value="All">All categories</option>
           {categories.map(c => <option key={c.id} value={c.name}>{c.icon} {c.name}</option>)}

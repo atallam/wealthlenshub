@@ -1429,7 +1429,7 @@ ${alertsText}`;
             <input className="fi" placeholder="e.g. Priya" value={newMember.name}
               onChange={e => setNewMember(p => ({ ...p, name: e.target.value }))}/>
           </FG>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'.6rem'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(200px,100%),1fr))',gap:'.6rem'}}>
             <FG label="Relation">
               <select className="fi fs" value={newMember.relation} onChange={e => setNewMember(p => ({ ...p, relation: e.target.value }))}>
                 {['Self','Spouse','Child','Parent','Sibling','Other'].map(r => <option key={r} value={r}>{r}</option>)}
@@ -1456,7 +1456,7 @@ ${alertsText}`;
 
           {/* ── Nominee ── */}
           <div style={{fontSize:'.68rem',color:'var(--text-muted)',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em',margin:'.85rem 0 .5rem'}}>Nominee</div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'.6rem'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(200px,100%),1fr))',gap:'.6rem'}}>
             <FG label="Nominee name">
               <input className="fi" placeholder="e.g. Rahul" value={newMember.nominee_name || ''}
                 onChange={e => setNewMember(p => ({ ...p, nominee_name: e.target.value }))}/>
@@ -1522,7 +1522,7 @@ ${alertsText}`;
           {/* ── PPF / EPF rate config ── */}
           <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',marginBottom:'1rem'}}>
             <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Government Scheme Rates</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'.6rem',marginBottom:'.6rem'}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(200px,100%),1fr))',gap:'.6rem',marginBottom:'.6rem'}}>
               {[
                 { key:'ppf_rate', label:'PPF Rate (%)', default: 7.1 },
                 { key:'epf_rate', label:'EPF Rate (%)', default: 8.15 },

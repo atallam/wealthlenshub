@@ -28,7 +28,7 @@ export default function AdvisorTab({
   const isRestored = aiMessages.length > 0 && aiMessages[0]?.ts
     && (Date.now() - new Date(aiMessages[0].ts).getTime()) > 60_000;
   return (
-    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 280px)",minHeight:500}}>
+    <div className="advisor-shell" style={{display:"flex",flexDirection:"column",height:"calc(100dvh - 280px)",minHeight:500}}>
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
         <div>

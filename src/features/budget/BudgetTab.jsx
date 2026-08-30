@@ -815,7 +815,7 @@ export default function BudgetTab({
                       <td><input type="checkbox" checked={selectedTxnIds.has(t.id)}
                         onChange={e=>{const s=new Set(selectedTxnIds);e.target.checked?s.add(t.id):s.delete(t.id);setSelectedTxnIds(s);}}/></td>
                       <td className="mono dim" style={{fontSize:".75rem"}}>{t.txn_date}</td>
-                      <td style={{maxWidth:"30vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:".78rem",color:"var(--text)"}}>{t.description}</td>
+                      <td style={{maxWidth:"max(30vw,120px)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:".78rem",color:"var(--text)"}}>{t.description}</td>
                       <td className="r mono" style={{color:t.txn_type==="DEBIT"?"#e07c5a":"#4caf9a",fontSize:".82rem"}}>
                         {t.txn_type==="DEBIT"?"-":"+"}{fmtAmt(t.amount,t.currency)}
                       </td>

@@ -417,6 +417,15 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
             </div>
           )}
 
+          {/* ── Agenda nudge on mobile ── */}
+          {view === 'calendar' && (
+            <div className="cal-agenda-nudge" style={{ display:'none' }}>
+              <button onClick={() => setView('agenda')}
+                style={{ width:'100%', padding:'.45rem', background:'rgba(201,168,76,.08)', border:'1px solid rgba(201,168,76,.2)', borderRadius:6, fontSize:'.72rem', color:'#c9a84c', cursor:'pointer', marginBottom:'.5rem' }}>
+                📋 Switch to Agenda view for a better mobile experience
+              </button>
+            </div>
+          )}
           {/* ── Calendar grid view ──────────────────────────────────────────── */}
           {view === 'calendar' && (
             <>
@@ -435,15 +444,17 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
                   const hasEvents = dayEvents.length > 0;
                   return (
                     <div key={day} onClick={() => hasEvents && setExpandedDay(key)}
+                      className={`cal-day-cell${hasEvents ? ' has-events' : ''}`}
                       style={{
                         minHeight: 60, padding: '.3rem .28rem', borderRadius: 5,
                         background: today ? 'rgba(201,168,76,.12)' : 'var(--bg-muted)',
                         border:     today ? '1px solid rgba(201,168,76,.3)' : '1px solid var(--border)',
                         cursor:     hasEvents ? 'pointer' : 'default',
                       }}>
-                      <div style={{ fontSize:'.72rem', color: today ? '#c9a84c' : 'var(--text-dim)', fontWeight: today ? 600 : 400, marginBottom:'.2rem' }}>{day}</div>
+                      <div className="cal-day-num" style={{ fontSize:'.72rem', color: today ? '#c9a84c' : 'var(--text-dim)', fontWeight: today ? 600 : 400, marginBottom:'.2rem' }}>{day}</div>
                       {dayEvents.slice(0, 2).map((e, idx) => (
                         <div key={idx} title={e.label}
+                          className="cal-ev-chip"
                           style={{ fontSize:'.62rem', lineHeight:1.3, padding:'1px 3px', borderRadius:2, marginBottom:1,
                             background:`${e.color}22`, color:e.color, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                           {e.icon} {e.label.slice(0, 13)}{e.label.length > 13 ? '…' : ''}

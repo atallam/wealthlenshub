@@ -672,10 +672,14 @@ export default function HoldingsTab({
             const IN_T=new Set(["IN_STOCK","IN_ETF","MF"]);
             const isUSCash=h=>h.type==="CASH"&&isUSDHolding(h);
             const isINCash=h=>h.type==="CASH"&&!isUSDHolding(h);
+            // More granular mobile groups so each asset type is clearly identifiable
             const groups=[
-              {key:"us",label:"US Assets",icon:"$",color:"#5a9ce0",items:displayH.filter(h=>US_T.has(h.type)||isUSCash(h))},
-              {key:"in",label:"Indian Assets",icon:"₹",color:"#e07c5a",items:displayH.filter(h=>IN_T.has(h.type)||isINCash(h))},
-              {key:"other",label:"Other Assets",icon:"📦",color:"#c9a84c",items:displayH.filter(h=>!US_T.has(h.type)&&!IN_T.has(h.type)&&h.type!=="CASH")},
+              {key:"us",    label:"US Assets",       icon:"$",  color:"#5a9ce0", items:displayH.filter(h=>US_T.has(h.type)||isUSCash(h))},
+              {key:"in_st", label:"Indian Stocks & ETFs", icon:"📈",color:"#e07c5a", items:displayH.filter(h=>h.type==="IN_STOCK"||h.type==="IN_ETF")},
+              {key:"mf",    label:"Mutual Funds",    icon:"📊", color:"#a084ca", items:displayH.filter(h=>h.type==="MF")},
+              {key:"fd",    label:"Fixed Deposits & Debt",icon:"🏦",color:"#c9a84c", items:displayH.filter(h=>["FD","CD","PPF","EPF"].includes(h.type)||isINCash(h))},
+              {key:"ins",   label:"Insurance",       icon:"🛡️", color:"#e07b8c", items:displayH.filter(h=>h.type==="INSURANCE")},
+              {key:"re",    label:"Real Estate & Others",icon:"🏠",color:"#7cb87c", items:displayH.filter(h=>["REAL_ESTATE","GOLD","OTHER"].includes(h.type))},
             ].filter(g=>g.items.length>0);
             return groups.map((grp,gi)=>{
               const isUSGrp=grp.key==="us";

@@ -111,7 +111,7 @@ export default function MembersTab({
             </div>
 
             {/* Identity details */}
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:'.55rem .75rem', marginBottom:'1rem' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(min(150px,100%),1fr))', gap:'.55rem .75rem', marginBottom:'1rem' }}>
 
               {m.dob && (
                 <div>

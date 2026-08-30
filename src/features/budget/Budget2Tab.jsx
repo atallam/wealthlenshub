@@ -377,7 +377,7 @@ export default function Budget2Tab({
           {analytics2 && (
             <>
               {/* KPI cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: '.75rem', marginBottom: '1.2rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(150px,100%),1fr))', gap: '.75rem', marginBottom: '1.2rem' }}>
                 {kpiCards.map(k => (
                   <div key={k.label} className="card" style={{ padding: '.85rem 1rem' }}>
                     <div style={{ fontSize: '.65rem', letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '.4rem' }}>
@@ -413,7 +413,7 @@ export default function Budget2Tab({
               {categories2.some(c => c.monthly_limit > 0) && (
                 <div className="card" style={{ marginBottom: '1rem' }}>
                   <div className="ctitle">Budget Health</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1.5rem', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(240px,100%),1fr))', gap: '1rem', alignItems: 'flex-start' }}>
                     <HealthRing categories={categories2} byCategory={byCategory} cur={domCur} />
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: '.65rem' }}>
                       {categories2.filter(c => c.monthly_limit > 0 && byCategory[c.name] != null).map(c => {
