@@ -10,13 +10,14 @@ export function useUiState() {
   const [showSettings, setShowSettings]     = useState(false);
   const [showImportHub, setShowImportHub]   = useState(false);
   const [showSnapTrade, setShowSnapTrade]   = useState(false);
+  const [showSetuAA,    setShowSetuAA]      = useState(false);
   const [moreSheetOpen, setMoreSheetOpen]   = useState(false);
   const [expandedHolding, setExpandedHolding] = useState(null);
   const [showQuietAlerts, setShowQuietAlerts] = useState(false);
 
   return {
     modal, setModal, fdScanOpen, setFdScanOpen, showSettings, setShowSettings,
-    showImportHub, setShowImportHub, showSnapTrade, setShowSnapTrade,
+    showImportHub, setShowImportHub, showSnapTrade, setShowSnapTrade, showSetuAA, setShowSetuAA,
     moreSheetOpen, setMoreSheetOpen,
     expandedHolding, setExpandedHolding, showQuietAlerts, setShowQuietAlerts,
   };

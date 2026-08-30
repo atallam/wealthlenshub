@@ -11,8 +11,7 @@ import { api } from './lib/api.js';
 import SnapTradeImport from './SnapTradeImport.jsx';
 import NotificationCentre from './components/notifications/NotificationCentre.jsx';
 // KiteImport and BreezeImport decommissioned — integrations removed
-// SetuAAImport — disabled until Setu integration is ready
-// import SetuAAImport from './SetuAAImport.jsx';
+import SetuAAImport from './SetuAAImport.jsx';
 
 // ── Extracted modules ─────────────────────────────────────────────
 import {
@@ -204,7 +203,7 @@ export default function App() {
   const ui = useUiState();
   const {
     modal, setModal, fdScanOpen, setFdScanOpen, showSettings, setShowSettings,
-    showImportHub, setShowImportHub, showSnapTrade, setShowSnapTrade,
+    showImportHub, setShowImportHub, showSnapTrade, setShowSnapTrade, showSetuAA, setShowSetuAA,
     moreSheetOpen, setMoreSheetOpen,
     expandedHolding, setExpandedHolding, showQuietAlerts, setShowQuietAlerts,
   } = ui;
@@ -595,6 +594,7 @@ ${alertsText}`;
       case 'snaptrade': setShowSnapTrade(true); break;
       case 'csv':       setModal('import'); break;
       case 'manual':    setModal('add'); break;
+      case 'setu':      setShowSetuAA(true); break;
       default: break;
     }
   }
@@ -1736,6 +1736,26 @@ ${alertsText}`;
           onClose={() => { casImport.resetCASDownloader(); }}
           onPriceRefresh={() => portfolio.refreshPrices?.()}
         />
+      )}
+
+      {/* ── Setu Account Aggregator Import ─────────────────────── */}
+      {showSetuAA && (
+        <Overlay onClose={() => { portfolio.reloadHoldings(); setShowSetuAA(false); }} wide>
+          <SetuAAImport
+            mode="wealth"
+            members={members}
+            api={async (url, opts = {}) => {
+              const { data: { session } } = await supabase.auth.getSession();
+              const token = session?.access_token;
+              const r = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts.headers || {}) } });
+              const d = await r.json();
+              if (!r.ok) throw new Error(d.error || 'Request failed');
+              return d;
+            }}
+            onClose={() => { portfolio.reloadHoldings(); setShowSetuAA(false); }}
+            onImported={() => { portfolio.reloadHoldings(); setShowSetuAA(false); }}
+          />
+        </Overlay>
       )}
 
       {/* ── SnapTrade Import ─────────────────────────────────────── */}

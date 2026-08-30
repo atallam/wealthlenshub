@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useFamilyBudget } from '../../hooks/useFamilyBudget.js';
+import SetuAAImport from '../../SetuAAImport.jsx';
 import { useToast } from '../../components/shared/Toast.jsx';
 
 // ── Tiny format helpers ───────────────────────────────────────────
@@ -431,12 +432,47 @@ function ImportWizard({ fb, members }) {
           <button onClick={() => setStep(3)} disabled={!form.region} style={{ padding: '.5rem 1.2rem', background: GOLD, color: '#000', border: 'none', borderRadius: 8, fontWeight: 600, cursor: form.region ? 'pointer' : 'not-allowed', opacity: form.region ? 1 : .5, fontSize: '.82rem' }}>
             Next →
           </button>
+
+          {/* ── Account Aggregator shortcut ── */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', marginTop: '1rem' }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            <span style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>or connect directly</span>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+          </div>
+          <button
+            onClick={() => { setForm(p => ({ ...p, region: 'SETU', bank_key: 'SETU_AA', statement_type: 'BANK' })); setStep(3); }}
+            style={{ width: '100%', marginTop: '.6rem', padding: '.6rem 1rem', borderRadius: 10, border: '1.5px solid rgba(76,175,154,.4)', background: 'rgba(76,175,154,.06)', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '.7rem', fontSize: '.82rem' }}>
+            <span style={{ fontSize: '1.2rem' }}>🔗</span>
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontWeight: 600, color: '#4caf9a' }}>Account Aggregator (Setu)</div>
+              <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', marginTop: 1 }}>RBI-regulated · auto-fetches bank &amp; credit card transactions</div>
+            </div>
+            <span style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>→</span>
+          </button>
         </div>
       )}
 
-      {/* Step 3 — Upload */}
+      {/* Step 3 — Upload (or Setu AA) */}
       {step === 3 && (
         <div>
+          {/* If Setu AA selected → SetuAAImport in budget mode */}
+          {form.bank_key === 'SETU_AA' ? (
+            <SetuAAImport
+              mode="budget"
+              members={members}
+              api={async (url, opts = {}) => {
+                const { data: { session } } = await import('../../supabase.js').then(m => m.supabase.auth.getSession());
+                const token = session?.access_token;
+                const r = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts.headers || {}) } });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Request failed');
+                return d;
+              }}
+              onClose={() => { setForm(p => ({ ...p, bank_key: '', region: '' })); setStep(2); }}
+              onImported={() => { fb.loadStatements(); setStep(1); setForm(p => ({ ...p, bank_key: '', region: '' })); }}
+            />
+          ) : (
+            <>
           <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: '.8rem', fontSize: '.9rem' }}>Upload statement file</div>
 
           {/* Drag-drop zone */}
@@ -480,6 +516,8 @@ function ImportWizard({ fb, members }) {
               Start over
             </button>
           </div>
+            </>
+          )}
         </div>
       )}
 

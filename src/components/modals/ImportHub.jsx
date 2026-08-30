@@ -15,6 +15,7 @@ const SECTIONS = [
     items: [
       { key: 'cas',    icon: '📄', title: 'NSDL / CDSL CAS',     desc: 'Import all mutual funds & demat holdings from your CAS PDF' },
       { key: 'fd',     icon: '🏦', title: 'Fixed Deposit (FD)',  desc: 'Scan certificate with AI vision or enter details manually' },
+      { key: 'setu',   icon: '🔗', title: 'Account Aggregator',  desc: 'RBI-regulated · fetch bank balances, FD, MF & stocks via Setu AA' },
     ],
   },
   {
