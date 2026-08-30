@@ -733,6 +733,16 @@ ${alertsText}`;
               setArtifactHolding={setArtifactHolding}
               alerts={alerts}
               setAlerts={portfolio.setAlerts}
+              staleThresholds={{
+                FD:          portfolio.profile?.settings?.stale_fd_days          ?? 90,
+                PPF:         portfolio.profile?.settings?.stale_ppf_days         ?? 90,
+                EPF:         portfolio.profile?.settings?.stale_epf_days         ?? 90,
+                REAL_ESTATE: portfolio.profile?.settings?.stale_real_estate_days ?? 180,
+                CASH:        portfolio.profile?.settings?.stale_cash_days        ?? 14,
+                INSURANCE:   portfolio.profile?.settings?.stale_insurance_days   ?? 365,
+                OTHER:       portfolio.profile?.settings?.stale_other_days       ?? 60,
+              }}
+              minDisplayDays={portfolio.profile?.settings?.stale_min_display_days ?? 14}
             />
           </ErrorBoundary>
         )}
@@ -1549,6 +1559,43 @@ ${alertsText}`;
               ))}
             </div>
             <div style={{fontSize:'.65rem',color:'var(--text-muted)'}}>RBI/EPFO rates change annually. Update here to reflect current returns on your PPF and EPF holdings.</div>
+          </div>
+
+          {/* ── Staleness thresholds ── */}
+          <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',marginBottom:'1rem'}}>
+            <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Balance Refresh Reminders</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(175px,100%),1fr))',gap:'.5rem',marginBottom:'.6rem'}}>
+              {[
+                { key:'stale_ppf_days',         label:'PPF (days)',         default:90  },
+                { key:'stale_epf_days',         label:'EPF (days)',         default:90  },
+                { key:'stale_fd_days',          label:'Fixed Deposits',     default:90  },
+                { key:'stale_real_estate_days', label:'Real Estate',        default:180 },
+                { key:'stale_cash_days',        label:'Cash',              default:14  },
+                { key:'stale_insurance_days',   label:'Insurance',         default:365 },
+                { key:'stale_other_days',       label:'Other',             default:60  },
+                { key:'stale_min_display_days', label:'Show badge after (days)', default:14 },
+              ].map(({key, label, default: def}) => (
+                <div key={key}>
+                  <div style={{fontSize:'.68rem',color:'var(--text-muted)',marginBottom:'.25rem'}}>{label}</div>
+                  <input
+                    type="number" step="1" min="1" max="730"
+                    className="fi"
+                    defaultValue={(portfolio.profile?.settings?.[key]) ?? def}
+                    style={{width:'100%',fontSize:'.82rem'}}
+                    onBlur={async e => {
+                      const val = parseInt(e.target.value, 10);
+                      if (!val || val < 1 || val > 730) return;
+                      const newSettings = { ...(portfolio.profile?.settings || {}), [key]: val };
+                      try {
+                        await api('/api/profile', { method: 'PUT', body: JSON.stringify({ settings: newSettings }) });
+                        portfolio.setProfile?.(p => ({ ...p, settings: newSettings }));
+                      } catch {}
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:'.65rem',color:'var(--text-muted)'}}>Number of days before a manually-tracked holding is flagged as stale. "Show badge after" controls how early the reminder starts appearing.</div>
           </div>
 
           {/* ── Gmail / CAS auto-import ── */}

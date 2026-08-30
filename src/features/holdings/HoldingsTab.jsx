@@ -93,17 +93,17 @@ function HoldingAlertPanel({ holding, alerts, setAlerts, onClose }) {
 const CONCALL_TYPES = new Set(["IN_STOCK", "IN_ETF", "US_STOCK", "US_ETF"]);
 
 // Manual holdings — no live feed, need periodic user updates
-const STALE_THRESHOLDS = { FD:90, PPF:90, EPF:90, REAL_ESTATE:180, CASH:14, INSURANCE:365, OTHER:60 };
+const STALE_DEFAULTS = { FD:90, PPF:90, EPF:90, REAL_ESTATE:180, CASH:14, INSURANCE:365, OTHER:60 };
 
 function daysSinceUpdate(h) {
   const last = h.updated_at ? new Date(h.updated_at) : h.created_at ? new Date(h.created_at) : new Date(0);
   return Math.floor((Date.now() - last) / 864e5);
 }
 
-function computeStale(holdings) {
+function computeStale(holdings, ST) {
   const now = Date.now();
   return holdings.filter(h => {
-    const thresh = STALE_THRESHOLDS[h.type];
+    const thresh = ST[h.type];
     if (!thresh) return false;
     const lastTouched = h.updated_at ? new Date(h.updated_at) : h.created_at ? new Date(h.created_at) : new Date(0);
     return Math.floor((now - lastTouched) / 864e5) >= thresh;
@@ -157,13 +157,19 @@ export default function HoldingsTab({
   // Holding-level alerts
   alerts,
   setAlerts,
+  // Staleness config (from profile.settings)
+  staleThresholds,
+  minDisplayDays = 14,
 }) {
+  // Merge user-configured thresholds with defaults
+  const ST = { ...STALE_DEFAULTS, ...(staleThresholds || {}) };
+
   const [concallHolding, setConcallHolding] = useState(null);
   const [alertHolding,   setAlertHolding]   = useState(null);
   const [showStaleOnly, setShowStaleOnly] = useState(false);
 
   // Stale detection — computed before render so JSX can reference staleH + displayH
-  const staleH   = computeStale(visH);
+  const staleH   = computeStale(visH, ST);
   const staleIds = new Set(staleH.map(h => h.id));
   const displayH = showStaleOnly ? visH.filter(h => staleIds.has(h.id)) : visH;
 
@@ -279,7 +285,7 @@ export default function HoldingsTab({
               <div style={{fontSize:".7rem",marginTop:".2rem",display:"flex",flexWrap:"wrap",gap:".1rem .65rem"}}>
                 {staleH.slice(0,4).map(h => {
                   const days = daysSinceUpdate(h);
-                  const color = days >= STALE_THRESHOLDS[h.type] ? "#F85149" : "#F0883E";
+                  const color = days >= ST[h.type] ? "#F85149" : "#F0883E";
                   return (
                     <span key={h.id}>
                       <span style={{color:"var(--text)"}}>{h.name}</span>
@@ -448,10 +454,10 @@ export default function HoldingsTab({
                   const src = h.source || "manual";
                   const srcLabel = src === "snaptrade" ? "SnapTrade" : src === "csv" || src === "import" ? "CSV" : src === "cas" ? "CAS" : "Manual";
 
-                  const _staleDays = STALE_THRESHOLDS[h.type] ? daysSinceUpdate(h) : 0;
-                  const _rowBg = _staleDays >= (STALE_THRESHOLDS[h.type]||9999)
+                  const _staleDays = ST[h.type] ? daysSinceUpdate(h) : 0;
+                  const _rowBg = _staleDays >= (ST[h.type]||9999)
                     ? "rgba(248,81,73,0.04)"
-                    : _staleDays >= 30 && STALE_THRESHOLDS[h.type]
+                    : _staleDays >= 30 && ST[h.type]
                       ? "rgba(240,136,62,0.04)"
                       : undefined;
                   return [
@@ -531,10 +537,10 @@ export default function HoldingsTab({
                       <td className="r">
                         <div>{curPriceDisplay}</div>
                         {isLive&&<div style={{fontSize:".65rem",color:"#4caf9a",marginTop:1}}>● {ago(h.price_fetched_at)}</div>}
-                        {!isLive && STALE_THRESHOLDS[h.type] && (()=>{
+                        {!isLive && ST[h.type] && (()=>{
                           const days = daysSinceUpdate(h);
-                          if (days < 14) return null;
-                          const thresh = STALE_THRESHOLDS[h.type];
+                          if (days < minDisplayDays) return null;
+                          const thresh = ST[h.type];
                           const isCrit = days >= thresh;
                           const color = isCrit ? "#F85149" : "#F0883E";
                           const updated = (h.updated_at||h.created_at)
@@ -757,10 +763,10 @@ export default function HoldingsTab({
                           <span className="m-hc-lbl">Source</span>
                           <span className="m-hc-val" style={{fontSize:".68rem"}}>{h.source==="snaptrade"?"SnapTrade":h.source==="csv"||h.source==="import"?"CSV":h.source==="cas"?"CAS":"Manual"}</span>
                         
-                          {STALE_THRESHOLDS[h.type] && (()=>{
+                          {ST[h.type] && (()=>{
                             const days = daysSinceUpdate(h);
-                            if (days < 14) return null;
-                            const thresh = STALE_THRESHOLDS[h.type];
+                            if (days < minDisplayDays) return null;
+                            const thresh = ST[h.type];
                             const color = days >= thresh ? "#F85149" : "#F0883E";
                             return (
                               <span
