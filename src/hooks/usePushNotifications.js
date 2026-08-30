@@ -3,9 +3,15 @@
  *
  * Usage:
  *   const { supported, subscribed, loading, toggle } = usePushNotifications();
+ *
+ * Note: every failure path below reports itself via the toast system —
+ * previously several of these (missing VAPID key, denied permission,
+ * failed subscribe call) failed silently, which made the Enable button
+ * on the Settings screen look broken with no feedback to the user.
  */
 import { useState, useEffect, useCallback } from "react";
 import { api as apiFetch } from "../lib/api.js";
+import { useToast } from "../components/shared/Toast.jsx";
 
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -15,10 +21,12 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 export function usePushNotifications() {
+  const toast = useToast();
   const [supported,  setSupported]  = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [loading,    setLoading]    = useState(false);
   const [publicKey,  setPublicKey]  = useState(null);
+  const [serverEnabled, setServerEnabled] = useState(true); // assume yes until we hear otherwise
 
   // Check support + existing subscription on mount
   useEffect(() => {
@@ -29,6 +37,7 @@ export function usePushNotifications() {
       try {
         // Fetch VAPID public key from server
         const { publicKey: pk, enabled } = await apiFetch("/api/push/vapid-key");
+        setServerEnabled(!!enabled);
         if (!enabled) return;
         setPublicKey(pk);
 
@@ -38,17 +47,32 @@ export function usePushNotifications() {
         setSubscribed(!!existing);
       } catch (e) {
         console.warn("[Push] init error:", e);
+        setServerEnabled(false);
       }
     })();
   }, []);
 
   const subscribe = useCallback(async () => {
-    if (!publicKey) return;
+    if (!serverEnabled || !publicKey) {
+      toast?.error("Push notifications aren't configured on the server yet.");
+      return;
+    }
     setLoading(true);
     try {
       const reg = await navigator.serviceWorker.ready;
+
+      if (Notification.permission === "denied") {
+        toast?.error("Notifications are blocked for this site — enable them in your browser's site settings.");
+        setLoading(false);
+        return;
+      }
+
       const permission = await Notification.requestPermission();
-      if (permission !== "granted") { setLoading(false); return; }
+      if (permission !== "granted") {
+        toast?.info("Notification permission wasn't granted.");
+        setLoading(false);
+        return;
+      }
 
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
@@ -56,11 +80,13 @@ export function usePushNotifications() {
       });
       await apiFetch("/api/push/subscribe", { method: "POST", body: JSON.stringify(sub) });
       setSubscribed(true);
+      toast?.success("Push notifications enabled on this device.");
     } catch (e) {
       console.warn("[Push] subscribe error:", e);
+      toast?.error("Couldn't enable push notifications: " + (e?.message || "unknown error"));
     }
     setLoading(false);
-  }, [publicKey]);
+  }, [publicKey, serverEnabled, toast]);
 
   const unsubscribe = useCallback(async () => {
     setLoading(true);
@@ -75,11 +101,13 @@ export function usePushNotifications() {
         await sub.unsubscribe();
       }
       setSubscribed(false);
+      toast?.info("Push notifications disabled.");
     } catch (e) {
       console.warn("[Push] unsubscribe error:", e);
+      toast?.error("Couldn't disable push notifications: " + (e?.message || "unknown error"));
     }
     setLoading(false);
-  }, []);
+  }, [toast]);
 
   const toggle = useCallback(() => {
     subscribed ? unsubscribe() : subscribe();
