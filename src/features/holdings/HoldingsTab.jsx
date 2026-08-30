@@ -705,7 +705,7 @@ export default function HoldingsTab({
               {key:"mf",    label:"Mutual Funds",    icon:"📊", color:"#a084ca", items:displayH.filter(h=>h.type==="MF")},
               {key:"fd",    label:"Fixed Deposits & Debt",icon:"🏦",color:"#c9a84c", items:displayH.filter(h=>["FD","CD","PPF","EPF"].includes(h.type)||isINCash(h))},
               {key:"ins",   label:"Insurance",       icon:"🛡️", color:"#e07b8c", items:displayH.filter(h=>h.type==="INSURANCE")},
-              {key:"re",    label:"Real Estate & Others",icon:"🏠",color:"#7cb87c", items:displayH.filter(h=>["REAL_ESTATE","GOLD","OTHER"].includes(h.type))},
+              {key:"re",    label:"Real Estate & Others",icon:"🏠",color:"#7cb87c", items:displayH.filter(h=>["REAL_ESTATE","GOLD","OTHER"].includes(h.type)||(!US_T.has(h.type)&&h.type!=="IN_STOCK"&&h.type!=="IN_ETF"&&h.type!=="MF"&&!["FD","CD","PPF","EPF"].includes(h.type)&&!isINCash(h)&&!isUSCash(h)&&h.type!=="INSURANCE"))},
             ].filter(g=>g.items.length>0);
             return groups.map((grp,gi)=>{
               const isUSGrp=grp.key==="us";
