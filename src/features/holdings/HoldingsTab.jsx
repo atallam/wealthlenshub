@@ -167,6 +167,7 @@ export default function HoldingsTab({
   const [concallHolding, setConcallHolding] = useState(null);
   const [alertHolding,   setAlertHolding]   = useState(null);
   const [showStaleOnly, setShowStaleOnly] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   // Stale detection — computed before render so JSX can reference staleH + displayH
   const staleH   = computeStale(visH, ST);
@@ -329,19 +330,38 @@ export default function HoldingsTab({
 
       {/* ── Export toolbar ── */}
       {displayH.length>0&&(
-        <div style={{display:"flex",gap:".5rem",justifyContent:"flex-end",marginBottom:".55rem",flexWrap:"wrap"}}>
-          <a href="/api/export/report" target="_blank" rel="noopener noreferrer" className="btn-o" style={{fontSize:".72rem",padding:".28rem .7rem",minHeight:32,borderColor:"rgba(201,168,76,.4)",color:"var(--accent-3, #c9a84c)"}}>
-            ⎙ PDF Report
-          </a>
-          <a href="/api/export/xlsx" download className="btn-o" style={{fontSize:".72rem",padding:".28rem .7rem",minHeight:32,borderColor:"rgba(94,169,160,.4)",color:"var(--accent)"}}>
-            ⬇ Excel (full)
-          </a>
-          <a href="/api/export/holdings" download className="btn-o" style={{fontSize:".72rem",padding:".28rem .7rem",minHeight:32}}>
-            ⬇ Holdings CSV
-          </a>
-          <a href="/api/export/transactions" download className="btn-o" style={{fontSize:".72rem",padding:".28rem .7rem",minHeight:32,borderColor:"rgba(160,132,202,.4)",color:"var(--accent-2)"}}>
-            ⬇ Transactions CSV
-          </a>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:".55rem",position:"relative"}}>
+          <button
+            className="btn-o"
+            onClick={()=>setShowExportMenu(m=>!m)}
+            style={{fontSize:".72rem",padding:".28rem .8rem",minHeight:32,display:"flex",alignItems:"center",gap:".35rem"}}>
+            ⬇ Export {showExportMenu?"▲":"▼"}
+          </button>
+          {showExportMenu&&(
+            <>
+              {/* backdrop to close on outside tap */}
+              <div onClick={()=>setShowExportMenu(false)} style={{position:"fixed",inset:0,zIndex:99}}/>
+              <div style={{position:"absolute",top:"calc(100% + .35rem)",right:0,zIndex:100,background:"var(--bg-card)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 6px 24px rgba(0,0,0,.18)",minWidth:170,overflow:"hidden"}}>
+                {[
+                  {href:"/api/export/report",  label:"⎙ PDF Report",        color:"var(--accent-3,#c9a84c)", target:"_blank", download:false},
+                  {href:"/api/export/xlsx",    label:"⬇ Excel (full)",      color:"var(--accent)",           target:"_self",  download:true},
+                  {href:"/api/export/holdings",label:"⬇ Holdings CSV",      color:"var(--text)",             target:"_self",  download:true},
+                  {href:"/api/export/transactions",label:"⬇ Transactions CSV",color:"var(--accent-2)",       target:"_self",  download:true},
+                ].map(item=>(
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    target={item.target}
+                    rel="noopener noreferrer"
+                    {...(item.download?{download:true}:{})}
+                    onClick={()=>setShowExportMenu(false)}
+                    style={{display:"block",padding:".65rem 1rem",fontSize:".78rem",fontWeight:600,color:item.color,textDecoration:"none",borderBottom:"1px solid var(--border)",fontFamily:"var(--font-ui)"}}>
+                    {item.label}
+                  </a>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 

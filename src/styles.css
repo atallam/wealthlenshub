@@ -1102,7 +1102,7 @@ a.btn-o { text-decoration: none; }
   .delbtn { min-width: 42px; min-height: 42px; font-size: .9rem; }
   .btn-o, .btn-g, .btn-p { min-height: 42px; padding: .5rem .9rem; }
   .btn-sm { min-height: 42px; padding: .5rem .9rem; }
-  .fchip { min-height: 38px; padding: .4rem .8rem; font-size: .73rem; display: inline-flex; align-items: center; scroll-snap-align: start; }
+  .fchip { min-height: 38px; padding: .4rem .8rem; font-size: .73rem; display: inline-flex; align-items: center; scroll-snap-align: start; white-space: nowrap; }
   .mchip, .mbar-btn { min-height: 38px; }
   .fi { min-height: 46px; font-size: 16px; padding: .65rem .85rem; }
   .fs { min-height: 46px; }
