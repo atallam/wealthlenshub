@@ -241,19 +241,57 @@ export default function GoalsTab({
       .sort((a, b) => b._val - a._val);
   }
 
-  // Double-allocation detection — with actual INR overlap per type
+  // Double-allocation detection — member-aware
+  // Two goals truly double-count an asset type only when their member scopes overlap.
+  // If Goal A is scoped to Avinash and Goal B to Spouse, they share a type but NOT
+  // the same holdings — no real double-count.
+  function membersOverlap(lm1, lm2, allMemberIds) {
+    const all1 = lm1.includes('all') || lm1.length === 0;
+    const all2 = lm2.includes('all') || lm2.length === 0;
+    if (all1 || all2) return true; // either "all" means full portfolio overlap
+    return lm1.some(id => lm2.includes(id));
+  }
+  const allMemberIds = members.map(m => m.id);
+
+  // Build per-type list of goals, tagging each with its member scope
   const typeGoalMap = {};
   goals.forEach(g => (g.linkedTypes || []).forEach(t => {
     if (!typeGoalMap[t]) typeGoalMap[t] = [];
-    typeGoalMap[t].push({ name: g.name, color: g.color, priority: g.priority });
+    typeGoalMap[t].push({
+      name: g.name, color: g.color, priority: g.priority,
+      lm: g.linkedMembers || ['all'],
+    });
   }));
+
   const doubleAllocated = Object.entries(typeGoalMap)
-    .filter(([, gs]) => gs.length > 1)
+    .filter(([, gs]) => {
+      // At least one pair of goals must have overlapping member scopes
+      for (let i = 0; i < gs.length; i++)
+        for (let j = i + 1; j < gs.length; j++)
+          if (membersOverlap(gs[i].lm, gs[j].lm, allMemberIds)) return true;
+      return false;
+    })
     .map(([t, gs]) => {
+      // Find the union of member IDs that are genuinely shared across >=2 goals
+      const overlappingMemberIds = new Set();
+      for (let i = 0; i < gs.length; i++) {
+        for (let j = i + 1; j < gs.length; j++) {
+          if (!membersOverlap(gs[i].lm, gs[j].lm, allMemberIds)) continue;
+          const all1 = gs[i].lm.includes('all') || gs[i].lm.length === 0;
+          const all2 = gs[j].lm.includes('all') || gs[j].lm.length === 0;
+          if (all1 || all2) allMemberIds.forEach(id => overlappingMemberIds.add(id));
+          else gs[i].lm.filter(id => gs[j].lm.includes(id)).forEach(id => overlappingMemberIds.add(id));
+        }
+      }
+      // typeVal scoped only to overlapping members' holdings
       const typeVal = allHoldings
-        .filter(h => h.type === t)
+        .filter(h => h.type === t && overlappingMemberIds.has(h.member_id))
         .reduce((s, h) => s + (valINRCache.get(h.id) || 0), 0);
-      return { t, gs, typeVal };
+      // Only surface goals that actually overlap with at least one other
+      const overlappingGs = gs.filter((g, i) =>
+        gs.some((g2, j) => j !== i && membersOverlap(g.lm, g2.lm, allMemberIds))
+      );
+      return { t, gs: overlappingGs, typeVal };
     });
 
   // Conflict detection
