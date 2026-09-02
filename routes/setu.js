@@ -14,15 +14,31 @@ if (!SETU_ENABLED) {
   const SETU_CLIENT  = process.env.SETU_CLIENT_ID;
   const SETU_SECRET  = process.env.SETU_CLIENT_SECRET;
   const SETU_PRODUCT = process.env.SETU_PRODUCT_INSTANCE_ID;
+  const SETU_AUTH_URL = process.env.SETU_AUTH_URL || "https://orgservice-prod.setu.co/v1/users/login";
+  // Sandbox uses the OneMoney AA handle; prod handle is configurable.
+  const SETU_VUA_HANDLE = process.env.SETU_VUA_HANDLE || "onemoney";
+  const toVua = (mobile) => { const m = String(mobile || "").replace(/\D/g, "").slice(-10); return m.includes("@") ? m : `${m}@${SETU_VUA_HANDLE}`; };
+  // Setu returns HTML/text on some errors (gateway 404s, 5xx) — never let .json() blow up into a bare 500.
+  async function readJson(resp) { const t = await resp.text(); try { return JSON.parse(t); } catch { return { errorMsg: t.slice(0, 200) || `HTTP ${resp.status}` }; } }
 
   let _setuToken = null, _setuTokenExp = 0;
   async function getSetuToken() {
     if (_setuToken && Date.now() < _setuTokenExp - 30000) return _setuToken;
-    const resp = await fetch("https://orgservice.setu.co/v1/users/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientID: SETU_CLIENT, secret: SETU_SECRET }) });
-    if (!resp.ok) throw new Error("Setu OAuth failed: " + resp.status);
-    const data = await resp.json();
+    // Per Setu AA API spec: POST https://orgservice-prod.setu.co/v1/users/login
+    // (same host for sandbox + prod), header `client: bridge`, body must include grant_type.
+    const resp = await fetch(SETU_AUTH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", client: "bridge" },
+      body: JSON.stringify({ clientID: SETU_CLIENT, secret: SETU_SECRET, grant_type: "client_credentials" }),
+    });
+    const data = await readJson(resp);
+    if (!resp.ok || !(data.access_token || data.token)) {
+      console.error("Setu auth response:", resp.status, JSON.stringify(data).slice(0, 300));
+      const err = new Error(`Setu auth failed (${resp.status}): ${data.errorMsg || data.error || "check SETU_CLIENT_ID / SETU_CLIENT_SECRET"}`);
+      err.code = "SETU_AUTH"; throw err;
+    }
     _setuToken = data.access_token || data.token;
-    _setuTokenExp = Date.now() + (data.expiresIn || 1800) * 1000;
+    _setuTokenExp = Date.now() + (data.expiresIn || 1500) * 1000; // spec returns no expiry; tokens last ~30 min
     return _setuToken;
   }
   const setuHeaders = () => ({ "Content-Type": "application/json", "x-product-instance-id": SETU_PRODUCT });
@@ -63,19 +79,19 @@ if (!SETU_ENABLED) {
       const token = await getSetuToken();
       const from = new Date(Date.now() - 3*365*86400000).toISOString();
       const to = new Date().toISOString();
-      const cr = await fetch(`${SETU_BASE}/consents`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentDuration: { unit: "MONTH", value: "6" }, vua: mobile, dataRange: { from, to }, context: [] }) });
-      const cd = await cr.json();
-      if (!cr.ok) return res.status(cr.status).json({ error: cd.errorMsg || "Consent creation failed" });
+      const cr = await fetch(`${SETU_BASE}/v2/consents`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentDuration: { unit: "MONTH", value: "6" }, vua: toVua(mobile), dataRange: { from, to }, context: [], consentTypes: ["PROFILE","SUMMARY","TRANSACTIONS"], fiTypes: ["DEPOSIT","TERM_DEPOSIT","RECURRING_DEPOSIT","MUTUAL_FUNDS","EQUITIES","ETF"] }) });
+      const cd = await readJson(cr);
+      if (!cr.ok) { console.error("Setu consent error:", cr.status, JSON.stringify(cd).slice(0, 300)); return res.status(cr.status >= 500 ? 502 : cr.status).json({ error: cd.errorMsg || cd.error || "Consent creation failed" }); }
       await supabase.from("setu_consents").insert({ user_id: req.user.id, consent_id: cd.id, status: cd.status || "PENDING", fi_types: ["DEPOSIT","TERM_DEPOSIT","MUTUAL_FUNDS","EQUITIES","ETF","EPF","PPF"], data_range_from: from, data_range_to: to, redirect_url: cd.url });
       res.json({ consent_id: cd.id, url: cd.url, status: cd.status });
-    } catch (e) { sendError(res, e); }
+    } catch (e) { if (e.code === "SETU_AUTH") return res.status(502).json({ error: e.message }); sendError(res, e); }
   });
 
   router.get("/consent/:consentId", auth, async (req, res) => {
     try {
       const token = await getSetuToken();
-      const r = await fetch(`${SETU_BASE}/consents/${req.params.consentId}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
-      const d = await r.json();
+      const r = await fetch(`${SETU_BASE}/v2/consents/${req.params.consentId}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
+      const d = await readJson(r);
       if (!r.ok) return res.status(r.status).json({ error: d.errorMsg || "Failed" });
       await supabase.from("setu_consents").update({ status: d.status, updated_at: new Date().toISOString() }).eq("consent_id", req.params.consentId).eq("user_id", req.user.id);
       res.json({ status: d.status, accounts_linked: d.accountsLinked || [] });
@@ -88,15 +104,15 @@ if (!SETU_ENABLED) {
       const cid = req.params.consentId;
       const { data: cr } = await supabase.from("setu_consents").select("*").eq("consent_id", cid).eq("user_id", req.user.id).single();
       if (!cr) return res.status(404).json({ error: "Consent not found" });
-      const sr = await fetch(`${SETU_BASE}/sessions`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentId: cid, dataRange: { from: cr.data_range_from, to: cr.data_range_to }, format: "json" }) });
-      const sd = await sr.json();
+      const sr = await fetch(`${SETU_BASE}/v2/sessions`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentId: cid, dataRange: { from: cr.data_range_from, to: cr.data_range_to }, format: "json" }) });
+      const sd = await readJson(sr);
       if (!sr.ok) return res.status(sr.status).json({ error: sd.errorMsg || "Data session failed" });
       await supabase.from("setu_consents").update({ session_id: sd.id, fi_data_status: "PENDING", updated_at: new Date().toISOString() }).eq("consent_id", cid).eq("user_id", req.user.id);
       let fiData = null;
       for (let i = 0; i < 10; i++) {
         await new Promise(r => setTimeout(r, 2000));
-        const fr = await fetch(`${SETU_BASE}/sessions/${sd.id}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
-        const fd = await fr.json();
+        const fr = await fetch(`${SETU_BASE}/v2/sessions/${sd.id}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
+        const fd = await readJson(fr);
         if (fd.status === "COMPLETED" || fd.status === "PARTIAL") { fiData = fd; break; }
         if (fd.status === "FAILED" || fd.status === "EXPIRED") return res.status(500).json({ error: `Data session ${fd.status}` });
       }
@@ -224,20 +240,21 @@ if (SETU_ENABLED) {
       const token = await getSetuToken();
       const from = new Date(Date.now() - 2 * 365 * 86400000).toISOString(); // 2 years back
       const to = new Date().toISOString();
-      const cr = await fetch(`${SETU_BASE}/consents`, {
+      const cr = await fetch(`${SETU_BASE}/v2/consents`, {
         method: "POST",
         headers: { ...setuHeaders(), Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           consentDuration: { unit: "MONTH", value: "6" },
-          vua: mobile,
+          vua: toVua(mobile),
           dataRange: { from, to },
           context: [],
-          // CREDIT_CARD may not be available on all FIPs; DEPOSIT covers savings/current
-          fiTypes: ["DEPOSIT", "CREDIT_CARD"],
+          consentTypes: ["PROFILE", "SUMMARY", "TRANSACTIONS"],
+          // CREDIT_CARD is not a valid AA fiType in Setu's spec; DEPOSIT covers savings/current
+          fiTypes: ["DEPOSIT"],
         }),
       });
-      const cd = await cr.json();
-      if (!cr.ok) return res.status(cr.status).json({ error: cd.errorMsg || "Consent creation failed" });
+      const cd = await readJson(cr);
+      if (!cr.ok) { console.error("Setu consent error:", cr.status, JSON.stringify(cd).slice(0, 300)); return res.status(cr.status >= 500 ? 502 : cr.status).json({ error: cd.errorMsg || cd.error || "Consent creation failed" }); }
       await supabase.from("setu_consents").insert({
         user_id: req.user.id,
         consent_id: cd.id,
@@ -249,7 +266,7 @@ if (SETU_ENABLED) {
         redirect_url: cd.url,
       });
       res.json({ consent_id: cd.id, url: cd.url, status: cd.status });
-    } catch (e) { sendError(res, e); }
+    } catch (e) { if (e.code === "SETU_AUTH") return res.status(502).json({ error: e.message }); sendError(res, e); }
   });
 
   // POST /api/setu/fetch-transactions/:consentId
@@ -260,19 +277,19 @@ if (SETU_ENABLED) {
       const cid = req.params.consentId;
       const { data: cr } = await supabase.from("setu_consents").select("*").eq("consent_id", cid).eq("user_id", req.user.id).single();
       if (!cr) return res.status(404).json({ error: "Consent not found" });
-      const sr = await fetch(`${SETU_BASE}/sessions`, {
+      const sr = await fetch(`${SETU_BASE}/v2/sessions`, {
         method: "POST",
         headers: { ...setuHeaders(), Authorization: `Bearer ${token}` },
         body: JSON.stringify({ consentId: cid, dataRange: { from: cr.data_range_from, to: cr.data_range_to }, format: "json" }),
       });
-      const sd = await sr.json();
+      const sd = await readJson(sr);
       if (!sr.ok) return res.status(sr.status).json({ error: sd.errorMsg || "Data session failed" });
       await supabase.from("setu_consents").update({ session_id: sd.id, fi_data_status: "PENDING", updated_at: new Date().toISOString() }).eq("consent_id", cid).eq("user_id", req.user.id);
       let fiData = null;
       for (let i = 0; i < 10; i++) {
         await new Promise(r => setTimeout(r, 2000));
-        const fr = await fetch(`${SETU_BASE}/sessions/${sd.id}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
-        const fd = await fr.json();
+        const fr = await fetch(`${SETU_BASE}/v2/sessions/${sd.id}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
+        const fd = await readJson(fr);
         if (fd.status === "COMPLETED" || fd.status === "PARTIAL") { fiData = fd; break; }
         if (fd.status === "FAILED" || fd.status === "EXPIRED") return res.status(500).json({ error: `Data session ${fd.status}` });
       }
