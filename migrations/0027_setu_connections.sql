@@ -21,6 +21,28 @@ CREATE TABLE IF NOT EXISTS setu_consents (
   updated_at      timestamptz DEFAULT now()
 );
 
+-- If setu_consents already existed from an older schema, it may lack the
+-- UNIQUE constraint on consent_id that the FK below requires.
+-- (CREATE TABLE IF NOT EXISTS is a no-op on an existing table.)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'setu_consents'::regclass
+      AND contype IN ('u','p')
+      AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+                          WHERE attrelid = 'setu_consents'::regclass
+                            AND attname = 'consent_id')]
+  ) THEN
+    -- Remove duplicate consent_ids so the constraint can be added
+    DELETE FROM setu_consents a
+      USING setu_consents b
+      WHERE a.consent_id = b.consent_id
+        AND a.ctid < b.ctid;
+    ALTER TABLE setu_consents ADD CONSTRAINT setu_consents_consent_id_key UNIQUE (consent_id);
+  END IF;
+END $$;
+
 -- setu_connections — persistent linked accounts (like plaid_connections)
 -- One row per active Setu consent kept for recurring re-sync
 CREATE TABLE IF NOT EXISTS setu_connections (
