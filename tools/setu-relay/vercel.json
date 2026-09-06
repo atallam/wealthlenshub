@@ -1,0 +1,4 @@
+{
+  "regions": ["bom1"],
+  "functions": { "api/[...path].js": { "maxDuration": 30 } }
+}

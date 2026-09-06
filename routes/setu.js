@@ -17,6 +17,11 @@ if (!SETU_ENABLED) {
   const SETU_AUTH_URL = process.env.SETU_AUTH_URL || "https://orgservice-prod.setu.co/v1/users/login";
   // Sandbox uses the OneMoney AA handle; prod handle is configurable.
   const SETU_VUA_HANDLE = process.env.SETU_VUA_HANDLE || "onemoney";
+  // Setu geo-blocks non-India IPs (bare 403 from their AWS ELB). When the app is hosted
+  // outside India, point SETU_BASE_URL / SETU_AUTH_URL at the India relay (see tools/setu-relay)
+  // and set SETU_RELAY_KEY — the relay rejects requests without this header.
+  const SETU_RELAY_KEY = process.env.SETU_RELAY_KEY;
+  const relayHeaders = () => (SETU_RELAY_KEY ? { "x-relay-key": SETU_RELAY_KEY } : {});
   const toVua = (mobile) => { const m = String(mobile || "").replace(/\D/g, "").slice(-10); return m.includes("@") ? m : `${m}@${SETU_VUA_HANDLE}`; };
   // Setu returns HTML/text on some errors (gateway 404s, 5xx) — never let .json() blow up into a bare 500.
   async function readJson(resp) { const t = await resp.text(); try { return JSON.parse(t); } catch { return { errorMsg: t.slice(0, 200) || `HTTP ${resp.status}` }; } }
@@ -28,7 +33,7 @@ if (!SETU_ENABLED) {
     // (same host for sandbox + prod), header `client: bridge`, body must include grant_type.
     const resp = await fetch(SETU_AUTH_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", client: "bridge" },
+      headers: { "Content-Type": "application/json", client: "bridge", ...relayHeaders() },
       body: JSON.stringify({ clientID: SETU_CLIENT, secret: SETU_SECRET, grant_type: "client_credentials" }),
     });
     const data = await readJson(resp);
@@ -41,7 +46,7 @@ if (!SETU_ENABLED) {
     _setuTokenExp = Date.now() + (data.expiresIn || 1500) * 1000; // spec returns no expiry; tokens last ~30 min
     return _setuToken;
   }
-  const setuHeaders = () => ({ "Content-Type": "application/json", "x-product-instance-id": SETU_PRODUCT });
+  const setuHeaders = () => ({ "Content-Type": "application/json", "x-product-instance-id": SETU_PRODUCT, ...relayHeaders() });
 
   function _setuDate(d) { if (!d) return null; if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0,10); const m = d.match(/^(\d{2})-(\d{2})-(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : d; }
 
