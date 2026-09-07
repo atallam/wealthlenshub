@@ -25,6 +25,8 @@ if (!SETU_ENABLED) {
   const toVua = (mobile) => { const m = String(mobile || "").replace(/\D/g, "").slice(-10); return m.includes("@") ? m : `${m}@${SETU_VUA_HANDLE}`; };
   // Setu returns HTML/text on some errors (gateway 404s, 5xx) — never let .json() blow up into a bare 500.
   async function readJson(resp) { const t = await resp.text(); try { return JSON.parse(t); } catch { return { errorMsg: t.slice(0, 200) || `HTTP ${resp.status}` }; } }
+  // Setu error bodies vary: {errorMsg}, {message}, {error:"..."} or {error:{code,detail}} — always reduce to a string.
+  const setuMsg = (d, fallback) => { const v = d?.errorMsg || d?.message || d?.error?.detail || d?.error?.message || d?.error; return typeof v === "string" && v ? v : (v ? JSON.stringify(v).slice(0, 200) : fallback); };
 
   let _setuToken = null, _setuTokenExp = 0;
   async function getSetuToken() {
@@ -39,7 +41,7 @@ if (!SETU_ENABLED) {
     const data = await readJson(resp);
     if (!resp.ok || !(data.access_token || data.token)) {
       console.error("Setu auth response:", resp.status, JSON.stringify(data).slice(0, 300));
-      const err = new Error(`Setu auth failed (${resp.status}): ${data.errorMsg || data.error || "check SETU_CLIENT_ID / SETU_CLIENT_SECRET"}`);
+      const err = new Error(`Setu auth failed (${resp.status}): ${setuMsg(data, "check SETU_CLIENT_ID / SETU_CLIENT_SECRET")}`);
       err.code = "SETU_AUTH"; throw err;
     }
     _setuToken = data.access_token || data.token;
@@ -86,7 +88,7 @@ if (!SETU_ENABLED) {
       const to = new Date().toISOString();
       const cr = await fetch(`${SETU_BASE}/v2/consents`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentDuration: { unit: "MONTH", value: "6" }, vua: toVua(mobile), dataRange: { from, to }, context: [], consentTypes: ["PROFILE","SUMMARY","TRANSACTIONS"], fiTypes: ["DEPOSIT","TERM_DEPOSIT","RECURRING_DEPOSIT","MUTUAL_FUNDS","EQUITIES","ETF"] }) });
       const cd = await readJson(cr);
-      if (!cr.ok) { console.error("Setu consent error:", cr.status, JSON.stringify(cd).slice(0, 300)); return res.status(cr.status >= 500 ? 502 : cr.status).json({ error: cd.errorMsg || cd.error || "Consent creation failed" }); }
+      if (!cr.ok) { console.error("Setu consent error:", cr.status, JSON.stringify(cd).slice(0, 300)); return res.status(cr.status >= 500 ? 502 : cr.status).json({ error: setuMsg(cd, "Consent creation failed") }); }
       await supabase.from("setu_consents").insert({ user_id: req.user.id, consent_id: cd.id, status: cd.status || "PENDING", fi_types: ["DEPOSIT","TERM_DEPOSIT","MUTUAL_FUNDS","EQUITIES","ETF","EPF","PPF"], data_range_from: from, data_range_to: to, redirect_url: cd.url });
       res.json({ consent_id: cd.id, url: cd.url, status: cd.status });
     } catch (e) { if (e.code === "SETU_AUTH") return res.status(502).json({ error: e.message }); sendError(res, e); }
@@ -259,7 +261,7 @@ if (SETU_ENABLED) {
         }),
       });
       const cd = await readJson(cr);
-      if (!cr.ok) { console.error("Setu consent error:", cr.status, JSON.stringify(cd).slice(0, 300)); return res.status(cr.status >= 500 ? 502 : cr.status).json({ error: cd.errorMsg || cd.error || "Consent creation failed" }); }
+      if (!cr.ok) { console.error("Setu consent error:", cr.status, JSON.stringify(cd).slice(0, 300)); return res.status(cr.status >= 500 ? 502 : cr.status).json({ error: setuMsg(cd, "Consent creation failed") }); }
       await supabase.from("setu_consents").insert({
         user_id: req.user.id,
         consent_id: cd.id,
