@@ -50,6 +50,52 @@ if (!SETU_ENABLED) {
   }
   const setuHeaders = () => ({ "Content-Type": "application/json", "x-product-instance-id": SETU_PRODUCT, ...relayHeaders() });
 
+  // ── Session-data normalisation ─────────────────────────────────────────────
+  // Setu's GET /v2/sessions/:id returns fips[].accounts[] with per-account `status`
+  // (older docs call it `FIstatus`) and `data.account` (ReBIT JSON). Be tolerant:
+  // `data` may arrive as a JSON string, the account node may be `account`/`Account`
+  // or the data object itself, and casing of status/type varies.
+  function _normAccount(account) {
+    let data = account?.data;
+    if (typeof data === "string") { try { data = JSON.parse(data); } catch { data = null; } }
+    const d = data?.account || data?.Account || (data && (data.type || data.summary || data.Summary) ? data : null);
+    const status = String(account?.status || account?.FIstatus || account?.fiStatus || "").toUpperCase();
+    const fiType = String(d?.type || d?.Type || account?.fiType || "").toLowerCase();
+    const summary = d?.summary || d?.Summary || {};
+    const masked = d?.maskedAccNumber || account?.maskedAccNumber || "";
+    return { d, status, fiType, summary, masked, hasData: !!d };
+  }
+  const _usable = (a) => a.hasData && !["DENIED", "TIMEOUT"].includes(a.status);
+  // Compact per-account view returned to the UI and written to logs, so a "0 holdings"
+  // result explains itself (e.g. every account still PENDING, or an unexpected fiType).
+  function sessionSummary(fd) {
+    const out = [];
+    for (const fip of (fd?.fips || [])) for (const account of (fip.accounts || [])) {
+      const a = _normAccount(account);
+      out.push({ fip: fip.fipID || "", masked: a.masked, status: a.status || "?", type: a.fiType || "?", has_data: a.hasData });
+    }
+    return out;
+  }
+  const _hasAnyData = (fd) => sessionSummary(fd).some(a => a.has_data);
+  // Poll a data session until it is COMPLETED/PARTIAL *and* carries account data.
+  async function pollSession(sessionId, token, { tries = 15, waitMs = 2000 } = {}) {
+    let last = null;
+    for (let i = 0; i < tries; i++) {
+      await new Promise(r => setTimeout(r, waitMs));
+      const fr = await fetch(`${SETU_BASE}/v2/sessions/${sessionId}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
+      const fd = await readJson(fr);
+      if (!fr.ok) { const e = new Error(setuMsg(fd, `Session fetch failed (${fr.status})`)); e.status = fr.status >= 500 ? 502 : fr.status; throw e; }
+      last = fd;
+      const st = String(fd.status || "").toUpperCase();
+      if (st === "FAILED" || st === "EXPIRED") { const e = new Error(`Data session ${st}`); e.status = 502; throw e; }
+      if ((st === "COMPLETED" || st === "PARTIAL") && _hasAnyData(fd)) return fd;
+      if (st === "COMPLETED" && i >= 2) return fd; // completed but empty — give up polling, let caller report
+    }
+    if (last && ["COMPLETED", "PARTIAL"].includes(String(last.status || "").toUpperCase())) return last;
+    const e = new Error("Data not ready. Try again shortly."); e.status = 408; throw e;
+  }
+  const _isoRange = (cr) => ({ from: new Date(cr.data_range_from).toISOString(), to: new Date(cr.data_range_to).toISOString() });
+
   function _setuDate(d) { if (!d) return null; if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0,10); const m = d.match(/^(\d{2})-(\d{2})-(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : d; }
 
   function parseSetuFIData(sessionData) {
@@ -57,11 +103,9 @@ if (!SETU_ENABLED) {
     for (const fip of (sessionData.fips || [])) {
       const fipName = fip.fipID || "";
       for (const account of (fip.accounts || [])) {
-        if (!["DELIVERED","READY"].includes(account.status || account.FIstatus)) continue;
-        const d = account.data?.account; if (!d) continue;
-        const fiType = (d.type || "").toLowerCase();
-        const summary = d.summary || {};
-        const masked = d.maskedAccNumber || account.maskedAccNumber || "";
+        const a = _normAccount(account);
+        if (!_usable(a)) continue;
+        const { fiType, summary, masked } = a;
         try {
           if (fiType === "deposit") { holdings.push({ name: `Bank Account ${masked}`, type: "CASH", purchase_value: +summary.currentBalance || 0, current_value: +summary.currentBalance || 0, fip_name: fipName, source_account: masked }); }
           else if (fiType === "term_deposit" || fiType === "recurring_deposit") { holdings.push({ name: `${fiType==="term_deposit"?"FD":"RD"} ${masked}`, type: "FD", principal: +summary.principalAmount || 0, purchase_value: +summary.principalAmount || 0, current_value: +summary.currentValue || 0, interest_rate: +summary.interestRate || 0, start_date: _setuDate(summary.openingDate), maturity_date: _setuDate(summary.maturityDate), fip_name: fipName, source_account: masked }); }
@@ -111,22 +155,18 @@ if (!SETU_ENABLED) {
       const cid = req.params.consentId;
       const { data: cr } = await supabase.from("setu_consents").select("*").eq("consent_id", cid).eq("user_id", req.user.id).single();
       if (!cr) return res.status(404).json({ error: "Consent not found" });
-      const sr = await fetch(`${SETU_BASE}/v2/sessions`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentId: cid, dataRange: { from: cr.data_range_from, to: cr.data_range_to }, format: "json" }) });
+      const sr = await fetch(`${SETU_BASE}/v2/sessions`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentId: cid, dataRange: _isoRange(cr), format: "json" }) });
       const sd = await readJson(sr);
-      if (!sr.ok) return res.status(sr.status).json({ error: sd.errorMsg || "Data session failed" });
+      if (!sr.ok) { console.error("Setu session error:", sr.status, JSON.stringify(sd).slice(0, 300)); return res.status(sr.status >= 500 ? 502 : sr.status).json({ error: setuMsg(sd, "Data session failed") }); }
       await supabase.from("setu_consents").update({ session_id: sd.id, fi_data_status: "PENDING", updated_at: new Date().toISOString() }).eq("consent_id", cid).eq("user_id", req.user.id);
-      let fiData = null;
-      for (let i = 0; i < 10; i++) {
-        await new Promise(r => setTimeout(r, 2000));
-        const fr = await fetch(`${SETU_BASE}/v2/sessions/${sd.id}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
-        const fd = await readJson(fr);
-        if (fd.status === "COMPLETED" || fd.status === "PARTIAL") { fiData = fd; break; }
-        if (fd.status === "FAILED" || fd.status === "EXPIRED") return res.status(500).json({ error: `Data session ${fd.status}` });
-      }
-      if (!fiData) return res.status(408).json({ error: "Data not ready. Try again shortly." });
+      let fiData;
+      try { fiData = await pollSession(sd.id, token); }
+      catch (pe) { return res.status(pe.status || 502).json({ error: pe.message }); }
+      const accounts = sessionSummary(fiData);
+      console.log(`Setu session ${sd.id} ${fiData.status}:`, JSON.stringify(accounts));
       const holdings = parseSetuFIData(fiData);
       await supabase.from("setu_consents").update({ fi_data_status: fiData.status, last_fetched_at: new Date().toISOString(), holdings_count: holdings.length, updated_at: new Date().toISOString() }).eq("consent_id", cid).eq("user_id", req.user.id);
-      res.json({ status: fiData.status, holdings, session_id: sd.id });
+      res.json({ status: fiData.status, holdings, accounts, session_id: sd.id });
     } catch (e) { sendError(res, e); }
   });
 
@@ -134,12 +174,31 @@ if (!SETU_ENABLED) {
     try {
       const { holdings, member_id, consent_id } = req.body;
       if (!holdings?.length) return res.status(400).json({ error: "No holdings to import" });
-      const rows = holdings.map(h => ({ ...h, id: h.id || crypto.randomUUID(), user_id: req.user.id, member_id: member_id || "", source: "setu_aa", brokerage_name: h.fip_name || "", created_at: new Date().toISOString() }));
+      // Only send real `holdings` columns — parser extras like fip_name would make PostgREST reject the whole upsert.
+      const COLS = ["name","type","ticker","scheme_code","units","purchase_price","current_price","purchase_nav","current_nav","principal","interest_rate","start_date","maturity_date","purchase_value","current_value","currency","source_account"];
+      const rows = holdings.map(h => {
+        const row = { id: h.id || crypto.randomUUID(), user_id: req.user.id, member_id: member_id || "", source: "setu_aa", brokerage_name: h.fip_name || h.brokerage_name || "", created_at: new Date().toISOString() };
+        for (const c of COLS) if (h[c] !== undefined && h[c] !== null && h[c] !== "") row[c] = h[c];
+        return row;
+      });
       const { error } = await supabase.from("holdings").upsert(rows, { onConflict: "id" });
       if (error) return res.status(500).json({ error: error.message });
       if (consent_id) await supabase.from("setu_consents").update({ holdings_count: rows.length, updated_at: new Date().toISOString() }).eq("consent_id", consent_id).eq("user_id", req.user.id);
       res.json({ imported: rows.length });
     } catch (e) { sendError(res, e); }
+  });
+
+  // GET /api/setu/session/:sessionId/raw — raw Setu session payload for debugging parse issues.
+  // Only sessions that belong to one of the caller's consents are readable.
+  router.get("/session/:sessionId/raw", auth, async (req, res) => {
+    try {
+      const { data: cr } = await supabase.from("setu_consents").select("consent_id").eq("session_id", req.params.sessionId).eq("user_id", req.user.id).maybeSingle();
+      if (!cr) return res.status(404).json({ error: "Session not found" });
+      const token = await getSetuToken();
+      const fr = await fetch(`${SETU_BASE}/v2/sessions/${req.params.sessionId}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
+      const fd = await readJson(fr);
+      res.status(fr.ok ? 200 : (fr.status >= 500 ? 502 : fr.status)).json({ summary: sessionSummary(fd), raw: fd });
+    } catch (e) { if (e.code === "SETU_AUTH") return res.status(502).json({ error: e.message }); sendError(res, e); }
   });
 
   router.get("/consents", auth, async (req, res) => {
@@ -160,16 +219,16 @@ if (!SETU_ENABLED) {
     if (type === "FI_DATA_READY" && consentId) await supabase.from("setu_consents").update({ fi_data_status: status, last_fetched_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("consent_id", consentId);
     res.json({ ok: true });
   });
-}
 
-export default router;
+
+
 
 // ── Budget Transaction Routes ─────────────────────────────────────────────────
 // These endpoints are ADDITIVE — existing wealth endpoints above are untouched.
 // They reuse the same Setu consent/session infrastructure but parse individual
 // transactions (not account summaries) and write to budget tables.
 
-if (SETU_ENABLED) {
+  // NOTE: this block lives inside the SETU_ENABLED scope above so it can reach getSetuToken/SETU_BASE/etc.
   // Helper: map Setu transaction type to budget txn_type
   function _setuTxnType(t) { return (t || "").toUpperCase() === "CREDIT" ? "CREDIT" : "DEBIT"; }
 
@@ -202,14 +261,12 @@ if (SETU_ENABLED) {
     for (const fip of (sessionData.fips || [])) {
       const fipName = fip.fipID || "";
       for (const account of (fip.accounts || [])) {
-        if (!["DELIVERED", "READY"].includes(account.status || account.FIstatus)) continue;
-        const d = account.data?.account;
-        if (!d) continue;
-        const fiType = (d.type || "").toLowerCase();
+        const a = _normAccount(account);
+        if (!_usable(a)) continue;
+        const { d, fiType, masked } = a;
         if (!["deposit", "credit_card"].includes(fiType)) continue; // budget-relevant only
-        const masked = d.maskedAccNumber || account.maskedAccNumber || "";
         const source = `${fipName} ····${masked.slice(-4)}`;
-        const txns = [].concat(d.transactions?.transaction || []);
+        const txns = [].concat(d.transactions?.transaction || d.Transactions?.Transaction || []);
         for (const t of txns) {
           const amount = Math.abs(parseFloat(t.amount || t.transactionAmount || 0));
           if (!amount) continue;
@@ -287,23 +344,19 @@ if (SETU_ENABLED) {
       const sr = await fetch(`${SETU_BASE}/v2/sessions`, {
         method: "POST",
         headers: { ...setuHeaders(), Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ consentId: cid, dataRange: { from: cr.data_range_from, to: cr.data_range_to }, format: "json" }),
+        body: JSON.stringify({ consentId: cid, dataRange: _isoRange(cr), format: "json" }),
       });
       const sd = await readJson(sr);
-      if (!sr.ok) return res.status(sr.status).json({ error: sd.errorMsg || "Data session failed" });
+      if (!sr.ok) { console.error("Setu session error:", sr.status, JSON.stringify(sd).slice(0, 300)); return res.status(sr.status >= 500 ? 502 : sr.status).json({ error: setuMsg(sd, "Data session failed") }); }
       await supabase.from("setu_consents").update({ session_id: sd.id, fi_data_status: "PENDING", updated_at: new Date().toISOString() }).eq("consent_id", cid).eq("user_id", req.user.id);
-      let fiData = null;
-      for (let i = 0; i < 10; i++) {
-        await new Promise(r => setTimeout(r, 2000));
-        const fr = await fetch(`${SETU_BASE}/v2/sessions/${sd.id}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
-        const fd = await readJson(fr);
-        if (fd.status === "COMPLETED" || fd.status === "PARTIAL") { fiData = fd; break; }
-        if (fd.status === "FAILED" || fd.status === "EXPIRED") return res.status(500).json({ error: `Data session ${fd.status}` });
-      }
-      if (!fiData) return res.status(408).json({ error: "Data not ready. Try again shortly." });
+      let fiData;
+      try { fiData = await pollSession(sd.id, token); }
+      catch (pe) { return res.status(pe.status || 502).json({ error: pe.message }); }
+      const accounts = sessionSummary(fiData);
+      console.log(`Setu session ${sd.id} ${fiData.status}:`, JSON.stringify(accounts));
       const transactions = parseSetuTransactions(fiData);
       await supabase.from("setu_consents").update({ fi_data_status: fiData.status, last_fetched_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("consent_id", cid).eq("user_id", req.user.id);
-      res.json({ status: fiData.status, transactions, count: transactions.length, session_id: sd.id });
+      res.json({ status: fiData.status, transactions, count: transactions.length, accounts, session_id: sd.id });
     } catch (e) { sendError(res, e); }
   });
 
@@ -419,3 +472,5 @@ if (SETU_ENABLED) {
     res.json({ ok: true });
   });
 }
+
+export default router;

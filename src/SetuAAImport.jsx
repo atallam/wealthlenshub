@@ -38,6 +38,7 @@ export default function SetuAAImport({ onClose, onImported, members, api, mode =
   const [txnFilter, setTxnFilter] = useState("ALL"); // ALL | DEBIT | CREDIT
 
   const [importCount, setImportCount] = useState(0);
+  const [fetchInfo, setFetchInfo] = useState([]); // per-account status from Setu — explains a "0 results" fetch
   const [dupeCount, setDupeCount] = useState(0);
   const [pastConsents, setPastConsents] = useState([]);
   const [connections, setConnections] = useState([]);
@@ -87,6 +88,7 @@ export default function SetuAAImport({ onClose, onImported, members, api, mode =
           ? `/api/setu/fetch-transactions/${consentId}`
           : `/api/setu/fetch/${consentId}`;
         const fd = await api(endpoint, { method: "POST" });
+        setFetchInfo(fd.accounts || []);
         if (isBudget) {
           setTransactions(fd.transactions || []);
           setStep(fd.transactions?.length > 0 ? "preview" : "done");
@@ -142,6 +144,7 @@ export default function SetuAAImport({ onClose, onImported, members, api, mode =
           ? `/api/setu/fetch-transactions/${c.consent_id}`
           : `/api/setu/fetch/${c.consent_id}`;
         const fd = await api(endpoint, { method: "POST" });
+        setFetchInfo(fd.accounts || []);
         if (isBudget) { setTransactions(fd.transactions || []); setStep(fd.transactions?.length > 0 ? "preview" : "done"); }
         else { setHoldings(fd.holdings || []); setStep(fd.holdings?.length > 0 ? "preview" : "done"); }
       } catch (e) { setError(e.message); }
@@ -476,7 +479,22 @@ export default function SetuAAImport({ onClose, onImported, members, api, mode =
       {/* ── DONE ── */}
       {step === "done" && (
         <div style={{ ...card, textAlign: "center" }}>
-          <div style={{ fontSize: "2rem", marginBottom: ".5rem" }}>✅</div>
+          <div style={{ fontSize: "2rem", marginBottom: ".5rem" }}>{importCount > 0 ? "✅" : "ℹ️"}</div>
+          {importCount === 0 && fetchInfo.length > 0 && (
+            <div style={{ textAlign: "left", fontSize: ".7rem", color: "var(--text-muted)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: ".5rem .7rem", marginBottom: ".8rem" }}>
+              <div style={{ marginBottom: ".3rem" }}>Setu returned {fetchInfo.length} account{fetchInfo.length === 1 ? "" : "s"}, but nothing usable was parsed:</div>
+              {fetchInfo.map((a, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: ".15rem 0" }}>
+                  <span>{a.fip} · {a.masked || "—"}</span>
+                  <span style={{ color: a.has_data ? "#4caf9a" : "#c9a84c" }}>{a.status} · {a.type}{a.has_data ? "" : " · no data yet"}</span>
+                </div>
+              ))}
+              <div style={{ marginTop: ".4rem" }}>If accounts show PENDING / no data, wait a moment and fetch again. Otherwise the data type isn't mapped yet — share the account type above.</div>
+            </div>
+          )}
+          {importCount === 0 && fetchInfo.length === 0 && (
+            <div style={{ fontSize: ".72rem", color: "#c9a84c", marginBottom: ".8rem" }}>Setu returned no accounts for this consent. Re-check the accounts you selected on the consent screen.</div>
+          )}
           {isBudget ? (
             <>
               <div style={{ fontSize: ".9rem", color: "#4caf9a", marginBottom: ".3rem" }}>
