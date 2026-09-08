@@ -12,9 +12,17 @@ export async function api(path, opts = {}) {
     ...(opts.headers || {}),
   };
   const res = await fetch(path, { ...opts, headers });
+  // Read as text first: an empty or non-JSON body (proxy error, HTML fallback,
+  // gateway page) should surface as a readable message, not a JSON parse crash.
+  const text = await res.text();
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = null; }
   if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error || res.statusText);
+    const detail = body?.error || (text ? text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160) : "") || res.statusText;
+    throw new Error(`${detail} (HTTP ${res.status} from ${path})`);
   }
-  return res.json();
+  if (body === null) {
+    throw new Error(`Empty or non-JSON response from ${path} (HTTP ${res.status}${text ? ": " + text.slice(0, 120) : ""}) — is the backend running on port 3000?`);
+  }
+  return body;
 }
