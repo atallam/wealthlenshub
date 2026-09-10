@@ -197,13 +197,15 @@ See `.env.example` for the full annotated template. Key variables:
 
 All endpoints require the header `x-cron-secret: $CRON_SECRET`.
 
+Scheduling is done by **GitHub Actions** (`.github/workflows/scheduled-jobs.yml`, free) — set the repo secret `CRON_SECRET`. The paid Render cron services are kept commented out in `render.yaml` and can be re-enabled later.
+
 | Endpoint | Recommended Schedule | Purpose |
 |---|---|---|
-| `POST /api/cron/refresh-all-prices` | Every 4 hours | Refresh stock / MF / FX prices |
+| `POST /api/cron/refresh-all-prices` | Daily 08:00 IST | Refresh stock / MF / FX prices (shared engine `lib/refresh.js`; resolves ISIN tickers) |
 | `POST /api/cron/alert-check` | Daily 08:00 | Evaluate alert rules → email digest |
 | `POST /api/cron/fd-alerts` | Daily 08:00 | FD maturity reminders (7 / 30 / 60 days) |
-| `POST /api/cron/nudge-stale` | Weekly | Stale holdings digest email |
-| `POST /api/cron/check-cas-email` | Every 6 hours | Auto-import CAS from Gmail |
+| `POST /api/cron/nudge-stale` | Daily 08:00 IST (emails only on threshold crossing) | Stale holdings digest email |
+| `POST /api/cron/check-cas-email` | Weekly, Sunday 08:00 IST | Auto-import CAS from Gmail |
 
 ---
 

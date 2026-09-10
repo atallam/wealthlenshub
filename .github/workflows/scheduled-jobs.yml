@@ -1,0 +1,62 @@
+# Free replacement for the Render cron services (see render.yaml).
+# Calls the secured /api/cron/* endpoints on the live app.
+#
+# Setup (one time): GitHub repo → Settings → Secrets and variables → Actions
+#   → New repository secret → Name: CRON_SECRET, Value: same as the web service.
+# Until that secret exists the jobs exit cleanly with a notice (no red runs).
+#
+# Run on demand: Actions tab → "Scheduled jobs" → Run workflow.
+# Pause:         Actions tab → "Scheduled jobs" → … → Disable workflow.
+
+name: Scheduled jobs
+
+on:
+  schedule:
+    - cron: "30 2 * * *"   # 08:00 IST daily  — prices + alerts
+    - cron: "30 2 * * 0"   # 08:00 IST Sunday — CAS email import
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Which job to run"
+        type: choice
+        default: all
+        options: [all, prices, cas-email]
+
+env:
+  BASE_URL: https://wealthlens.pro
+
+jobs:
+  prices-and-alerts:
+    if: github.event.schedule == '30 2 * * *' || github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'prices')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Call cron endpoints
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "::notice::CRON_SECRET secret not set — skipping. Add it under Settings → Secrets → Actions."; exit 0; fi
+          failed=0
+          for j in refresh-all-prices nudge-stale fd-alerts alert-check insurance-reminders goal-milestones; do
+            code=$(curl -sS -m 300 -o body.json -w "%{http_code}" -X POST "$BASE_URL/api/cron/$j" \
+                   -H "x-cron-secret: $CRON_SECRET" -H "Content-Type: application/json" || echo 000)
+            echo "== $j → HTTP $code"; head -c 800 body.json; echo
+            if [ "$code" = "401" ]; then echo "::error::$j unauthorized — CRON_SECRET does not match the server"; failed=1; fi
+            if [ "$j" = "refresh-all-prices" ] && [ "$code" != "200" ]; then failed=1; fi
+          done
+          exit $failed
+
+  cas-email-import:
+    if: github.event.schedule == '30 2 * * 0' || github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'cas-email')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Call CAS email import
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "::notice::CRON_SECRET secret not set — skipping."; exit 0; fi
+          code=$(curl -sS -m 300 -o body.json -w "%{http_code}" -X POST "$BASE_URL/api/cron/check-cas-email" \
+                 -H "x-cron-secret: $CRON_SECRET" -H "Content-Type: application/json" || echo 000)
+          echo "== check-cas-email → HTTP $code"; head -c 800 body.json; echo
+          [ "$code" = "200" ]

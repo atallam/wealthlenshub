@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { supabase } from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
-import { fetchUsdInr, fetchAllFxRates, fetchMfNav, fetchMfNavByIsin, getAmfiList, scoreMf, stockSearch, stockPrice, yahooPrice, timedFetch, TWELVE_KEY, twelveQuote, mfNav } from "../lib/prices.js";
+import { fetchUsdInr, fetchAllFxRates, fetchMfNav, getAmfiList, scoreMf, stockSearch, stockPrice, yahooPrice, timedFetch, TWELVE_KEY, twelveQuote, mfNav } from "../lib/prices.js";
 import { takeSnapshot } from "../lib/snapshot.js";
+import { refreshUserHoldings } from "../lib/refresh.js";
 
 const router = Router();
 
@@ -102,87 +103,14 @@ router.get("/stock/info", auth, async (req, res) => {
   res.json({ found: false });
 });
 
-// ── Concurrency helper: run async tasks with a max concurrency cap ────────────
-async function pLimit(fns, concurrency = 5) {
-  const results = [];
-  let i = 0;
-  async function worker() {
-    while (i < fns.length) {
-      const idx = i++;
-      results[idx] = await fns[idx]().catch(e => ({ _err: e.message }));
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(concurrency, fns.length) }, worker));
-  return results;
-}
-
-// ── Fetch patch for a single MF holding (with implausible NAV repair) ─────────
-async function fetchMfPatch(h) {
-  let sc = h.scheme_code;
-  if (!sc && h.ticker?.startsWith("INF")) {
-    const resolved = await fetchMfNavByIsin(h.ticker);
-    if (resolved?.scheme_code) sc = resolved.scheme_code;
-  }
-  if (!sc) return null;
-  const nav = await mfNav(sc);
-  if (!nav) return null;
-  // purchase_nav repair deferred to background — keeps refresh fast
-  const patch = { scheme_code: sc, current_nav: nav, current_value: (h.units||0)*nav, price_fetched_at: new Date().toISOString() };
-  return patch;
-}
-
 router.post("/prices/refresh", auth, async (req, res) => {
-  const { data: holdings } = await supabase.from("holdings")
-    .select("id, type, ticker, scheme_code, units, usd_inr_rate, purchase_nav, purchase_value, start_date")
-    .eq("user_id", req.user.id);
-  if (!holdings?.length) return res.json({ updated: 0 });
-
-  // FX and price tasks start in parallel — no serial wait for FX before equities
-  const fxPromise = fetchUsdInr();
-  const now = new Date().toISOString();
-
-  // Build fetch tasks — MF tasks resolve from in-process AMFI cache (fast); stocks hit external APIs
-  const tasks = holdings.map(h => async () => {
-    let patch = null;
-    if (h.type === "MF") {
-      patch = await fetchMfPatch(h);
-    } else if ((h.type === "IN_STOCK" || h.type === "IN_ETF") && h.ticker) {
-      const q = await stockPrice(`${h.ticker.toUpperCase()}.NS`, "NSE");
-      const price = q?.price ?? await yahooPrice(`${h.ticker.toUpperCase()}.BO`);
-      if (price) patch = { current_price: price, current_value: (h.units||0)*price, price_fetched_at: now };
-    } else if ((h.type === "US_STOCK" || h.type === "US_ETF" || h.type === "US_BOND") && h.ticker) {
-      const q = await stockPrice(h.ticker.toUpperCase());
-      if (q?.price) { const { rate: usdInr } = await fxPromise; patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: now }; }
-    } else if (h.type === "CRYPTO" && h.ticker) {
-      const sym = h.ticker.toUpperCase().includes("-") ? h.ticker.toUpperCase() : `${h.ticker.toUpperCase()}-USD`;
-      const q = await stockPrice(sym);
-      if (q?.price) { const { rate: usdInr } = await fxPromise; patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: now }; }
-    } else if (h.type === "CASH") {
-      const { rate: usdInr } = await fxPromise;
-      // Always stamp price_fetched_at so CASH freshness reflects last refresh
-      patch = { price_fetched_at: now };
-      if (h.usd_inr_rate && Math.abs(h.usd_inr_rate - usdInr) > 0.01) { patch.usd_inr_rate = usdInr; }
-    }
-    return { h, patch };
-  });
-
-  // Run all fetches concurrently — 8 slots (MF is cache-fast; stock slots rate-limit external APIs)
-  const results = await pLimit(tasks, 8);
-
-  // Parallel DB writes — Promise.all eliminates sequential Supabase round-trips
-  const validResults = results.filter(item => item && !item._err && item.patch);
-  const updates = await Promise.all(
-    validResults.map(async item => {
-      await supabase.from("holdings").update(item.patch).eq("id", item.h.id);
-      return { id: item.h.id, ...item.patch };
-    })
-  );
-
-  const { rate: usdInr, source: fxSource } = await fxPromise;
-  res.json({ updated: updates.length, usdInr, fxSource, results: updates });
-  // Auto-snapshot (direct call — no self-HTTP round-trip)
-  takeSnapshot(req.user.id, { source: "price_refresh" })
-    .catch(e => console.error("Auto-snapshot failed:", e.message));
+  try {
+    const r = await refreshUserHoldings(req.user.id, { concurrency: 8 });
+    res.json(r);
+    // Auto-snapshot (direct call — no self-HTTP round-trip)
+    takeSnapshot(req.user.id, { source: "price_refresh" })
+      .catch(e => console.error("Auto-snapshot failed:", e.message));
+  } catch (e) { sendError(res, e); }
 });
 
 // Benchmark overlay

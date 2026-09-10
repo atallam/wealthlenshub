@@ -1,19 +1,11 @@
 import { Router } from "express";
 import { supabase } from "../lib/db.js";
-import { fetchUsdInr, mfNav, stockPrice, yahooPrice } from "../lib/prices.js";
+import { refreshUserHoldings } from "../lib/refresh.js";
 import { takeSnapshot } from "../lib/snapshot.js";
 import { getCrossingHoldings } from "../lib/stale-holdings.js";
 import { sendStaleNudge, sendAlertDigest } from "../services/alert-mailer.js";
 import { sendPushToUser, pushEnabled } from "./push.js";
 import { insertNotification } from "./notifications.js";
-
-// Concurrency limiter — same pattern as routes/prices.js
-async function pLimit(fns, concurrency = 5) {
-  const results = []; let i = 0;
-  async function worker() { while (i < fns.length) { const idx = i++; results[idx] = await fns[idx]().catch(e => ({ _err: e.message })); } }
-  await Promise.all(Array.from({ length: Math.min(concurrency, fns.length) }, worker));
-  return results;
-}
 
 const router = Router();
 
@@ -27,39 +19,22 @@ router.post("/refresh-all-prices", cronAuth, async (req, res) => {
   const { data: rows } = await supabase.from("holdings").select("user_id");
   const userIds = [...new Set((rows || []).map(r => r.user_id))];
   console.log(`Cron refresh started: ${userIds.length} users`);
-  let totalUpdated = 0;
+  let totalUpdated = 0, totalUnpriced = 0;
   const results = [];
   for (const userId of userIds) {
     try {
-      const { data: holdings } = await supabase.from("holdings").select("id, type, ticker, scheme_code, units, usd_inr_rate").eq("user_id", userId);
-      if (!holdings?.length) continue;
-      const { rate: usdInr } = await fetchUsdInr();
-      const now = new Date().toISOString();
-      const tasks = holdings.map(h => async () => {
-        let patch = null;
-        if (h.type === "MF" && h.scheme_code) { const nav = await mfNav(h.scheme_code); if (nav) patch = { current_nav: nav, current_value: (h.units||0)*nav, price_fetched_at: now }; }
-        else if ((h.type === "IN_STOCK" || h.type === "IN_ETF") && h.ticker) { const q = await stockPrice(`${h.ticker.toUpperCase()}.NS`, "NSE"); const price = q?.price ?? await yahooPrice(`${h.ticker.toUpperCase()}.BO`); if (price) patch = { current_price: price, current_value: (h.units||0)*price, price_fetched_at: now }; }
-        else if ((h.type === "US_STOCK" || h.type === "US_ETF" || h.type === "US_BOND") && h.ticker) { const q = await stockPrice(h.ticker.toUpperCase()); if (q?.price) patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: now }; }
-        else if (h.type === "CRYPTO" && h.ticker) { const sym = h.ticker.toUpperCase().includes("-") ? h.ticker.toUpperCase() : `${h.ticker.toUpperCase()}-USD`; const q = await stockPrice(sym); if (q?.price) patch = { current_price: q.price, current_value: (h.units||0)*q.price, usd_inr_rate: usdInr, price_fetched_at: now }; }
-        return { h, patch };
-      });
-      const fetched = await pLimit(tasks, 5);
-      let updated = 0;
-      for (const item of fetched) {
-        if (!item || item._err || !item.patch) continue;
-        await supabase.from("holdings").update(item.patch).eq("id", item.h.id);
-        updated++;
-      }
-      // Auto-snapshot (uses shared lib/snapshot.js — includes member & type breakdown)
+      // Shared engine (lib/refresh.js) — identical behaviour to the UI refresh button
+      const r = await refreshUserHoldings(userId, { concurrency: 5 });
       try { await takeSnapshot(userId, { source: "cron_refresh" }); }
       catch (snapErr) { console.error(`Snapshot failed for ${userId}:`, snapErr.message); }
-      totalUpdated += updated;
-      results.push({ userId, updated });
-      await new Promise(r => setTimeout(r, 2000));
+      totalUpdated += r.updated; totalUnpriced += r.unpriced.length;
+      results.push({ userId, updated: r.updated, failed: r.failed, unpriced: r.unpriced.length, fxSource: r.fxSource,
+                     unpricedSample: r.unpriced.slice(0, 10) });
+      await new Promise(r => setTimeout(r, 1000));
     } catch (e) { results.push({ userId, error: e.message }); }
   }
-  console.log(`Cron complete: ${totalUpdated} holdings updated across ${userIds.length} users`);
-  res.json({ users: userIds.length, totalUpdated, results });
+  console.log(`Cron complete: ${totalUpdated} holdings updated, ${totalUnpriced} still unpriced, across ${userIds.length} users`);
+  res.json({ users: userIds.length, totalUpdated, totalUnpriced, results });
 });
 
 router.post("/check-cas-email", cronAuth, async (req, res) => {
