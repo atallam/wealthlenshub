@@ -63,8 +63,17 @@ export async function save(userId, body) {
   // so members echoed back on save lack those fields. Carry them over from the
   // existing row unless the client submitted a replacement — otherwise every
   // portfolio save would silently wipe stored member PANs.
-  const { data: existing } = await supabase.from("portfolio").select("members").eq("user_id", userId).single();
+  const { data: existing } = await supabase.from("portfolio").select("members, goals, alerts").eq("user_id", userId).single();
   const prevById = new Map((existing?.members || []).map((m) => [m.id, m]));
+
+  // Safety net: refuse to replace a populated portfolio with a completely empty one.
+  // A client whose initial load failed still holds empty defaults; one stray state
+  // change would otherwise wipe members, goals and alerts in a single upsert.
+  const incomingEmpty = !(members?.length) && !(goals?.length) && !(alerts?.length);
+  const existingHasData = (existing?.members?.length || 0) + (existing?.goals?.length || 0) + (existing?.alerts?.length || 0) > 0;
+  if (incomingEmpty && existingHasData && !body.confirm_wipe) {
+    throw Object.assign(new Error("Refusing to overwrite a populated portfolio with an empty one. Reload the app and try again."), { status: 409 });
+  }
 
   const safeMembers = (members || []).map((m) => {
     const out = { ...m };

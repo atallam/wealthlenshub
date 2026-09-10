@@ -11,7 +11,7 @@ router.get("/", auth, async (req, res) => {
 
 router.post("/", auth, async (req, res) => {
   try { res.json(await portfolio.save(req.user.id, req.body)); }
-  catch (e) { sendError(res, e); }
+  catch (e) { sendError(res, e, e.status || 500); }
 });
 
 export default router;

@@ -30,6 +30,9 @@ export function usePortfolio(user) {
 
   const saveTimer = useRef(null);
   const initialLoadDone = useRef(false);
+  // Set only when the initial load actually succeeded. If it failed, members/goals/alerts
+  // are still their empty defaults, and auto-saving them would wipe the server copy.
+  const loadSucceeded = useRef(false);
 
   // ── Load data when signed in (fully parallelized) ──
   // Lines 1163–1213 in App.jsx
@@ -55,6 +58,7 @@ export function usePortfolio(user) {
           setLiabilities([]);
         }
         setHoldings(hlds || []);
+        loadSucceeded.current = true;
         const fetched = (hlds || []).filter(h => h.price_fetched_at).map(h => new Date(h.price_fetched_at));
         if (fetched.length) setLastPriceRefresh(new Date(Math.max(...fetched)));
         if (prof) {
@@ -65,7 +69,10 @@ export function usePortfolio(user) {
         }
         try { const fxData = await api("/api/forex/usdinr"); if (fxData?.rate) setLiveUsdInr(fxData.rate); } catch {}
         if (ats?.length) setAssetTypes(ats);
-      } catch (e) { console.error("Load error", e); }
+      } catch (e) {
+        console.error("Load error", e);
+        toast.error("Could not load your portfolio from the server — showing nothing rather than stale data. Reload to retry. " + (e?.message || ""));
+      }
       setLoaded(true);
       api("/api/snapshots?months=24").then(d => setWealthSnapshots(d?.snapshots || [])).catch(() => {});
       api("/api/benchmark?period=1Y").then(d => setBenchmark(d)).catch(() => {});
@@ -90,6 +97,7 @@ export function usePortfolio(user) {
   useEffect(() => {
     if (loaded && user) {
       if (!initialLoadDone.current) { initialLoadDone.current = true; return; }
+      if (!loadSucceeded.current) return;   // never auto-save the empty defaults over real data
       savePortfolio(members, goals, alerts, liabilities);
     }
   }, [members, goals, alerts, liabilities, loaded, user, savePortfolio]);
