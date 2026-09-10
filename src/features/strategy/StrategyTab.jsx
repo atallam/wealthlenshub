@@ -180,9 +180,10 @@ Also mention if any "Trim" action could reduce funding for a goal that uses that
 function ComputedWarnings({ allHoldings, valINRCache, goals, AT, fmtCr }) {
   const fdWarnings = useMemo(() => {
     return allHoldings
-      .filter(h => h.type === 'FD' && h.maturity_date)
+      .filter(h => h.type === 'FD' && h.maturity_date && (h.maturity_status || 'active') === 'active')
       .map(h => ({ ...h, days: daysUntil(h.maturity_date), val: valINRCache.get(h.id) || 0 }))
-      .filter(h => h.days !== null && h.days >= 0 && h.days <= 90)
+      // days < 0 = already matured and still unresolved — the most urgent case, listed first
+      .filter(h => h.days !== null && h.days <= 90)
       .sort((a, b) => a.days - b.days);
   }, [allHoldings, valINRCache]);
 
@@ -216,6 +217,7 @@ function ComputedWarnings({ allHoldings, valINRCache, goals, AT, fmtCr }) {
           </div>
           {fdWarnings.map(h => {
             const urgency = h.days <= 14 ? '#e07c5a' : h.days <= 30 ? 'var(--gold)' : 'var(--text-muted)';
+            const matured = h.days < 0;
             return (
               <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: '.8rem', padding: '.38rem 0', borderBottom: '1px solid rgba(201,168,76,.1)', fontSize: '.72rem' }}>
                 <div style={{ flex: 1 }}>
@@ -224,13 +226,15 @@ function ComputedWarnings({ allHoldings, valINRCache, goals, AT, fmtCr }) {
                 </div>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '.7rem', color: 'var(--text-muted)' }}>{fmtCr(h.val)}</span>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '.7rem', color: urgency, fontWeight: 600, minWidth: 50, textAlign: 'right' }}>
-                  {h.days === 0 ? 'Today!' : h.days === 1 ? 'Tomorrow' : `${h.days}d`}
+                  {matured ? `Matured ${-h.days}d ago` : h.days === 0 ? 'Today!' : h.days === 1 ? 'Tomorrow' : `${h.days}d`}
                 </span>
               </div>
             );
           })}
           <div style={{ marginTop: '.4rem', fontSize: '.65rem', color: 'var(--text-muted)' }}>
-            Plan renewal or redirect into goal-aligned investments before maturity.
+            {fdWarnings.some(h => h.days < 0)
+              ? 'Matured FDs are idle money — go to Holdings to renew, convert to cash, or close them.'
+              : 'Plan renewal or redirect into goal-aligned investments before maturity.'}
           </div>
         </div>
       )}

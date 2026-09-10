@@ -569,6 +569,7 @@ ${alertsText}`;
       interest_rate:  h.interest_rate  || '',
       start_date:     h.start_date     || '',
       maturity_date:  h.maturity_date  || '',
+      maturity_amount: h.maturity_amount || '',
       purchase_value: h.purchase_value || '',
       current_value:  h.current_value  || '',
       principal:          h.principal          || '',
@@ -581,6 +582,20 @@ ${alertsText}`;
     });
     setEditHolding(h);
     setModal('add');
+  }
+
+  // Renew a matured FD: same row, next term. Proceeds become the new principal,
+  // the old maturity date becomes the new start date; user fills rate + new maturity.
+  function renewFD(h, maturityValue) {
+    editH(h);
+    setForm(p => ({
+      ...p,
+      principal:       String(Math.round(maturityValue || h.principal || 0)),
+      start_date:      h.maturity_date || p.start_date,
+      maturity_date:   '',
+      maturity_amount: '',
+      maturity_status: 'active',
+    }));
   }
 
   // ── Broker search handlers ────────────────────────────────────
@@ -620,6 +635,8 @@ ${alertsText}`;
     refreshPrices: portfolio.refreshPrices,
     resetSnapshotHistory: portfolio.resetSnapshotHistory,
     deleteHolding: portfolio.deleteHolding,
+    resolveFD:     portfolio.resolveFD,
+    renewFD,
   };
 
   // ══════════════════════════════════════════════════════════════
@@ -1115,6 +1132,14 @@ ${alertsText}`;
                 </FG>
               )}
             </div>
+            {form.type === 'FD' && (
+              <div className="frow">
+                <FG label={`Maturity Amount ${form.currency&&form.currency!=='INR'?form.currency:'₹'} (optional — from the FD receipt)`}>
+                  <FmtInput value={form.maturity_amount} placeholder="e.g. 537255"
+                    onChange={e => setForm(p => ({ ...p, maturity_amount: e.target.value }))}/>
+                </FG>
+              </div>
+            )}
           </>)}
 
           {/* Real estate */}
@@ -1251,6 +1276,7 @@ ${alertsText}`;
               interest_rate: fd.interest_rate != null ? String(fd.interest_rate) : p.interest_rate,
               start_date:    fd.start_date    || p.start_date,
               maturity_date: fd.maturity_date || p.maturity_date,
+              maturity_amount: fd.maturity_amount != null ? String(fd.maturity_amount) : p.maturity_amount,
             }));
             setFdScanOpen(false);
           }}

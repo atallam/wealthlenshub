@@ -125,6 +125,7 @@ export function usePortfolio(user) {
       id: editHolding?.id || uid(),
       principal:      +form.principal || null,
       interest_rate:  +form.interest_rate || null,
+      maturity_amount: form.maturity_amount === "" || form.maturity_amount == null ? null : +form.maturity_amount,
       purchase_value: +form.purchase_value || null,
       current_value:  +form.current_value || null,
       usd_inr_rate:   +form.usd_inr_rate || getLiveUsdInr(),
@@ -227,6 +228,40 @@ export function usePortfolio(user) {
     const hlds = await api("/api/holdings");
     setHoldings(hlds || []);
     return hlds;
+  }
+
+  // ── FD post-maturity actions ──
+  // "cash":   proceeds are now idle money → retype the row to CASH at its maturity value.
+  // "closed": withdrawn / no longer tracked → soft-delete (hidden by the API, kept in DB).
+  // "Renew" is handled in App.jsx because it reuses the Add/Edit form.
+  async function resolveFD(h, action, maturityValue) {
+    const now = new Date().toISOString();
+    let body;
+    if (action === "cash") {
+      const ok = await toast.confirm(
+        `Move ₹${Math.round(maturityValue || 0).toLocaleString("en-IN")} from "${h.name}" into Cash? The FD row becomes a Cash holding.`,
+        { confirmLabel: "Convert to cash" });
+      if (!ok) return;
+      body = {
+        type: "CASH",
+        current_value: Math.round(maturityValue || 0),
+        purchase_value: Math.round(maturityValue || 0),
+        maturity_status: "converted",
+        maturity_resolved_at: now,
+      };
+    } else if (action === "closed") {
+      const ok = await toast.confirm(
+        `Mark "${h.name}" as closed? It will be removed from your portfolio (kept in history).`,
+        { confirmLabel: "Mark closed", danger: true });
+      if (!ok) return;
+      body = { maturity_status: "closed", maturity_resolved_at: now };
+    } else return;
+    try {
+      await api(`/api/holdings/${h.id}`, { method: "PUT", body: JSON.stringify(body) });
+      const hlds = await api("/api/holdings");
+      setHoldings(hlds || []);
+      toast.success?.(action === "cash" ? `"${h.name}" moved to Cash` : `"${h.name}" closed`);
+    } catch (e) { toast.error("Update failed: " + e.message); }
   }
 
   async function deleteHolding(id) {
@@ -410,6 +445,7 @@ export function usePortfolio(user) {
     reloadHoldings,
     deleteTransaction,
     deleteHolding,
+    resolveFD,
     saveMember,
     deleteMember,
     mergeMembers,

@@ -19,6 +19,28 @@ export function getEpfRate() { return _epfRate; }
 
 // ── Math ─────────────────────────────────────────────────────────
 export function calcFD(p,r,s,mat){const start=new Date(s),now=new Date(),m=new Date(mat);const end=now<m?now:m;const y=Math.max(0,(end-start)/(864e5*365.25));return p*Math.pow(1+r/400,y*4);}
+
+// ── FD maturity lifecycle ────────────────────────────────────────
+// Days until maturity (negative = already matured), null if no date. Date-only comparison.
+export function fdDaysLeft(h){
+  if(!h?.maturity_date) return null;
+  const m=new Date(h.maturity_date); m.setHours(0,0,0,0);
+  const t=new Date(); t.setHours(0,0,0,0);
+  return Math.round((m-t)/864e5);
+}
+// An FD that has reached maturity and the user hasn't renewed / converted / closed yet.
+export function isMaturedFD(h){
+  if(h?.type!=="FD") return false;
+  if((h.maturity_status||"active")!=="active") return false;
+  const d=fdDaysLeft(h);
+  return d!==null && d<=0;
+}
+// Value of an FD: bank-stated maturity_amount once matured (if known), else compounding estimate.
+export function fdValue(h){
+  const d=fdDaysLeft(h);
+  if(d!==null && d<=0 && Number(h.maturity_amount)>0) return Number(h.maturity_amount);
+  return calcFD(h.principal,h.interest_rate,h.start_date,h.maturity_date);
+}
 export function calcAccr(p,rate,s){const y=Math.max(0,(new Date()-new Date(s))/(864e5*365.25));return p*Math.pow(1+rate/100,y);}
 
 export function isUSDHolding(h) {
@@ -41,7 +63,7 @@ export function nativeCurrency(h) {
 export function getVal(h){
   const units = h.net_units!=null ? h.net_units : (h.units||0);
   switch(h.type){
-    case"FD":          return calcFD(h.principal,h.interest_rate,h.start_date,h.maturity_date);
+    case"FD":          return fdValue(h);
     case"PPF":         return calcAccr(h.principal,_ppfRate,h.start_date);
     case"EPF":         return calcAccr(h.principal,_epfRate,h.start_date);
     case"MF":          return units*(h.current_nav||h.purchase_nav||0);

@@ -358,11 +358,32 @@ async function execTool(name, input, userId) {
           .select("name, member_name, principal, current_value, interest_rate, start_date, maturity_date, currency")
           .eq("user_id", userId)
           .eq("type", "FD")
+          .or("maturity_status.is.null,maturity_status.eq.active")
           .gte("maturity_date", today)
           .lte("maturity_date", maxDate)
           .order("maturity_date", { ascending: true });
 
-        if (!fds?.length) return { message: `No FDs maturing in the next ${lookAheadDays} days.` };
+        // Already matured but the user hasn't renewed / converted / closed it — idle money.
+        const { data: maturedRows } = await supabase
+          .from("holdings")
+          .select("name, member_name, principal, current_value, maturity_amount, interest_rate, maturity_date, currency")
+          .eq("user_id", userId)
+          .eq("type", "FD")
+          .or("maturity_status.is.null,maturity_status.eq.active")
+          .lt("maturity_date", today)
+          .order("maturity_date", { ascending: true });
+        const matured_unresolved = (maturedRows || []).map(fd => ({
+          name:           fd.name,
+          member:         fd.member_name || null,
+          maturity_date:  fd.maturity_date,
+          days_since_maturity: Math.round((new Date() - new Date(fd.maturity_date)) / 864e5),
+          maturity_value: Math.round(Number(fd.maturity_amount || fd.current_value || fd.principal || 0)),
+          currency:       fd.currency || "INR",
+          action_needed:  "Renew, convert to cash, or mark closed in Holdings",
+        }));
+
+        if (!fds?.length && !matured_unresolved.length) return { message: `No FDs maturing in the next ${lookAheadDays} days.` };
+        if (!fds?.length) return { message: `No FDs maturing in the next ${lookAheadDays} days, but ${matured_unresolved.length} already matured and still need action.`, matured_unresolved };
 
         const totalMaturingINR = fds.reduce((s, fd) => s + Number(fd.current_value || fd.principal || 0), 0);
 
@@ -370,6 +391,7 @@ async function execTool(name, input, userId) {
           look_ahead_days: lookAheadDays,
           count:           fds.length,
           total_maturing_inr: Math.round(totalMaturingINR),
+          matured_unresolved,
           fds: fds.map(fd => {
             const daysLeft = Math.round((new Date(fd.maturity_date) - new Date()) / 864e5);
             return {

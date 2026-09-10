@@ -76,7 +76,7 @@ router.post("/check-cas-email", cronAuth, async (req, res) => {
   }
 });
 
-// ── FD Expiry Alerts (7 / 30 / 60 day windows) ───────────────────────────────
+// ── FD Expiry Alerts (60 / 30 / 7 days before + on maturity day) ─────────────
 // POST /api/cron/fd-alerts   (x-cron-secret header required)
 // Env: CRON_SECRET, RESEND_API_KEY, APP_URL (e.g. https://app.wealthlenshub.com)
 
@@ -85,12 +85,13 @@ router.post("/fd-alerts", cronAuth, async (req, res) => {
   if (!resendKey) return res.status(500).json({ error: "RESEND_API_KEY not configured" });
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const WINDOWS = [7, 30, 60];
+  const WINDOWS = [0, 7, 30, 60];   // 0 = matured today → "action needed"
 
   const { data: fds, error } = await supabase
     .from("holdings")
-    .select("id, name, user_id, principal, interest_rate, maturity_date")
+    .select("id, name, user_id, principal, interest_rate, maturity_date, maturity_amount")
     .eq("type", "FD")
+    .or("maturity_status.is.null,maturity_status.eq.active")   // skip renewed/converted/closed
     .not("maturity_date", "is", null);
 
   if (error) return res.status(500).json({ error: error.message });
@@ -110,6 +111,15 @@ router.post("/fd-alerts", cronAuth, async (req, res) => {
     const matFormatted = matDate.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
     const principalFmt = fd.principal ? `₹${Number(fd.principal).toLocaleString("en-IN")}` : "N/A";
     const urgencyColor = dLeft <= 7 ? "#e07c5a" : dLeft <= 30 ? "#f0a050" : "#4caf9a";
+    const isToday      = dLeft === 0;
+    const whenText     = isToday ? "matures <strong>today</strong>" : `matures in <span style="color:${urgencyColor};font-weight:700"> ${dLeft} day${dLeft!==1?"s":""}</span>`;
+    const subject      = isToday
+      ? `🏦 FD Matured: "${fd.name}" — decide what to do with the proceeds`
+      : `⏰ FD Alert: "${fd.name}" matures in ${dLeft} day${dLeft!==1?"s":""}`;
+    const notifTitle   = isToday ? `FD Matured: "${fd.name}" — action needed` : `FD Alert: "${fd.name}" matures in ${dLeft} day${dLeft!==1?"s":""}`;
+    const notifBody    = isToday
+      ? `"${fd.name}" matured today. Open Holdings to renew it, move the proceeds to cash, or mark it closed.`
+      : `Your Fixed Deposit "${fd.name}" matures on ${matFormatted}.`;
     const appUrl = process.env.APP_URL || "https://app.wealthlenshub.com";
 
     const html = `
@@ -119,9 +129,8 @@ router.post("/fd-alerts", cronAuth, async (req, res) => {
           <div style="color:#fff;font-size:1.1rem;font-weight:600;margin-top:.5rem">FD Maturity Reminder</div>
         </div>
         <div style="background:#F4F7F5;padding:1.5rem;border-radius:0 0 12px 12px;border:1px solid #D1E8E0">
-          <p>Your Fixed Deposit <strong>${fd.name}</strong> matures in
-            <span style="color:${urgencyColor};font-weight:700"> ${dLeft} day${dLeft!==1?"s":""}</span>.
-          </p>
+          <p>Your Fixed Deposit <strong>${fd.name}</strong> ${whenText}.</p>
+          ${isToday ? `<p style="font-weight:600">The money is now idle until you act. In WealthLens Hub → Holdings you can <em>Renew</em>, <em>Convert to cash</em>, or <em>Mark closed</em>.</p>` : ""}
           <table style="width:100%;border-collapse:collapse;margin:1rem 0">
             <tr style="border-bottom:1px solid #D1E8E0">
               <td style="padding:.5rem;color:#5E7A72;font-size:.85rem">Maturity Date</td>
@@ -145,12 +154,12 @@ router.post("/fd-alerts", cronAuth, async (req, res) => {
         body: JSON.stringify({
           from: "WealthLens Hub <alerts@wealthlenshub.com>",
           to: [toEmail],
-          subject: `⏰ FD Alert: "${fd.name}" matures in ${dLeft} day${dLeft!==1?"s":""}`,
+          subject,
           html,
         }),
       });
       const rj = await r.json();
-      if (r.ok) await insertNotification(fd.user_id, "fd_alert", `FD Alert: "${fd.name}" matures in ${dLeft} day${dLeft!==1?"s":""}`, `Your Fixed Deposit "${fd.name}" matures on ${matFormatted}.`, "/holdings");
+      if (r.ok) await insertNotification(fd.user_id, "fd_alert", notifTitle, notifBody, "/holdings");
       results.push({ fd: fd.id, name: fd.name, dLeft, status: r.ok ? "sent" : "failed", resendId: rj.id });
     } catch (e) {
       results.push({ fd: fd.id, name: fd.name, dLeft, status: "error", error: e.message });

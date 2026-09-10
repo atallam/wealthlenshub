@@ -5,6 +5,71 @@ import { ClipboardList, Paperclip, Pencil, X as XIcon, Bell } from "lucide-react
 import ConcallPanel from "./ConcallPanel.jsx";
 import SwipeableRow from "../../components/shared/SwipeableRow.jsx";
 import MFOverlapPanel from "./MFOverlapPanel.jsx";
+import { isMaturedFD, fdDaysLeft, fdValue } from "../../utils.js";
+
+// ── Matured FDs — action needed ───────────────────────────────────────────────
+// An FD past its maturity date is idle money until the user decides what to do.
+// Three exits: Renew (same row, next term), Convert to cash, Mark closed.
+
+function MaturedFDBanner({ maturedH, renewFD, resolveFD, fmtNative, valNativeCache }) {
+  if (!maturedH.length) return null;
+  const total = maturedH.reduce((s, h) => s + (valNativeCache?.get(h.id) ?? fdValue(h)), 0);
+  const allINR = maturedH.every(h => !h.currency || h.currency === "INR");
+  const btn = (bg, fg, border) => ({
+    padding: ".25rem .6rem", background: bg, border: `1px solid ${border}`, color: fg,
+    borderRadius: 5, fontSize: ".68rem", fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif", whiteSpace: "nowrap",
+  });
+  return (
+    <div style={{
+      background: "linear-gradient(135deg,rgba(224,124,90,.12),rgba(201,168,76,.06))",
+      border: "1px solid rgba(224,124,90,.4)",
+      borderRadius: 8, padding: ".6rem .85rem", marginBottom: ".65rem",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: ".6rem", flexWrap: "wrap", marginBottom: ".4rem" }}>
+        <span style={{ fontSize: "1.1rem", lineHeight: 1 }}>🏦</span>
+        <span style={{ fontSize: ".78rem", color: "#e07c5a", fontWeight: 700 }}>
+          {maturedH.length} FD{maturedH.length > 1 ? "s have" : " has"} matured — decide what to do with the money
+        </span>
+        {allINR && <span style={{ fontSize: ".7rem", color: "var(--text-muted)" }}>· {fmtNative ? fmtNative(total, maturedH[0]) : Math.round(total).toLocaleString("en-IN")} sitting idle</span>}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: ".3rem" }}>
+        {maturedH.map(h => {
+          const val   = valNativeCache?.get(h.id) ?? fdValue(h);
+          const ago   = -fdDaysLeft(h);
+          const canAct = !h.source || h.source === "manual";
+          return (
+            <div key={h.id} style={{
+              display: "flex", alignItems: "center", gap: ".6rem", flexWrap: "wrap",
+              padding: ".4rem .6rem", borderRadius: 6, background: "var(--bg-muted)", border: "1px solid var(--border)",
+            }}>
+              <div style={{ flex: 1, minWidth: 160 }}>
+                <div style={{ fontSize: ".78rem", color: "var(--text)", fontWeight: 600 }}>{h.name}</div>
+                <div style={{ fontSize: ".68rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                  {fmtNative ? fmtNative(val, h) : Math.round(val).toLocaleString("en-IN")}
+                  {h.maturity_amount ? " (bank-stated)" : " (estimated)"}
+                  {" · matured "}{ago === 0 ? "today" : `${ago}d ago`}
+                  {h.interest_rate ? ` · ${h.interest_rate}%` : ""}
+                </div>
+              </div>
+              {canAct ? (
+                <div style={{ display: "flex", gap: ".35rem", flexWrap: "wrap" }}>
+                  <button title="Same FD, next term — pre-fills the form with the proceeds as new principal"
+                    onClick={() => renewFD(h, val)} style={btn("rgba(76,175,154,.15)", "#4caf9a", "rgba(76,175,154,.4)")}>↻ Renew</button>
+                  <button title="Proceeds withdrawn to a bank account — becomes a Cash holding"
+                    onClick={() => resolveFD(h, "cash", val)} style={btn("rgba(201,168,76,.15)", "#c9a84c", "rgba(201,168,76,.4)")}>→ Convert to cash</button>
+                  <button title="No longer tracked — removed from portfolio, kept in history"
+                    onClick={() => resolveFD(h, "closed", val)} style={btn("rgba(224,124,90,.12)", "#e07c5a", "rgba(224,124,90,.4)")}>✕ Mark closed</button>
+                </div>
+              ) : (
+                <span style={{ fontSize: ".65rem", color: "var(--text-muted)" }}>imported — re-import to update</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 // ── Per-holding alert panel ───────────────────────────────────────────────────
 
@@ -133,6 +198,8 @@ export default function HoldingsTab({
   toggleSort,
   editH,
   deleteHolding,
+  resolveFD,
+  renewFD,
   setTxnForm,
   setTxnHolding,
   setArtifactHolding,
@@ -172,6 +239,8 @@ export default function HoldingsTab({
   // Stale detection — computed before render so JSX can reference staleH + displayH
   const staleH   = computeStale(visH, ST);
   const staleIds = new Set(staleH.map(h => h.id));
+  // Matured, unresolved FDs — surfaced above everything else on this tab
+  const maturedH = visH.filter(isMaturedFD).sort((a, b) => fdDaysLeft(a) - fdDaysLeft(b));
   const displayH = showStaleOnly ? visH.filter(h => staleIds.has(h.id)) : visH;
 
   // ── Price freshness badge helpers ─────────────────────────────
@@ -260,6 +329,9 @@ export default function HoldingsTab({
           </div>
         );
       })()}
+      {/* ── Matured FDs — action needed ── */}
+      <MaturedFDBanner maturedH={maturedH} renewFD={renewFD} resolveFD={resolveFD}
+        fmtNative={fmtNative} valNativeCache={valNativeCache} />
       {/* ── Stale Holdings Nudge Banner ── */}
       {staleH.length > 0 && (
           <div style={{

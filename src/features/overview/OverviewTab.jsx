@@ -71,10 +71,13 @@ function PortfolioBrief({ allHoldings, allCur, allInv, totPct, members, mSum,
     // Upcoming in 30 days (scoped)
     const now = new Date();
     const upcoming = scopedHoldings
-      .filter(h => h.type === 'FD' && h.maturity_date)
+      .filter(h => h.type === 'FD' && h.maturity_date && (h.maturity_status || 'active') === 'active')
       .map(h => ({ name: h.name, days: Math.round((new Date(h.maturity_date) - now) / 864e5), val: valINRCache.get(h.id) || 0 }))
-      .filter(h => h.days >= 0 && h.days <= 30)
-      .map(h => `FD "${h.name}" matures in ${h.days}d (${fmtCr(h.val)})`);
+      .filter(h => h.days <= 30)
+      .sort((a, b) => a.days - b.days)
+      .map(h => h.days < 0
+        ? `FD "${h.name}" matured ${-h.days}d ago (${fmtCr(h.val)}) — action needed`
+        : `FD "${h.name}" matures in ${h.days}d (${fmtCr(h.val)})`);
     const goalsDue = (goals || [])
       .filter(g => g.targetDate)
       .map(g => ({ name: g.name, days: Math.round((new Date(g.targetDate) - now) / 864e5) }))
