@@ -42,13 +42,23 @@ const NOT_CLOSED = "maturity_status.is.null,maturity_status.neq.closed";
 
 /** List holdings with artifacts + transactions, enriched with SIP/net-unit fields. */
 export async function list(userId) {
-  let { data, error } = await supabase
-    .from("holdings")
-    .select("*, artifacts(id,file_name,file_type,file_size,description,uploaded_at), transactions(id,txn_type,units,price,txn_date,notes,created_at)")
-    .eq("user_id", userId)
-    .or(NOT_CLOSED)
-    .order("created_at", { ascending: true });
-  if (error) ({ data, error } = await supabase.from("holdings").select("*, artifacts(id,file_name,file_type,file_size,description,uploaded_at)").eq("user_id", userId).or(NOT_CLOSED).order("created_at", { ascending: true }));
+  const FULL  = "*, artifacts(id,file_name,file_type,file_size,description,uploaded_at), transactions(id,txn_type,units,price,txn_date,notes,created_at)";
+  const BASIC = "*, artifacts(id,file_name,file_type,file_size,description,uploaded_at)";
+  const q = (sel, withFilter) => {
+    let b = supabase.from("holdings").select(sel).eq("user_id", userId);
+    if (withFilter) b = b.or(NOT_CLOSED);
+    return b.order("created_at", { ascending: true });
+  };
+  // Try with the closed-FD filter first; if the maturity_status column doesn't
+  // exist yet (migration 0028 not run), fall back to the unfiltered query so the
+  // portfolio never comes back empty because of a missing column.
+  let { data, error } = await q(FULL, true);
+  if (error) ({ data, error } = await q(BASIC, true));
+  if (error) {
+    console.warn("holdings.list: closed-FD filter failed (run migrations/0028_fd_maturity.sql):", error.message);
+    ({ data, error } = await q(FULL, false));
+    if (error) ({ data, error } = await q(BASIC, false));
+  }
   if (error) throw new Error(error.message);
   return enrichHoldings(data).map((h) =>
     h.type === "MF"

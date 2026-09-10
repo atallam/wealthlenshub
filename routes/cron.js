@@ -87,12 +87,18 @@ router.post("/fd-alerts", cronAuth, async (req, res) => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const WINDOWS = [0, 7, 30, 60];   // 0 = matured today → "action needed"
 
-  const { data: fds, error } = await supabase
+  let { data: fds, error } = await supabase
     .from("holdings")
     .select("id, name, user_id, principal, interest_rate, maturity_date, maturity_amount")
     .eq("type", "FD")
     .or("maturity_status.is.null,maturity_status.eq.active")   // skip renewed/converted/closed
     .not("maturity_date", "is", null);
+  if (error) {
+    // maturity_status column missing (migration 0028 not run yet) → scan all FDs
+    ({ data: fds, error } = await supabase.from("holdings")
+      .select("id, name, user_id, principal, interest_rate, maturity_date")
+      .eq("type", "FD").not("maturity_date", "is", null));
+  }
 
   if (error) return res.status(500).json({ error: error.message });
 

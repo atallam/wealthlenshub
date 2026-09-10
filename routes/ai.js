@@ -353,7 +353,7 @@ async function execTool(name, input, userId) {
         const today    = new Date().toISOString().slice(0, 10);
         const maxDate  = new Date(Date.now() + lookAheadDays * 864e5).toISOString().slice(0, 10);
 
-        const { data: fds } = await supabase
+        let { data: fds, error: fdErr } = await supabase
           .from("holdings")
           .select("name, member_name, principal, current_value, interest_rate, start_date, maturity_date, currency")
           .eq("user_id", userId)
@@ -362,9 +362,17 @@ async function execTool(name, input, userId) {
           .gte("maturity_date", today)
           .lte("maturity_date", maxDate)
           .order("maturity_date", { ascending: true });
+        if (fdErr) ({ data: fds } = await supabase   // column missing → unfiltered
+          .from("holdings")
+          .select("name, member_name, principal, current_value, interest_rate, start_date, maturity_date, currency")
+          .eq("user_id", userId)
+          .eq("type", "FD")
+          .gte("maturity_date", today)
+          .lte("maturity_date", maxDate)
+          .order("maturity_date", { ascending: true }));
 
         // Already matured but the user hasn't renewed / converted / closed it — idle money.
-        const { data: maturedRows } = await supabase
+        const { data: maturedRows } = await supabase   // errors → null → [] (column missing = nothing to report)
           .from("holdings")
           .select("name, member_name, principal, current_value, maturity_amount, interest_rate, maturity_date, currency")
           .eq("user_id", userId)
