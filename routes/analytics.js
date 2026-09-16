@@ -79,7 +79,7 @@ router.get("/xirr", auth, async (req, res) => {
       let stats, basis;
       if (txns.length) {
         stats = ledgerStats(ledgerInr(txns, h, fx), cv, today);
-        basis = txns.some((t) => t.source_type === "OPENING") ? "ledger_approx" : "ledger";
+        basis = txns.some((t) => t.source_type === "OPENING" || t.source_type === "INFERRED") ? "ledger_approx" : "ledger";
         const flows = cashflowsFromLedger(ledgerInr(txns, h, fx), cv, today);
         (pooled[h.member_id || "unassigned"] ||= []).push(...flows);
         allFlows.push(...flows);
@@ -146,8 +146,10 @@ router.get("/holdings/:id", auth, async (req, res) => {
 
     res.json({
       holding_id: h.id, name: h.name, type: h.type, asset_class: h.asset_class || "EQUITY", holding_status: h.holding_status || "active",
-      basis: txns.length ? (txns.some((t) => t.source_type === "OPENING") ? "ledger_approx" : "ledger") : "none",
+      basis: txns.length ? (txns.some((t) => t.source_type === "OPENING" || t.source_type === "INFERRED") ? "ledger_approx" : "ledger") : "none",
       ledger_rows: txns.length,
+      inferred_rows: txns.filter((t) => t.source_type === "INFERRED").length,
+      opening_rows: txns.filter((t) => t.source_type === "OPENING").length,
       ledger_sources: [...new Set(txns.map((t) => t.source || "manual"))],
       stats,
       lots: {

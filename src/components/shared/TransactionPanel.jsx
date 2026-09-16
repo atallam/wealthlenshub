@@ -306,7 +306,7 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
                         ? "₹0"
                         : `₹${(Number(t.units)*Number(t.price)).toLocaleString("en-IN",{maximumFractionDigits:0})}`;
                     return (
-                    <tr key={t.id}>
+                    <tr key={t.id} style={t.superseded_by ? { opacity: .45 } : undefined} title={t.superseded_by ? `Replaced by a CAS statement row — was ${t.superseded_snapshot?.units} units @ ${t.superseded_snapshot?.price}` : undefined}>
                       <td className="mono dim">{t.txn_date}</td>
                       <td><span style={{fontSize:".65rem",padding:"2px 7px",borderRadius:3,fontWeight:600,background:ts.bg,color:ts.color}}>{t.txn_type}</span></td>
                       <td className="r mono">{isDivRow&&!t.units?"—":Number(t.units).toFixed(isDivRow?0:4)}</td>
@@ -318,7 +318,8 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
                       }
                       <td className="r mono" style={{color:isDivRow?"#5a9ce0":"var(--text)"}}>{rowTotal}</td>
                       <td className="dim" style={{maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description||t.notes||""}>
-                        {t.source==="cas"&&<span style={{fontSize:".58rem",padding:"1px 4px",borderRadius:3,background:"rgba(76,175,154,.15)",color:"#4caf9a",marginRight:4}}>{t.source_type==="OPENING"?"OPENING ≈":"CAS"}</span>}
+                        {t.source==="cas"&&<span style={{fontSize:".58rem",padding:"1px 4px",borderRadius:3,background:t.source_type==="INFERRED"?"rgba(201,168,76,.15)":"rgba(76,175,154,.15)",color:t.source_type==="INFERRED"?"#c9a84c":"#4caf9a",marginRight:4}}>{t.source_type==="OPENING"?"OPENING ≈":t.source_type==="INFERRED"?"INFERRED ≈":"CAS"}</span>}
+                        {t.superseded_by&&<span style={{fontSize:".58rem",padding:"1px 4px",borderRadius:3,background:"rgba(128,128,128,.15)",color:"var(--text-dim)",marginRight:4}}>REPLACED</span>}
                         {t.description||t.notes||"—"}
                       </td>
                       <td>{t.source==="cas"

@@ -19,6 +19,7 @@
 import { randomUUID } from "crypto";
 import { supabase } from "../lib/db.js";
 import { groupByMember, diffCas, buildApplyGroups } from "../lib/casDiff.js";
+import { inferLedgerGaps } from "./ledgerInfer.service.js";
 
 const VALID_DEPOSITORIES = new Set(["NSDL", "CDSL", "CAMS", "KFINTECH"]);
 
@@ -112,6 +113,15 @@ export async function applyCasImport(userId, body) {
   }
   const r = data || {};
 
+  // Phase 4: fill ledger gaps the statement reveals (unit changes no row explains).
+  // Best-effort — a NAV lookup failure prices the row at the statement NAV instead.
+  let infer = { inferred: 0, updated: 0, skipped: 0, details: [] };
+  if (body.infer_ledger !== false && body.cas_statement_date) {
+    try {
+      infer = await inferLedgerGaps(userId, importId, { statementDate: body.cas_statement_date, periodStart: body.cas_period_start || null });
+    } catch (e) { console.warn("[casImport] ledger inference failed:", e.message); }
+  }
+
   // Idempotency / audit trail (best-effort, never blocks the import).
   try {
     await supabase.from("import_logs").insert({
@@ -122,7 +132,8 @@ export async function applyCasImport(userId, body) {
       statement_hash: body.statement_hash || null,
       depository, statement_date: body.cas_statement_date || null,
       summary: { ...r, import_id: importId, import_method: body.import_method || "manual_upload",
-                 members: applyGroups.map((g) => g.member_id), unmatched: unmatched.length },
+                 members: applyGroups.map((g) => g.member_id), unmatched: unmatched.length,
+                 inferred: infer.inferred + infer.updated },
     });
   } catch (e) { console.warn("[casImport] import_logs insert failed:", e.message); }
 
@@ -136,6 +147,10 @@ export async function applyCasImport(userId, body) {
     exited_count:   r.exited   || 0,
     txns_inserted:  r.txns_inserted || 0,
     txns_existing:  r.txns_existing || 0,
+    manual_superseded: r.manual_superseded || 0,
+    inferred_replaced: r.inferred_replaced || 0,
+    inferred_count: infer.inferred + infer.updated,
+    inferred: infer.details.map((d) => ({ name: d.name, txn_type: d.txn_type, units: d.units, txn_date: d.txn_date, estimated: d.estimated })),
     deleted_count:  r.deleted  || 0,
     legacy_retired: r.legacy_retired || 0,
     skipped_older:  r.skipped_older || 0,

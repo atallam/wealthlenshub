@@ -446,6 +446,14 @@ export default function CASImportModal({
             {casResult.inserted_count > 0 && <div style={{ fontSize: ".75rem", color: "var(--text)" }}>+ {casResult.inserted_count} new</div>}
             {casResult.updated_count > 0 && <div style={{ fontSize: ".75rem", color: "#5a9ce0" }}>refreshed {casResult.updated_count}</div>}
             {casResult.exited_count > 0 && <div style={{ fontSize: ".75rem", color: "#e07c5a" }}>{casResult.exited_count} marked exited</div>}
+            {casResult.inferred_count > 0 && (
+              <div style={{ fontSize: ".75rem", color: "#c9a84c" }}>
+                {casResult.inferred_count} purchase{casResult.inferred_count > 1 ? "s" : ""} inferred from unit changes since your last detailed statement
+                {casResult.inferred?.length > 0 && <span style={{ opacity: .8 }}> ({casResult.inferred.slice(0, 3).map(i => `${i.name.split(" ").slice(0, 3).join(" ")} ${i.units}u on ${i.txn_date}`).join("; ")}{casResult.inferred.length > 3 ? "…" : ""})</span>}
+              </div>
+            )}
+            {casResult.manual_superseded > 0 && <div style={{ fontSize: ".72rem", color: "var(--text)", opacity: .8 }}>{casResult.manual_superseded} hand-entered transaction{casResult.manual_superseded > 1 ? "s" : ""} replaced by statement rows (originals kept, greyed out)</div>}
+            {casResult.inferred_replaced > 0 && <div style={{ fontSize: ".72rem", color: "var(--text)", opacity: .8 }}>{casResult.inferred_replaced} inferred row{casResult.inferred_replaced > 1 ? "s" : ""} replaced by exact statement rows</div>}
             {(casResult.txns_inserted > 0 || casResult.txns_existing > 0) && (
               <div style={{ fontSize: ".75rem", color: "#a084ca" }}>
                 ledger: {casResult.txns_inserted} new transaction{casResult.txns_inserted !== 1 ? "s" : ""}{casResult.txns_existing > 0 ? `, ${casResult.txns_existing} already recorded` : ""} — XIRR and tax lots are now available per holding

@@ -40,7 +40,6 @@ export default function LedgerInsights({ holdingId, refreshKey = 0 }) {
 
   const s = data.stats || {};
   const lots = data.lots || {};
-  const approx = data.basis === "ledger_approx";
   const soon = lots.turning_ltcg_soon || [];
   const gainColor = (v) => (v > 0 ? "#4caf9a" : v < 0 ? "#e07c5a" : "var(--text)");
 
@@ -50,7 +49,8 @@ export default function LedgerInsights({ holdingId, refreshKey = 0 }) {
         <div style={{ fontSize: ".66rem", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--text-dim)", fontWeight: 600 }}>
           Performance · from {data.ledger_rows} ledger row{data.ledger_rows !== 1 ? "s" : ""}
           {data.ledger_sources?.includes("cas") && <span style={{ marginLeft: 6, fontSize: ".6rem", padding: ".05rem .35rem", borderRadius: 3, background: "rgba(76,175,154,.15)", color: "#4caf9a", letterSpacing: 0, textTransform: "none" }}>CAS ledger</span>}
-          {approx && <span title="Statement started with units already held; their cost is approximated. Import a since-inception CAS for exact lots." style={{ marginLeft: 6, fontSize: ".6rem", padding: ".05rem .35rem", borderRadius: 3, background: "rgba(201,168,76,.15)", color: "#c9a84c", letterSpacing: 0, textTransform: "none", cursor: "help" }}>≈ opening cost approx.</span>}
+          {data.opening_rows > 0 && <span title="Statement started with units already held; their cost is approximated. Import a since-inception CAS for exact lots." style={{ marginLeft: 6, fontSize: ".6rem", padding: ".05rem .35rem", borderRadius: 3, background: "rgba(201,168,76,.15)", color: "#c9a84c", letterSpacing: 0, textTransform: "none", cursor: "help" }}>≈ opening cost approx.</span>}
+          {data.inferred_rows > 0 && <span title="Some purchases were inferred from unit changes between statements (dated to your SIP day, priced at that day's NAV). A detailed CAS covering those months replaces them with exact rows." style={{ marginLeft: 6, fontSize: ".6rem", padding: ".05rem .35rem", borderRadius: 3, background: "rgba(201,168,76,.15)", color: "#c9a84c", letterSpacing: 0, textTransform: "none", cursor: "help" }}>≈ {data.inferred_rows} inferred</span>}
         </div>
         <span style={{ fontSize: ".62rem", padding: ".1rem .4rem", borderRadius: 3, background: "rgba(160,132,202,.12)", color: "#a084ca" }}>{data.asset_class}</span>
       </div>

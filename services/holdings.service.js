@@ -82,7 +82,8 @@ export async function listTransactions(userId, holdingId) {
   const q = (sel) => supabase.from("transactions").select(sel)
     .eq("holding_id", holdingId).eq("user_id", userId).order("txn_date", { ascending: true });
   // Ledger columns arrive with migration 0030; fall back to the base set if it hasn't run.
-  let { data, error } = await q("id,txn_type,units,price,price_usd,amount,txn_date,notes,created_at,source,source_type,description");
+  let { data, error } = await q("id,txn_type,units,price,price_usd,amount,txn_date,notes,created_at,source,source_type,description,superseded_by,superseded_snapshot");
+  if (error) ({ data, error } = await q("id,txn_type,units,price,price_usd,amount,txn_date,notes,created_at,source,source_type,description"));
   if (error) ({ data, error } = await q("id,txn_type,units,price,price_usd,txn_date,notes,created_at"));
   if (error) throw new Error(error.message);
   return data || [];
