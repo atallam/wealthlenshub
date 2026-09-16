@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabase.js';
 import MFTransactionForm from './MFTransactionForm.jsx';
+import LedgerInsights from './LedgerInsights.jsx';
 import { FG } from './Overlay.jsx';
 
 /* ══════════════════════════════════════════════
@@ -148,6 +149,9 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
             <button className="delbtn" style={{fontSize:"1rem"}} onClick={onClose}>✕</button>
           </div>
         </div>
+
+        {/* ── XIRR + tax lots derived from the ledger (Phase 3) ── */}
+        {!sipMode&&<LedgerInsights holdingId={holding.id} refreshKey={(freshTxns||[]).length} />}
 
         {/* ── SIP BULK ENTRY MODE ── */}
         {sipMode&&(
@@ -313,8 +317,13 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
                           : <td className="r mono dim">{isDivRow?"—":`₹${Number(t.price).toLocaleString("en-IN",{maximumFractionDigits:2})}`}</td>
                       }
                       <td className="r mono" style={{color:isDivRow?"#5a9ce0":"var(--text)"}}>{rowTotal}</td>
-                      <td className="dim" style={{maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.notes||"—"}</td>
-                      <td><button className="delbtn" onClick={()=>onDeleteTxn(t.id, holding.id)}>✕</button></td>
+                      <td className="dim" style={{maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description||t.notes||""}>
+                        {t.source==="cas"&&<span style={{fontSize:".58rem",padding:"1px 4px",borderRadius:3,background:"rgba(76,175,154,.15)",color:"#4caf9a",marginRight:4}}>{t.source_type==="OPENING"?"OPENING ≈":"CAS"}</span>}
+                        {t.description||t.notes||"—"}
+                      </td>
+                      <td>{t.source==="cas"
+                        ? <span title="Imported from a CAS statement — it would come back on the next import. Re-import a corrected statement instead." style={{fontSize:".7rem",opacity:.35,cursor:"not-allowed"}}>🔒</span>
+                        : <button className="delbtn" onClick={()=>onDeleteTxn(t.id, holding.id)}>✕</button>}</td>
                     </tr>
                   );})}
                 </tbody>

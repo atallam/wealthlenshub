@@ -24,6 +24,7 @@ import snapshotsRouter    from "./routes/snapshots.js";
 import gmailRouter        from "./routes/gmail.js";
 import fdRouter           from "./routes/fd.js";
 import taxRouter          from "./routes/tax.js";
+import analyticsRouter    from "./routes/analytics.js";   // XIRR + FIFO lots from the transaction ledger
 import concallRouter      from "./routes/concall.js";
 import exportRouter       from "./routes/export.js";
 import alertsRouter       from "./routes/alerts.js";
@@ -85,6 +86,7 @@ app.use("/api/snapshots",     snapshotsRouter);
 app.use("/api/gmail",         gmailRouter);
 app.use("/api/fd",            fdRouter);
 app.use("/api/tax",           taxRouter);
+app.use("/api/analytics",     analyticsRouter);
 app.use("/api/concall",       concallRouter);
 app.use("/api/export",        exportRouter);
 app.use("/api/alerts",        alertsRouter);

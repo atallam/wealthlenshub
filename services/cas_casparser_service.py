@@ -43,7 +43,110 @@ Requires:
 import sys
 import json
 import re
+import hashlib
 from pathlib import Path
+
+
+# ── Transaction ledger (detailed CAMS/KFin CAS) ───────────────────────────────
+# casparser TransactionType → WealthLens txn_type. Cash-only / bookkeeping rows
+# are dropped from the ledger (they carry no units); the raw type is preserved
+# in source_type so nothing is lost for audit.
+TXN_MAP = {
+    "PURCHASE":           "BUY",
+    "PURCHASE_SIP":       "BUY",
+    "SWITCH_IN":          "BUY",
+    "SWITCH_IN_MERGER":   "BUY",
+    "DIVIDEND_REINVEST":  "BUY",
+    "GIFT_IN":            "BUY",
+    "REDEMPTION":         "SELL",
+    "SWITCH_OUT":         "SELL",
+    "SWITCH_OUT_MERGER":  "SELL",
+    "GIFT_OUT":           "SELL",
+    "DIVIDEND_PAYOUT":    "DIVIDEND",
+}
+SKIP_TXN = {"STT_TAX", "STAMP_DUTY_TAX", "TDS_TAX", "SEGREGATION", "MISC", "UNKNOWN", "REVERSAL"}
+
+
+def classify_scheme(type_str: str, txns: list) -> str:
+    """EQUITY | DEBT | HYBRID | UNKNOWN from the CAS scheme-type text, falling
+    back to casparser's STT heuristic (equity redemptions attract STT)."""
+    t = (type_str or "").lower()
+    if re.search(r"equity|elss|index|etf|flexi|multi.?cap|small.?cap|mid.?cap|large.?cap|sector|thematic|focused|value|contra|dividend yield", t):
+        return "EQUITY"
+    if re.search(r"debt|liquid|gilt|bond|money|overnight|ultra|short|duration|credit|banking.?&.?psu|corporate|floater|income", t):
+        return "DEBT"
+    if re.search(r"hybrid|balanced|arbitrage|fof|fund of fund|asset allocation|solution|retirement|children", t):
+        return "HYBRID"
+    types = {str(x.get("type") or "") for x in (txns or [])}
+    if "STT_TAX" in types:
+        return "EQUITY"
+    return "UNKNOWN"
+
+
+def build_ledger(folio_num: str, isin: str, scheme: dict, period_from: str, warnings: list) -> list:
+    """Turn a detailed-CAS scheme's transaction list into ledger rows.
+
+    external_key is a stable hash of (folio, isin, date, type, units, amount)
+    so re-importing the same or an overlapping statement is idempotent.
+    If the statement does not start at inception (scheme.open > 0) an OPENING
+    row is emitted so net units still reconcile to the statement; its cost is
+    approximated from the closing cost figure and flagged approx_cost.
+    """
+    rows = []
+    txns = scheme.get("transactions") or []
+    open_units = f(scheme.get("open")) or 0.0
+    seen = set()
+
+    if open_units > 0.000001:
+        val   = scheme.get("valuation") or {}
+        cost  = f(val.get("cost")) or 0.0
+        # cost of units bought inside the statement window
+        in_window_cost = sum((f(x.get("amount")) or 0.0) for x in txns
+                             if TXN_MAP.get(str(x.get("type") or "")) == "BUY")
+        in_window_units = sum(abs(f(x.get("units")) or 0.0) for x in txns
+                              if TXN_MAP.get(str(x.get("type") or "")) == "BUY")
+        approx_cost = max(0.0, cost - in_window_cost)
+        approx_nav  = (approx_cost / open_units) if approx_cost > 0 else None
+        if approx_nav is None:
+            first_nav = next((f(x.get("nav")) for x in txns if f(x.get("nav"))), None)
+            approx_nav = first_nav or 0.0
+        key = hashlib.sha1(f"{folio_num}|{isin}|OPENING|{open_units:.4f}".encode()).hexdigest()[:24]
+        rows.append({
+            "external_key": key, "txn_type": "BUY", "source_type": "OPENING",
+            "txn_date": period_from, "units": open_units, "price": round(approx_nav, 4),
+            "amount": round(open_units * approx_nav, 2), "balance_after": open_units,
+            "description": "Opening balance (before this statement) — cost approximated; import a since-inception CAS for exact lots",
+            "approx_cost": True,
+        })
+        warnings.append(f"{scheme.get('scheme', isin)}: statement starts with {open_units:g} units already held — cost basis for those is approximate")
+        _ = in_window_units
+
+    for x in txns:
+        raw_type = str(x.get("type") or "UNKNOWN")
+        if raw_type in SKIP_TXN:
+            continue
+        mapped = TXN_MAP.get(raw_type)
+        if not mapped:
+            continue
+        units  = abs(f(x.get("units")) or 0.0)
+        amount = abs(f(x.get("amount")) or 0.0)
+        nav    = f(x.get("nav"))
+        date   = fmt_date(x.get("date"))
+        if mapped != "DIVIDEND" and units <= 0:
+            continue
+        if nav is None and units > 0 and amount > 0:
+            nav = amount / units
+        key = hashlib.sha1(f"{folio_num}|{isin}|{date}|{raw_type}|{units:.4f}|{amount:.2f}".encode()).hexdigest()[:24]
+        if key in seen:      # identical row twice in one file (rare RTA quirk) — keep once
+            continue
+        seen.add(key)
+        rows.append({
+            "external_key": key, "txn_type": mapped, "source_type": raw_type,
+            "txn_date": date, "units": units, "price": round(nav or 0.0, 4),
+            "amount": round(amount, 2), "balance_after": f(x.get("balance")),
+            "description": (x.get("description") or "").strip()[:200],
+        })
+    return rows
 
 
 def f(v):
@@ -173,6 +276,8 @@ def parse_nsdl(d: dict) -> tuple:
                 "currency":       "INR",
                 "isin":           isin,
                 "account_id":     account_id,
+                "asset_class":    "EQUITY" if asset_type in ("IN_STOCK", "IN_ETF") else "DEBT",
+                "transactions":   [],
                 "_folio":         folio,
                 "_pan":           acc_owner_pan or pan,
                 "_holder_name":   acc_owner_name,
@@ -210,6 +315,8 @@ def parse_nsdl(d: dict) -> tuple:
                 "currency":       "INR",
                 "isin":           isin,
                 "account_id":     account_id,
+                "asset_class":    classify_scheme(mf.get("type"), None),
+                "transactions":   [],
                 "_folio":         folio,
                 "_pan":           acc_owner_pan or pan,
                 "_holder_name":   acc_owner_name,
@@ -225,6 +332,7 @@ def parse_nsdl(d: dict) -> tuple:
 
 def parse_cams(d: dict) -> tuple:
     holdings, warnings = [], []
+    detailed = str(d.get("cas_type") or "").upper() == "DETAILED"
 
     inv = d.get("investor_info") or {}
     inv_name = (inv.get("name") or "").strip()
@@ -268,9 +376,12 @@ def parse_cams(d: dict) -> tuple:
             cost     = f(val.get("cost"))
             cost_nav = (cost / close) if (cost and close) else None
 
+            ledger = build_ledger(folio_num, isin, scheme, period_from, warnings) if detailed else []
             holdings.append({
                 "name":           scheme.get("scheme", ""),
                 "type":           "MF",
+                "asset_class":    classify_scheme(scheme.get("type"), scheme.get("transactions")),
+                "transactions":   ledger,
                 "ticker":         isin,
                 "scheme_code":    scheme.get("amfi") or "",
                 "units":          close,
@@ -394,6 +505,8 @@ def main():
 
     # Use period_to as statement_date (most recent date in period)
     statement_date = period_to or period_from
+    txn_count = sum(len(h.get("transactions") or []) for h in holdings)
+    cas_detail = str(d.get("cas_type") or ("DEMAT" if "accounts" in d else "SUMMARY")).upper()
 
     response = {
         "holdings":          holdings,
@@ -405,6 +518,8 @@ def main():
         "period_start":      period_from,
         "period_end":        period_to,
         "depository":        depository,
+        "cas_detail":        cas_detail,          # DETAILED | SUMMARY | DEMAT
+        "transaction_count": txn_count,
         "holder_member_map": {},
         "password_index":    password_index,
         "_parser":           "casparser",

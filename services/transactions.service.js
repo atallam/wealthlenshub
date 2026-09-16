@@ -76,8 +76,12 @@ export async function importRows(userId, transactions) {
   };
 }
 
-/** Delete one of the user's own transactions. */
+/** Delete one of the user's own transactions (CAS ledger rows are import-owned). */
 export async function remove(userId, id) {
+  const { data: row } = await supabase.from("transactions").select("source").eq("id", id).eq("user_id", userId).maybeSingle();
+  if (row?.source === "cas") {
+    throw Object.assign(new Error("This transaction came from a CAS statement and would be re-created on the next import. Re-import a corrected statement instead."), { status: 403 });
+  }
   const { error } = await supabase.from("transactions").delete().eq("id", id).eq("user_id", userId);
   if (error) throw new Error(error.message);
   return { ok: true };

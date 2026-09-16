@@ -134,6 +134,8 @@ export async function applyCasImport(userId, body) {
     updated_count:  r.updated  || 0,
     unchanged_count: 0,
     exited_count:   r.exited   || 0,
+    txns_inserted:  r.txns_inserted || 0,
+    txns_existing:  r.txns_existing || 0,
     deleted_count:  r.deleted  || 0,
     legacy_retired: r.legacy_retired || 0,
     skipped_older:  r.skipped_older || 0,

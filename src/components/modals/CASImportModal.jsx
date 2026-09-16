@@ -120,7 +120,7 @@ export default function CASImportModal({
             onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}>
             <div style={{ fontSize: "2.2rem", marginBottom: ".6rem" }}>📄</div>
             <div style={{ fontSize: ".85rem", color: "var(--text)", fontWeight: 500 }}>Drag &amp; drop your CAS PDF here</div>
-            <div style={{ fontSize: ".72rem", color: "var(--text)", marginTop: ".4rem" }}>NSDL or CDSL · Password = your PAN</div>
+            <div style={{ fontSize: ".72rem", color: "var(--text)", marginTop: ".4rem" }}>NSDL · CDSL · CAMS / KFintech (detailed CAS adds XIRR &amp; tax lots) · Password = your PAN</div>
             <button className="btns" style={{ marginTop: "1rem", fontSize: ".75rem" }}>Browse File</button>
           </div>
           <input ref={fileRef} type="file" accept=".pdf" style={{ display: "none" }}
@@ -227,10 +227,23 @@ export default function CASImportModal({
                   {chip(sm.exited, "exited", "#e07c5a", "rgba(224,124,90,.15)")}
                   {chip(sm.older, "older than stored", "#e07c5a", "rgba(224,124,90,.15)")}
                   {chip(sm.overlap, "also in another statement", "#c9a84c", "rgba(201,168,76,.15)")}
+                  {chip(sm.transactions, "ledger transactions", "#a084ca", "rgba(160,132,202,.15)")}
                   {sm.new + sm.changed + sm.unchanged + sm.exited === 0 && <span style={{ fontSize: ".7rem", color: "var(--text)" }}>Nothing to compare yet.</span>}
                   {casPreviewing && <span style={{ fontSize: ".65rem", color: "var(--text)", opacity: .6 }}>refreshing…</span>}
                 </>;
               })()}
+            </div>
+          )}
+
+          {/* Ledger notes (Phase 3) */}
+          {casPreview?.summary && (casDepository === "CAMS" || casDepository === "KFINTECH") && casPreview.summary.transactions === 0 && (
+            <div style={{ fontSize: ".66rem", color: "var(--text)", opacity: .8, marginBottom: ".6rem" }}>
+              ℹ This is a <b>summary</b> CAS — holdings only. For XIRR and tax lots, request the <b>detailed</b> CAS (with transactions, ideally since inception) from CAMS/KFintech and import that instead.
+            </div>
+          )}
+          {casPreview?.summary?.approx_cost > 0 && (
+            <div style={{ fontSize: ".66rem", color: "#c9a84c", marginBottom: ".6rem" }}>
+              ≈ {casPreview.summary.approx_cost} scheme{casPreview.summary.approx_cost > 1 ? "s" : ""} already had units before this statement's start date — their opening cost is approximated. A since-inception detailed CAS replaces the approximation with exact lots.
             </div>
           )}
 
@@ -433,6 +446,11 @@ export default function CASImportModal({
             {casResult.inserted_count > 0 && <div style={{ fontSize: ".75rem", color: "var(--text)" }}>+ {casResult.inserted_count} new</div>}
             {casResult.updated_count > 0 && <div style={{ fontSize: ".75rem", color: "#5a9ce0" }}>refreshed {casResult.updated_count}</div>}
             {casResult.exited_count > 0 && <div style={{ fontSize: ".75rem", color: "#e07c5a" }}>{casResult.exited_count} marked exited</div>}
+            {(casResult.txns_inserted > 0 || casResult.txns_existing > 0) && (
+              <div style={{ fontSize: ".75rem", color: "#a084ca" }}>
+                ledger: {casResult.txns_inserted} new transaction{casResult.txns_inserted !== 1 ? "s" : ""}{casResult.txns_existing > 0 ? `, ${casResult.txns_existing} already recorded` : ""} — XIRR and tax lots are now available per holding
+              </div>
+            )}
             {casResult.skipped_older > 0 && <div style={{ fontSize: ".75rem", color: "#e07c5a" }}>{casResult.skipped_older} skipped (newer data already stored)</div>}
             {casResult.legacy_retired > 0 && <div style={{ fontSize: ".72rem", color: "var(--text)", opacity: .8 }}>{casResult.legacy_retired} pre-upgrade row{casResult.legacy_retired > 1 ? "s" : ""} replaced</div>}
             {casResult.depository && <div style={{ fontSize: ".68rem", color: "var(--text)", opacity: .7, marginTop: ".3rem" }}>{casResult.depository} · other statements for this member were left untouched</div>}
