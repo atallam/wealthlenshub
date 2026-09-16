@@ -17,7 +17,7 @@ import { spawn }              from "child_process";
 import { writeFile, unlink }  from "fs/promises";
 import { join }               from "path";
 import { tmpdir }             from "os";
-import { randomBytes }        from "crypto";
+import { randomBytes, createHash } from "crypto";
 import { fileURLToPath }      from "url";
 import { dirname }            from "path";
 
@@ -85,15 +85,21 @@ function mapHolders(holderNames = [], holderPans = [], panToMember) {
   return map;
 }
 
-/** Run the Python casparser service on a PDF file and return parsed JSON. */
-function runCasparser(pdfPath, password) {
+/**
+ * Run the Python casparser service on a PDF file and return parsed JSON.
+ * `password` may be a string or an array of candidates — the script tries them
+ * in order inside ONE process (previously each candidate re-spawned Python and
+ * re-parsed the PDF: a 4-member family meant up to 5 full parses).
+ */
+export function runCasparser(pdfPath, password) {
   return new Promise((resolve, reject) => {
     const scriptPath = join(__dirname, "..", "services", "cas_casparser_service.py");
+    const pwArg = Array.isArray(password) ? JSON.stringify(password) : (password ?? "");
 
     // Try python3 first, fall back to python
     const pythonBin = process.platform === "win32" ? "python" : "python3";
 
-    const child = spawn(pythonBin, [scriptPath, pdfPath, password], {
+    const child = spawn(pythonBin, [scriptPath, pdfPath, pwArg], {
       timeout: 60_000,   // 60 s limit
       env: { ...process.env },
     });
@@ -107,7 +113,7 @@ function runCasparser(pdfPath, password) {
     child.on("error", (err) => {
       // If python3 not found on Windows, try python
       if (err.code === "ENOENT" && pythonBin === "python3") {
-        const child2 = spawn("python", [scriptPath, pdfPath, password], {
+        const child2 = spawn("python", [scriptPath, pdfPath, pwArg], {
           timeout: 60_000,
           env: { ...process.env },
         });
@@ -166,35 +172,24 @@ router.post(
     try {
       const { candidates, typed, panToMember } = await unlockContext(req);
 
-      // Try passwords in order: "" (unprotected), typed, stored PANs
+      // One Python process tries "" (unprotected), the typed password, then every stored PAN.
       const passwordsToTry = ["", ...candidates];
-
       let result = null;
-      let lastError = "";
-
-      for (const pw of passwordsToTry) {
-        try {
-          const parsed = await runCasparser(tmpFile, pw);
-
-          // Python script signals password errors in the JSON
-          if (parsed.error === "password_incorrect" || parsed.error === "password_required") {
-            lastError = parsed.error;
-            continue;
-          }
-          if (parsed.error) {
-            // Non-password error — bail immediately
-            await unlink(tmpFile).catch(() => {});
-            return res.status(400).json({ error: parsed.error });
-          }
-
-          result = parsed;
-          break;
-        } catch (spawnErr) {
+      try {
+        const parsed = await runCasparser(tmpFile, passwordsToTry);
+        if (parsed.error === "password_incorrect" || parsed.error === "password_required") {
+          result = null;
+        } else if (parsed.error) {
           await unlink(tmpFile).catch(() => {});
-          return res.status(500).json({
-            error: `Smart Parser unavailable: ${spawnErr.message}. Ensure Python + casparser are installed.`,
-          });
+          return res.status(400).json({ error: parsed.error });
+        } else {
+          result = parsed;
         }
+      } catch (spawnErr) {
+        await unlink(tmpFile).catch(() => {});
+        return res.status(500).json({
+          error: `Smart Parser unavailable: ${spawnErr.message}. Ensure Python + casparser are installed.`,
+        });
       }
 
       await unlink(tmpFile).catch(() => {});
@@ -209,6 +204,9 @@ router.post(
         }
         return res.status(400).json({ error: "password_required", message: "This PDF is password-protected. Enter your PAN to unlock.", needs_password: true });
       }
+
+      // Content hash → idempotent re-imports (see casImport.service findPriorImport)
+      const statementHash = createHash("sha256").update(req.file.buffer).digest("hex");
 
       // Build holder→member map using stored PANs
       const holderMemberMap = mapHolders(
@@ -227,6 +225,7 @@ router.post(
         period_start:      result.period_start      || null,
         period_end:        result.period_end        || null,
         depository:        result.depository        || "",
+        statement_hash:    statementHash,
         holder_member_map: holderMemberMap,
         _parser:           "casparser",
       });

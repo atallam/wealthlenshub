@@ -15,6 +15,7 @@ is idempotent (`IF NOT EXISTS` / `DO $$` guards) so re-running is safe.
 | **0009** | `0009_reconcile_artifacts_and_security.sql` | **Reconciles schema drift:** adds/backfills `artifacts.user_id`, aligns RLS. Run after all of the above. |
 | **0010** | `0010_budget_member_assignment.sql` | Adds `budget_statements.member_id` so a statement can be attributed to a family member. Run after 0009. |
 | **0011** | `0011_budget_account_aliases.sql` | Adds `budget_account_aliases` (card/account last-4 → member), so imports from the same card/account auto-assign after the first confirmation. Run after 0010. |
+| **0029** | `0029_cas_natural_key.sql` | **CAS import rewrite.** Adds `holdings.depository / account_id / isin / holding_status / exited_at / exit_snapshot / last_import_id`, a unique natural key on CAS rows, `import_logs.statement_hash`, and the `apply_cas_snapshot()` RPC that replaces delete-and-reinsert with one atomic keyed reconcile. NSDL, CDSL and CAMS/KFin statements for the same member now coexist; holding ids (and their transactions/artifacts) survive re-imports. Existing CAS rows are tagged `depository='LEGACY'` and retired on the next import for that member. **Required** — the server refuses CAS imports until this is applied. |
 
 ## Important: RLS vs. the service key
 

@@ -1,9 +1,14 @@
-// CASImportModal.jsx - NSDL/CDSL CAS PDF import wizard
-// Steps: intro -> uploading -> password_v2 -> matching -> importing -> done
+// CASImportModal.jsx - NSDL/CDSL/CAMS/KFintech CAS PDF import wizard
+// Steps: intro -> uploading -> password_v2 -> matching (with diff preview) -> importing -> done
 // casparser (Smart Parser) is the only active upload path.
 // Old parser (lib/parsers.js / /api/import/detect) kept commented out for reference.
+//
+// Matching step: once every holder is mapped to a member, the modal asks
+// /api/holdings/import/preview for a diff (new / changed / unchanged / exited /
+// cross-source overlap / legacy rows / already-imported) and shows it before the
+// user commits. The commit itself is one atomic server transaction.
 
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import { Overlay } from "../shared/Overlay.jsx";
 
 export default function CASImportModal({
@@ -22,6 +27,10 @@ export default function CASImportModal({
     // handleCASUpload, retryCASWithPassword,  // old parser — removed
     executeCASImport, resetCASDownloader,
     handleCASUploadV2, retryCASWithPasswordV2,
+    casDepository, casStatementDate,
+    casPreview, casPreviewing, previewCASImport,
+    casDupAction, setCasDupAction,
+    casRetireLegacy, setCasRetireLegacy,
   } = casImport;
 
   function handleFile(file) {
@@ -42,6 +51,42 @@ export default function CASImportModal({
     : "Import CAS";
 
   const hasMultiHolder = casHolderNames.length > 1 && members.length > 1;
+
+  // Is every holder resolved to a member? (drives both the preview and the Import button)
+  // Multi-holder: only holders that actually own rows must be mapped (a joint holder
+  // named in the PDF but owning nothing in this statement doesn't block the import).
+  const owningHolders = new Set(casHoldings.map(h => h._holder_name).filter(Boolean));
+  const needsMemberPick = hasMultiHolder
+    ? casHolderNames.some(n => owningHolders.has(n) && !casHolderMap[n])
+    : (casHolderNames.length <= 1 && members.length > 1 && !(casHolderMap[casHolderNames[0]] || casHolderMap["__default__"]));
+
+  // Re-run the diff preview whenever the mapping settles or changes.
+  const mapKey = JSON.stringify(casHolderMap);
+  useEffect(() => {
+    if (isMatching && !needsMemberPick && casHoldings.length > 0) previewCASImport(members);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMatching, needsMemberPick, mapKey, casHoldings.length, casRetireLegacy]);
+
+  // Per-row status lookup from the preview (member|isin → row)
+  const previewRows = {};
+  for (const r of casPreview?.rows || []) previewRows[`${r.member_id}|${r.isin}`] = r;
+  const rowStatusFor = (h) => {
+    const memberId = hasMultiHolder
+      ? casHolderMap[h._holder_name]
+      : (casHolderMap[casHolderNames[0]] || casHolderMap["__default__"] || (members.length === 1 ? members[0]?.id : undefined));
+    const isin = (h.isin || h.ticker || h.scheme_code || "").toUpperCase();
+    return previewRows[`${memberId}|${isin}`] || null;
+  };
+  const STATUS_STYLE = {
+    new:       { bg: "rgba(76,175,154,.15)",  fg: "#4caf9a", label: "New" },
+    reentered: { bg: "rgba(76,175,154,.15)",  fg: "#4caf9a", label: "Back" },
+    changed:   { bg: "rgba(90,156,224,.15)",  fg: "#5a9ce0", label: "Changed" },
+    unchanged: { bg: "rgba(128,128,128,.12)", fg: "var(--text)", label: "Same" },
+    older:     { bg: "rgba(224,124,90,.15)",  fg: "#e07c5a", label: "Older" },
+  };
+  const skippedCount = Object.values(casDupAction).filter(v => v === "skip").length;
+  const importCount = casHoldings.length - skippedCount;
+  const fmtInr = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
   return (
     <Overlay onClose={() => { resetCASDownloader(); onClose(); }} wide>
@@ -148,10 +193,109 @@ export default function CASImportModal({
                 PAN: {pan}
               </span>
             ))}
+            {casDepository && (
+              <span style={{ fontSize: ".68rem", padding: ".2rem .55rem", borderRadius: 4, background: "rgba(160,132,202,.12)", color: "#a084ca", border: "1px solid rgba(160,132,202,.25)", fontWeight: 600 }}>
+                {casDepository}{casStatementDate ? ` · as of ${casStatementDate}` : ""}
+              </span>
+            )}
             <span style={{ fontSize: ".72rem", color: "var(--text)" }}>
               {casHoldings.length} holding{casHoldings.length !== 1 ? "s" : ""} found
             </span>
           </div>
+
+          {/* Already-imported banner (same PDF bytes seen before) */}
+          {casPreview?.already_imported && (
+            <div style={{ background: "rgba(90,156,224,.08)", border: "1px solid rgba(90,156,224,.25)", borderRadius: 8, padding: ".55rem .75rem", marginBottom: ".8rem", fontSize: ".72rem", color: "#5a9ce0" }}>
+              ℹ This exact statement was already imported on {new Date(casPreview.already_imported.at).toLocaleDateString("en-IN")}. Importing again is safe — it will only refresh values.
+            </div>
+          )}
+
+          {/* Diff summary */}
+          {!needsMemberPick && (
+            <div style={{ display: "flex", gap: ".45rem", flexWrap: "wrap", alignItems: "center", marginBottom: ".8rem", minHeight: 24 }}>
+              {casPreviewing && !casPreview && <span style={{ fontSize: ".7rem", color: "var(--text)" }}>Comparing with your portfolio…</span>}
+              {casPreview?.error && <span style={{ fontSize: ".7rem", color: "#e07c5a" }}>⚠ Preview unavailable: {casPreview.error}</span>}
+              {casPreview?.summary && (() => {
+                const sm = casPreview.summary;
+                const chip = (n, label, fg, bg) => n > 0 && (
+                  <span key={label} style={{ fontSize: ".68rem", padding: ".18rem .5rem", borderRadius: 4, background: bg, color: fg, fontWeight: 600 }}>{n} {label}</span>
+                );
+                return <>
+                  {chip(sm.new, "new", "#4caf9a", "rgba(76,175,154,.15)")}
+                  {chip(sm.changed, "changed", "#5a9ce0", "rgba(90,156,224,.15)")}
+                  {chip(sm.unchanged, "unchanged", "var(--text)", "rgba(128,128,128,.12)")}
+                  {chip(sm.exited, "exited", "#e07c5a", "rgba(224,124,90,.15)")}
+                  {chip(sm.older, "older than stored", "#e07c5a", "rgba(224,124,90,.15)")}
+                  {chip(sm.overlap, "also in another statement", "#c9a84c", "rgba(201,168,76,.15)")}
+                  {sm.new + sm.changed + sm.unchanged + sm.exited === 0 && <span style={{ fontSize: ".7rem", color: "var(--text)" }}>Nothing to compare yet.</span>}
+                  {casPreviewing && <span style={{ fontSize: ".65rem", color: "var(--text)", opacity: .6 }}>refreshing…</span>}
+                </>;
+              })()}
+            </div>
+          )}
+
+          {/* Exits: holdings in these accounts that the statement no longer lists */}
+          {casPreview?.exited?.length > 0 && (
+            <div style={{ background: "rgba(224,124,90,.06)", border: "1px solid rgba(224,124,90,.2)", borderRadius: 8, padding: ".55rem .75rem", marginBottom: ".8rem" }}>
+              <div style={{ fontSize: ".68rem", color: "#e07c5a", fontWeight: 600, marginBottom: ".25rem" }}>
+                {casPreview.exited.length} holding{casPreview.exited.length > 1 ? "s" : ""} no longer in this {casDepository} statement — will be marked exited
+              </div>
+              <div style={{ fontSize: ".68rem", color: "var(--text)", display: "flex", flexWrap: "wrap", gap: ".3rem .8rem" }}>
+                {casPreview.exited.slice(0, 12).map(e => <span key={e.id}>{e.name} <span className="mono dim">({Number(e.units).toLocaleString("en-IN", { maximumFractionDigits: 3 })} · {fmtInr(e.current_value)})</span></span>)}
+                {casPreview.exited.length > 12 && <span>+{casPreview.exited.length - 12} more</span>}
+              </div>
+              <div style={{ fontSize: ".64rem", color: "var(--text)", opacity: .75, marginTop: ".3rem" }}>Their transactions and documents are kept. They reappear automatically if a later statement lists them again.</div>
+            </div>
+          )}
+
+          {/* Cross-source overlap: same ISIN for the same member from another depository/RTA */}
+          {casPreview?.overlaps?.length > 0 && (
+            <div style={{ background: "rgba(201,168,76,.06)", border: "1px solid rgba(201,168,76,.2)", borderRadius: 8, padding: ".55rem .75rem", marginBottom: ".8rem" }}>
+              <div style={{ fontSize: ".68rem", color: "#c9a84c", fontWeight: 600, marginBottom: ".3rem" }}>
+                {casPreview.overlaps.length} holding{casPreview.overlaps.length > 1 ? "s" : ""} already tracked from another statement
+              </div>
+              <div style={{ fontSize: ".64rem", color: "var(--text)", marginBottom: ".4rem" }}>
+                A stock held in two demat accounts is normal — keep both. A mutual fund listed in both an RTA (CAMS/KFintech) CAS and a depository CAS is the <em>same</em> folio — keep it in one place to avoid double counting.
+              </div>
+              {casPreview.overlaps.map(o => {
+                const k = `${o.member_id}|${o.isin}`;
+                const skip = casDupAction[k] === "skip";
+                return (
+                  <label key={k} style={{ display: "flex", alignItems: "center", gap: ".5rem", fontSize: ".7rem", color: "var(--text)", marginBottom: ".2rem", cursor: "pointer" }}>
+                    <input type="checkbox" checked={!skip} style={{ accentColor: "#c9a84c" }}
+                      onChange={e => setCasDupAction(prev => ({ ...prev, [k]: e.target.checked ? "update" : "skip" }))} />
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.name}</span>
+                    <span className="mono dim" style={{ fontSize: ".64rem" }}>also in {o.with.map(w => `${w.depository} (${w.units} u)`).join(", ")}</span>
+                    <span style={{ fontSize: ".62rem", color: skip ? "#e07c5a" : "#4caf9a", minWidth: 70, textAlign: "right" }}>{skip ? "skip here" : "import here"}</span>
+                  </label>
+                );
+              })}
+              {casPreview.overlaps.some(o => o.type === "MF") && (
+                <button className="btnc" style={{ fontSize: ".64rem", marginTop: ".3rem", padding: ".2rem .5rem" }}
+                  onClick={() => setCasDupAction(prev => { const n = { ...prev }; for (const o of casPreview.overlaps) if (o.type === "MF") n[`${o.member_id}|${o.isin}`] = "skip"; return n; })}>
+                  Skip all overlapping mutual funds
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Legacy rows from before the keyed-import upgrade */}
+          {casPreview?.legacy?.length > 0 && (
+            <label style={{ display: "flex", alignItems: "flex-start", gap: ".5rem", fontSize: ".7rem", color: "var(--text)", marginBottom: ".8rem", cursor: "pointer", background: "var(--bg-muted)", borderRadius: 8, padding: ".5rem .7rem" }}>
+              <input type="checkbox" checked={casRetireLegacy} onChange={e => setCasRetireLegacy(e.target.checked)} style={{ accentColor: "#c9a84c", marginTop: 2 }} />
+              <span>
+                Replace {casPreview.legacy.reduce((a, l) => a + l.count, 0)} holding{casPreview.legacy.reduce((a, l) => a + l.count, 0) > 1 ? "s" : ""} imported before the upgrade for {casPreview.legacy.length > 1 ? "these members" : "this member"}.
+                <span style={{ opacity: .7 }}> Recommended if this is the same statement family you imported previously; untick if those came from a different depository and you will re-import that one too.</span>
+              </span>
+            </label>
+          )}
+
+          {/* Unmatched rows (no ISIN / no member) */}
+          {casPreview?.unmatched?.length > 0 && (
+            <div style={{ fontSize: ".66rem", color: "#e07c5a", marginBottom: ".6rem" }}>
+              ⚠ {casPreview.unmatched.length} row{casPreview.unmatched.length > 1 ? "s" : ""} will be skipped ({casPreview.unmatched.slice(0, 3).map(u => u.name).join(", ")}{casPreview.unmatched.length > 3 ? "…" : ""}) — {casPreview.unmatched.some(u => u.reason === "no_member") ? "no member mapped" : "no ISIN in the statement"}.
+            </div>
+          )}
 
           {hasMultiHolder && (
             <div style={{ marginBottom: ".9rem" }}>
@@ -205,9 +349,11 @@ export default function CASImportModal({
                   <tr>
                     <th>Name</th>
                     <th>Type</th>
-                    <th>Ticker / ISIN</th>
+                    <th>ISIN</th>
+                    <th>Account</th>
                     <th className="r">Units</th>
                     <th className="r">Curr Value</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -221,9 +367,26 @@ export default function CASImportModal({
                           {h.type === "MF" ? "MF" : h.type === "IN_STOCK" ? "Stock" : h.type}
                         </span>
                       </td>
-                      <td className="mono dim" style={{ fontSize: ".68rem" }}>{h.ticker || h.scheme_code || "-"}</td>
+                      <td className="mono dim" style={{ fontSize: ".68rem" }}>{h.isin || h.ticker || h.scheme_code || "-"}</td>
+                      <td className="mono dim" style={{ fontSize: ".64rem" }}>{h.account_id || "-"}</td>
                       <td className="r mono">{h.units != null ? Number(h.units).toLocaleString("en-IN", { maximumFractionDigits: 4 }) : "-"}</td>
-                      <td className="r mono">{h.purchase_value ? `₹${Number(h.purchase_value).toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "-"}</td>
+                      <td className="r mono">{h.current_value ? fmtInr(h.current_value) : (h.purchase_value ? fmtInr(h.purchase_value) : "-")}</td>
+                      <td>{(() => {
+                        const pr = rowStatusFor(h);
+                        if (!pr) return <span style={{ fontSize: ".62rem", opacity: .5 }}>…</span>;
+                        const st = STATUS_STYLE[pr.status] || STATUS_STYLE.unchanged;
+                        const skip = casDupAction[`${pr.member_id}|${pr.isin}`] === "skip";
+                        return (
+                          <span style={{ display: "inline-flex", gap: ".3rem", alignItems: "center" }}>
+                            <span style={{ fontSize: ".62rem", padding: ".08rem .35rem", borderRadius: 3, background: skip ? "rgba(128,128,128,.12)" : st.bg, color: skip ? "var(--text)" : st.fg, textDecoration: skip ? "line-through" : "none" }}>{skip ? "Skip" : st.label}</span>
+                            {!skip && pr.status === "changed" && pr.delta && (
+                              <span className="mono" style={{ fontSize: ".6rem", color: pr.delta.units >= 0 ? "#4caf9a" : "#e07c5a" }}>
+                                {pr.delta.units > 0 ? "+" : ""}{Number(pr.delta.units).toLocaleString("en-IN", { maximumFractionDigits: 3 })}u
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })()}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -237,22 +400,18 @@ export default function CASImportModal({
             </div>
           )}
 
-          {(() => {
-            // Block import if multi-member and single-holder CAS has no member selected.
-            const needsMemberPick = !hasMultiHolder && casHolderNames.length <= 1 && members.length > 1
-              && !(casHolderMap[casHolderNames[0]] || casHolderMap["__default__"]);
-            return (
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".6rem" }}>
-                <button className="btnc" onClick={() => { resetCASDownloader(); onClose(); }}>Cancel</button>
-                <button className="btns"
-                  disabled={casHoldings.length === 0 || needsMemberPick}
-                  title={needsMemberPick ? "Select a family member above before importing" : undefined}
-                  onClick={() => executeCASImport(members, onPriceRefresh)}>
-                  Import {casHoldings.length} Holding{casHoldings.length !== 1 ? "s" : ""}
-                </button>
-              </div>
-            );
-          })()}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".6rem" }}>
+            <button className="btnc" onClick={() => { resetCASDownloader(); onClose(); }}>Cancel</button>
+            <div style={{ display: "flex", alignItems: "center", gap: ".6rem" }}>
+              {casPreview?.summary?.older > 0 && <span style={{ fontSize: ".64rem", color: "#e07c5a" }}>Older rows won't overwrite newer data</span>}
+              <button className="btns"
+                disabled={casHoldings.length === 0 || needsMemberPick || casPreviewing}
+                title={needsMemberPick ? "Select a family member above before importing" : undefined}
+                onClick={() => executeCASImport(members, onPriceRefresh)}>
+                Import {importCount} Holding{importCount !== 1 ? "s" : ""}
+              </button>
+            </div>
+          </div>
         </>
       )}
 
@@ -273,6 +432,10 @@ export default function CASImportModal({
             </div>
             {casResult.inserted_count > 0 && <div style={{ fontSize: ".75rem", color: "var(--text)" }}>+ {casResult.inserted_count} new</div>}
             {casResult.updated_count > 0 && <div style={{ fontSize: ".75rem", color: "#5a9ce0" }}>refreshed {casResult.updated_count}</div>}
+            {casResult.exited_count > 0 && <div style={{ fontSize: ".75rem", color: "#e07c5a" }}>{casResult.exited_count} marked exited</div>}
+            {casResult.skipped_older > 0 && <div style={{ fontSize: ".75rem", color: "#e07c5a" }}>{casResult.skipped_older} skipped (newer data already stored)</div>}
+            {casResult.legacy_retired > 0 && <div style={{ fontSize: ".72rem", color: "var(--text)", opacity: .8 }}>{casResult.legacy_retired} pre-upgrade row{casResult.legacy_retired > 1 ? "s" : ""} replaced</div>}
+            {casResult.depository && <div style={{ fontSize: ".68rem", color: "var(--text)", opacity: .7, marginTop: ".3rem" }}>{casResult.depository} · other statements for this member were left untouched</div>}
             {casResult.error_count > 0 && <div style={{ fontSize: ".75rem", color: "#e07c5a", marginTop: ".3rem" }}>{casResult.error_count} error{casResult.error_count > 1 ? "s" : ""}</div>}
           </div>
           {casResult.errors?.length > 0 && (

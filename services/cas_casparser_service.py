@@ -22,6 +22,17 @@ by the existing /api/import/detect endpoint:
 
 Usage (called by Node.js subprocess):
     python3 services/cas_casparser_service.py <pdf_path> <password>
+    python3 services/cas_casparser_service.py <pdf_path> '["", "ABCDE1234F", ...]'
+
+The second form tries each password in order inside ONE process (the PDF is
+opened once per attempt but Python/casparser start-up happens once), and
+reports which one worked as "password_index".
+
+Every holding carries the natural-key fields the DB reconcile needs:
+    isin        instrument ISIN
+    account_id  "dpid/clientid" for demat accounts, folio number for RTA CAS,
+                "MF-FOLIOS" for the MF section of a depository CAS
+and "depository" is NSDL | CDSL | CAMS | KFINTECH (from casparser file_type).
 
 On error: exits with code 1 and writes {"error": "..."} to stdout.
 
@@ -74,7 +85,9 @@ def clean_equity_name(raw: str) -> str:
 
 def parse_nsdl(d: dict) -> tuple:
     holdings, warnings = [], []
-    seen_isins = set()
+    depository = str(d.get("file_type") or "NSDL").upper()
+    if depository not in ("NSDL", "CDSL"):
+        depository = "NSDL"
 
     holder_names = []
     holder_pans = []
@@ -97,9 +110,22 @@ def parse_nsdl(d: dict) -> tuple:
             if name and name not in holder_names:
                 holder_names.append(name)
 
-        broker = acc.get("name", "")
-        dp_id  = acc.get("dp_id", "")
-        folio  = f"{dp_id}/{acc.get('client_id', '')}"
+        broker    = acc.get("name", "")
+        dp_id     = (acc.get("dp_id") or "").strip()
+        client_id = (acc.get("client_id") or "").strip()
+        acc_type  = str(acc.get("type") or "")
+        # Natural-key account id: demat accounts are dpid/clientid; the
+        # "Mutual Fund Folios" section of a depository CAS has neither.
+        if dp_id or client_id:
+            account_id = f"{dp_id}/{client_id}"
+        elif "mutual fund" in acc_type.lower():
+            account_id = "MF-FOLIOS"
+        else:
+            account_id = broker or "UNKNOWN"
+        folio = account_id
+        # ISIN dedup is PER ACCOUNT: the same stock legitimately sits in two
+        # demat accounts (e.g. Zerodha + ICICI) and both must be kept.
+        seen_isins = set()
 
         pan = holder_pans[0] if holder_pans else ""
 
@@ -111,7 +137,10 @@ def parse_nsdl(d: dict) -> tuple:
 
         # ── Equities ───────────────────────────────────────────────────────
         for eq in (acc.get("equities") or []):
-            isin = eq.get("isin", "")
+            isin = (eq.get("isin") or "").strip().upper()
+            if not isin:
+                warnings.append(f"Skipped equity without ISIN: {eq.get('name', '?')}")
+                continue
             if isin in seen_isins:
                 continue
             seen_isins.add(isin)
@@ -142,6 +171,8 @@ def parse_nsdl(d: dict) -> tuple:
                 "source":         "cas",
                 "brokerage_name": broker,
                 "currency":       "INR",
+                "isin":           isin,
+                "account_id":     account_id,
                 "_folio":         folio,
                 "_pan":           acc_owner_pan or pan,
                 "_holder_name":   acc_owner_name,
@@ -149,7 +180,10 @@ def parse_nsdl(d: dict) -> tuple:
 
         # ── Mutual Funds ───────────────────────────────────────────────────
         for mf in (acc.get("mutual_funds") or []):
-            isin = mf.get("isin", "")
+            isin = (mf.get("isin") or "").strip().upper()
+            if not isin:
+                warnings.append(f"Skipped MF without ISIN: {mf.get('name', '?')}")
+                continue
             if isin in seen_isins:
                 continue
             seen_isins.add(isin)
@@ -174,12 +208,17 @@ def parse_nsdl(d: dict) -> tuple:
                 "source":         "cas",
                 "brokerage_name": broker,
                 "currency":       "INR",
+                "isin":           isin,
+                "account_id":     account_id,
                 "_folio":         folio,
                 "_pan":           acc_owner_pan or pan,
                 "_holder_name":   acc_owner_name,
             })
 
-    return holdings, warnings, holder_names, holder_pans, period_from, period_to, "NSDL"
+    for w in (d.get("parse_warnings") or []):
+        warnings.append(str(w))
+
+    return holdings, warnings, holder_names, holder_pans, period_from, period_to, depository
 
 
 # ── CAMS / Kfintech CAS (CASData → folios with schemes) ─────────────────────
@@ -199,13 +238,29 @@ def parse_cams(d: dict) -> tuple:
     period_to   = fmt_date(sp.get("to") or "")
 
     for folio in (d.get("folios") or []):
-        folio_num = folio.get("folio", "")
+        folio_num = (folio.get("folio") or "").strip()
         amc       = folio.get("amc", "")
+        seen_isins = set()
         pan       = (folio.get("PAN") or inv_pan or "").strip().upper()
         if pan and pan not in holder_pans:
             holder_pans.append(pan)
 
         for scheme in (folio.get("schemes") or []):
+            isin = (scheme.get("isin") or "").strip().upper()
+            if not isin:
+                warnings.append(f"Skipped scheme without ISIN: {scheme.get('scheme', '?')} (folio {folio_num})")
+                continue
+            if isin in seen_isins:
+                # Same ISIN twice in one folio (rare: split by advisor) — merge units/values.
+                for h in holdings:
+                    if h["_folio"] == folio_num and h["isin"] == isin:
+                        h["units"]          = (h["units"] or 0) + (f(scheme.get("close")) or 0)
+                        val2 = scheme.get("valuation") or {}
+                        h["current_value"]  = (h["current_value"] or 0) + (f(val2.get("value")) or 0)
+                        h["purchase_value"] = (h["purchase_value"] or 0) + (f(val2.get("cost")) or 0)
+                        break
+                continue
+            seen_isins.add(isin)
             val      = scheme.get("valuation") or {}
             close    = f(scheme.get("close"))
             cur_nav  = f(val.get("nav"))
@@ -216,7 +271,7 @@ def parse_cams(d: dict) -> tuple:
             holdings.append({
                 "name":           scheme.get("scheme", ""),
                 "type":           "MF",
-                "ticker":         scheme.get("isin") or "",
+                "ticker":         isin,
                 "scheme_code":    scheme.get("amfi") or "",
                 "units":          close,
                 "purchase_nav":   cost_nav,
@@ -228,13 +283,20 @@ def parse_cams(d: dict) -> tuple:
                 "source":         "cas",
                 "brokerage_name": amc,
                 "currency":       "INR",
+                "isin":           isin,
+                "account_id":     folio_num or "NO-FOLIO",
                 "_folio":         folio_num,
                 "_pan":           pan,
                 "_holder_name":   inv_name,  # CAMS is always single-holder
             })
 
-    cas_type = str(d.get("cas_type", "CAMS"))
-    return holdings, warnings, holder_names, holder_pans, period_from, period_to, cas_type
+    # NOTE: casparser's cas_type is SUMMARY|DETAILED — the RTA is file_type.
+    depository = str(d.get("file_type") or "CAMS").upper()
+    if depository not in ("CAMS", "KFINTECH"):
+        depository = "CAMS"
+    for w in (d.get("parse_warnings") or []):
+        warnings.append(str(w))
+    return holdings, warnings, holder_names, holder_pans, period_from, period_to, depository
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -246,7 +308,16 @@ def main():
         sys.exit(1)
 
     pdf_path = sys.argv[1]
-    password = sys.argv[2]
+    raw_pw   = sys.argv[2]
+    # Either a single password or a JSON list of candidates to try in order.
+    passwords = [raw_pw]
+    if raw_pw.startswith("["):
+        try:
+            passwords = [str(p) for p in json.loads(raw_pw)]
+        except Exception:
+            passwords = [raw_pw]
+    if not passwords:
+        passwords = [""]
 
     try:
         import casparser
@@ -261,16 +332,41 @@ def main():
         sys.exit(1)
 
     try:
-        data = casparser.read_cas_pdf(pdf_path, password, output="dict")
-    except Exception as e:
-        err_msg = str(e)
-        # Surface password errors clearly so the Node route can detect them
-        if "password" in err_msg.lower() or "incorrect" in err_msg.lower() or "encrypted" in err_msg.lower():
-            out = {"error": "password_incorrect"}
-        elif "not a pdf" in err_msg.lower() or "invalid" in err_msg.lower():
-            out = {"error": f"Invalid PDF: {err_msg}"}
-        else:
-            out = {"error": f"casparser failed: {err_msg}"}
+        from casparser.exceptions import IncorrectPasswordError
+    except Exception:  # very old casparser
+        class IncorrectPasswordError(Exception):
+            pass
+
+    data = None
+    password_index = -1
+    last_pw_error = None
+    for i, pw in enumerate(passwords):
+        try:
+            data = casparser.read_cas_pdf(pdf_path, pw, output="dict")
+            password_index = i
+            break
+        except IncorrectPasswordError as e:
+            last_pw_error = e
+            continue
+        except Exception as e:
+            err_msg = str(e)
+            low = err_msg.lower()
+            # Surface password errors clearly so the Node route can detect them
+            if "password" in low or "incorrect" in low or "encrypted" in low:
+                last_pw_error = e
+                continue
+            if "not a pdf" in low or "invalid" in low:
+                out = {"error": f"Invalid PDF: {err_msg}"}
+            else:
+                out = {"error": f"casparser failed: {err_msg}"}
+            print(json.dumps(out))
+            sys.exit(1)
+
+    if data is None:
+        # Every candidate failed. "" (no password) always sits first in the
+        # list, so a failure here means the PDF is encrypted.
+        out = {"error": "password_incorrect" if len(passwords) > 1 or passwords[0] else "password_required",
+               "tried": len(passwords)}
         print(json.dumps(out))
         sys.exit(1)
 
@@ -310,6 +406,7 @@ def main():
         "period_end":        period_to,
         "depository":        depository,
         "holder_member_map": {},
+        "password_index":    password_index,
         "_parser":           "casparser",
         "_version":          getattr(casparser, "__version__", "unknown"),
     }

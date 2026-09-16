@@ -1,6 +1,5 @@
 import { Router }          from "express";
 import crypto              from "crypto";
-import { spawn }           from "child_process";
 import { writeFile, unlink } from "fs/promises";
 import { join, dirname }   from "path";
 import { tmpdir }          from "os";
@@ -9,6 +8,9 @@ import { google }          from "googleapis";
 import { supabase }        from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
 import { encrypt, decrypt } from "../lib/crypto.js";
+import { runCasparser }    from "./import_v2.js";
+import { applyCasImport, findPriorImport } from "../services/casImport.service.js";
+import { takeSnapshot }    from "../lib/snapshot.js";
 // OLD parser — kept for reference; casparser is used instead (see runCasparser below)
 // import { pdfjsLib, _pdfjsFontPath, parseNSDLCASStatement } from "../lib/parsers.js";
 
@@ -48,39 +50,7 @@ const CAS_SUBJECT_KEYWORDS = [
   "CAS",
 ];
 
-// ── Smart CAS parser (Python casparser library) ───────────────────────────────
-function runCasparser(pdfPath, password) {
-  return new Promise((resolve, reject) => {
-    const scriptPath = join(__dirname, "..", "services", "cas_casparser_service.py");
-    const pythonBin  = process.platform === "win32" ? "python" : "python3";
-
-    function spawnWith(bin) {
-      const child = spawn(bin, [scriptPath, pdfPath, password ?? ""], {
-        timeout: 60_000,
-        env: { ...process.env },
-      });
-      let stdout = "", stderr = "";
-      child.stdout.on("data", (c) => { stdout += c.toString(); });
-      child.stderr.on("data", (c) => { stderr += c.toString(); });
-      child.on("error", (err) => {
-        if (err.code === "ENOENT" && bin === "python3") {
-          spawnWith("python").then(resolve).catch(reject);
-        } else {
-          reject(new Error(`Python spawn error: ${err.message}`));
-        }
-      });
-      child.on("close", (code) => {
-        if (code !== 0 && !stdout.trim()) {
-          return reject(new Error(`casparser exited ${code}: ${stderr.slice(0, 300)}`));
-        }
-        try { resolve(JSON.parse(stdout)); }
-        catch { reject(new Error(`Invalid JSON from casparser: ${stdout.slice(0, 200)}`)); }
-      });
-    }
-
-    spawnWith(pythonBin);
-  });
-}
+// Smart CAS parser: shared runCasparser() from routes/import_v2.js (single-process password attempts).
 
 function makeGmailOAuth2Client() {
   return new google.auth.OAuth2(
@@ -189,27 +159,35 @@ async function autoImportCASForUser(userId) {
         await writeFile(tmpFile, pdfBuffer);
 
         let parseResult = null;
-        const passwordsToTry = ["", ...allPANs];
-        for (const pwd of passwordsToTry) {
-          try {
-            const parsed = await runCasparser(tmpFile, pwd);
-            if (parsed.error === "password_incorrect" || parsed.error === "password_required") continue;
-            if (parsed.error) {
-              importRecord.status        = "skipped";
-              importRecord.error_message = `casparser: ${parsed.error}`;
-              summary.skipped++;
-              break;
-            }
+        try {
+          const parsed = await runCasparser(tmpFile, ["", ...allPANs]);
+          if (parsed.error === "password_incorrect" || parsed.error === "password_required") {
+            parseResult = null;
+          } else if (parsed.error) {
+            importRecord.status        = "skipped";
+            importRecord.error_message = `casparser: ${parsed.error}`;
+            summary.skipped++;
+          } else {
             parseResult = parsed;
-            break;
-          } catch (spawnErr) {
-            importRecord.status        = "error";
-            importRecord.error_message = `Smart parser unavailable: ${spawnErr.message}`;
-            summary.errors.push(importRecord.error_message);
-            break;
           }
+        } catch (spawnErr) {
+          importRecord.status        = "error";
+          importRecord.error_message = `Smart parser unavailable: ${spawnErr.message}`;
+          summary.errors.push(importRecord.error_message);
         }
         await unlink(tmpFile).catch(() => {});
+
+        // Same PDF already applied (e.g. NSDL re-sends the monthly mail)? Mark success and move on.
+        const statementHash = crypto.createHash("sha256").update(pdfBuffer).digest("hex");
+        if (parseResult) {
+          const prior = await findPriorImport(userId, statementHash);
+          if (prior) {
+            importRecord.status = "success"; importRecord.holdings_added = 0; importRecord.holdings_updated = 0;
+            importRecord.error_message = `Duplicate of statement imported ${prior.created_at}`;
+            summary.skipped++;
+            continue;
+          }
+        }
 
         if (!parseResult) {
           if (!importRecord.status || importRecord.status === "pending") {
@@ -242,97 +220,58 @@ async function autoImportCASForUser(userId) {
         }
         console.log(`[gmail-cas] ${userId}: CAS has ${holdingsByPan.size} PAN group(s): ${[...holdingsByPan.keys()].join(", ")}`);
 
-        let totalAdded = 0;
+        // Resolve each PAN group to a member, then hand everything to ONE atomic
+        // apply_cas_snapshot() call (services/casImport.service.js). Unmatched
+        // groups are logged and skipped — never silently assigned to self.
         const matchedMembers = [];
+        const accountMap = {};          // holder name → member id
+        const holdingsToApply = [];
 
         for (const [pan, panHoldings] of holdingsByPan) {
-          // 1. Exact PAN lookup
           let targetMember = null;
           let matchedBy    = null;
-          if (pan !== "__no_pan__" && panMap.has(pan)) {
-            targetMember = panMap.get(pan);
-            matchedBy    = "pan";
-          }
-
-          // 2. Fallback: match by holder name on the first holding in this group
+          if (pan !== "__no_pan__" && panMap.has(pan)) { targetMember = panMap.get(pan); matchedBy = "pan"; }
           if (!targetMember) {
             const holderName = (panHoldings[0]?._holder_name || "").trim().toUpperCase();
-            if (holderName && nameMap.has(holderName)) {
-              targetMember = nameMap.get(holderName);
-              matchedBy    = "name";
-            }
+            if (holderName && nameMap.has(holderName)) { targetMember = nameMap.get(holderName); matchedBy = "name"; }
           }
-
-          // 3. No match — log and SKIP (never silently assign to self)
           if (!targetMember) {
             const label = pan === "__no_pan__" ? "(no PAN)" : pan;
-            console.warn(
-              `[gmail-cas] ${userId}: no member matched for PAN ${label} ` +
-              `(${panHoldings.length} holdings) — skipping. ` +
-              `Add this PAN to a family member in Settings → Members.`
-            );
-            summary.errors.push(
-              `No member matched for PAN ${label} — ${panHoldings.length} holdings skipped. ` +
-              `Add the PAN in Settings → Members.`
-            );
+            console.warn(`[gmail-cas] ${userId}: no member matched for PAN ${label} (${panHoldings.length} holdings) — skipping. Add this PAN to a family member in Settings → Members.`);
+            summary.errors.push(`No member matched for PAN ${label} — ${panHoldings.length} holdings skipped. Add the PAN in Settings → Members.`);
             continue;
           }
+          console.log(`[gmail-cas] ${userId}: PAN ${pan} → member "${targetMember.name}" (${targetMember.id}) via ${matchedBy} — ${panHoldings.length} holdings`);
+          matchedMembers.push({ memberId: targetMember.id, memberName: targetMember.name, pan, matchedBy, count: panHoldings.length });
+          // Key the account_map by a synthetic holder token so two PAN groups with the
+          // same display name can still map to different members.
+          const token = `__pan__${pan}`;
+          accountMap[token] = targetMember.id;
+          for (const h of panHoldings) holdingsToApply.push({ ...h, _holder_name: token });
+        }
 
-          const memberId = targetMember.id;
-          console.log(`[gmail-cas] ${userId}: PAN ${pan} → member "${targetMember.name}" (${memberId}) via ${matchedBy} — ${panHoldings.length} holdings`);
-          matchedMembers.push({ memberId, memberName: targetMember.name, pan, matchedBy, count: panHoldings.length });
-
-          // ── Flush-and-fill scoped to this member only ──────────────────────
-          const { error: delErr } = await supabase.from("holdings")
-            .delete()
-            .eq("user_id",   userId)
-            .eq("source",    "cas")
-            .eq("member_id", memberId);
-          if (delErr) throw new Error(`Failed to flush CAS holdings for member ${memberId}: ${delErr.message}`);
-
-          // Defensive: also remove legacy gmail_auto rows that predate the source column
-          await supabase.from("holdings")
-            .delete()
-            .eq("user_id",       userId)
-            .eq("import_method", "gmail_auto")
-            .eq("member_id",     memberId)
-            .is("source",        null);
-
-          const now = new Date().toISOString();
-          const toInsert = panHoldings.map(h => ({
-            id:               `h_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-            user_id:          userId,
-            member_id:        memberId,
-            type:             h.type || "MF",
-            name:             h.name,
-            ticker:           h.ticker || null,
-            scheme_code:      h.scheme_code || null,
-            units:            h.units || 0,
-            purchase_nav:     h.purchase_nav || null,
-            current_nav:      h.current_nav || h.purchase_nav || null,
-            purchase_value:   h.purchase_value || 0,
-            current_value:    h.units * (h.current_nav || h.purchase_nav || 0),
-            start_date:       h.start_date || null,
-            source:           "cas",
-            import_method:    "gmail_auto",
-            source_date:      sourceDate,
-            cas_period_start: casPeriodStart,
-            cas_period_end:   casPeriodEnd,
-            created_at:       now,
-          }));
-
-          const CHUNK = 100;
-          for (let i = 0; i < toInsert.length; i += CHUNK) {
-            const { error: insErr } = await supabase.from("holdings").insert(toInsert.slice(i, i + CHUNK));
-            if (insErr) throw new Error(`holdings insert error (member ${memberId}): ${insErr.message}`);
-          }
-          totalAdded += toInsert.length;
+        let totalAdded = 0, totalUpdated = 0;
+        if (holdingsToApply.length) {
+          const result = await applyCasImport(userId, {
+            holdings:           holdingsToApply,
+            account_map:        accountMap,
+            depository:         parseResult.depository,
+            cas_statement_date: sourceDate,
+            cas_period_start:   casPeriodStart,
+            cas_period_end:     casPeriodEnd,
+            statement_hash:     statementHash,
+            import_method:      "gmail_auto",
+          });
+          totalAdded   = result.inserted_count || 0;
+          totalUpdated = result.updated_count  || 0;
+          console.log(`[gmail-cas] ${userId}: ${parseResult.depository} ${sourceDate}: +${totalAdded} new, ${totalUpdated} updated, ${result.exited_count || 0} exited, ${result.legacy_retired || 0} legacy retired`);
+          takeSnapshot(userId, { source: "cas_import", cas_statement_date: sourceDate }).catch(() => {});
         }
 
         const added = totalAdded;
         importRecord.status           = "success";
         importRecord.holdings_added   = added;
-        importRecord.holdings_updated = 0;
+        importRecord.holdings_updated = totalUpdated;
         importRecord.holdings_skipped = 0;
         importRecord.matched_members  = JSON.stringify(matchedMembers);
         summary.imported += added;

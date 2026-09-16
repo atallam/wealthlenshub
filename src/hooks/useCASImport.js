@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { supabase } from '../supabase.js';
 
 async function api(path, opts = {}) {
@@ -33,6 +33,12 @@ export function useCASImport(user, onSuccess) {
   const [casPeriodStart,   setCasPeriodStart]   = useState(null);
   const [casPeriodEnd,     setCasPeriodEnd]     = useState(null);
   const [casDepository,    setCasDepository]    = useState("");
+  const [casStatementHash, setCasStatementHash] = useState("");
+  // Diff preview (Phase 2): what this statement would change vs. what is stored.
+  const [casPreview,       setCasPreview]       = useState(null);
+  const [casPreviewing,    setCasPreviewing]    = useState(false);
+  const [casRetireLegacy,  setCasRetireLegacy]  = useState(true);
+  const previewSeq = useRef(0);
 
   function fuzzyMemberMatch(name, members) {
     if (!name || name.length < 2) return null;
@@ -102,37 +108,53 @@ export function useCASImport(user, onSuccess) {
   //   setCasUploading(false);
   // }
 
+  // Resolve the member for a single-holder CAS.
+  // Priority: (1) server/fuzzy-matched map entry for the holder name,
+  //           (2) user manually picked from dropdown (stored under "__default__"),
+  //           (3) first member only when there is exactly ONE member (unambiguous).
+  // Never silently fall back to members[0] when there are multiple members.
+  function resolveSingleMember(members) {
+    return casHolderNames.length <= 1 && members.length > 0
+      ? (casHolderMap[casHolderNames[0]] || casHolderMap["__default__"] || (members.length === 1 ? members[0]?.id : undefined))
+      : undefined;   // multi-holder: always use account_map on the server side
+  }
+
+  function importBody(members) {
+    // dup_actions: "<member>|<isin>" → "skip" | "update" (cross-source overlaps only)
+    const dup_actions = {};
+    for (const [k, v] of Object.entries(casDupAction)) if (k.includes("|")) dup_actions[k] = v;
+    return {
+      holdings: casHoldings,
+      member_id: resolveSingleMember(members) || "",
+      account_map: Object.keys(casHolderMap).length > 0 ? casHolderMap : undefined,
+      depository: casDepository,
+      statement_hash: casStatementHash,
+      cas_statement_date: casStatementDate,
+      cas_period_start: casPeriodStart,
+      cas_period_end: casPeriodEnd,
+      dup_actions,
+      retire_legacy: casRetireLegacy,
+    };
+  }
+
+  /** Diff-only call; safe to re-run whenever the member mapping changes. */
+  async function previewCASImport(members) {
+    if (!casHoldings.length || !casDepository) return;
+    const seq = ++previewSeq.current;
+    setCasPreviewing(true);
+    try {
+      const data = await api("/api/holdings/import/preview", { method: "POST", body: JSON.stringify(importBody(members)) });
+      if (seq === previewSeq.current) setCasPreview(data);
+    } catch (e) {
+      if (seq === previewSeq.current) setCasPreview({ error: e.message });
+    }
+    if (seq === previewSeq.current) setCasPreviewing(false);
+  }
+
   async function executeCASImport(members, onPriceRefresh) {
     setCasStep("importing");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token || "";
-      const enriched = casHoldings.map(h => ({
-        ...h,
-        _dupAction: h._duplicate ? (casDupAction[h.name] || "update") : undefined,
-      }));
-      // Resolve the member for single-holder CAS.
-      // Priority: (1) server/fuzzy-matched map entry for the holder name,
-      //           (2) user manually picked from dropdown (stored under "__default__"),
-      //           (3) first member only when there is exactly ONE member (unambiguous).
-      // Never silently fall back to members[0] when there are multiple members — that
-      // caused TVRAO's CAS to be imported under Avinash.
-      const singleMember = casHolderNames.length <= 1 && members.length > 0
-        ? (casHolderMap[casHolderNames[0]] || casHolderMap["__default__"] || (members.length === 1 ? members[0]?.id : undefined))
-        : undefined;   // multi-holder: always use account_map on the server side
-      const res = await fetch("/api/holdings/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({
-          holdings: enriched,
-          member_id: singleMember || "",
-          account_map: Object.keys(casHolderMap).length > 0 ? casHolderMap : undefined,
-          cas_statement_date: casStatementDate,
-          cas_period_start: casPeriodStart,
-          cas_period_end: casPeriodEnd,
-        }),
-      });
-      const result = await res.json();
+      const result = await api("/api/holdings/import", { method: "POST", body: JSON.stringify(importBody(members)) });
       setCasResult(result);
       setCasStep("done");
       if (onSuccess) onSuccess(result);
@@ -140,7 +162,8 @@ export function useCASImport(user, onSuccess) {
         setTimeout(() => { onPriceRefresh().catch(() => {}); }, 1500);
       }
     } catch (e) {
-      setCasWarnings([`Import failed: ${e.message}`]);
+      // The server applies the statement in ONE transaction: a failure here means nothing changed.
+      setCasWarnings([`Import failed — no changes were made: ${e.message}`]);
       setCasStep("matching");
     }
   }
@@ -214,6 +237,8 @@ export function useCASImport(user, onSuccess) {
       setCasPeriodStart(data.period_start    || null);
       setCasPeriodEnd(data.period_end        || null);
       setCasDepository(data.depository       || "");
+      setCasStatementHash(data.statement_hash || "");
+      setCasPreview(null); setCasDupAction({});
       const autoMap = autoMapCASHolders(holderNames, holderPans, members, data.holder_member_map || {});
       setCasHolderMap(autoMap);
       setCasStep("matching");
@@ -262,6 +287,12 @@ export function useCASImport(user, onSuccess) {
       setCasHolderPans(data.holder_pans   || []);
       setCasWarnings(data.warnings        || []);
       setCasFormat(data.format            || "");
+      setCasStatementDate(data.statement_date || null);
+      setCasPeriodStart(data.period_start    || null);
+      setCasPeriodEnd(data.period_end        || null);
+      setCasDepository(data.depository       || "");
+      setCasStatementHash(data.statement_hash || "");
+      setCasPreview(null); setCasDupAction({});
       const autoMap = autoMapCASHolders(data.holder_names || [], data.holder_pans || [], members, data.holder_member_map || {});
       setCasHolderMap(autoMap);
       setCasStep("matching");
@@ -293,6 +324,11 @@ export function useCASImport(user, onSuccess) {
     setCasPeriodStart(null);
     setCasPeriodEnd(null);
     setCasDepository("");
+    setCasStatementHash("");
+    setCasPreview(null);
+    setCasPreviewing(false);
+    setCasRetireLegacy(true);
+    previewSeq.current++;
   }
 
   return {
@@ -315,6 +351,9 @@ export function useCASImport(user, onSuccess) {
     casPeriodStart,
     casPeriodEnd,
     casDepository,
+    casStatementHash,
+    casPreview, casPreviewing, previewCASImport,
+    casRetireLegacy, setCasRetireLegacy,
     // handleCASUpload,       // old parser — commented out
     // retryCASWithPassword,  // old parser — commented out
     executeCASImport,

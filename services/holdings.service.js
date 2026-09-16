@@ -9,6 +9,7 @@ import { sanitizeDates, enrichHoldings } from "../lib/holdings-utils.js";
 import { yahooPrice, stockPrice } from "../lib/prices.js";
 import { holdingSchema, validateRows } from "../lib/validate.js";
 import { takeSnapshot } from "../lib/snapshot.js";
+import { applyCasImport } from "./casImport.service.js";
 
 const hId = () => "h_" + randomUUID().replace(/-/g, "").slice(0, 16);
 const tId = () => "t_" + randomUUID().replace(/-/g, "").slice(0, 16);
@@ -39,25 +40,34 @@ function computeSipFields(transactions = []) {
 // FDs the user marked "closed" after maturity are soft-deleted: kept in the DB
 // for history but excluded from every portfolio view and total.
 const NOT_CLOSED = "maturity_status.is.null,maturity_status.neq.closed";
+// CAS holdings that dropped off the latest statement are soft-exited (migration
+// 0029) so their transactions/artifacts survive; they never show in the portfolio.
+const NOT_EXITED = "holding_status.is.null,holding_status.neq.exited";
 
 /** List holdings with artifacts + transactions, enriched with SIP/net-unit fields. */
 export async function list(userId) {
   const FULL  = "*, artifacts(id,file_name,file_type,file_size,description,uploaded_at), transactions(id,txn_type,units,price,txn_date,notes,created_at)";
   const BASIC = "*, artifacts(id,file_name,file_type,file_size,description,uploaded_at)";
-  const q = (sel, withFilter) => {
+  const q = (sel, withFilter, withExited) => {
     let b = supabase.from("holdings").select(sel).eq("user_id", userId);
     if (withFilter) b = b.or(NOT_CLOSED);
+    if (withExited) b = b.or(NOT_EXITED);
     return b.order("created_at", { ascending: true });
   };
-  // Try with the closed-FD filter first; if the maturity_status column doesn't
-  // exist yet (migration 0028 not run), fall back to the unfiltered query so the
-  // portfolio never comes back empty because of a missing column.
-  let { data, error } = await q(FULL, true);
-  if (error) ({ data, error } = await q(BASIC, true));
+  // Try with both soft-delete filters first; if a column doesn't exist yet
+  // (migration 0028 / 0029 not run), degrade gracefully so the portfolio never
+  // comes back empty because of a missing column.
+  let { data, error } = await q(FULL, true, true);
+  if (error) ({ data, error } = await q(BASIC, true, true));
+  if (error) {
+    console.warn("holdings.list: exited filter failed (run migrations/0029_cas_natural_key.sql):", error.message);
+    ({ data, error } = await q(FULL, true, false));
+    if (error) ({ data, error } = await q(BASIC, true, false));
+  }
   if (error) {
     console.warn("holdings.list: closed-FD filter failed (run migrations/0028_fd_maturity.sql):", error.message);
-    ({ data, error } = await q(FULL, false));
-    if (error) ({ data, error } = await q(BASIC, false));
+    ({ data, error } = await q(FULL, false, false));
+    if (error) ({ data, error } = await q(BASIC, false, false));
   }
   if (error) throw new Error(error.message);
   return enrichHoldings(data).map((h) =>
@@ -79,63 +89,60 @@ export async function listTransactions(userId, holdingId) {
   return data || [];
 }
 
-/** CSV/CAS import (flush-and-fill for CAS, update-vs-insert for manual). */
+/**
+ * CSV / CAS import.
+ *
+ * CAS statements (cas_statement_date present) go through casImport.service.js:
+ * one atomic apply_cas_snapshot() RPC keyed on member+depository+account+ISIN,
+ * so NSDL / CDSL / CAMS files for the same member coexist, holding ids (and the
+ * transactions, artifacts and concall analyses hanging off them) survive
+ * re-imports, and a failed import leaves the portfolio untouched.
+ *
+ * Manual CSV/Excel rows keep the update-vs-insert behaviour, now keyed per
+ * member (two family members holding the same ticker no longer collide).
+ */
 export async function importHoldings(userId, body) {
-  const { holdings, member_id, account_map, cas_statement_date, cas_period_start, cas_period_end, import_method } = body;
+  const { holdings, member_id, account_map, cas_statement_date, import_method } = body;
 
   const { invalid } = validateRows(holdingSchema.partial(), holdings);
   if (invalid.length > 0) console.warn(`[import] ${invalid.length} invalid row(s) flagged (kept — lenient import).`);
 
+  if (cas_statement_date) {
+    const result = await applyCasImport(userId, body);
+    return { ...result, validation: { invalid_count: invalid.length, invalid_sample: invalid.slice(0, 10).map((r) => ({ row: r.index, errors: r.errors })) } };
+  }
+
   let effectiveMemberId = member_id || null;
-  // Only fall back to first portfolio member for non-CAS imports (CSV etc.).
-  // For CAS imports the member must be explicit — the pMembers[0] fallback was
-  // silently assigning imports to the wrong member (e.g. Avinash instead of TV RAO).
+  // Only fall back to the first portfolio member for non-CAS imports (CSV etc.).
   if (!effectiveMemberId && !account_map) {
     const { data: portfolio } = await supabase.from("portfolio").select("members").eq("user_id", userId).single();
     const pMembers = portfolio?.members || [];
     if (pMembers.length > 0) effectiveMemberId = pMembers[0].id;
   }
 
-  const isCASImport = !!cas_statement_date;
-  if (isCASImport) {
-    // Compute affected members from actual incoming holdings — NOT from account_map values.
-    // Using account_map values would wipe joint-holder members who appear in the PDF
-    // but own none of the holdings in this batch (e.g. TV Rao on a Vijaya-primary account).
-    const affectedMemberIds = new Set();
-    for (const h of holdings) {
-      const holderKey = h._holder_name || h._account_name;
-      const mid = (account_map && holderKey && account_map[holderKey]) || effectiveMemberId || h.member_id;
-      if (mid) affectedMemberIds.add(mid);
-    }
-    if (affectedMemberIds.size > 0) {
-      await supabase.from("holdings").delete().eq("user_id", userId).eq("source", "cas").in("member_id", [...affectedMemberIds]);
-    }
-    await supabase.from("holdings").delete().eq("user_id", userId).eq("source", "cas").is("member_id", null);
-  }
-
+  // Dedup key is per member: (member, ticker|scheme_code|name, type).
+  const keyOf = (memberId, h) => `${memberId || ""}|${(h.ticker || h.scheme_code || h.name || "").toLowerCase()}|${h.type}`;
   const existingMap = {};
-  if (!isCASImport) {
-    const { data: existing } = await supabase.from("holdings").select("id, name, ticker, scheme_code, type").eq("user_id", userId);
-    for (const h of (existing || [])) {
-      const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
-      existingMap[key] = h.id;
-    }
+  {
+    const { data: existing } = await supabase.from("holdings")
+      .select("id, member_id, name, ticker, scheme_code, type, source")
+      .eq("user_id", userId).or("source.is.null,source.neq.cas");   // NULL-safe: neq alone drops NULL rows
+    for (const h of (existing || [])) existingMap[keyOf(h.member_id, h)] = h.id;
   }
 
+  // Demo rows are seeded for empty portfolios; the first real import replaces them.
   await supabase.from("holdings").delete().eq("user_id", userId).like("notes", "%__demo__%");
 
   const inserted = [], updated = [], skipped = [], errors = [];
   const toInsert = [], toInsertTxns = [], toUpdate = [];
+  const sourceLabel = import_method === "gmail_auto" ? "Gmail" : "file import";
 
   for (const h of holdings) {
-    const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
-    const existingId = !isCASImport ? existingMap[key] : null;
-    if (existingId && h._dupAction === "skip") { skipped.push(h.name); continue; }
-    const isMF = (h.type || "IN_STOCK") === "MF";
-    // account_map keys are holder names (e.g. "TV RAO").
-    // _holder_name is set by the CAS parser; _account_name is a legacy alias.
     const holderKey = h._holder_name || h._account_name;
     const resolvedMember = (account_map && holderKey && account_map[holderKey]) || effectiveMemberId || h.member_id || null;
+    const existingId = existingMap[keyOf(resolvedMember, h)];
+    if (existingId && h._dupAction === "skip") { skipped.push(h.name); continue; }
+    const isMF = (h.type || "IN_STOCK") === "MF";
     const payload = sanitizeDates({
       member_id: resolvedMember, type: h.type || "IN_STOCK", name: h.name,
       ticker: h.ticker || "", scheme_code: h.scheme_code || "",
@@ -149,9 +156,6 @@ export async function importHoldings(userId, body) {
       ...(import_method ? { import_method } : {}),
       ...(h.brokerage_name ? { brokerage_name: h.brokerage_name } : {}),
       ...(h.currency ? { currency: h.currency } : {}),
-      ...(cas_statement_date ? { source_date: cas_statement_date } : {}),
-      ...(cas_period_start ? { cas_period_start } : {}),
-      ...(cas_period_end ? { cas_period_end } : {}),
     });
     if (existingId) {
       toUpdate.push({ id: existingId, payload, name: h.name });
@@ -161,20 +165,19 @@ export async function importHoldings(userId, body) {
       inserted.push(h.name);
       const price = h.purchase_price || h.purchase_nav || 0;
       if (h.units && price) {
-        toInsertTxns.push({ id: tId(), holding_id: id, user_id: userId, txn_type: "BUY", units: h.units, price, txn_date: h.start_date || new Date().toISOString().slice(0, 10), notes: "Imported from CSV" });
+        toInsertTxns.push({ id: tId(), holding_id: id, user_id: userId, txn_type: "BUY", units: h.units, price, txn_date: h.start_date || new Date().toISOString().slice(0, 10), notes: `Imported from ${sourceLabel}` });
       }
     }
   }
 
   if (toInsert.length > 0) {
     const { error } = await supabase.from("holdings").insert(toInsert);
-    if (error) { errors.push(`Batch insert error: ${error.message}`); inserted.length = 0; }
+    if (error) { errors.push(`Batch insert error: ${error.message}`); inserted.length = 0; toInsertTxns.length = 0; }
   }
   if (toInsertTxns.length > 0) await supabase.from("transactions").insert(toInsertTxns);
-  for (const { id, payload, name } of toUpdate) {
-    const { error } = await supabase.from("holdings").update(payload).eq("id", id);
-    if (error) errors.push(`${name}: ${error.message}`); else updated.push(name);
-  }
+  // Updates in parallel (was one awaited round-trip per row).
+  const updResults = await Promise.all(toUpdate.map(({ id, payload }) => supabase.from("holdings").update(payload).eq("id", id).eq("user_id", userId)));
+  updResults.forEach(({ error }, i) => { if (error) errors.push(`${toUpdate[i].name}: ${error.message}`); else updated.push(toUpdate[i].name); });
 
   return {
     ok: true,
@@ -183,7 +186,7 @@ export async function importHoldings(userId, body) {
     inserted, updated, skipped, errors,
     validation: { invalid_count: invalid.length, invalid_sample: invalid.slice(0, 10).map((r) => ({ row: r.index, errors: r.errors })) },
     needs_price_refresh: inserted.length > 0 || updated.length > 0,
-    _cas_statement_date: cas_statement_date || null,
+    _cas_statement_date: null,
   };
 }
 
@@ -194,7 +197,8 @@ export function runPostImport(userId, casStatementDate) {
   (async () => {
     try {
       const { data: fresh } = await supabase.from("holdings").select("id, type, ticker, scheme_code, units")
-        .eq("user_id", userId).in("type", ["IN_STOCK", "IN_ETF"]).or("current_price.eq.0,current_price.is.null");
+        .eq("user_id", userId).in("type", ["IN_STOCK", "IN_ETF"]).or("current_price.eq.0,current_price.is.null")
+        .or(NOT_EXITED);
       if (!fresh?.length) return;
       for (const h of fresh) {
         if (!h.ticker || h.ticker.startsWith("INE")) continue;
