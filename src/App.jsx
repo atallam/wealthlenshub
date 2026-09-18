@@ -44,6 +44,7 @@ import GoalsTab from './features/goals/GoalsTab.jsx';
 import GoalFormModal from './features/goals/GoalFormModal.jsx';
 import { useGoalForm } from './features/goals/useGoalForm.js';
 import StrategyTab from './features/strategy/StrategyTab.jsx';
+import { useAlertForm } from './features/strategy/useAlertForm.js';
 import MembersTab from './features/members/MembersTab.jsx';
 import BudgetTab from './features/budget/BudgetTab.jsx';
 import Budget2Tab from './features/budget/Budget2Tab.jsx';
@@ -135,7 +136,8 @@ export default function App() {
   const [memberAction,    setMemberAction]    = useState(null);
   // Goals "Add/Edit" form state now lives in useGoalForm() (P3-5).
   const { goalForm, setGoalForm, editGoalId, setEditGoalId } = useGoalForm();
-  const [alertForm,       setAlertForm]       = useState(BA);
+  // Strategy tab "Add Alert" form state now lives in useAlertForm() (P3-5).
+  const { alertForm, setAlertForm } = useAlertForm();
 
   // ── Broker search state now lives in useBrokerSearch() (see below) ──
 
