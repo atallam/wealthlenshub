@@ -42,6 +42,7 @@ import OverviewTab from './features/overview/OverviewTab.jsx';
 import HoldingsTab from './features/holdings/HoldingsTab.jsx';
 import GoalsTab from './features/goals/GoalsTab.jsx';
 import GoalFormModal from './features/goals/GoalFormModal.jsx';
+import { useGoalForm } from './features/goals/useGoalForm.js';
 import StrategyTab from './features/strategy/StrategyTab.jsx';
 import MembersTab from './features/members/MembersTab.jsx';
 import BudgetTab from './features/budget/BudgetTab.jsx';
@@ -132,8 +133,8 @@ export default function App() {
   const [newMember,       setNewMember]       = useState({ name: '', relation: '', dob: '', email: '', nominee_name: '', nominee_relation: '' });
   const [editingMemberId, setEditingMemberId] = useState(null);
   const [memberAction,    setMemberAction]    = useState(null);
-  const [goalForm,        setGoalForm]        = useState(BG);
-  const [editGoalId,      setEditGoalId]      = useState(null);
+  // Goals "Add/Edit" form state now lives in useGoalForm() (P3-5).
+  const { goalForm, setGoalForm, editGoalId, setEditGoalId } = useGoalForm();
   const [alertForm,       setAlertForm]       = useState(BA);
 
   // ── Broker search state now lives in useBrokerSearch() (see below) ──
@@ -1271,8 +1272,9 @@ ${alertsText}`;
       )}
 
       {/* ── Add / Edit Goal ─────────────────────────────────────── */}
-      {/* Extracted to features/goals/GoalFormModal.jsx (P3-5) — state (goalForm,
-          editGoalId, modal) stays here, only the markup moved. */}
+      {/* Markup extracted to features/goals/GoalFormModal.jsx (P3-5); form state
+          (goalForm, editGoalId) now lives in useGoalForm() (P3-5). `modal` visibility
+          stays in useUiState(), shared across all modals. */}
       <GoalFormModal
         modal={modal} setModal={setModal}
         goalForm={goalForm} setGoalForm={setGoalForm}
