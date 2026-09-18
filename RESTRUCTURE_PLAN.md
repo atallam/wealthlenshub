@@ -51,17 +51,46 @@ behavior change, not a preservation of the old export output). Extracted into
   `holdings.service.js`'s `list()`.
 `routes/export.js` verified `supabase`-free.
 
-**Deferred / explicitly out of scope for this pass:**
-- Setu (`routes/setu.js`, 21 raw queries), SnapTrade (11), Plaid (10), `routes/cron.js` (16) —
-  real-money/bank-linked integrations, explicitly held back until either a build/test loop
-  exists or this is re-authorized.
-- `App.jsx` further restructuring (P3-5) — only the initial `useAuth` hook extraction is done.
+**2026-09-18 (same session, second follow-up) — Setu/SnapTrade/Plaid/cron.js extracted**
 
-**Acceptance check for the above 10 files:** `grep -rn "supabase" routes/notifications.js
-routes/push.js routes/tax.js routes/audit.js routes/watchlist.js routes/concall.js
-routes/analytics.js routes/import.js routes/import_v2.js routes/ai.js routes/export.js`
-→ zero matches. Full-repo `grep -rn "supabase.from" routes/` acceptance bar (line 43) is
-**not yet met** — `setu.js`, `snaptrade.js`, `plaid.js`, `cron.js` still have direct calls.
+User explicitly authorized moving into the real-money/bank-linked tier that was previously
+held back, confirming there is still no build/test loop available and to proceed carefully
+anyway (same manual-review + `grep` zero-references verification as every file above; no
+behavior changes except where called out). All four ✅ committed & pushed:
+- `services/plaid.service.js` ← `routes/plaid.js` — 9 functions covering connections,
+  token-exchange upsert, sync (statement/transaction inserts, cursor update), and delete;
+  preserved the original's fire-and-forget (unchecked) error handling everywhere it was
+  unchecked, and the `/status` route's checked-error branch where it was checked.
+- `services/snaptrade.service.js` ← `routes/snaptrade.js` — 11 functions covering
+  `getSnapConn`, registration, the holdings-diff query, flush-and-fill import, and
+  connection/holding cleanup on disconnect. Same fire-and-forget vs. checked-error split
+  as the original per call site.
+- `services/setu.service.js` ← `routes/setu.js` — 13 functions covering consent
+  create/update (both user-scoped and the webhook's unscoped variant, kept as two
+  distinct functions since the webhook has no authenticated user), FI-data session
+  bookkeeping, holdings upsert, and the budget-import dedup/insert loop. Largest and
+  most complex file in this batch; all API calls, token handling, and FI-data/transaction
+  parsing stayed in the route untouched.
+- `services/cron.service.js` ← `routes/cron.js` — 11 functions covering the price-refresh
+  user list, Gmail auto-import profile list, FD-alert query (with its existing
+  migration-0028 fallback preserved), a shared `getProfileEmail` reused across all 4
+  alert routes that needed it, and portfolio/holdings queries for the stale-nudge,
+  alert-check, insurance-reminder, and goal-milestone crons. The goal-milestone route's
+  `.update(...).catch(...)` chaining pattern was preserved exactly (service returns the
+  un-awaited query builder so the route's own `.catch()` still applies).
+
+**Deferred / explicitly out of scope for this pass:**
+- `App.jsx` further restructuring (P3-5) — only the initial `useAuth` hook extraction is
+  done; still paused pending a real build/test loop, per the plan's own note that this
+  step MUST be done with `npm run dev`.
+
+**Acceptance check for all 15 files touched this session:** `grep -rn "supabase"
+routes/notifications.js routes/push.js routes/tax.js routes/audit.js routes/watchlist.js
+routes/concall.js routes/analytics.js routes/import.js routes/import_v2.js routes/ai.js
+routes/export.js routes/plaid.js routes/snaptrade.js routes/setu.js routes/cron.js` →
+zero matches on every file. Full-repo `grep -rn "supabase.from" routes/` acceptance bar
+(line 43 below) is now **met** for every route file — P3-2's backend goal is complete
+modulo the "run the app and verify" step this session couldn't do (no build/test loop).
 
 ---
 

@@ -1,4 +1,20 @@
 /**
+ * services/brokers/persistSync.js
+ *
+ * DEPRECATED / DEAD CODE (2026-09-18) — nothing imports persistBrokerSync anymore.
+ * It was written as a shared tail for broker syncs using upsert-on-id semantics
+ * (Kite, Breeze), but both integrations have since been decommissioned
+ * (see src/App.jsx's "KiteImport and BreezeImport decommissioned" comment) and
+ * SnapTrade — the only broker left — was intentionally never routed through here
+ * (see the original note below). Safe to delete this file and the now-empty
+ * services/brokers/ directory: `rm services/brokers/persistSync.js && rmdir
+ * services/brokers`. Left in place only because the machine this was found on
+ * couldn't run shell commands to delete it at the time — see RESTRUCTURE_PLAN.md's
+ * P3-3 entry for the full context. If a new broker integration is ever added,
+ * reconsider a shared sync-runner pattern designed against what actually exists
+ * then, rather than reviving this file as-is.
+ *
+ * ── Original header ─────────────────────────────────────────────────────────
  * services/brokers/persistSync.js — shared tail for broker syncs that use
  * upsert-on-id semantics (Kite, Breeze). Dedupes the identical
  * "upsert holdings → mark connection synced → snapshot → count" sequence.
