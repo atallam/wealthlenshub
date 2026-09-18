@@ -251,6 +251,65 @@ ai, export, plaid, snaptrade's non-status endpoints, setu's non-status endpoints
 and the export.js FD-filter behavior change. These still only have manual-review +
 `grep` verification, not a live run.
 
+**2026-09-18 (same session, seventh follow-up) — live route-by-route walkthrough; one real pre-existing bug found and fixed**
+
+User walked through most of the extracted P3-2 routes live. Results, grouped by what
+turned out to be true bugs vs. expected behavior misread as bugs:
+
+**Confirmed correct / expected, no code issue:**
+- Notifications — blank with no error. Correct: the table is only ever populated by
+  cron jobs (goal-milestone, FD-maturity, stale-nudge alerts) that run on Render's
+  schedule and never fire locally, so an empty list is the right result on local dev.
+- Push — works.
+- Tax and Watchlist tabs — reported as "hidden." Confirmed in `App.jsx`: both are
+  explicitly commented out of the nav menu with `// hidden — not actively used`,
+  pre-existing and unrelated to this session.
+- Audit Log — works.
+- Analytics / XIRR — reported as not calculating. Confirmed via `routes/analytics.js`'s
+  own comments: pooled XIRR requires a transaction ledger, which only a **detailed** CAS
+  statement (or manual entries) populates — a **consolidated** CAS statement (what the
+  user imports) has no per-transaction history to build one from. This is documented,
+  pre-existing product behavior, not a P3-2 extraction bug — the extraction only moved
+  the two Supabase read functions; all XIRR math and the ledger/estimated/none fallback
+  stayed in the route untouched.
+- Concall — reported as "Fetch & analyse doesn't work." Network tab showed the request
+  taking 8.69s before a 404 with body consistent with the route's own
+  `"Could not auto-source an earnings call transcript for this holding"` response — i.e.
+  it genuinely tried every provider (NSE, BSE, Screener, Motley Fool) and found nothing
+  for that specific (smaller-cap) stock, which is the designed failure path that reveals
+  the manual-upload fallback. Confirms the `concall.service.js` extraction works
+  correctly; the feature simply couldn't source a transcript for that company.
+- CSV import (Group 3) — works end to end.
+
+**Real, pre-existing bug found and fixed ✅ committed & pushed:**
+- `src/hooks/usePortfolio.js` called `/api/asset-types` and `/api/benchmark?period=1Y`
+  with no router prefix. The actual routes are `/api/profile/asset-types`
+  (`routes/profile.js`, mounted at `/api/profile`) and `/api/budget/benchmark`
+  (`routes/budget.js`, mounted at `/api/budget` — confirmed the right one by matching
+  its `period` query param and Nifty50/S&P500-index response shape against a second,
+  wrong candidate at `/api/prices/benchmark`, which takes a different `symbol`/`range`
+  shape entirely). Both calls were silently `.catch()`-wrapped, so the app never crashed
+  — it just silently lost custom asset types and the benchmark-comparison data on every
+  load. Confirmed via response timing (7–19ms, consistent with Express's own
+  "no route matched" 404, not app logic) that this was a routing mismatch, not a
+  legitimate not-found response. Not caused by this session — `server.js`'s route
+  mounting, `routes/profile.js`, `routes/budget.js`, and `usePortfolio.js` were all
+  untouched by anything else this session did; this was simply never caught before
+  because the backend had never been run locally until this pass. Fixed by correcting
+  both paths in `usePortfolio.js`.
+  **Status: fix applied and committed, but not yet confirmed working live** — the user
+  re-checked after the fix and reported "still not working" without further detail (no
+  updated console/network output was captured), then chose to pause verification here
+  and revisit later. Next session should re-check `asset-types` and `benchmark` in the
+  Network tab after a hard refresh (not just HMR) before assuming the fix is complete —
+  it's possible HMR didn't pick up the hook change cleanly, or there's a second issue
+  underneath the routing one.
+
+**Still not attempted:** Group 4 (AI tools) and Group 5 (Excel export FD-filter check)
+from the verification walkthrough, plus everything already listed above as not yet
+verified live (most of the 15 P3-2 files still only have manual-review + `grep`
+verification for their non-status/non-UI-visible endpoints).
+
 ---
 
 ## P3-2 — Service layer across all routes

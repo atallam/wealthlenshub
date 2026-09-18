@@ -44,7 +44,7 @@ export function usePortfolio(user) {
           api("/api/portfolio"),
           api("/api/holdings"),
           api("/api/profile").catch(() => null),
-          api("/api/asset-types").catch(() => []),
+          api("/api/profile/asset-types").catch(() => []),
         ]);
         if (portfolio) {
           setMembers(portfolio.members || []);
@@ -75,7 +75,7 @@ export function usePortfolio(user) {
       }
       setLoaded(true);
       api("/api/snapshots?months=24").then(d => setWealthSnapshots(d?.snapshots || [])).catch(() => {});
-      api("/api/benchmark?period=1Y").then(d => setBenchmark(d)).catch(() => {});
+      api("/api/budget/benchmark?period=1Y").then(d => setBenchmark(d)).catch(() => {});
     })();
   }, [user]);
 
