@@ -41,12 +41,15 @@ import { useAuth } from './hooks/useAuth.js';
 import OverviewTab from './features/overview/OverviewTab.jsx';
 import HoldingsTab from './features/holdings/HoldingsTab.jsx';
 import { useHoldingActions } from './features/holdings/useHoldingActions.js';
+import { useHoldingForm } from './features/holdings/useHoldingForm.js';
 import GoalsTab from './features/goals/GoalsTab.jsx';
 import GoalFormModal from './features/goals/GoalFormModal.jsx';
 import { useGoalForm } from './features/goals/useGoalForm.js';
 import StrategyTab from './features/strategy/StrategyTab.jsx';
 import { useAlertForm } from './features/strategy/useAlertForm.js';
+import { useRebalanceState } from './features/strategy/useRebalanceState.js';
 import MembersTab from './features/members/MembersTab.jsx';
+import { useMemberForm } from './features/members/useMemberForm.js';
 import BudgetTab from './features/budget/BudgetTab.jsx';
 import Budget2Tab from './features/budget/Budget2Tab.jsx';
 import FamilyBudgetTab from './features/budget/FamilyBudgetTab.jsx';
@@ -130,11 +133,13 @@ export default function App() {
   // Modal/sheet/dropdown UI toggles now live in useUiState().
 
   // ── Holding / member form state ───────────────────────────────
-  const [form,            setForm]            = useState(BF);
-  const [editHolding,     setEditHolding]     = useState(null);
-  const [newMember,       setNewMember]       = useState({ name: '', relation: '', dob: '', email: '', nominee_name: '', nominee_relation: '' });
-  const [editingMemberId, setEditingMemberId] = useState(null);
-  const [memberAction,    setMemberAction]    = useState(null);
+  // Add/Edit Holding form state now lives in useHoldingForm() (P3-5).
+  const { form, setForm, editHolding, setEditHolding } = useHoldingForm();
+  // Add/Edit Member form state now lives in useMemberForm() (P3-5).
+  const {
+    newMember, setNewMember, editingMemberId, setEditingMemberId,
+    memberAction, setMemberAction,
+  } = useMemberForm();
   // Goals "Add/Edit" form state now lives in useGoalForm() (P3-5).
   const { goalForm, setGoalForm, editGoalId, setEditGoalId } = useGoalForm();
   // Strategy tab "Add Alert" form state now lives in useAlertForm() (P3-5).
@@ -149,12 +154,10 @@ export default function App() {
     txnHolding, setTxnHolding, txnForm, setTxnForm,
     artifactHolding, setArtifactHolding,
   } = useHoldingActions();
-  const [targetAlloc, setTargetAlloc] = useState({
-    IN_STOCK:35,MF:25,IN_ETF:5,US_STOCK:10,US_ETF:5,US_BOND:0,
-    CRYPTO:3,CASH:0,FD:5,PPF:5,EPF:5,REAL_ESTATE:2,INSURANCE:0,OTHER:0,
-  });
-  const [rebalMember, setRebalMember] = useState('all');
-  const [rebalCash,   setRebalCash]   = useState('');
+  // Strategy tab rebalancing inputs now live in useRebalanceState() (P3-5).
+  const {
+    targetAlloc, setTargetAlloc, rebalMember, setRebalMember, rebalCash, setRebalCash,
+  } = useRebalanceState();
   const [nwMember,    setNwMember]    = useState('all');
   const [bmPeriod,    setBmPeriod]    = useState('1Y');
   const [calMonth,    setCalMonth]    = useState(() => {
