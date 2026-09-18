@@ -1,6 +1,6 @@
 # WealthLens Hub — Product Backlog
 
-> Last reviewed: August 2026  
+> Last reviewed: September 2026  
 > P0 security items audited — all confirmed resolved, removed from backlog.  
 > Items 1 (Mobile PWA) and 5 (MF Overlap) shipped August 2026 and moved to Completed.
 > Value Masker (P1 Item 1) shipped August 2026 and moved to Completed; remaining P1 items renumbered.  
@@ -10,6 +10,41 @@
 > August 2026: SnapTrade Auto-Sync (P2 Item 3) also moved to Won't Do — SnapTrade is already a live connection.
 > August 2026: Embedded Financial News Feed (P3 Item 9) shipped and moved to Completed; Item 10 renumbered to 9.
 > August 2026: Financial News Feed upgraded — Indian market RSS sources (ET Markets, Livemint), macro RSS sources (SEBI, ET Economy), and per-stock filter UI added.
+> **September 2026: Production-readiness review — 4 P0/P1 infrastructure fixes shipped (see below); 5 P2 infra items added.**
+
+---
+
+## ✅ P0 — Production Infrastructure (Sep 2026) — All Completed
+
+> These were blocking issues identified in the Sep 2026 production-readiness review. All four are shipped.
+
+### ✅ P0-1 · Parallelize ISIN resolution in CAS import
+**File:** `routes/import.js`  
+**Problem:** Serial `for` loop with `await setTimeout(2000)` between each demat holding — 10 stocks = 20+ s, any CAS with 15+ stocks timed out Render's 30 s request limit.  
+**Fix:** Replaced with `pLimit(8)` parallel worker pool + 25 s hard deadline. Imports `resolveIsinSymbol` from `lib/prices.js` and `pLimit` from `lib/refresh.js`.  
+**Shipped:** Sep 18 2026
+
+### ✅ P0-2 · Add `/health` endpoint + fix render.yaml healthCheckPath
+**Files:** `server.js`, `render.yaml`  
+**Problem:** `healthCheckPath: /` caused Render to treat the HTML SPA shell as the health signal — a broken deploy could go undetected.  
+**Fix:** Added `GET /health → {ok: true, ts: Date.now()}` before static middleware. Updated `healthCheckPath: /health` in render.yaml.  
+**Shipped:** Sep 18 2026
+
+---
+
+## ✅ P1 — Infrastructure (Sep 2026) — All Completed
+
+### ✅ P1-1 · Gmail check-now: fire-and-forget + job polling
+**File:** `routes/gmail.js`  
+**Problem:** `POST /check-now` awaited `autoImportCASForUser()` synchronously — PDF fetch + casparser can take 2–5 min, well beyond Render's 30 s timeout.  
+**Fix:** Returns `{started: true, job_id}` immediately; runs import in the background via a `pendingJobs` Map; added `GET /gmail/job/:id` for client polling.  
+**Shipped:** Sep 18 2026
+
+### ✅ P1-2 · Flush-and-fill destructive UX warning in CAS Import modal
+**File:** `src/components/modals/CASImportModal.jsx`  
+**Problem:** The replace-count warning (e.g. "42 existing CAS holdings will be replaced") was buried in the same yellow generic warning box as informational notices — users didn't realize the action was destructive.  
+**Fix:** Matching step now splits warnings into two boxes: generic amber box (informational) + distinct orange "🔄 Full Replace — CAS Source" box showing the replace count with explanation. `casReplaceCount` derived locally from warning text.  
+**Shipped:** Sep 18 2026
 
 ---
 
@@ -24,11 +59,47 @@ Users manually log every monthly SIP transaction. A recurring-transaction templa
 ### 2. Family Consolidated Tax Report (Excel)
 Export a per-member and consolidated LTCG/STCG summary as a multi-sheet Excel workbook formatted for CA filing — including grandfathering calculations and a summary row matching ITR Schedule 112A format.
 
+### 3. Gmail check-now — frontend polling integration
+`routes/gmail.js` now returns `{job_id}` immediately (P1-1 above), but the Gmail status panel frontend still expects the old synchronous response structure.  
+Update the Gmail status panel in the frontend to:
+- Call `POST /api/gmail/check-now` and get `{started, job_id}`
+- Show a "Checking…" spinner
+- Poll `GET /api/gmail/job/:id` every 3 s until status is `done` or `error`
+- Surface the result (emails found, CAS imported, errors) as before
+
 ---
 
 ## 🟡 P2 — Medium Priority
 
-*No active P2 items.*
+### P2-1 · CSP Headers
+**File:** `server.js`  
+Helmet CSP is currently disabled (`contentSecurityPolicy: false`) to avoid breaking the Vite SPA. No content security policy in production is an audit finding.  
+**Fix:** Audit exact asset origins (Supabase, Yahoo Finance, CDN scripts) and enable Helmet CSP with a tight allowlist.  
+**Effort:** Medium — needs SPA asset origin audit first.
+
+### P2-2 · pLimit — extract to shared `lib/utils.js`
+**Files:** `lib/refresh.js`, `routes/import.js`  
+`pLimit` is defined in `lib/refresh.js` for the nightly price cron and borrowed via named export in `routes/import.js`. Semantically it belongs in a shared utility module.  
+**Fix:** Move `pLimit` to `lib/utils.js`; update all import sites.  
+**Effort:** Low — pure refactor, no logic change.
+
+### P2-3 · Gmail `pendingJobs` — persistent / multi-instance store
+**File:** `routes/gmail.js`  
+`pendingJobs` is an in-process `Map` — lost on server restart, not shared across Render instances if scaled horizontally.  
+**Fix:** Store job state in a `gmail_jobs` Supabase table (or Redis). Add TTL-based cleanup for old jobs.  
+**Effort:** Medium.
+
+### P2-4 · CAS import done screen — show statement date + depository
+**File:** `src/components/modals/CASImportModal.jsx`  
+After import completes the "done" step shows only a generic success message. `casDepository` and `casStatementDate` are already in state but not displayed.  
+**Fix:** Show depository (CAMS / CDSL / NSDL / KFin) and statement date in the done step summary.  
+**Effort:** Low.
+
+### P2-5 · GitHub Actions cron — add failure alerting
+**File:** `.github/workflows/scheduled-jobs.yml`  
+Cron failures are silent unless the user monitors the GitHub Actions tab.  
+**Fix:** Add `on-failure` step that POSTs to a Slack/email webhook, or enable GitHub Actions email notifications for workflow failures.  
+**Effort:** Low.
 
 ---
 
@@ -84,6 +155,11 @@ XIRR captures the aggregate effect of SIPs but there is no breakdown showing whi
 
 > These are shipped and live — do not re-add to the active backlog.
 
+### Production-Readiness Fixes (Sep 2026)
+- ✅ **P0-1 — ISIN resolution parallelized** — `routes/import.js`: `pLimit(8)` parallel batches + 25 s deadline (was serial with 2 s sleeps per holding)
+- ✅ **P0-2 — /health endpoint** — `server.js` + `render.yaml`: `GET /health → {ok, ts}`; `healthCheckPath: /health`
+- ✅ **P1-1 — Gmail check-now async** — `routes/gmail.js`: fire-and-forget + `GET /job/:id` polling
+- ✅ **P1-2 — CAS flush-and-fill UX** — `CASImportModal.jsx`: split warnings into generic amber + destructive orange box with replace count
 
 ### Embedded Financial News Feed (Enhanced)
 Shipped August 2026 (was P3 Item 9). Enhanced August 2026 with Indian market RSS sources, additional macro feeds, and per-stock filtering.

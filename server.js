@@ -64,6 +64,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/", apiLimiter);
 app.use("/api/", auditMiddleware);   // ── Audit trail (fire-and-forget on all mutating routes)
 
+// ── Health check (P0-2) ──────────────────────────────────────────────────────
+// Must be registered BEFORE the static middleware so it is never shadowed by
+// the catch-all SPA route. Render uses this path (render.yaml healthCheckPath).
+app.get("/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
+
 // ── Serve built React app ────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, "dist")));
 

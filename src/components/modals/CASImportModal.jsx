@@ -88,6 +88,17 @@ export default function CASImportModal({
   const importCount = casHoldings.length - skippedCount;
   const fmtInr = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
+  // ── Flush-and-fill replace count (P1-2) ──────────────────────────────────
+  // The server pushes a warning like "42 existing CAS holding(s) will be replaced …"
+  // into casWarnings. We parse the count out so we can show a distinct destructive
+  // UX box in the matching step, separate from generic informational warnings.
+  const casReplaceCount = (() => {
+    const w = casWarnings.find(w => /will be replaced/.test(w));
+    if (!w) return 0;
+    const m = w.match(/^(\d+)/);
+    return m ? parseInt(m[1], 10) : 0;
+  })();
+
   return (
     <Overlay onClose={() => { resetCASDownloader(); onClose(); }} wide>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.2rem" }}>
@@ -177,9 +188,26 @@ export default function CASImportModal({
       {/* Matching / preview step */}
       {!isUploading && isMatching && (
         <>
-          {casWarnings.length > 0 && (
+          {/* Generic informational warnings (non-destructive) */}
+          {casWarnings.filter(w => !w.includes("will be replaced")).length > 0 && (
             <div style={{ background: "rgba(201,168,76,.06)", border: "1px solid rgba(201,168,76,.15)", borderRadius: 8, padding: ".55rem .75rem", marginBottom: ".8rem" }}>
-              {casWarnings.map((w, i) => <div key={i} style={{ fontSize: ".7rem", color: "#c9a84c" }}>⚠ {w}</div>)}
+              {casWarnings.filter(w => !w.includes("will be replaced")).map((w, i) => (
+                <div key={i} style={{ fontSize: ".7rem", color: "#c9a84c" }}>⚠ {w}</div>
+              ))}
+            </div>
+          )}
+          {/* Flush-and-fill destructive warning (P1-2) */}
+          {(casReplaceCount > 0 || casWarnings.some(w => w.includes("will be replaced"))) && (
+            <div style={{ background: "rgba(224,124,90,.1)", border: "1.5px solid rgba(224,124,90,.4)", borderRadius: 8, padding: ".65rem .85rem", marginBottom: ".8rem" }}>
+              <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#e07c5a", marginBottom: ".25rem" }}>🔄 Full Replace — CAS Source</div>
+              <div style={{ fontSize: ".68rem", color: "var(--text)" }}>
+                {casReplaceCount > 0
+                  ? `${casReplaceCount} existing CAS-sourced holding${casReplaceCount !== 1 ? "s" : ""} will be replaced by this statement.`
+                  : casWarnings.find(w => w.includes("will be replaced")) || "Existing CAS holdings will be replaced."}
+              </div>
+              <div style={{ fontSize: ".63rem", color: "var(--text)", opacity: .75, marginTop: ".2rem" }}>
+                Manually-entered holdings and other statement sources are untouched. If you have both CAMS and CDSL statements, import both — each replaces only its own source.
+              </div>
             </div>
           )}
           <div style={{ display: "flex", gap: ".5rem", flexWrap: "wrap", marginBottom: ".8rem" }}>

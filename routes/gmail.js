@@ -39,6 +39,12 @@ function verifyState(state, maxAgeMs = 10 * 60 * 1000) {
 
 const GMAIL_ENABLED = !!(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET);
 
+// ── In-process job store for fire-and-forget gmail check-now (P1-1) ─────────
+// Keyed by UUID job_id. Entries are never deleted — in-process Map resets on
+// restart, which is fine for a short-lived background task. Upgrade to Supabase
+// if persistence across restarts is needed (see P2-3 in backlog).
+const pendingJobs = new Map();
+
 // Subject keywords used to find CAS emails.
 const CAS_SUBJECT_KEYWORDS = [
   "Consolidated Account Statement",
@@ -358,9 +364,35 @@ router.post("/toggle-auto", auth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Fire-and-forget check-now (P1-1) ─────────────────────────────────────────
+// autoImportCASForUser can take 2-5 min (PDF fetch + casparser).
+// Responding synchronously would exceed Render's 30 s request timeout.
+// Solution: return a job_id immediately, run the import in the background,
+// and let the client poll GET /gmail/job/:id for the result.
 router.post("/check-now", auth, async (req, res) => {
   if (!GMAIL_ENABLED) return res.status(501).json({ error: "Gmail integration not configured" });
-  res.json(await autoImportCASForUser(req.user.id));
+  const jobId = crypto.randomUUID();
+  pendingJobs.set(jobId, { status: "running", startedAt: Date.now() });
+  autoImportCASForUser(req.user.id)
+    .then(result => pendingJobs.set(jobId, {
+      status: "done",
+      result,
+      startedAt: pendingJobs.get(jobId)?.startedAt,
+      completedAt: Date.now(),
+    }))
+    .catch(err => pendingJobs.set(jobId, {
+      status: "error",
+      error: err.message,
+      startedAt: pendingJobs.get(jobId)?.startedAt,
+      completedAt: Date.now(),
+    }));
+  res.json({ started: true, job_id: jobId });
+});
+
+router.get("/job/:id", auth, (req, res) => {
+  const job = pendingJobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: "Job not found or already expired" });
+  res.json(job);
 });
 
 export default router;

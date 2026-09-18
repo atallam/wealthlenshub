@@ -8,7 +8,8 @@ import {
   scoreHoldings, scoreTransactions,
   parseNSDLCASStatement, parseFidelityPDFStatement,
 } from "../lib/parsers.js";
-import { getAmfiList, yahooSearch, yahooPrice } from "../lib/prices.js";
+import { getAmfiList, yahooPrice, resolveIsinSymbol } from "../lib/prices.js";
+import { pLimit } from "../lib/refresh.js";
 import { auditImport } from "../lib/importLogger.js";
 import { decrypt } from "../lib/crypto.js";
 
@@ -195,49 +196,49 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
               }
             } catch (e) { console.log(`AMFI enrichment error: ${e.message}`); }
 
-            const dematHoldings = result.holdings.filter(h => h.type !== "MF" && h.ticker === h.scheme_code && h.scheme_code?.startsWith("INE"));
-            for (const h of dematHoldings) {
-              try {
-                let quotes = [];
-                for (let attempt = 0; attempt < 2 && !quotes.length; attempt++) {
-                  if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
-                  quotes = await yahooSearch(h.scheme_code);
-                }
-                if (!quotes.length && h.name) {
-                  const nameQuery = h.name.split(/\s+/).slice(0, 2).join(" ");
-                  for (let attempt = 0; attempt < 2 && !quotes.length; attempt++) {
-                    if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
-                    quotes = await yahooSearch(nameQuery);
+            // ── Parallel ISIN → ticker resolution (P0-1) ──────────────────────
+            // Previously a serial loop with 2 s sleeps per holding — timed out
+            // Render's 30 s limit on any CAS with 15+ demat holdings.
+            // Now: pLimit(8) worker pool + 25 s hard deadline so we always respond.
+            const dematHoldings = result.holdings.filter(h =>
+              h.type !== "MF" && h.ticker === h.scheme_code && h.scheme_code?.startsWith("INE")
+            );
+            if (dematHoldings.length > 0) {
+              const ISIN_DEADLINE = Date.now() + 25_000;
+              await pLimit(dematHoldings.map(h => async () => {
+                if (Date.now() > ISIN_DEADLINE) return;
+                try {
+                  const sym = await resolveIsinSymbol(h.scheme_code);
+                  if (sym) {
+                    h.ticker = sym.replace(/\.(NS|BO)$/, "");
+                    const price = await yahooPrice(sym);
+                    if (price && price > 0) {
+                      h.current_price = price;
+                      h.current_value = (h.units || 0) * price;
+                      h._needs_price = false;
+                    }
                   }
-                }
-                const nse = quotes.find(q => q.symbol?.endsWith(".NS"));
-                const bse = quotes.find(q => q.symbol?.endsWith(".BO"));
-                const match = nse || bse;
-                if (match) {
-                  const resolved = match.symbol.replace(/\.(NS|BO)$/, "");
-                  h.ticker = resolved;
-                  await new Promise(r => setTimeout(r, 1500));
-                  for (let priceAttempt = 0; priceAttempt < 2; priceAttempt++) {
-                    try {
-                      if (priceAttempt > 0) await new Promise(r => setTimeout(r, 2000));
-                      const price = await yahooPrice(match.symbol);
-                      if (price && price > 0) { h.current_price = price; h.current_value = h.units * price; h._needs_price = false; break; }
-                    } catch {}
-                  }
-                }
-              } catch (e) { console.log(`ISIN->Ticker error: ${e.message}`); }
-              await new Promise(r => setTimeout(r, 2000));
+                } catch (e) { console.log(`ISIN->Ticker error ${h.scheme_code}: ${e.message}`); }
+              }), 8);
             }
 
-            const needsPriceHoldings = result.holdings.filter(h => h.type !== "MF" && h._needs_price && h.ticker && h.ticker !== h.scheme_code);
-            for (const h of needsPriceHoldings) {
-              try {
-                const sym = `${h.ticker.toUpperCase()}.NS`;
-                let price = await yahooPrice(sym);
-                if (!price) price = await yahooPrice(`${h.ticker.toUpperCase()}.BO`);
-                if (price && price > 0) { h.current_price = price; h.current_value = h.units * price; h._needs_price = false; }
-              } catch {}
-              await new Promise(r => setTimeout(r, 1500));
+            const needsPriceHoldings = result.holdings.filter(h =>
+              h.type !== "MF" && h._needs_price && h.ticker && h.ticker !== h.scheme_code
+            );
+            if (needsPriceHoldings.length > 0) {
+              const PRICE_DEADLINE = Date.now() + 15_000;
+              await pLimit(needsPriceHoldings.map(h => async () => {
+                if (Date.now() > PRICE_DEADLINE) return;
+                try {
+                  const price = await yahooPrice(`${h.ticker.toUpperCase()}.NS`) ||
+                                await yahooPrice(`${h.ticker.toUpperCase()}.BO`);
+                  if (price && price > 0) {
+                    h.current_price = price;
+                    h.current_value = (h.units || 0) * price;
+                    h._needs_price = false;
+                  }
+                } catch {}
+              }), 8);
             }
 
             // CAS is flush-and-fill: count existing CAS holdings that will be replaced,
