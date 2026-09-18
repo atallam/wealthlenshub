@@ -10,6 +10,49 @@ confirm the baseline is green: `npm test && npm run build`.
 
 ---
 
+## Progress log
+
+**2026-09-18 — P3-2 service-layer extraction (partial, no build/test loop available)**
+
+No `npm run dev` / `npm test` / lint access was available on this pass, so instead of the
+prereq'd build-verified workflow above, each route was extracted via careful manual
+read-through, behavior-preserving lift-and-shift, and a `grep -rn "supabase" routes/<file>`
+zero-references check before commit. Per explicit direction, this stayed strictly in
+**"small pieces only"** mode — no Setu/SnapTrade/Plaid/`cron.js` work, no further `App.jsx`
+restructuring beyond the earlier `useAuth` hook extraction (all still pending a real
+build loop; see P3-3 and P3-5 below, unchanged).
+
+Routes moved to a service file and verified `supabase`-free (✅ committed & pushed):
+- `services/notifications.service.js` ← `routes/notifications.js`
+- `services/push.service.js` ← `routes/push.js` (kept VAPID/webpush setup + exports)
+- `services/tax.service.js` ← `routes/tax.js`
+- `services/audit.service.js` ← `routes/audit.js`
+- `services/watchlist.service.js` ← `routes/watchlist.js`
+- `services/concall.service.js` ← `routes/concall.js` (kept multer/provider orchestration)
+- `services/analytics.service.js` ← `routes/analytics.js` (kept XIRR/FIFO math + helpers)
+- `services/import.service.js` ← `routes/import.js` (surgical: only the query lines moved,
+  branching/parsing logic untouched) — also reused by `routes/import_v2.js` for its
+  identical CAS-unlock-context query (no duplicate function written)
+- `services/ai-tools.service.js` ← `routes/ai.js` (surgical: all 9 `execTool` case-branch
+  queries moved one function each; response shaping/aggregation/math stayed in the route)
+
+**Deferred / explicitly out of scope for this pass:**
+- `routes/export.js` — its `/xlsx` FD query is missing the `NOT_CLOSED`/`NOT_EXITED` filters
+  that `services/holdings.service.js`'s `list()` applies; reusing `list()` would silently
+  exclude closed FDs from exports, so this was left untouched pending a decision.
+- Setu (`routes/setu.js`, 21 raw queries), SnapTrade (11), Plaid (10), `routes/cron.js` (16) —
+  real-money/bank-linked integrations, explicitly held back until either a build/test loop
+  exists or this is re-authorized.
+- `App.jsx` further restructuring (P3-5) — only the initial `useAuth` hook extraction is done.
+
+**Acceptance check for the above 9 files:** `grep -rn "supabase" routes/notifications.js
+routes/push.js routes/tax.js routes/audit.js routes/watchlist.js routes/concall.js
+routes/analytics.js routes/import.js routes/import_v2.js routes/ai.js` → zero matches.
+Full-repo `grep -rn "supabase.from" routes/` acceptance bar (line 43) is **not yet met** —
+`export.js`, `setu.js`, `snaptrade.js`, `plaid.js`, `cron.js` still have direct calls.
+
+---
+
 ## P3-2 — Service layer across all routes
 
 **Goal:** routes never call `supabase.from(...)` directly. All DB access + ownership
