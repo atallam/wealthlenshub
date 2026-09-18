@@ -149,6 +149,57 @@ plan's premises can go stale:
 extraction onward, `AppShellContext`), and the rest of P4-2 (wiring `SourceStatus` into
 `ImportHub` with live per-source status calls, plus a full loading/empty-states audit).
 
+**2026-09-18 (same session, fifth follow-up) — P3-5 Goals modal extracted; P4-2 SourceStatus wired in**
+
+User asked to go ahead with both pieces flagged as deferred above. Same no-`npm run dev`
+constraint applied, so both changes were kept behavior-preserving and were checked with a
+`babel --presets=@babel/preset-react` parse pass (catches JSX/syntax errors, though not
+runtime behavior) before committing — this is now the standard sanity check for any JSX
+change made without a dev server.
+
+- **P3-5 — Goals modal extracted:** the ~130-line "Add/Edit Goal" modal moved out of
+  `App.jsx` into `src/features/goals/GoalFormModal.jsx` ✅ committed & pushed. This is a
+  markup-only lift-and-shift — `goalForm`, `editGoalId`, and `modal` state all stay owned
+  by `App.jsx` and are passed down as props, so it doesn't attempt the riskier "lift state
+  into a hook" step from the plan. `App.jsx` shrank from 99,123 to 92,186 bytes (~130
+  lines removed, replaced by an 11-line component call + a new import). `AppShellContext`
+  (plan step 2) still not started — the remaining ~24 `useState`s in `App.jsx` are mostly
+  cross-tab (tab, selMember, modal, and per-tab form state for Alerts/Members/etc.) and
+  still need a live app to extract safely one at a time.
+- **P4-2 — SourceStatus wired into ImportHub:** `src/components/modals/ImportHub.jsx`
+  now fetches real connection status on open for the two sources that have a persistent
+  connection — SnapTrade (`GET /api/snaptrade/connections`) and Setu AA
+  (`GET /api/setu/status` gate, then `GET /api/setu/connections`) — and renders the
+  `SourceStatus` banner under those rows ✅ committed & pushed. CAS/FD/CSV/manual are
+  one-shot imports with nothing to report, so they're intentionally left without a
+  banner. Any fetch failure (including the normal "no connection registered yet" case,
+  which the backend currently returns as a generic error rather than a distinct
+  not-found) is treated as `not_connected` rather than surfaced as an alarming `error`
+  state — verified against the actual route/service code (`getSnapConn` throws a plain
+  `Error`, routed through `sendError` at a default HTTP 500) rather than assumed. Setu's
+  response fields were checked against `migrations/0027_setu_connections.sql` rather than
+  guessed. One layout bug caught and fixed before committing: wrapping each row in a
+  container div for the optional banner broke the button's full-width stretch (it relied
+  on being a direct flex child), fixed with an explicit `width: 100%`. Plaid and Gmail
+  remain unwired — Plaid isn't even a source in `ImportHub`'s current `SECTIONS` list, and
+  Gmail has no dedicated status endpoint yet (both still noted in `SourceStatus.jsx`'s
+  header comment for a future pass).
+
+**Note on this session's `RESTRUCTURE_PLAN.md` / `App.jsx` sync issue:** the very first
+commit of `App.jsx` in this follow-up reported success but the device's copy still held
+the pre-edit content moments later (same file-revert symptom seen earlier on this plan
+doc, now also seen on a code file). Caught by re-staging and diffing immediately after
+every commit — now standard practice this session — and fixed with a forced re-commit,
+verified stable across two follow-up re-stages. If this keeps recurring across file
+types, it's worth checking for a sync conflict (e.g. OneDrive syncing this repo across
+two devices) outside of what this session can diagnose.
+
+**Still deferred, pending a real `npm run dev` session:** the rest of P3-5
+(`AppShellContext` + extracting remaining cross-tab state one tab at a time), the rest of
+P4-2 (Plaid/Gmail status wiring if desired, plus the full loading/empty-states audit),
+and — now more than ever — an actual run-and-click-through verification pass, since
+nothing from this session's P3-2 through P4-2 work has been executed in a live app yet.
+
 ---
 
 ## P3-2 — Service layer across all routes
@@ -239,10 +290,13 @@ tab components and hooks — the remaining bulk is cross-tab state and orchestra
 of more than ~5 props; app behaves identically. This step MUST be done with `npm run dev`.
 
 **Status (2026-09-18):** step 1 is already done — all tab components live under
-`src/features/<name>/`. Remaining `useState` count in `App.jsx` is ~24. No
-`AppShellContext` yet. `TaxTab` has no extractable state; the next candidate (Goals) has
-a large inline modal wired to shared portfolio state — deferred until a real
-`npm run dev` session is available to verify each extraction. See Progress Log above.
+`src/features/<name>/`. The Goals "Add/Edit" modal has been extracted to
+`src/features/goals/GoalFormModal.jsx` (markup only — `goalForm`/`editGoalId`/`modal`
+state still lives in `App.jsx`). `TaxTab` had no extractable state, so nothing to do
+there. `App.jsx` is now 92,186 bytes (was 99,123). Step 2 (`AppShellContext`) not started
+— still needs a real `npm run dev` session to extract the remaining ~24 `useState`s
+(mostly cross-tab: `tab`, `selMember`, `modal`, and other tabs' form state) one at a time.
+See Progress Log above.
 
 ---
 
@@ -261,13 +315,14 @@ pending and (b) surface failures via `Toast`. Add guided empty states (e.g. Hold
 **Acceptance:** one entry point for all imports; consistent status UI; no silent failures;
 every list has a skeleton + empty state.
 
-**Status (2026-09-18):** `ImportHub.jsx` already exists and is fully wired into `App.jsx`
-(satisfies the "one entry point" acceptance bar). `LoadingSkeleton` and `Toast` already
-exist. New this pass: `src/components/shared/SourceStatus.jsx` — a standalone, unwired
-presentational status banner (groundwork only; see Progress Log above for details and
-the per-source endpoint mapping). Still needed: wire `SourceStatus` into `ImportHub`'s
-rows with real per-source status calls, and a full loading/empty-states audit — both
-deferred to a session with `npm run dev` available.
+**Status (2026-09-18):** `ImportHub.jsx` already existed and was fully wired into
+`App.jsx` (satisfies the "one entry point" acceptance bar). `LoadingSkeleton` and `Toast`
+already exist. `src/components/shared/SourceStatus.jsx` (the banner component) is now
+wired into `ImportHub.jsx`'s SnapTrade and Setu AA rows with real status calls — see
+Progress Log above for the endpoints, the not-connected-vs-error handling, and the
+button-width fix that came out of it. Still open: Plaid/Gmail status (Plaid isn't in
+`ImportHub`'s source list at all; Gmail has no status endpoint), and the full
+loading/empty-states audit — both deferred to a session with `npm run dev` available.
 
 ---
 
