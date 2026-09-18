@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../../supabase.js';
+import { supabase } from '../supabase.js';
 import { X as XIcon, RefreshCw, Plus, Eye } from 'lucide-react';
 
 const ASSET_TYPES = [

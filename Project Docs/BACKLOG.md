@@ -164,14 +164,14 @@ XIRR captures the aggregate effect of SIPs but there is no breakdown showing whi
 ### Embedded Financial News Feed (Enhanced)
 Shipped August 2026 (was P3 Item 9). Enhanced August 2026 with Indian market RSS sources, additional macro feeds, and per-stock filtering.
 - **Backend** — `routes/news.js`; `GET /api/news?tickers=...`; Yahoo Finance news for up to 12 portfolio tickers; RSS feeds added: ET Markets + Livemint (Indian market), RBI + SEBI + ET Economy (macro); regex RSS 2.0 parser; 15-min in-process cache per source; deduplicates, sorts newest-first, returns up to 60 articles; `rssSources` list in response distinguishes portfolio tickers from feed sources
-- **Frontend** — `src/features/news/NewsTab.jsx`; two-row filter UI — Row 1 Market category (All / Indian / US / Macro); Row 2 per-stock chips (All Stocks + one chip per portfolio ticker with articles, colour-coded by market); clicking a ticker filters to that stock only; active filter summary bar with Clear; ticker tag on each card is clickable; `rssSources` set suppresses ticker tags on RSS articles
+- **Frontend** — `src/features/NewsTab.jsx`; two-row filter UI — Row 1 Market category (All / Indian / US / Macro); Row 2 per-stock chips (All Stocks + one chip per portfolio ticker with articles, colour-coded by market); clicking a ticker filters to that stock only; active filter summary bar with Clear; ticker tag on each card is clickable; `rssSources` set suppresses ticker tags on RSS articles
 - **Wiring** — `server.js` mounts `/api/news`; `App.jsx` adds News tab (Newspaper icon) to nav
 
 ### Unified In-App Notification Centre
 Shipped August 2026 (was P2 Item 5).
 - **DB migration** — `migrations/0025_notifications.sql`; `notifications` table with `user_id`, `kind`, `title`, `body`, `url`, `read`, `created_at`; RLS enabled
 - **Backend** — `routes/notifications.js`; GET `/api/notifications`, POST `/:id/read`, POST `/read-all`, DELETE `/clear`; `insertNotification()` helper exported for cron use
-- **Frontend** — `src/components/notifications/NotificationCentre.jsx`; bell icon in desktop header with unread badge; slide-in drawer with mark-read-on-click, Mark-all-read, Clear-read buttons; polls every 60s
+- **Frontend** — `src/components/NotificationCentre.jsx`; bell icon in desktop header with unread badge; slide-in drawer with mark-read-on-click, Mark-all-read, Clear-read buttons; polls every 60s
 - **Cron integration** — `fd-alerts`, `alert-check`, `insurance-reminders`, `goal-milestones` all call `insertNotification()` after sending email
 
 ### Dark Mode

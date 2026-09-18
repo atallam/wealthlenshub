@@ -5,12 +5,12 @@
  * Shows a paginated, filterable timeline of all user actions.
  *
  * Usage:
- *   import AuditLogPanel from './features/audit/AuditLogPanel.jsx';
+ *   import AuditLogPanel from './features/AuditLogPanel.jsx';
  *   {showAuditLog && <AuditLogPanel onClose={() => setShowAuditLog(false)} api={api} />}
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Overlay } from '../../components/shared/Overlay.jsx';
+import { Overlay } from '../components/shared/Overlay.jsx';
 import {
   Activity, Shield, TrendingUp, FileText, Users, RefreshCw,
   Brain, Wallet, Bell, Star, ChevronLeft, ChevronRight,

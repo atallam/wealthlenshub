@@ -9,9 +9,9 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '../../supabase.js';
-import { gainColor, currentFY, fyList, fmtINRCompact as fmtINR } from '../../lib/fmt.js';
-import { readSSEStream } from '../../hooks/useStreamAI.js';
+import { supabase } from '../supabase.js';
+import { gainColor, currentFY, fyList, fmtINRCompact as fmtINR } from '../lib/fmt.js';
+import { readSSEStream } from '../hooks/useStreamAI.js';
 
 // ── sub-components ─────────────────────────────────────────────────────────
 

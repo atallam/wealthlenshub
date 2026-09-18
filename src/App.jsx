@@ -9,7 +9,7 @@ import {
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
 import { api } from './lib/api.js';
 import SnapTradeImport from './SnapTradeImport.jsx';
-import NotificationCentre from './components/notifications/NotificationCentre.jsx';
+import NotificationCentre from './components/NotificationCentre.jsx';
 // KiteImport and BreezeImport decommissioned — integrations removed
 import SetuAAImport from './SetuAAImport.jsx';
 
@@ -60,11 +60,11 @@ import Budget2Tab from './features/budget/Budget2Tab.jsx';
 import FamilyBudgetTab from './features/budget/FamilyBudgetTab.jsx';
 import CalendarTab from './features/calendar/CalendarTab.jsx';
 import { useCalendarState } from './features/calendar/useCalendarState.js';
-import AdvisorTab from './features/advisor/AdvisorTab.jsx';
-import TaxTab from './features/tax/TaxTab.jsx';
-import WatchlistTab from './features/watchlist/WatchlistTab.jsx';
-import NewsTab      from './features/news/NewsTab.jsx';
-import AuditLogPanel from './features/audit/AuditLogPanel.jsx';
+import AdvisorTab from './features/AdvisorTab.jsx';
+import TaxTab from './features/TaxTab.jsx';
+import WatchlistTab from './features/WatchlistTab.jsx';
+import NewsTab      from './features/NewsTab.jsx';
+import AuditLogPanel from './features/AuditLogPanel.jsx';
 
 // ── Shared components ────────────────────────────────────────────
 import AppHeader from './components/shared/AppHeader.jsx';
