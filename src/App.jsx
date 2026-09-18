@@ -40,6 +40,7 @@ import { useAuth } from './hooks/useAuth.js';
 // ── Tab components ───────────────────────────────────────────────
 import OverviewTab from './features/overview/OverviewTab.jsx';
 import HoldingsTab from './features/holdings/HoldingsTab.jsx';
+import { useHoldingActions } from './features/holdings/useHoldingActions.js';
 import GoalsTab from './features/goals/GoalsTab.jsx';
 import GoalFormModal from './features/goals/GoalFormModal.jsx';
 import { useGoalForm } from './features/goals/useGoalForm.js';
@@ -142,9 +143,12 @@ export default function App() {
   // ── Broker search state now lives in useBrokerSearch() (see below) ──
 
   // ── Misc state ────────────────────────────────────────────────
-  const [txnHolding,      setTxnHolding]      = useState(null);
-  const [txnForm,         setTxnForm]         = useState(BT);
-  const [artifactHolding, setArtifactHolding] = useState(null);
+  // Holdings tab per-holding action state (Transaction/Artifact panels)
+  // now lives in useHoldingActions() (P3-5).
+  const {
+    txnHolding, setTxnHolding, txnForm, setTxnForm,
+    artifactHolding, setArtifactHolding,
+  } = useHoldingActions();
   const [targetAlloc, setTargetAlloc] = useState({
     IN_STOCK:35,MF:25,IN_ETF:5,US_STOCK:10,US_ETF:5,US_BOND:0,
     CRYPTO:3,CASH:0,FD:5,PPF:5,EPF:5,REAL_ESTATE:2,INSURANCE:0,OTHER:0,
