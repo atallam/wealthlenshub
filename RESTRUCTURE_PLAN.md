@@ -92,6 +92,63 @@ zero matches on every file. Full-repo `grep -rn "supabase.from" routes/` accepta
 (line 43 below) is now **met** for every route file — P3-2's backend goal is complete
 modulo the "run the app and verify" step this session couldn't do (no build/test loop).
 
+**2026-09-18 (same session, third follow-up) — P3-3 investigated and marked obsolete**
+
+Before executing the plan below as written, the codebase was checked for whether its
+targets (`kite.js`, `breeze.js`) still exist. They don't: `src/App.jsx` already carries
+its own comment `// KiteImport and BreezeImport decommissioned — integrations removed`,
+there are no `routes/kite.js` / `routes/breeze.js` files, no Kite/Breeze SDK dependencies
+in `package.json`, and no related env vars. SnapTrade is the only broker left and already
+has its own `services/snaptrade.service.js` (from the P3-2 pass above) — there is nothing
+left to consolidate into a shared adapter pattern. The only artifact of the old broker
+tier was `services/brokers/persistSync.js` (an unused, dead `persistBrokerSync` function,
+referenced by nothing) — this session flagged it for manual deletion since `device_bash`
+(shell access to the user's machine) was down all session; **the user has since deleted
+it manually along with the empty `services/brokers/` folder**, confirmed gone as of this
+follow-up. P3-3 is marked **OBSOLETE** below; its original text is kept for reference.
+
+**2026-09-18 (same session, fourth follow-up) — P3-5 investigated, P4-2 groundwork started**
+
+User asked to tackle P3-5 (App.jsx split) and P4-2 (import hub) together. Investigated
+both against the current codebase before touching anything, since P3-3 above showed the
+plan's premises can go stale:
+
+- **P3-5 findings:** step 1 of the plan (feature folders) turned out to already be done —
+  `src/features/<name>/` already exists for every tab (`overview`, `holdings`, `goals`,
+  `tax`, `budget`, `budget2`, `familyBudget`, `strategy`, `advisor`, `watchlist`, `news`,
+  `calendar`, `members`, `audit`) with `src/components/tabs/` now empty. `App.jsx`'s
+  `useState` count is down to ~24 (from the plan's stated 56), and no `AppShellContext`
+  exists yet (step 2 not started). `TaxTab`, the plan's suggested first extraction target,
+  turned out to have zero tab-specific state left in `App.jsx` — nothing to extract. The
+  next-simplest candidate, Goals, has a ~130-line "Add/Edit Goal" modal still living
+  directly in `App.jsx`'s render, wired into shared portfolio state (`allHoldings`,
+  `valINRCache`, `goals`, `portfolio.addGoal`) and shared components (`Overlay`, `FG`,
+  `FmtInput`, `HoldingsPicker`, `MA`) — judged too risky to extract blind, with no
+  `npm run dev` available to verify the app still renders after the change. Per the
+  plan's own acceptance note ("This step MUST be done with `npm run dev`"), and the
+  user's explicit choice this session, **P3-5 is deferred again**, no code changed.
+
+- **P4-2 findings:** the plan assumed `ImportHub` still needed to be built. It already
+  exists (`src/components/modals/ImportHub.jsx`) and is already fully wired into
+  `App.jsx` (`showImportHub` state, `handleImportSelect(key)` router, multiple entry
+  points in the header/mobile-sheet/settings), satisfying the "one entry point for all
+  imports" half of P4-2's acceptance bar. `LoadingSkeleton.jsx` and `Toast.jsx` already
+  exist too, covering part of the loading/empty-states half. What was genuinely still
+  missing: a reusable `<SourceStatus>` connection-status banner (connected / needs-reauth
+  / not-connected / error), and real per-source status data wired into `ImportHub`'s rows
+  — both require a running app to verify safely, so **only the groundwork piece was
+  built this pass**: `src/components/shared/SourceStatus.jsx` (NEW, ✅ committed —
+  see git commands below) — a presentational, props-driven status banner, not yet
+  imported or rendered anywhere, so it carries zero behavior risk. Its header comment
+  documents the mapping from each source to its existing status endpoint for the future
+  wiring step: SnapTrade → `GET /api/snaptrade/connections`, Setu AA →
+  `GET /api/setu/connections`, Plaid → `GET /api/plaid/status`, Gmail →
+  `profile.gmail_auto_import` + `profile.gmail_token` (no dedicated status route yet).
+
+**Still deferred, pending a real `npm run dev` session:** the rest of P3-5 (Goals modal
+extraction onward, `AppShellContext`), and the rest of P4-2 (wiring `SourceStatus` into
+`ImportHub` with live per-source status calls, plus a full loading/empty-states audit).
+
 ---
 
 ## P3-2 — Service layer across all routes
@@ -129,7 +186,16 @@ every endpoint still returns the same shape (diff responses against `git stash` 
 
 ---
 
-## P3-3 — Broker sync consolidation
+## P3-3 — Broker sync consolidation — **OBSOLETE (2026-09-18)**
+
+> **This item is moot and will not be implemented as written.** It targeted `kite.js`,
+> `breeze.js`, and `snaptrade.js`, but Kite Connect and ICICI Breeze integrations were
+> already decommissioned before this restructure work started (see the Progress Log
+> entry above for how this was confirmed). SnapTrade is the only broker remaining and
+> already has its own service file from the P3-2 pass — there is no remaining
+> duplication to consolidate into a shared adapter. The dead `persistBrokerSync`
+> leftover (`services/brokers/persistSync.js`) has been deleted by the user. No further
+> action needed on this item. Original text preserved below for reference.
 
 **Observation:** `kite.js`, `breeze.js`, `snaptrade.js` repeat the same shape:
 `getConn → validate token → fetch equity + MF → map to holdings rows → upsert → snapshot`.
@@ -172,6 +238,12 @@ tab components and hooks — the remaining bulk is cross-tab state and orchestra
 **Acceptance:** `App.jsx` under ~200 lines; each feature owns its state; no prop drilling
 of more than ~5 props; app behaves identically. This step MUST be done with `npm run dev`.
 
+**Status (2026-09-18):** step 1 is already done — all tab components live under
+`src/features/<name>/`. Remaining `useState` count in `App.jsx` is ~24. No
+`AppShellContext` yet. `TaxTab` has no extractable state; the next candidate (Goals) has
+a large inline modal wired to shared portfolio state — deferred until a real
+`npm run dev` session is available to verify each extraction. See Progress Log above.
+
 ---
 
 ## P4-2 — Unified import hub + loading/empty states
@@ -188,6 +260,14 @@ pending and (b) surface failures via `Toast`. Add guided empty states (e.g. Hold
 
 **Acceptance:** one entry point for all imports; consistent status UI; no silent failures;
 every list has a skeleton + empty state.
+
+**Status (2026-09-18):** `ImportHub.jsx` already exists and is fully wired into `App.jsx`
+(satisfies the "one entry point" acceptance bar). `LoadingSkeleton` and `Toast` already
+exist. New this pass: `src/components/shared/SourceStatus.jsx` — a standalone, unwired
+presentational status banner (groundwork only; see Progress Log above for details and
+the per-source endpoint mapping). Still needed: wire `SourceStatus` into `ImportHub`'s
+rows with real per-source status calls, and a full loading/empty-states audit — both
+deferred to a session with `npm run dev` available.
 
 ---
 
