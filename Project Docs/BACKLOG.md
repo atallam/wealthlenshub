@@ -11,6 +11,7 @@
 > August 2026: Embedded Financial News Feed (P3 Item 9) shipped and moved to Completed; Item 10 renumbered to 9.
 > August 2026: Financial News Feed upgraded — Indian market RSS sources (ET Markets, Livemint), macro RSS sources (SEBI, ET Economy), and per-stock filter UI added.
 > **September 2026: Production-readiness review — 4 P0/P1 infrastructure fixes shipped (see below); 5 P2 infra items added.**
+> September 2026: P2-2 (pLimit extracted to shared `lib/utils.js`) and P2-4 (CAS import done screen — statement date + depository shown) shipped and moved to Completed; remaining P2 items renumbered.
 
 ---
 
@@ -77,25 +78,13 @@ Helmet CSP is currently disabled (`contentSecurityPolicy: false`) to avoid break
 **Fix:** Audit exact asset origins (Supabase, Yahoo Finance, CDN scripts) and enable Helmet CSP with a tight allowlist.  
 **Effort:** Medium — needs SPA asset origin audit first.
 
-### P2-2 · pLimit — extract to shared `lib/utils.js`
-**Files:** `lib/refresh.js`, `routes/import.js`  
-`pLimit` is defined in `lib/refresh.js` for the nightly price cron and borrowed via named export in `routes/import.js`. Semantically it belongs in a shared utility module.  
-**Fix:** Move `pLimit` to `lib/utils.js`; update all import sites.  
-**Effort:** Low — pure refactor, no logic change.
-
-### P2-3 · Gmail `pendingJobs` — persistent / multi-instance store
+### P2-2 · Gmail `pendingJobs` — persistent / multi-instance store
 **File:** `routes/gmail.js`  
 `pendingJobs` is an in-process `Map` — lost on server restart, not shared across Render instances if scaled horizontally.  
 **Fix:** Store job state in a `gmail_jobs` Supabase table (or Redis). Add TTL-based cleanup for old jobs.  
 **Effort:** Medium.
 
-### P2-4 · CAS import done screen — show statement date + depository
-**File:** `src/components/modals/CASImportModal.jsx`  
-After import completes the "done" step shows only a generic success message. `casDepository` and `casStatementDate` are already in state but not displayed.  
-**Fix:** Show depository (CAMS / CDSL / NSDL / KFin) and statement date in the done step summary.  
-**Effort:** Low.
-
-### P2-5 · GitHub Actions cron — add failure alerting
+### P2-3 · GitHub Actions cron — add failure alerting
 **File:** `.github/workflows/scheduled-jobs.yml`  
 Cron failures are silent unless the user monitors the GitHub Actions tab.  
 **Fix:** Add `on-failure` step that POSTs to a Slack/email webhook, or enable GitHub Actions email notifications for workflow failures.  
@@ -160,6 +149,8 @@ XIRR captures the aggregate effect of SIPs but there is no breakdown showing whi
 - ✅ **P0-2 — /health endpoint** — `server.js` + `render.yaml`: `GET /health → {ok, ts}`; `healthCheckPath: /health`
 - ✅ **P1-1 — Gmail check-now async** — `routes/gmail.js`: fire-and-forget + `GET /job/:id` polling
 - ✅ **P1-2 — CAS flush-and-fill UX** — `CASImportModal.jsx`: split warnings into generic amber + destructive orange box with replace count
+- ✅ **P2-2 — pLimit extracted to shared `lib/utils.js`** — `lib/utils.js` now owns `pLimit()`; `lib/refresh.js` re-exports it for existing import sites; `routes/import.js` imports it directly from `lib/utils.js`
+- ✅ **P2-4 — CAS done screen shows statement date + depository** — `CASImportModal.jsx`: done step now displays `casDepository` (CAMS/CDSL/NSDL/KFin) and `casStatementDate` alongside the success summary
 
 ### Embedded Financial News Feed (Enhanced)
 Shipped August 2026 (was P3 Item 9). Enhanced August 2026 with Indian market RSS sources, additional macro feeds, and per-stock filtering.
