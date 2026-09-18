@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   LayoutDashboard, BarChart2, Target, Compass,
   Users, Wallet, CalendarDays, MessageSquare,
@@ -34,11 +34,13 @@ import { useCASImport } from './hooks/useCASImport.js';
 import { useAI } from './hooks/useAI.js';
 import { useBrokerSearch } from './hooks/useBrokerSearch.js';
 import { useUiState } from './hooks/useUiState.js';
+import { useGmailStatus } from './hooks/useGmailStatus.js';
 import { useHoldingsView } from './hooks/useHoldingsView.js';
 import { useAuth } from './hooks/useAuth.js';
 
 // ── Tab components ───────────────────────────────────────────────
 import OverviewTab from './features/overview/OverviewTab.jsx';
+import { useOverviewState } from './features/overview/useOverviewState.js';
 import HoldingsTab from './features/holdings/HoldingsTab.jsx';
 import { useHoldingActions } from './features/holdings/useHoldingActions.js';
 import { useHoldingForm } from './features/holdings/useHoldingForm.js';
@@ -54,6 +56,7 @@ import BudgetTab from './features/budget/BudgetTab.jsx';
 import Budget2Tab from './features/budget/Budget2Tab.jsx';
 import FamilyBudgetTab from './features/budget/FamilyBudgetTab.jsx';
 import CalendarTab from './features/calendar/CalendarTab.jsx';
+import { useCalendarState } from './features/calendar/useCalendarState.js';
 import AdvisorTab from './features/advisor/AdvisorTab.jsx';
 import TaxTab from './features/tax/TaxTab.jsx';
 import WatchlistTab from './features/watchlist/WatchlistTab.jsx';
@@ -158,35 +161,10 @@ export default function App() {
   const {
     targetAlloc, setTargetAlloc, rebalMember, setRebalMember, rebalCash, setRebalCash,
   } = useRebalanceState();
-  const [nwMember,    setNwMember]    = useState('all');
-  const [bmPeriod,    setBmPeriod]    = useState('1Y');
-  const [calMonth,    setCalMonth]    = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  });
-
-  // ── Gmail state ───────────────────────────────────────────────
-  const [gmailStatus,   setGmailStatus]   = useState(null);
-  const [gmailLoading,  setGmailLoading]  = useState(false);
-  const [gmailChecking, setGmailChecking] = useState(false);
-
-  const fetchGmailStatus = useCallback(async () => {
-    try { setGmailStatus(await api('/api/gmail/status')); } catch {}
-  }, []);
-
-  // Handle OAuth callback params (?gmail_connected=1 or ?gmail_error=...)
-  useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    if (p.has('gmail_connected')) {
-      window.history.replaceState({}, '', window.location.pathname);
-      setShowSettings(true);
-      fetchGmailStatus();
-    }
-    if (p.has('gmail_error')) {
-      window.history.replaceState({}, '', window.location.pathname);
-      toast.error(`Gmail connection failed: ${p.get('gmail_error')}`);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Overview tab filters now live in useOverviewState() (P3-5).
+  const { nwMember, setNwMember, bmPeriod, setBmPeriod } = useOverviewState();
+  // Calendar tab's selected month now lives in useCalendarState() (P3-5).
+  const { calMonth, setCalMonth } = useCalendarState();
 
   // ── Refs ──────────────────────────────────────────────────────
   const importFileRef    = useRef();
@@ -229,10 +207,26 @@ export default function App() {
 
   const { supported: pushSupported, subscribed: pushSubscribed, loading: pushLoading, toggle: togglePush } = usePushNotifications();
 
-  // Fetch Gmail status whenever Settings panel opens
+  // Gmail status now lives in useGmailStatus() (P3-5) — auto-refetches
+  // whenever the Settings panel (showSettings) opens.
+  const {
+    gmailStatus, setGmailStatus, gmailLoading, setGmailLoading,
+    gmailChecking, setGmailChecking, fetchGmailStatus,
+  } = useGmailStatus(showSettings);
+
+  // Handle OAuth callback params (?gmail_connected=1 or ?gmail_error=...)
   useEffect(() => {
-    if (showSettings) fetchGmailStatus();
-  }, [showSettings]); // eslint-disable-line react-hooks/exhaustive-deps
+    const p = new URLSearchParams(window.location.search);
+    if (p.has('gmail_connected')) {
+      window.history.replaceState({}, '', window.location.pathname);
+      setShowSettings(true);
+      fetchGmailStatus();
+    }
+    if (p.has('gmail_error')) {
+      window.history.replaceState({}, '', window.location.pathname);
+      toast.error(`Gmail connection failed: ${p.get('gmail_error')}`);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Destructure hook state ────────────────────────────────────
   const {
