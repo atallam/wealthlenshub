@@ -297,18 +297,24 @@ turned out to be true bugs vs. expected behavior misread as bugs:
   untouched by anything else this session did; this was simply never caught before
   because the backend had never been run locally until this pass. Fixed by correcting
   both paths in `usePortfolio.js`.
-  **Status: fix applied and committed, but not yet confirmed working live** — the user
-  re-checked after the fix and reported "still not working" without further detail (no
-  updated console/network output was captured), then chose to pause verification here
-  and revisit later. Next session should re-check `asset-types` and `benchmark` in the
-  Network tab after a hard refresh (not just HMR) before assuming the fix is complete —
-  it's possible HMR didn't pick up the hook change cleanly, or there's a second issue
-  underneath the routing one.
+  **Status: confirmed working live ✅.** After a hard refresh, `asset-types` and
+  `benchmark` both load correctly — the earlier "still not working" report was a stale
+  HMR/cache issue, not a second bug.
 
-**Still not attempted:** Group 4 (AI tools) and Group 5 (Excel export FD-filter check)
-from the verification walkthrough, plus everything already listed above as not yet
-verified live (most of the 15 P3-2 files still only have manual-review + `grep`
-verification for their non-status/non-UI-visible endpoints).
+**2026-09-18 (same session, eighth follow-up) — remaining groups verified live, no issues**
+
+User completed the rest of the verification pass:
+- Asset-types/benchmark fix (above) — confirmed working after a hard refresh.
+- Group 4 (AI tools) — working, no obvious issues.
+- Group 5 (Excel export / FD-filter behavior) — working, no obvious issues.
+- Remaining non-UI-visible P3-2 endpoints exercised as part of this pass — working,
+  no obvious issues.
+
+**Live verification pass is now complete.** All 15 P3-2 route/service extractions,
+the export.js FD-filter change, P3-3, and the P3-5/P4-2 items reviewed earlier in this
+session have been either verified live or confirmed as expected/pre-existing behavior
+(see prior follow-up entries above for detail on individual items). Nothing outstanding
+from this verification pass remains open.
 
 ---
 
