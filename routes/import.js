@@ -1,7 +1,9 @@
 import { Router } from "express";
 import multer from "multer";
-import { supabase } from "../lib/db.js";
 import { auth, sendError, IS_PROD } from "../lib/auth.js";
+import {
+  getUnlockContextRows, countCasHoldings, listHoldingsBasic, listHoldingsWithValues,
+} from "../services/import.service.js";
 import {
   pdfjsLib, _pdfjsFontPath, xlsxBufferToCSV,
   detectAndParseHoldings, parseTransactionCSV,
@@ -28,10 +30,7 @@ async function casUnlockContext(req) {
   const typed = (req.body?.password || "").trim();
   const candidates = typed ? [typed] : [];
   const panToMember = new Map();
-  const [{ data: prof }, { data: port }] = await Promise.all([
-    supabase.from("profiles").select("encrypted_pan").eq("id", req.user.id).single(),
-    supabase.from("portfolio").select("members").eq("user_id", req.user.id).single(),
-  ]);
+  const { prof, port } = await getUnlockContextRows(req.user.id);
   const safeDecrypt = (enc) => {
     try { const p = decrypt(enc); return p && p !== "[encrypted]" ? p.toUpperCase().trim() : ""; }
     catch { return ""; }
@@ -243,8 +242,7 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
 
             // CAS is flush-and-fill: count existing CAS holdings that will be replaced,
             // but do NOT mark them as _duplicate (which would trigger the dup-review UI).
-            const { data: existingCAS } = await supabase.from("holdings").select("id").eq("user_id", req.user.id).eq("source", "cas");
-            const replaceCount = (existingCAS || []).length;
+            const replaceCount = await countCasHoldings(req.user.id);
             if (replaceCount > 0) result.warnings.push(`${replaceCount} existing CAS holding(s) will be replaced (flush & fill)`);
             return res.json({ ...result, detected_type: "holdings", accounts: result.accounts || [], holder_names: result.holder_names || [], holder_pans: result.holder_pans || [], holder_member_map: mapHoldersByPan(result.holder_names, result.holder_pans, panToMember), statement_date: result.statement_date || null, period_start: result.period_start || null, period_end: result.period_end || null, depository: result.depository || "" });
           }
@@ -253,7 +251,7 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
         if (/fidelity/i.test(rawPdfText) && /account\s*#/i.test(rawPdfText)) {
           const result = parseFidelityPDFStatement(rawPdfText);
           if (result.holdings.length > 0) {
-            const { data: existing } = await supabase.from("holdings").select("name, ticker, scheme_code, type").eq("user_id", req.user.id);
+            const existing = await listHoldingsBasic(req.user.id);
             const existingSet = new Set((existing || []).map(h => `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`));
             result.holdings = result.holdings.map(h => ({ ...h, _duplicate: existingSet.has(`${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`) }));
             const dupCount = result.holdings.filter(h => h._duplicate).length;
@@ -281,8 +279,7 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
 
   if (detectedType === "transactions") return res.json({ ...txnResult, detected_type: "transactions" });
 
-  const { data: existing } = await supabase.from("holdings")
-    .select("name, ticker, scheme_code, type, units, purchase_price, current_price, purchase_value, current_value").eq("user_id", req.user.id);
+  const existing = await listHoldingsWithValues(req.user.id);
   const existingMap = {};
   for (const h of (existing || [])) {
     const key = `${(h.ticker || h.scheme_code || h.name).toLowerCase()}|${h.type}`;
