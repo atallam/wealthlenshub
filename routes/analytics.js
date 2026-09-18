@@ -14,39 +14,15 @@
  * excluded from pooled XIRR so one guess can't distort the family number.
  */
 import { Router } from "express";
-import { supabase } from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
 import { assertOwnsHolding } from "../lib/guards.js";
 import { ledgerStats, cashflowsFromLedger, xirr } from "../lib/xirr.js";
 import { computeGains } from "../lib/tax.js";
 import { USD_TYPES } from "../lib/constants.js";
 import { fetchUsdInr, FX_FALLBACK } from "../lib/prices.js";
+import { loadHoldings, loadLedger, getHolding } from "../services/analytics.service.js";
 
 const router = Router();
-const ACTIVE = "holding_status.is.null,holding_status.neq.exited";
-const NOT_CLOSED = "maturity_status.is.null,maturity_status.neq.closed";
-const LEDGER_TYPES = new Set(["IN_STOCK", "IN_ETF", "MF", "US_STOCK", "US_ETF", "CRYPTO"]);
-
-async function loadHoldings(userId, member) {
-  let q = supabase.from("holdings")
-    .select("id, member_id, name, type, asset_class, units, current_price, current_nav, current_value, purchase_value, start_date, currency, source, depository, holding_status")
-    .eq("user_id", userId).or(ACTIVE).or(NOT_CLOSED);
-  if (member && member !== "all") q = q.eq("member_id", member);
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
-  return (data || []).filter((h) => LEDGER_TYPES.has(h.type));
-}
-
-async function loadLedger(userId, holdingIds) {
-  if (!holdingIds.length) return {};
-  const { data, error } = await supabase.from("transactions")
-    .select("holding_id, txn_type, units, price, amount, txn_date, source, source_type")
-    .eq("user_id", userId).in("holding_id", holdingIds).order("txn_date", { ascending: true });
-  if (error) throw new Error(error.message);
-  const map = {};
-  for (const t of data || []) (map[t.holding_id] ||= []).push(t);
-  return map;
-}
 
 function valueInr(h, fx) {
   const isUSD = USD_TYPES.has(h.type) || (h.currency || "").toUpperCase() === "USD";
@@ -127,10 +103,8 @@ router.get("/xirr", auth, async (req, res) => {
 router.get("/holdings/:id", auth, async (req, res) => {
   try {
     await assertOwnsHolding(req.user.id, req.params.id);
-    const { data: h, error } = await supabase.from("holdings")
-      .select("id, member_id, name, type, asset_class, units, current_price, current_nav, current_value, purchase_value, start_date, currency, holding_status, depository, source")
-      .eq("id", req.params.id).eq("user_id", req.user.id).single();
-    if (error || !h) return res.status(404).json({ error: "Holding not found" });
+    const h = await getHolding(req.user.id, req.params.id);
+    if (!h) return res.status(404).json({ error: "Holding not found" });
     const ledger = await loadLedger(req.user.id, [h.id]);
     const txns = ledger[h.id] || [];
     const today = new Date().toISOString().slice(0, 10);
