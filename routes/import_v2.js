@@ -21,10 +21,10 @@ import { randomBytes, createHash } from "crypto";
 import { fileURLToPath }      from "url";
 import { dirname }            from "path";
 
-import { supabase }           from "../lib/db.js";
 import { auth, sendError }    from "../lib/auth.js";
 import { decrypt }            from "../lib/crypto.js";
 import { auditImport }        from "../lib/importLogger.js";
+import { getUnlockContextRows } from "../services/import.service.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -49,10 +49,7 @@ async function unlockContext(req) {
     } catch { return ""; }
   };
 
-  const [{ data: prof }, { data: port }] = await Promise.all([
-    supabase.from("profiles").select("encrypted_pan").eq("id", req.user.id).single(),
-    supabase.from("portfolio").select("members").eq("user_id", req.user.id).single(),
-  ]);
+  const { prof, port } = await getUnlockContextRows(req.user.id);
 
   if (prof?.encrypted_pan) {
     const pan = safeDecrypt(prof.encrypted_pan);

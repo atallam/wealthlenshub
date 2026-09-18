@@ -35,6 +35,7 @@ import { useAI } from './hooks/useAI.js';
 import { useBrokerSearch } from './hooks/useBrokerSearch.js';
 import { useUiState } from './hooks/useUiState.js';
 import { useHoldingsView } from './hooks/useHoldingsView.js';
+import { useAuth } from './hooks/useAuth.js';
 
 // ── Tab components ───────────────────────────────────────────────
 import OverviewTab from './features/overview/OverviewTab.jsx';
@@ -116,10 +117,8 @@ export default function App() {
     localStorage.setItem('wl-theme', theme);
   }, [theme]);
 
-  // ── Auth ──────────────────────────────────────────────────────
-  const [user,        setUser]        = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [authErr,     setAuthErr]     = useState('');
+  // ── Auth (src/hooks/useAuth.js) ──────────────────────────────────
+  const { user, authLoading, authErr } = useAuth();
 
   // ── Cross-tab UI state ────────────────────────────────────────
   const [tab,              setTab]              = useState('overview');
@@ -210,19 +209,6 @@ export default function App() {
   const { filterType, setFilterType, sortCol, setSortCol, sortDir, setSortDir, toggleSort } = useHoldingsView();
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [showAuditLog,   setShowAuditLog]   = useState(false);
-
-  // ── Auth listener ─────────────────────────────────────────────
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user || null);
-      setAuthLoading(false);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      setUser(session?.user || null);
-      setAuthLoading(false);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
 
   // Reset sheet/expanded on tab change
   useEffect(() => {
