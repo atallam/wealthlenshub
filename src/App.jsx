@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   LayoutDashboard, BarChart2, Target, Compass,
   Users, Wallet, CalendarDays, MessageSquare,
-  RefreshCw, Settings, LogOut, Eye, EyeOff, X, MoreHorizontal,
-  AlertTriangle, Download, Receipt, Bookmark, Activity, PieChart,
-  Moon, Sun, Newspaper, TrendingUp,
+  X,
+  AlertTriangle, Receipt, Bookmark, PieChart,
+  Newspaper, TrendingUp,
 } from 'lucide-react';
 import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
 import { api } from './lib/api.js';
@@ -44,14 +44,17 @@ import { useOverviewState } from './features/overview/useOverviewState.js';
 import HoldingsTab from './features/holdings/HoldingsTab.jsx';
 import { useHoldingActions } from './features/holdings/useHoldingActions.js';
 import { useHoldingForm } from './features/holdings/useHoldingForm.js';
+import HoldingFormModal from './features/holdings/HoldingFormModal.jsx';
 import GoalsTab from './features/goals/GoalsTab.jsx';
 import GoalFormModal from './features/goals/GoalFormModal.jsx';
 import { useGoalForm } from './features/goals/useGoalForm.js';
 import StrategyTab from './features/strategy/StrategyTab.jsx';
 import { useAlertForm } from './features/strategy/useAlertForm.js';
+import AlertFormModal from './features/strategy/AlertFormModal.jsx';
 import { useRebalanceState } from './features/strategy/useRebalanceState.js';
 import MembersTab from './features/members/MembersTab.jsx';
 import { useMemberForm } from './features/members/useMemberForm.js';
+import MemberFormModal from './features/members/MemberFormModal.jsx';
 import BudgetTab from './features/budget/BudgetTab.jsx';
 import Budget2Tab from './features/budget/Budget2Tab.jsx';
 import FamilyBudgetTab from './features/budget/FamilyBudgetTab.jsx';
@@ -64,6 +67,8 @@ import NewsTab      from './features/news/NewsTab.jsx';
 import AuditLogPanel from './features/audit/AuditLogPanel.jsx';
 
 // ── Shared components ────────────────────────────────────────────
+import AppHeader from './components/shared/AppHeader.jsx';
+import MobileNav from './components/shared/MobileNav.jsx';
 import LoginScreen from './components/shared/LoginScreen.jsx';
 import LoadingSkeleton from './components/shared/LoadingSkeleton.jsx';
 import LiabilitiesPanel from './components/shared/LiabilitiesPanel.jsx';
@@ -80,6 +85,7 @@ import FDScanSheet from './components/shared/FDScanSheet.jsx';
 import GoalPlanModal from './components/modals/GoalPlanModal.jsx';
 import ImportModal from './components/modals/ImportModal.jsx';
 import ImportHub from './components/modals/ImportHub.jsx';
+import SettingsModal from './components/modals/SettingsModal.jsx';
 
 // ── Context ──────────────────────────────────────────────────────
 import { PortfolioProvider } from './contexts/PortfolioContext.jsx';
@@ -642,77 +648,19 @@ ${alertsText}`;
     <AppShellProvider value={{ tab, setTab, selMember, setSelMember }}>
     <div className="app">
 
-      {/* ── HEADER ─────────────────────────────────────────────── */}
-      <header className="hdr">
-        <div className="hdr-left">
-          <div className="logo">Wealth<span>Lens</span></div>
-          {demoMode && (
-            <span style={{marginLeft:'.5rem',fontSize:'.65rem',background:'rgba(160,132,202,.12)',border:'1px solid rgba(160,132,202,.3)',color:'#A084CA',borderRadius:4,padding:'2px 8px',letterSpacing:'.06em',fontWeight:600}}>
-              DEMO
-            </span>
-          )}
-        </div>
-
-        <div className="hdr-right">
-          {/* Sync status */}
-          {syncSt === 'saving' && <span className="sync-saving">saving…</span>}
-          {syncSt === 'saved'  && <span className="sync-saved">saved</span>}
-          {syncSt === 'error'  && <span className="sync-error">save error</span>}
-
-          {/* Triggered alerts — in-app notification bell */}
-          <NotificationBell
-            trigAlerts={trigAlerts}
-            alerts={alerts}
-            AT={AT}
-            onGoToStrategy={() => setTab('strategy')}
-          />
-
-          {/* Price refresh */}
-          <button className="btn-o"
-            onClick={portfolio.refreshPrices} disabled={priceRefreshing}
-            title={lastPriceRefresh ? `Last: ${ago(lastPriceRefresh)}` : 'Refresh prices'}>
-            <RefreshCw size={13} strokeWidth={2} style={priceRefreshing ? {animation:'spin 1s linear infinite'} : {}}/>
-          </button>
-
-          {/* hdr-extra: hidden on mobile — accessible via ··· more sheet */}
-          <button className="btn-o hdr-extra" onClick={() => setShowImportHub(true)} title="Import Holdings" aria-label="Import Holdings">
-            <Download size={13} strokeWidth={2}/>
-          </button>
-          <ExportPanel className="btn-o hdr-extra" />
-          <button className="btn-o hdr-extra" onClick={toggleMask}
-            title={masked ? "Show values" : "Hide values (privacy)"}
-            aria-label={masked ? "Show values" : "Hide values"}
-            style={masked ? {color:'var(--accent-2)',background:'var(--accent-2-dim)'} : {}}>
-            {masked ? <EyeOff size={13} strokeWidth={2}/> : <Eye size={13} strokeWidth={2}/>}
-          </button>
-          <NotificationCentre api={api} />
-          <button className="btn-o hdr-extra" onClick={() => setShowSettings(true)} title="Settings" aria-label="Settings"><Settings size={13} strokeWidth={2}/></button>
-          <button className="btn-o hdr-extra" onClick={signOut} title="Sign out" aria-label="Sign out"><LogOut size={13} strokeWidth={2}/></button>
-        </div>
-      </header>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-
-      {/* ── MEMBER FILTER BAR ──────────────────────────────────── */}
-      {allMembers.length > 1 && (
-        <div className="mbar">
-          <button className={selMember === 'all' ? 'mbar-btn active' : 'mbar-btn'} onClick={() => setSelMember('all')}>All</button>
-          {allMembers.map(m => (
-            <button key={m.id} className={selMember === m.id ? 'mbar-btn active' : 'mbar-btn'} onClick={() => setSelMember(m.id)}>
-              {m.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── TAB BAR ────────────────────────────────────────────── */}
-      <nav className="tabs">
-        {TABS.map(t => (
-          <button key={t.key} className={tab === t.key ? 'tab active' : 'tab'} onClick={() => setTab(t.key)}>
-            <span className="tab-icon"><t.Icon size={15} strokeWidth={1.8}/></span>
-            <span className="tab-label">{t.label}</span>
-          </button>
-        ))}
-      </nav>
+      {/* ── Header / member bar / tab nav ───────────────────────
+          Extracted to components/shared/AppHeader.jsx (P3-5, step 3).
+          tab/selMember are read via useAppShell() inside it; everything else
+          is passed as props. */}
+      <AppHeader
+        TABS={TABS}
+        demoMode={demoMode} syncSt={syncSt}
+        trigAlerts={trigAlerts} alerts={alerts} AT={AT}
+        refreshPrices={portfolio.refreshPrices} priceRefreshing={priceRefreshing} lastPriceRefresh={lastPriceRefresh} ago={ago}
+        setShowImportHub={setShowImportHub} api={api} masked={masked} toggleMask={toggleMask} setShowSettings={setShowSettings} signOut={signOut}
+        allMembers={allMembers}
+        NotificationBell={NotificationBell} ExportPanel={ExportPanel} NotificationCentre={NotificationCentre}
+      />
 
       {/* ── MAIN CONTENT ───────────────────────────────────────── */}
       <main className="main">
@@ -884,403 +832,42 @@ ${alertsText}`;
       </PortfolioProvider>
       </main>
 
-      {/* ── FAB — Add Holding (mobile) ──────────────────────────── */}
-      <button className="fab" onClick={() => setModal('add')} title="Add holding" aria-label="Add holding">+</button>
-
-      {/* ── BOTTOM NAV (mobile) ─────────────────────────────────── */}
-      <nav className="bnav">
-        {BOTTOM_NAV_TABS.map(t => (
-          <button key={t.key} className={tab === t.key ? 'bnav-btn active' : 'bnav-btn'} onClick={() => setTab(t.key)}>
-            <span className="bnav-icon"><t.Icon size={20} strokeWidth={1.7}/></span>
-            <span className="bnav-label">{t.label}</span>
-          </button>
-        ))}
-        <button className={moreSheetOpen ? 'bnav-btn active' : 'bnav-btn'} onClick={() => { setMoreSheetOpen(p => !p); setConfirmSignOut(false); }}>
-          <span className="bnav-icon"><MoreHorizontal size={20} strokeWidth={1.7}/></span>
-          <span className="bnav-label">More</span>
-        </button>
-      </nav>
-
-      {/* ── MORE SHEET (mobile) ─────────────────────────────────── */}
-      {moreSheetOpen && (
-        <>
-          {/* Backdrop dismiss */}
-          <div style={{position:'fixed',inset:0,zIndex:205,background:'rgba(0,0,0,.15)'}}
-            onClick={() => { setMoreSheetOpen(false); setConfirmSignOut(false); }}/>
-          <div className="more-sheet" style={{zIndex:210}}>
-            <div className="more-sheet-handle"/>
-            <div className="more-sheet-grid">
-              {MORE_SHEET_TABS.map(t => (
-                <button key={t.key} className={tab === t.key ? 'more-sheet-item act' : 'more-sheet-item'}
-                  onClick={() => { setTab(t.key); setMoreSheetOpen(false); }}>
-                  <span className="msi-icon"><t.Icon size={22} strokeWidth={1.6}/></span>
-                  <span className="msi-label">{t.label}</span>
-                </button>
-              ))}
-              <button className="more-sheet-item" onClick={() => { setShowImportHub(true); setMoreSheetOpen(false); }}>
-                <span className="msi-icon"><Download size={22} strokeWidth={1.6}/></span>
-                <span className="msi-label">Import</span>
-              </button>
-              <button className="more-sheet-item" onClick={() => { toggleMask(); setMoreSheetOpen(false); }}
-                style={masked ? {color:'var(--accent-2)'} : {}}>
-                <span className="msi-icon">{masked ? <EyeOff size={22} strokeWidth={1.6}/> : <Eye size={22} strokeWidth={1.6}/>}</span>
-                <span className="msi-label">{masked ? "Show" : "Privacy"}</span>
-              </button>
-              <button className="more-sheet-item" onClick={() => { setShowSettings(true); setMoreSheetOpen(false); }}>
-                <span className="msi-icon"><Settings size={22} strokeWidth={1.6}/></span>
-                <span className="msi-label">Settings</span>
-              </button>
-              {/* Sign out — in-app confirmation instead of browser confirm() */}
-              {confirmSignOut ? (
-                <div className="more-sheet-item" style={{gridColumn:'1/-1',flexDirection:'row',gap:'.6rem',padding:'.65rem .8rem',cursor:'default'}}>
-                  <span style={{flex:1,fontSize:'.75rem',color:'var(--text-dim)',fontWeight:600}}>Sign out?</span>
-                  <button onClick={() => { signOut(); setMoreSheetOpen(false); setConfirmSignOut(false); }}
-                    style={{padding:'.3rem .7rem',background:'var(--loss)',border:'none',color:'#fff',borderRadius:6,fontSize:'.73rem',fontWeight:700,cursor:'pointer'}}>
-                    Yes
-                  </button>
-                  <button onClick={() => setConfirmSignOut(false)}
-                    style={{padding:'.3rem .7rem',background:'var(--bg-muted)',border:'1.5px solid var(--border)',color:'var(--text-dim)',borderRadius:6,fontSize:'.73rem',fontWeight:700,cursor:'pointer'}}>
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <button className="more-sheet-item" style={{color:'var(--loss)'}} onClick={() => setConfirmSignOut(true)}>
-                  <span className="msi-icon"><LogOut size={22} strokeWidth={1.6}/></span>
-                  <span className="msi-label">Sign Out</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </>
-      )}
+      {/* ── Mobile FAB / bottom nav / more sheet ────────────────
+          Extracted to components/shared/MobileNav.jsx (P3-5, step 3).
+          tab/setTab are read via useAppShell() inside it. */}
+      <MobileNav
+        BOTTOM_NAV_TABS={BOTTOM_NAV_TABS} MORE_SHEET_TABS={MORE_SHEET_TABS}
+        setModal={setModal}
+        moreSheetOpen={moreSheetOpen} setMoreSheetOpen={setMoreSheetOpen}
+        setShowImportHub={setShowImportHub} masked={masked} toggleMask={toggleMask} setShowSettings={setShowSettings}
+        confirmSignOut={confirmSignOut} setConfirmSignOut={setConfirmSignOut} signOut={signOut}
+      />
 
       {/* ══════════════════════════════════════════════════════════
           MODALS
       ══════════════════════════════════════════════════════════ */}
 
-      {/* ── Add / Edit Holding ──────────────────────────────────── */}
-      {(modal === 'add' || modal === 'quickadd') && (
-        <Overlay onClose={() => { setModal(null); setForm(BF); setEditHolding(null); }} wide>
-          <div className="modtitle">{editHolding ? 'Edit Holding' : 'Add Holding'}</div>
-
-          <FG label="Member">
-            <select className="fi fs" value={form.member_id} onChange={e => setForm(p => ({ ...p, member_id: e.target.value }))}>
-              <option value="">— Select member —</option>
-              {members.map(m => <option key={m.id} value={m.id}>{m.name} ({m.relation})</option>)}
-            </select>
-          </FG>
-
-          <FG label="Asset Type">
-            <select className="fi fs" value={form.type}
-              onChange={e => { setForm(p => ({ ...p, type: e.target.value })); setMfNav(null); setStockInfo(null); setEtfInfo(null); }}>
-              {Object.entries(AT).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-            </select>
-          </FG>
-
-          {/* MF search */}
-          {form.type === 'MF' && (
-            <FG label="Search Mutual Fund">
-              <input className="fi" placeholder="e.g. Mirae Asset, Axis Midcap…" value={mfSearch}
-                onChange={e => handleMfSearch(e.target.value)}/>
-              {mfSearching && <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginTop:'.3rem'}}>Searching…</div>}
-              {mfResults.length > 0 && (
-                <div style={{maxHeight:180,overflowY:'auto',border:'1px solid var(--border)',borderRadius:6,marginTop:'.3rem',background:'var(--bg-card)',boxShadow:'var(--shadow-md)'}}>
-                  {mfResults.map(f => (
-                    <div key={f.schemeCode} style={{padding:'.5rem .75rem',cursor:'pointer',fontSize:'.78rem',borderBottom:'1px solid var(--border)',color:'var(--text)'}}
-                      onClick={() => { setForm(p => ({ ...p, name: f.schemeName, scheme_code: String(f.schemeCode) })); setMfSearch(f.schemeName); setMfResults([]); }}>
-                      {f.schemeName}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </FG>
-          )}
-
-          {/* IN_STOCK search */}
-          {form.type === 'IN_STOCK' && (
-            <FG label="Search Indian Stock">
-              <input className="fi" placeholder="e.g. RELIANCE, TCS…" value={stockSearch}
-                onChange={e => handleStockSearch(e.target.value)}/>
-              {stockSearching && <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginTop:'.3rem'}}>Searching…</div>}
-              {stockResults.length > 0 && (
-                <div style={{maxHeight:180,overflowY:'auto',border:'1px solid var(--border)',borderRadius:6,marginTop:'.3rem',background:'var(--bg-card)',boxShadow:'var(--shadow-md)'}}>
-                  {stockResults.map(r => (
-                    <div key={r.symbol} style={{padding:'.5rem .75rem',cursor:'pointer',fontSize:'.78rem',borderBottom:'1px solid var(--border)',color:'var(--text)'}}
-                      onClick={() => { setForm(p => ({ ...p, ticker: r.symbol, name: r.name || r.symbol })); setStockSearch(r.name || r.symbol); setStockResults([]); }}>
-                      <span style={{color:'var(--gold)',fontFamily:'var(--font-mono)'}}>{r.symbol}</span> — {r.name}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </FG>
-          )}
-
-          {/* IN_ETF search */}
-          {form.type === 'IN_ETF' && (
-            <FG label="Search Indian ETF">
-              <input className="fi" placeholder="e.g. NIFTYBEES, GOLDBEES…" value={etfSearch}
-                onChange={e => handleEtfSearch(e.target.value)}/>
-              {etfSearching && <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginTop:'.3rem'}}>Searching…</div>}
-              {etfResults.length > 0 && (
-                <div style={{maxHeight:180,overflowY:'auto',border:'1px solid var(--border)',borderRadius:6,marginTop:'.3rem',background:'var(--bg-card)',boxShadow:'var(--shadow-md)'}}>
-                  {etfResults.map(r => (
-                    <div key={r.symbol} style={{padding:'.5rem .75rem',cursor:'pointer',fontSize:'.78rem',borderBottom:'1px solid var(--border)',color:'var(--text)'}}
-                      onClick={() => { setForm(p => ({ ...p, ticker: r.symbol, name: r.name || r.symbol })); setEtfSearch(r.name || r.symbol); setEtfResults([]); }}>
-                      <span style={{color:'var(--gold)',fontFamily:'var(--font-mono)'}}>{r.symbol}</span> — {r.name}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </FG>
-          )}
-
-          {/* US stock / ETF / Crypto search */}
-          {['US_STOCK','US_ETF','CRYPTO'].includes(form.type) && (
-            <FG label={`Search ${AT[form.type]?.label}`}>
-              <input className="fi" placeholder="e.g. NVDA, VOO, BTC-USD…" value={usSearch}
-                onChange={e => handleUsSearch(e.target.value)}/>
-              {usSearching && <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginTop:'.3rem'}}>Searching…</div>}
-              {usResults.length > 0 && (
-                <div style={{maxHeight:180,overflowY:'auto',border:'1px solid var(--border)',borderRadius:6,marginTop:'.3rem',background:'var(--bg-card)',boxShadow:'var(--shadow-md)'}}>
-                  {usResults.map(r => (
-                    <div key={r.symbol} style={{padding:'.5rem .75rem',cursor:'pointer',fontSize:'.78rem',borderBottom:'1px solid var(--border)',color:'var(--text)'}}
-                      onClick={() => { setForm(p => ({ ...p, ticker: r.symbol, name: r.name || r.symbol })); setUsSearch(r.name || r.symbol); setUsResults([]); }}>
-                      <span style={{color:'var(--primary)',fontFamily:'var(--font-mono)'}}>{r.symbol}</span> — {r.name}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </FG>
-          )}
-
-          {/* Name / Ticker */}
-          <div className="frow">
-            <FG label="Name">
-              <input className="fi" placeholder="Holding name" value={form.name}
-                onChange={e => setForm(p => ({ ...p, name: e.target.value }))}/>
-            </FG>
-            {['IN_STOCK','IN_ETF','US_STOCK','US_ETF','US_BOND','CRYPTO'].includes(form.type) && (
-              <FG label="Ticker">
-                <input className="fi" placeholder="e.g. RELIANCE, NVDA" value={form.ticker}
-                  onChange={e => setForm(p => ({ ...p, ticker: e.target.value.toUpperCase() }))}/>
-              </FG>
-            )}
-          </div>
-
-          {/* FD Scan button */}
-          {form.type === 'FD' && (
-            <div style={{marginBottom:'.75rem'}}>
-              <button
-                type="button"
-                onClick={() => setFdScanOpen(true)}
-                style={{display:'flex',alignItems:'center',gap:'.5rem',padding:'.55rem 1rem',
-                  background:'rgba(13,148,136,.08)',color:'var(--primary)',
-                  border:'1px solid rgba(13,148,136,.25)',borderRadius:8,
-                  fontSize:'.82rem',fontWeight:600,cursor:'pointer',width:'100%',justifyContent:'center'}}>
-                📷 Scan Certificate — auto-fill with Claude Vision
-              </button>
-            </div>
-          )}
-
-          {/* FD / PPF / EPF fields */}
-          {['FD','PPF','EPF'].includes(form.type) && (<>
-            {/* FD: currency selector — shown first so it can drive label below */}
-            {form.type === 'FD' && (
-              <div className="frow" style={{marginBottom:'.5rem'}}>
-                <FG label="Currency">
-                  <select className="fi fs" value={form.currency||'INR'}
-                    onChange={e => setForm(p => ({ ...p, currency: e.target.value, usd_inr_rate: '' }))}>
-                    <option value="INR">₹ INR — Indian Rupee</option>
-                    <option value="USD">$ USD — US Dollar (FCNR)</option>
-                    <option value="SGD">S$ SGD — Singapore Dollar</option>
-                    <option value="GBP">£ GBP — British Pound</option>
-                    <option value="EUR">€ EUR — Euro</option>
-                  </select>
-                </FG>
-                {(form.currency && form.currency !== 'INR') && (
-                  <FG label={`1 ${form.currency} = ₹ (exchange rate)`}>
-                    <input type="number" className="fi"
-                      placeholder={form.currency==='USD'?'e.g. 84.5':form.currency==='SGD'?'e.g. 63.2':form.currency==='GBP'?'e.g. 107.0':'e.g. 90.0'}
-                      value={form.usd_inr_rate||''}
-                      onChange={e => setForm(p => ({ ...p, usd_inr_rate: e.target.value }))}/>
-                  </FG>
-                )}
-              </div>
-            )}
-            <div className="frow">
-              <FG label={form.type==='FD'&&form.currency&&form.currency!=='INR'?`Principal ${form.currency}`:"Principal ₹"}>
-                <FmtInput value={form.principal} placeholder="e.g. 500000"
-                  onChange={e => setForm(p => ({ ...p, principal: e.target.value }))}/>
-              </FG>
-              {form.type === 'FD' && (
-                <FG label="Interest Rate % p.a.">
-                  <input type="number" className="fi" placeholder="e.g. 7.25" value={form.interest_rate}
-                    onChange={e => setForm(p => ({ ...p, interest_rate: e.target.value }))}/>
-                </FG>
-              )}
-            </div>
-            <div className="frow">
-              <FG label="Start Date">
-                <input type="date" className="fi" value={form.start_date}
-                  onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))}/>
-              </FG>
-              {form.type === 'FD' && (
-                <FG label="Maturity Date">
-                  <input type="date" className="fi" value={form.maturity_date}
-                    onChange={e => setForm(p => ({ ...p, maturity_date: e.target.value }))}/>
-                </FG>
-              )}
-            </div>
-            {form.type === 'FD' && (
-              <div className="frow">
-                <FG label={`Maturity Amount ${form.currency&&form.currency!=='INR'?form.currency:'₹'} (optional — from the FD receipt)`}>
-                  <FmtInput value={form.maturity_amount} placeholder="e.g. 537255"
-                    onChange={e => setForm(p => ({ ...p, maturity_amount: e.target.value }))}/>
-                </FG>
-              </div>
-            )}
-          </>)}
-
-          {/* Real estate */}
-          {form.type === 'REAL_ESTATE' && (
-            <div className="frow">
-              <FG label="Purchase Value ₹">
-                <FmtInput value={form.purchase_value} placeholder="e.g. 5000000"
-                  onChange={e => setForm(p => ({ ...p, purchase_value: e.target.value }))}/>
-              </FG>
-              <FG label="Current Value ₹">
-                <FmtInput value={form.current_value} placeholder="e.g. 7000000"
-                  onChange={e => setForm(p => ({ ...p, current_value: e.target.value }))}/>
-              </FG>
-            </div>
-          )}
-
-          {/* Insurance */}
-          {form.type === 'INSURANCE' && (<>
-            <div className="frow">
-              <FG label="Policy Type">
-                <select className="fi fs" value={form.policy_type||'TERM'} onChange={e=>setForm(p=>({...p,policy_type:e.target.value}))}>
-                  <option value="TERM">🛡️ Term — Pure protection</option>
-                  <option value="ENDOWMENT">💰 Endowment — Protection + savings</option>
-                  <option value="ULIP">📈 ULIP — Unit-linked</option>
-                  <option value="WHOLE_LIFE">🔄 Whole Life — Lifelong cover</option>
-                  <option value="HEALTH">🏥 Health / Mediclaim</option>
-                  <option value="VEHICLE">🚗 Vehicle / Motor</option>
-                </select>
-              </FG>
-              <FG label="Sum Assured ₹ (coverage)">
-                <FmtInput value={form.sum_assured||''} placeholder="e.g. 10000000"
-                  onChange={e=>setForm(p=>({...p,sum_assured:e.target.value}))}/>
-              </FG>
-            </div>
-            <div className="frow">
-              <FG label="Premium ₹ per period">
-                <FmtInput value={form.premium||''} placeholder="e.g. 25000"
-                  onChange={e=>setForm(p=>({...p,premium:e.target.value}))}/>
-              </FG>
-              <FG label="Frequency">
-                <select className="fi fs" value={form.premium_frequency||'ANNUAL'} onChange={e=>setForm(p=>({...p,premium_frequency:e.target.value}))}>
-                  <option value="ANNUAL">Annual</option>
-                  <option value="SEMI">Semi-Annual (every 6 months)</option>
-                  <option value="QUARTERLY">Quarterly</option>
-                  <option value="MONTHLY">Monthly</option>
-                </select>
-              </FG>
-            </div>
-            <div className="frow">
-              <FG label="Policy Start Date">
-                <input type="date" className="fi" value={form.start_date}
-                  onChange={e=>setForm(p=>({...p,start_date:e.target.value}))}/>
-              </FG>
-              <FG label="Maturity / Expiry Date">
-                <input type="date" className="fi" value={form.maturity_date}
-                  onChange={e=>setForm(p=>({...p,maturity_date:e.target.value}))}/>
-              </FG>
-            </div>
-            {/* Savings-type policies: show current / invested value */}
-            {['ENDOWMENT','ULIP','WHOLE_LIFE'].includes(form.policy_type||'TERM')&&(
-              <div className="frow">
-                <FG label="Total Premiums Paid ₹">
-                  <FmtInput value={form.principal||''} placeholder="e.g. 150000"
-                    onChange={e=>setForm(p=>({...p,principal:e.target.value}))}/>
-                </FG>
-                <FG label="Current Surrender / Fund Value ₹">
-                  <FmtInput value={form.current_value||''} placeholder="e.g. 180000"
-                    onChange={e=>setForm(p=>({...p,current_value:e.target.value}))}/>
-                </FG>
-              </div>
-            )}
-          </>)}
-
-          {/* Indian instruments */}
-          {['MF','IN_STOCK','IN_ETF'].includes(form.type) && (
-            <div className="frow">
-              <FG label="Purchase Value ₹">
-                <FmtInput value={form.purchase_value} placeholder="total invested"
-                  onChange={e => setForm(p => ({ ...p, purchase_value: e.target.value }))}/>
-              </FG>
-              <FG label="Current Value ₹">
-                <FmtInput value={form.current_value} placeholder="current value"
-                  onChange={e => setForm(p => ({ ...p, current_value: e.target.value }))}/>
-              </FG>
-            </div>
-          )}
-
-          {/* US instruments */}
-          {['US_STOCK','US_ETF','US_BOND','CRYPTO','CASH'].includes(form.type) && (
-            <div className="frow">
-              <FG label="Purchase Value ₹">
-                <FmtInput value={form.purchase_value} placeholder="purchase ₹"
-                  onChange={e => setForm(p => ({ ...p, purchase_value: e.target.value }))}/>
-              </FG>
-              <FG label="Current Value ₹">
-                <FmtInput value={form.current_value} placeholder="current ₹"
-                  onChange={e => setForm(p => ({ ...p, current_value: e.target.value }))}/>
-              </FG>
-              <FG label={<>USD/INR Rate <button type="button" onClick={fetchUsdInr} style={{fontSize:'.65rem',color:'#5a9ce0',background:'none',border:'none',cursor:'pointer'}}>{usdInrLoading ? '…' : '⟳'}</button></>}>
-                <input type="number" className="fi" placeholder={String(usdInrRate)} value={form.usd_inr_rate}
-                  onChange={e => setForm(p => ({ ...p, usd_inr_rate: e.target.value }))}/>
-              </FG>
-            </div>
-          )}
-
-          {/* Other / Cash simple value */}
-          {['OTHER'].includes(form.type) && (
-            <FG label="Current Value ₹">
-              <FmtInput value={form.current_value} placeholder="e.g. 250000"
-                onChange={e => setForm(p => ({ ...p, current_value: e.target.value }))}/>
-            </FG>
-          )}
-
-          <MA>
-            <button className="btnc" onClick={() => { setModal(null); setForm(BF); setEditHolding(null); }}>Cancel</button>
-            <button className="btns" onClick={() =>
-              portfolio.saveHolding(form, editHolding, () => { setModal(null); setForm(BF); setEditHolding(null); })}>
-              {editHolding ? 'Update Holding' : 'Save Holding'}
-            </button>
-          </MA>
-        </Overlay>
-      )}
-
-      {/* ── FD Certificate Scanner ──────────────────────────────── */}
-      {fdScanOpen && (
-        <FDScanSheet
-          api={api}
-          onClose={() => setFdScanOpen(false)}
-          onConfirm={fd => {
-            setForm(p => ({
-              ...p,
-              name:          fd.bank_name ? `${fd.bank_name} FD` : p.name,
-              principal:     fd.principal  != null ? String(fd.principal)    : p.principal,
-              interest_rate: fd.interest_rate != null ? String(fd.interest_rate) : p.interest_rate,
-              start_date:    fd.start_date    || p.start_date,
-              maturity_date: fd.maturity_date || p.maturity_date,
-              maturity_amount: fd.maturity_amount != null ? String(fd.maturity_amount) : p.maturity_amount,
-            }));
-            setFdScanOpen(false);
-          }}
-        />
-      )}
+      {/* ── Add / Edit Holding (+ FD Certificate Scanner) ───────────
+          Extracted to features/holdings/HoldingFormModal.jsx (P3-5, step 3).
+          State (form, editHolding, broker-search state, fdScanOpen, modal) all
+          stays here and is passed in as props — markup-only extraction. */}
+      <HoldingFormModal
+        modal={modal} setModal={setModal}
+        form={form} setForm={setForm} editHolding={editHolding} setEditHolding={setEditHolding}
+        members={members} AT={AT}
+        mfSearch={mfSearch} setMfSearch={setMfSearch} mfResults={mfResults} setMfResults={setMfResults}
+        mfSearching={mfSearching} setMfNav={setMfNav} handleMfSearch={handleMfSearch}
+        stockSearch={stockSearch} setStockSearch={setStockSearch} stockResults={stockResults} setStockResults={setStockResults}
+        stockSearching={stockSearching} setStockInfo={setStockInfo} handleStockSearch={handleStockSearch}
+        etfSearch={etfSearch} setEtfSearch={setEtfSearch} etfResults={etfResults} setEtfResults={setEtfResults}
+        etfSearching={etfSearching} setEtfInfo={setEtfInfo} handleEtfSearch={handleEtfSearch}
+        usSearch={usSearch} setUsSearch={setUsSearch} usResults={usResults} setUsResults={setUsResults}
+        usSearching={usSearching} handleUsSearch={handleUsSearch}
+        usdInrRate={usdInrRate} usdInrLoading={usdInrLoading} fetchUsdInr={fetchUsdInr}
+        fdScanOpen={fdScanOpen} setFdScanOpen={setFdScanOpen}
+        saveHolding={portfolio.saveHolding} api={api}
+        Overlay={Overlay} FG={FG} MA={MA} FmtInput={FmtInput} FDScanSheet={FDScanSheet}
+      />
 
       {/* ── Add / Edit Goal ─────────────────────────────────────── */}
       {/* Markup extracted to features/goals/GoalFormModal.jsx (P3-5); form state
@@ -1295,336 +882,49 @@ ${alertsText}`;
         Overlay={Overlay} FG={FG} MA={MA} FmtInput={FmtInput} HoldingsPicker={HoldingsPicker}
       />
 
-      {/* ── Add Alert ───────────────────────────────────────────── */}
-      {modal === 'alert' && (
-        <Overlay onClose={() => { setModal(null); setAlertForm(BA); }} narrow>
-          <div className="modtitle">New Alert</div>
-          <FG label="Alert Type">
-            <select className="fi fs" value={alertForm.type} onChange={e => setAlertForm(p => ({ ...p, type: e.target.value }))}>
-              <option value="ALLOCATION_DRIFT">Allocation over threshold</option>
-              <option value="CONCENTRATION">Allocation under threshold</option>
-              <option value="RETURN_TARGET">Return below target %</option>
-              <option value="USD_INR_RATE">USD/INR rate above ₹</option>
-            </select>
-          </FG>
-          {alertForm.type !== 'RETURN_TARGET' && alertForm.type !== 'USD_INR_RATE' && (
-            <FG label="Asset Type">
-              <select className="fi fs" value={alertForm.assetType} onChange={e => setAlertForm(p => ({ ...p, assetType: e.target.value }))}>
-                {Object.entries(AT).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-              </select>
-            </FG>
-          )}
-          <FG label={alertForm.type === 'USD_INR_RATE' ? 'Rate threshold (₹ per USD)' : 'Threshold %'}>
-            <input type="number" className="fi"
-              placeholder={alertForm.type === 'USD_INR_RATE' ? 'e.g. 90' : 'e.g. 60'}
-              value={alertForm.threshold}
-              onChange={e => setAlertForm(p => ({ ...p, threshold: e.target.value }))}/>
-          </FG>
-          <FG label="Label">
-            <input className="fi" placeholder="Alert description" value={alertForm.label}
-              onChange={e => setAlertForm(p => ({ ...p, label: e.target.value }))}/>
-          </FG>
-          <MA>
-            <button className="btnc" onClick={() => { setModal(null); setAlertForm(BA); }}>Cancel</button>
-            <button className="btns" onClick={() => { portfolio.addAlert(alertForm); setModal(null); setAlertForm(BA); }}>Save Alert</button>
-          </MA>
-        </Overlay>
-      )}
+      {/* ── Add Alert ────────────────────────────────────────────
+          Extracted to features/strategy/AlertFormModal.jsx (P3-5, step 3). */}
+      <AlertFormModal
+        modal={modal} setModal={setModal}
+        alertForm={alertForm} setAlertForm={setAlertForm}
+        AT={AT}
+        addAlert={portfolio.addAlert}
+        Overlay={Overlay} FG={FG} MA={MA}
+      />
 
-      {/* ── Add / Edit Member ───────────────────────────────────── */}
-      {modal === 'member' && (
-        <Overlay onClose={() => { setModal(null); setNewMember({ name: '', relation: '', dob: '', email: '', nominee_name: '', nominee_relation: '' }); setEditingMemberId(null); }} narrow>
-          <div className="modtitle">{editingMemberId ? 'Edit Family Member' : 'Add Family Member'}</div>
-
-          {/* ── Identity ── */}
-          <div style={{fontSize:'.68rem',color:'var(--text-muted)',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em',marginBottom:'.5rem'}}>Identity</div>
-          <FG label="Name">
-            <input className="fi" placeholder="e.g. Priya" value={newMember.name}
-              onChange={e => setNewMember(p => ({ ...p, name: e.target.value }))}/>
-          </FG>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(200px,100%),1fr))',gap:'.6rem'}}>
-            <FG label="Relation">
-              <select className="fi fs" value={newMember.relation} onChange={e => setNewMember(p => ({ ...p, relation: e.target.value }))}>
-                {['Self','Spouse','Child','Parent','Sibling','Other'].map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </FG>
-            <FG label="Date of birth">
-              <input className="fi" type="date" value={newMember.dob || ''}
-                onChange={e => setNewMember(p => ({ ...p, dob: e.target.value }))}/>
-            </FG>
-          </div>
-          <FG label="PAN (optional)">
-            <input className="fi" style={{textTransform:'uppercase',letterSpacing:'.08em'}} maxLength={10}
-              placeholder={newMember.pan_masked ? `Saved: ${newMember.pan_masked} — type to replace` : 'e.g. ABCDE1234F'}
-              value={newMember.pan || ''}
-              onChange={e => setNewMember(p => ({ ...p, pan: e.target.value.toUpperCase() }))}/>
-            <div style={{fontSize:'.65rem',color:'var(--text-muted)',marginTop:'.25rem'}}>
-              Used for CAS import matching. Stored encrypted.
-            </div>
-          </FG>
-          <FG label="Email (optional)">
-            <input className="fi" type="email" placeholder="e.g. priya@gmail.com" value={newMember.email || ''}
-              onChange={e => setNewMember(p => ({ ...p, email: e.target.value }))}/>
-          </FG>
-
-          {/* ── Nominee ── */}
-          <div style={{fontSize:'.68rem',color:'var(--text-muted)',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em',margin:'.85rem 0 .5rem'}}>Nominee</div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(200px,100%),1fr))',gap:'.6rem'}}>
-            <FG label="Nominee name">
-              <input className="fi" placeholder="e.g. Rahul" value={newMember.nominee_name || ''}
-                onChange={e => setNewMember(p => ({ ...p, nominee_name: e.target.value }))}/>
-            </FG>
-            <FG label="Nominee relation">
-              <select className="fi fs" value={newMember.nominee_relation || ''} onChange={e => setNewMember(p => ({ ...p, nominee_relation: e.target.value }))}>
-                <option value="">— Select —</option>
-                {['Spouse','Child','Parent','Sibling','Other'].map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </FG>
-          </div>
-
-          <MA>
-            <button className="btnc" onClick={() => { setModal(null); setNewMember({ name: '', relation: '', dob: '', email: '', nominee_name: '', nominee_relation: '' }); setEditingMemberId(null); }}>Cancel</button>
-            <button className="btns" onClick={() => portfolio.saveMember(newMember, editingMemberId, members, () => {
-              setModal(null); setNewMember({ name: '', relation: '', dob: '', email: '', nominee_name: '', nominee_relation: '' }); setEditingMemberId(null);
-            })}>
-              {editingMemberId ? 'Update' : 'Add Member'}
-            </button>
-          </MA>
-        </Overlay>
-      )}
+      {/* ── Add / Edit Member ────────────────────────────────────
+          Extracted to features/members/MemberFormModal.jsx (P3-5, step 3). */}
+      <MemberFormModal
+        modal={modal} setModal={setModal}
+        newMember={newMember} setNewMember={setNewMember}
+        editingMemberId={editingMemberId} setEditingMemberId={setEditingMemberId}
+        members={members}
+        saveMember={portfolio.saveMember}
+        Overlay={Overlay} FG={FG} MA={MA}
+      />
 
       {/* ── Audit Log ───────────────────────────────────────────── */}
       {showAuditLog && (
         <AuditLogPanel onClose={() => setShowAuditLog(false)} api={api} />
       )}
 
-      {/* ── Settings ────────────────────────────────────────────── */}
-      {showSettings && (
-        <Overlay onClose={() => setShowSettings(false)}>
-          <div className="modtitle">⚙ Settings</div>
-          <div style={{marginBottom:'1rem'}}>
-            <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.35rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Signed in as</div>
-            <div style={{fontSize:'.85rem',color:'var(--text)',fontWeight:500}}>{user.email}</div>
-          </div>
-          <div style={{marginBottom:'1rem',display:'flex',gap:'.5rem',flexWrap:'wrap'}}>
-            <button className="btn-o" onClick={() => { setShowImportHub(true); setShowSettings(false); }}>
-              <Download size={13} strokeWidth={2}/> Import Holdings
-            </button>
-            <button className="btn-o" onClick={() => { setShowAuditLog(true); setShowSettings(false); }}>
-              <Activity size={13} strokeWidth={2}/> Activity Log
-            </button>
-          </div>
-
-          {/* ── Appearance ── */}
-          <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',marginBottom:'1rem'}}>
-            <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Appearance</div>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <span style={{fontSize:'.82rem',color:'var(--text)'}}>Theme</span>
-              <button
-                onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
-                style={{display:'flex',alignItems:'center',gap:'.35rem',padding:'.3rem .75rem',borderRadius:99,
-                  border:'1px solid var(--border)',background:'var(--bg-muted)',cursor:'pointer',
-                  fontSize:'.78rem',color:'var(--text)',fontWeight:600,transition:'all .15s'}}>
-                {theme === 'dark'
-                  ? <><Sun size={13} strokeWidth={2}/> Light Mode</>
-                  : <><Moon size={13} strokeWidth={2}/> Dark Mode</>}
-              </button>
-            </div>
-          </div>
-
-          {/* ── PPF / EPF rate config ── */}
-          <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',marginBottom:'1rem'}}>
-            <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Government Scheme Rates</div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(200px,100%),1fr))',gap:'.6rem',marginBottom:'.6rem'}}>
-              {[
-                { key:'ppf_rate', label:'PPF Rate (%)', default: 7.1 },
-                { key:'epf_rate', label:'EPF Rate (%)', default: 8.15 },
-              ].map(({key, label, default: def}) => (
-                <div key={key}>
-                  <div style={{fontSize:'.68rem',color:'var(--text-muted)',marginBottom:'.25rem'}}>{label}</div>
-                  <input
-                    type="number" step="0.05" min="1" max="25"
-                    className="fi"
-                    defaultValue={(portfolio.profile?.settings?.[key]) ?? def}
-                    style={{width:'100%',fontSize:'.82rem'}}
-                    onBlur={async e => {
-                      const val = parseFloat(e.target.value);
-                      if (!val || val <= 0 || val > 25) return;
-                      const newSettings = { ...(portfolio.profile?.settings || {}), [key]: val };
-                      try {
-                        await api('/api/profile', { method: 'PUT', body: JSON.stringify({ settings: newSettings }) });
-                        if (key === 'ppf_rate') setPpfRate(val);
-                        if (key === 'epf_rate') setEpfRate(val);
-                      } catch {}
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-            <div style={{fontSize:'.65rem',color:'var(--text-muted)'}}>RBI/EPFO rates change annually. Update here to reflect current returns on your PPF and EPF holdings.</div>
-          </div>
-
-          {/* ── Staleness thresholds ── */}
-          <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',marginBottom:'1rem'}}>
-            <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Balance Refresh Reminders</div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(175px,100%),1fr))',gap:'.5rem',marginBottom:'.6rem'}}>
-              {[
-                { key:'stale_ppf_days',         label:'PPF (days)',         default:90  },
-                { key:'stale_epf_days',         label:'EPF (days)',         default:90  },
-                { key:'stale_fd_days',          label:'Fixed Deposits',     default:90  },
-                { key:'stale_real_estate_days', label:'Real Estate',        default:180 },
-                { key:'stale_cash_days',        label:'Cash',              default:14  },
-                { key:'stale_insurance_days',   label:'Insurance',         default:365 },
-                { key:'stale_other_days',       label:'Other',             default:60  },
-                { key:'stale_min_display_days', label:'Show badge after (days)', default:14 },
-              ].map(({key, label, default: def}) => (
-                <div key={key}>
-                  <div style={{fontSize:'.68rem',color:'var(--text-muted)',marginBottom:'.25rem'}}>{label}</div>
-                  <input
-                    type="number" step="1" min="1" max="730"
-                    className="fi"
-                    defaultValue={(portfolio.profile?.settings?.[key]) ?? def}
-                    style={{width:'100%',fontSize:'.82rem'}}
-                    onBlur={async e => {
-                      const val = parseInt(e.target.value, 10);
-                      if (!val || val < 1 || val > 730) return;
-                      const newSettings = { ...(portfolio.profile?.settings || {}), [key]: val };
-                      try {
-                        await api('/api/profile', { method: 'PUT', body: JSON.stringify({ settings: newSettings }) });
-                        portfolio.setProfile?.(p => ({ ...p, settings: newSettings }));
-                      } catch {}
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-            <div style={{fontSize:'.65rem',color:'var(--text-muted)'}}>Number of days before a manually-tracked holding is flagged as stale. "Show badge after" controls how early the reminder starts appearing.</div>
-          </div>
-
-          {/* ── Gmail / CAS auto-import ── */}
-          <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',marginBottom:'1rem'}}>
-            <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>
-              Gmail — CAS Auto-Import
-            </div>
-            {gmailStatus === null ? (
-              <div style={{fontSize:'.78rem',color:'var(--text-muted)'}}>Loading…</div>
-            ) : !gmailStatus.enabled ? (
-              <div style={{fontSize:'.78rem',color:'var(--text-muted)'}}>Gmail integration not configured on the server (GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET missing).</div>
-            ) : gmailStatus.connected ? (
-              <>
-                <div style={{display:'flex',alignItems:'center',gap:'.5rem',marginBottom:'.6rem'}}>
-                  <span style={{width:7,height:7,borderRadius:'50%',background:'#4caf9a',flexShrink:0,display:'inline-block'}}/>
-                  <span style={{fontSize:'.8rem',color:'var(--text)',fontWeight:500}}>{gmailStatus.gmail_email}</span>
-                </div>
-                {gmailStatus.last_check && (
-                  <div style={{fontSize:'.7rem',color:'var(--text-muted)',marginBottom:'.6rem'}}>
-                    Last checked: {new Date(gmailStatus.last_check).toLocaleString()}
-                  </div>
-                )}
-                <div style={{display:'flex',alignItems:'center',gap:'.5rem',marginBottom:'.75rem'}}>
-                  <label style={{fontSize:'.78rem',color:'var(--text)',display:'flex',alignItems:'center',gap:'.4rem',cursor:'pointer',userSelect:'none'}}>
-                    <input type="checkbox" checked={gmailStatus.auto_import ?? true}
-                      onChange={async e => {
-                        const enabled = e.target.checked;
-                        setGmailStatus(p => ({ ...p, auto_import: enabled }));
-                        try { await api('/api/gmail/toggle-auto', { method: 'POST', body: JSON.stringify({ enabled }) }); } catch {}
-                      }}
-                    />
-                    Auto-import weekly (every Monday)
-                  </label>
-                </div>
-                <div style={{display:'flex',gap:'.5rem',flexWrap:'wrap'}}>
-                  <button className="btn-o" style={{fontSize:'.78rem'}} disabled={gmailChecking}
-                    onClick={async () => {
-                      setGmailChecking(true);
-                      try {
-                        const r = await api('/api/gmail/check-now', { method: 'POST' });
-                        await fetchGmailStatus();
-                        toast.success(`Done — ${r.imported ?? 0} added, ${r.updated ?? 0} updated, ${r.skipped ?? 0} skipped.`);
-                      } catch (e) { toast.error('Check failed: ' + e.message); }
-                      finally { setGmailChecking(false); }
-                    }}>
-                    {gmailChecking ? 'Checking…' : '↻ Check Now'}
-                  </button>
-                  <button className="btn-o" style={{fontSize:'.78rem',color:'var(--loss)',borderColor:'rgba(220,38,38,.25)'}}
-                    onClick={async () => {
-                      const ok = await toast.confirm('Disconnect Gmail?', { confirmLabel: 'Disconnect', danger: true });
-                      if (!ok) return;
-                      try {
-                        await api('/api/gmail/disconnect', { method: 'DELETE' });
-                        setGmailStatus(p => ({ ...p, connected: false, gmail_email: null }));
-                      } catch (e) { toast.error('Failed: ' + e.message); }
-                    }}>
-                    Disconnect
-                  </button>
-                </div>
-                {gmailStatus.recent_imports?.length > 0 && (
-                  <div style={{marginTop:'.75rem'}}>
-                    <div style={{fontSize:'.68rem',color:'var(--text-muted)',marginBottom:'.3rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.06em'}}>Recent imports</div>
-                    {gmailStatus.recent_imports.slice(0,5).map((imp, i) => (
-                      <div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:'.7rem',color:'var(--text-muted)',padding:'.2rem 0',borderBottom:'1px solid var(--border)'}}>
-                        <span style={{color: imp.status === 'success' ? '#4caf9a' : imp.status === 'error' ? 'var(--loss)' : 'var(--text-muted)'}}>
-                          {imp.status}
-                        </span>
-                        <span>{imp.status === 'success' ? `+${imp.holdings_added ?? 0} / ~${imp.holdings_updated ?? 0}` : ''}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div style={{fontSize:'.78rem',color:'var(--text-muted)',marginBottom:'.6rem'}}>
-                  Connect your Gmail so CAS statements from NSDL, CAMS and KFintech are imported automatically.
-                </div>
-                <button className="btn-o" style={{fontSize:'.78rem'}} disabled={gmailLoading}
-                  onClick={async () => {
-                    setGmailLoading(true);
-                    try {
-                      const { url } = await api('/api/gmail/auth');
-                      window.location.href = url;
-                    } catch (e) { toast.error('Failed to start Gmail auth: ' + e.message); setGmailLoading(false); }
-                  }}>
-                  {gmailLoading ? 'Redirecting…' : '🔗 Connect Gmail'}
-                </button>
-              </>
-            )}
-          </div>
-
-          <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',display:'flex',alignItems:'center',gap:'.6rem',flexWrap:'wrap'}}>
-            {/* ── Push Notifications ── */}
-          {pushSupported && (
-            <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',marginBottom:'1rem'}}>
-              <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>Push Notifications</div>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'1rem'}}>
-                <div style={{fontSize:'.8rem',color:'var(--text)'}}>
-                  {pushSubscribed ? 'Notifications are enabled on this device.' : 'Get price alerts and reminders on this device.'}
-                </div>
-                <button className="btn-o" onClick={togglePush} disabled={pushLoading}
-                  style={{flexShrink:0,minWidth:80,color:pushSubscribed?'var(--loss)':'#4caf9a',borderColor:pushSubscribed?'rgba(220,38,38,.25)':'rgba(76,175,154,.3)'}}>
-                  {pushLoading ? '…' : pushSubscribed ? 'Disable' : 'Enable'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {confirmSignOut ? (
-              <>
-                <span style={{fontSize:'.8rem',color:'var(--text-dim)',fontWeight:600}}>Sign out?</span>
-                <button className="btn-o" style={{color:'#fff',background:'var(--loss)',borderColor:'var(--loss)'}} onClick={() => { signOut(); setConfirmSignOut(false); }}>
-                  Yes, sign out
-                </button>
-                <button className="btnc" onClick={() => setConfirmSignOut(false)}>Cancel</button>
-              </>
-            ) : (
-              <button className="btn-o" style={{color:'var(--loss)',borderColor:'rgba(220,38,38,.25)'}}
-                onClick={() => setConfirmSignOut(true)}>
-                <LogOut size={13} strokeWidth={2}/> Sign Out
-              </button>
-            )}
-          </div>
-        </Overlay>
-      )}
+      {/* ── Settings ─────────────────────────────────────────────
+          Extracted to components/modals/SettingsModal.jsx (P3-5, step 3). */}
+      <SettingsModal
+        showSettings={showSettings} setShowSettings={setShowSettings}
+        user={user} signOut={signOut}
+        setShowImportHub={setShowImportHub} setShowAuditLog={setShowAuditLog}
+        theme={theme} setTheme={setTheme}
+        portfolio={portfolio} api={api} setPpfRate={setPpfRate} setEpfRate={setEpfRate}
+        gmailStatus={gmailStatus} setGmailStatus={setGmailStatus}
+        gmailLoading={gmailLoading} setGmailLoading={setGmailLoading}
+        gmailChecking={gmailChecking} setGmailChecking={setGmailChecking}
+        fetchGmailStatus={fetchGmailStatus}
+        pushSupported={pushSupported} pushSubscribed={pushSubscribed} pushLoading={pushLoading} togglePush={togglePush}
+        confirmSignOut={confirmSignOut} setConfirmSignOut={setConfirmSignOut}
+        toast={toast}
+        Overlay={Overlay}
+      />
 
       {/* ── Import Hub ───────────────────────────────────────────── */}
       {showImportHub && (
