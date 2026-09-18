@@ -11,6 +11,8 @@
 > August 2026: Embedded Financial News Feed (P3 Item 9) shipped and moved to Completed; Item 10 renumbered to 9.
 > August 2026: Financial News Feed upgraded — Indian market RSS sources (ET Markets, Livemint), macro RSS sources (SEBI, ET Economy), and per-stock filter UI added.
 > September 2026: Production-readiness review — P0-1, P0-2, P1-1, P1-2 shipped Sep 18; P2-2, P2-4 shipped shortly after. All six moved to Completed (Production-Readiness Fixes, Sep 2026); remaining P2 items renumbered.
+> September 2026: Concall Trend Agent, portfolio-wide Concall Calendar, and Concall Insights shipped — moved to Completed (Concall Intelligence Extensions, Sep 2026).
+> September 2026: Six items added following a backlog brainstorm — P1 Item 4 (AI Concall Chat via Advisor tool-use), P2-4..P2-6 (YouTube transcript fallback, News-to-Portfolio Impact Agent, Weekly Portfolio Copilot digest), P3 Items 10-11 (LangGraph Portfolio Advisor Agent, Multi-user Goal Tracker).
 
 ---
 
@@ -32,6 +34,15 @@ Update the Gmail status panel in the frontend to:
 - Show a "Checking…" spinner
 - Poll `GET /api/gmail/job/:id` every 3 s until status is `done` or `error`
 - Surface the result (emails found, CAS imported, errors) as before
+
+### 4. AI Concall Chat — as Advisor tool-use, not a separate chat surface
+**Recommendation from architecture review (Sep 2026):** don't build a standalone chat UI inside `ConcallPanel.jsx`, and don't fork `AdvisorTab.jsx` into a "concall mode." The Advisor already runs a full agentic tool-use loop (`routes/ai.js` — `ADVISOR_TOOLS` + streaming SSE + tool-call chips already rendered in `AdvisorTab.jsx`) with conversation history and persistence solved. Adding transcript-grounded Q&A is a two-tool extension of that existing loop, not a new feature surface:
+- `get_concall_analysis(holding)` — cheap Supabase read of the latest stored `concall_analyses` row (score, signal, summary, bull/bear points, trend if already computed). No network call.
+- `get_concall_transcript(holding, quarter)` — runs the existing provider chain (`lib/concall/providers.js`) live for direct quote-level Q&A ("what exactly did management say about margins"). No new persistence needed for v1 — re-fetches on demand, same reliability profile as the existing `/analyze` endpoint. Revisit if latency/flakiness becomes a problem (store the prepared transcript text in Supabase Storage alongside the existing `artifacts` bucket).
+
+This means a user can ask "What did Infosys say about margins last quarter?" in the same Advisor chat they already use for portfolio questions, and get the tool-call chip UI for free.
+**Optional follow-up:** a "💬 Ask the Advisor" button in `ConcallPanel.jsx` that switches to the Advisor tab with the holding + quarter baked into a pre-filled question, for discoverability from the panel where the user is already looking at one holding's call.
+**Files:** `routes/ai.js` (ADVISOR_TOOLS array + switch/case dispatcher + system prompt mention), `services/ai-tools.service.js` (new data-fetcher functions, same pattern as `getHoldingsData` etc.).
 
 ---
 
@@ -55,6 +66,23 @@ Cron failures are silent unless the user monitors the GitHub Actions tab.
 **Fix:** Add `on-failure` step that POSTs to a Slack/email webhook, or enable GitHub Actions email notifications for workflow failures.  
 **Effort:** Low.
 
+### P2-4 · YouTube-recording transcript fallback provider
+**File:** `lib/concall/providers.js`  
+Small/midcap concalls often only get an IR-channel YouTube recording, no PDF transcript — NSE (Cloudflare), BSE, Screener, and Tickertape can all come up empty for these. Add a 5th provider that searches the company's official IR YouTube channel (YouTube Data API v3 — needs `YOUTUBE_API_KEY`) and pulls the public auto-caption track for the most recent earnings-call video.  
+**Note:** this is the company's own official video and its own public captions — distinct from, and not to be confused with, scraping a third-party site like Concall.in (whose Terms of Service explicitly forbid that; see the Sep 2026 conversation where that was ruled out).  
+**Effort:** Medium — new provider class + caption-fetch helper, no schema changes.
+
+### P2-5 · News-to-Portfolio Impact Agent
+**File:** `routes/news.js`, `src/features/NewsTab.jsx`  
+The News tab shows a flat chronological feed. Add a per-article relevance pass: for each article tied to a portfolio ticker, ask Claude whether it's likely to move the investment thesis (earnings-relevant, regulatory, management change, competitive threat) and surface a compact impact tag instead of making the user read everything.  
+**Pairs naturally with Concall Insights** — same "is my thesis at risk" framing, different data source (news flow vs. quarterly calls).  
+**Effort:** Medium — one Claude call per new article batch, cached like the existing 15-min RSS cache.
+
+### P2-6 · Weekly Portfolio Copilot digest
+**Files:** new `routes/cron.js` endpoint, reuses `services/ai-tools.service.js`, `lib/concall/trend.js`, `routes/news.js`, `insertNotification()`  
+Orchestrate the AI features that already exist per-tab (Overview morning brief, AI Tax Strategy, News, Concall Insights) into one scheduled agent run producing a single weekly digest, delivered via the existing notification centre / email digest infrastructure. Only surfaces sections with something to say — skip tax if nothing changed since last week, skip concall if no signal flipped — rather than always running every sub-agent.  
+**Effort:** Medium-High — first genuinely multi-tool orchestration run on a schedule rather than on-demand; a good candidate for the LangGraph experiment below if that's built first.
+
 ---
 
 ## 🔵 P3 — Nice-to-Have / Research
@@ -76,6 +104,13 @@ Compare transactions recorded in WealthLens Hub against broker contract note PDF
 
 ### 9. Collaborative Budget (Shared Budget View)
 Extend portfolio sharing to the Budget tab so couples or families can view, categorise, and annotate joint expenses together.
+
+### 10. AI Portfolio Advisor Agent — Python/LangGraph microservice
+From the original Hub/Pro backlog — never built. A standalone FastAPI service running an actual LangGraph graph (pull holdings → pull Concall Insights + News → reason about cross-holding correlations → produce a cited recommendation), called from `routes/ai.js` the same way `services/cas_casparser_service.py` is already shelled out to for CAS parsing.  
+**Distinct from the existing Advisor tool-use loop** (Node + Anthropic SDK directly) — this is explicitly for hands-on multi-step agent-orchestration work in Python, not a replacement for the Advisor tab. Good candidate to also host the Weekly Portfolio Copilot (P2-6) once it exists, since that's the first genuinely multi-tool scheduled orchestration in the app.
+
+### 11. Multi-user Goal Tracker (shared/collaborative goals)
+GoalsTab currently models one goal per member with scenario modelling. Extend to shared family goals (e.g. a joint house-down-payment goal) with per-member contribution tracking and a shared progress view, building on the existing portfolio-sharing viewer/editor role infrastructure rather than a new permissions model.
 
 ---
 
@@ -130,6 +165,17 @@ Identified in the Sep 2026 production-readiness review.
   **Shipped:** Sep 18 2026
 - ✅ **P2-2 — pLimit extracted to shared `lib/utils.js`** — `lib/utils.js` now owns `pLimit()`; `lib/refresh.js` re-exports it for existing import sites; `routes/import.js` imports it directly from `lib/utils.js`
 - ✅ **P2-4 — CAS done screen shows statement date + depository** — `CASImportModal.jsx`: done step now displays `casDepository` (CAMS/CDSL/NSDL/KFin) and `casStatementDate` alongside the success summary
+
+### Concall Intelligence Extensions (Sep 2026)
+Three additions on top of the existing per-holding Concall Analysis.
+- ✅ **Quarter-over-quarter trend agent** — `lib/concall/trend.js`, `GET /api/concall/:holdingId/trend`  
+  Reasons over the structured `concall_analyses` history already stored (no re-fetching transcripts) to produce a trend narrative (IMPROVING/STABLE/DETERIORATING/VOLATILE) with an inflection-point quarter when there is one. 24h in-process cache keyed to the holding's latest analysed quarter. Surfaced in `ConcallPanel.jsx` as a sparkline + narrative card.
+- ✅ **Portfolio-wide Concall Calendar** — `lib/concall/calendar.js`, `GET /api/concall/calendar`  
+  Deterministic next-concall window estimated from each holding's last analysed quarter + typical India reporting lag, upgraded to a confirmed date when a live BSE board-meeting filing parses cleanly for the 8 holdings due soonest. Bounded by `pLimit` concurrency + a 20s hard deadline; 12h per-user cache.
+- ✅ **Concall Insights** — `GET /api/concall/insights`  
+  Pure aggregation (no new LLM calls) of latest signal/score across every equity holding, sorted worst-first (BREAKS → CHALLENGES → NEUTRAL → CONFIRMS), flags holdings never analysed.
+- **Frontend** — `src/features/calendar/ConcallOutlookCard.jsx`, wired into `CalendarTab.jsx` between the Upcoming card and the Legend card.
+- **Explicitly ruled out:** integrating with Concall.in (the third-party AI concall platform) — their Terms of Service prohibit scraping/harvesting, so this was built natively on the existing NSE/BSE/Screener provider chain instead.
 
 ### Embedded Financial News Feed (Enhanced)
 Shipped August 2026 (was P3 Item 9). Enhanced August 2026 with Indian market RSS sources, additional macro feeds, and per-stock filtering.
