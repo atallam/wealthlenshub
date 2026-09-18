@@ -20,6 +20,14 @@ import {
   getTaxSummaryData, getBudgetTransactionsData, getWatchlistData,
   getSnapshotHistoryData, getFdMaturitiesData,
 } from "../services/ai-tools.service.js";
+// Concall tools reuse services/concall.service.js and lib/concall/* directly
+// rather than adding parallel query functions to ai-tools.service.js — those
+// modules are already the canonical data access for concall_analyses and
+// transcript sourcing (used by routes/concall.js), so duplicating them here
+// would just be two places that can drift.
+import { getHolding, getLatest, getHistory } from "../services/concall.service.js";
+import { findTranscript } from "../lib/concall/providers.js";
+import { prepareTranscript } from "../lib/concall/extractor.js";
 
 const router = Router();
 
@@ -125,6 +133,28 @@ const ADVISOR_TOOLS = [
       type: "object",
       properties: {
         days: { type: "number", description: "Look-ahead window in days (default 180)" },
+      },
+    },
+  },
+  {
+    name: "get_concall_analysis",
+    description: "Get the latest earnings-call (concall) analysis for a specific equity holding — composite score (0-10), thesis signal (CONFIRMS/NEUTRAL/CHALLENGES/BREAKS), bull/bear points with evidence, management guidance, key risks, and recent quarter-over-quarter score history. Use when the user asks what a company said in its earnings call, whether recent results support or challenge the investment thesis, or wants a quick read on outlook. Equity holdings only (IN_STOCK, IN_ETF, US_STOCK, US_ETF) — call get_holdings first to find the holding_id.",
+    input_schema: {
+      type: "object",
+      required: ["holding_id"],
+      properties: {
+        holding_id: { type: "string", description: "Holding ID (from get_holdings response)" },
+      },
+    },
+  },
+  {
+    name: "get_concall_transcript",
+    description: "Fetch the full text of the MOST RECENT earnings-call transcript for a specific equity holding, for direct quote-level questions the structured analysis doesn't cover. This re-fetches live from NSE/BSE/Screener/Tickertape (India) or Motley Fool (US), takes a few seconds, and can fail if no public transcript exists yet. Only the latest quarter can be fetched this way — for older quarters or a quick summary, prefer get_concall_analysis instead. Call this only when the user needs a specific verbatim detail.",
+    input_schema: {
+      type: "object",
+      required: ["holding_id"],
+      properties: {
+        holding_id: { type: "string", description: "Holding ID (from get_holdings response)" },
       },
     },
   },
@@ -353,6 +383,53 @@ async function execTool(name, input, userId) {
             };
           }),
         };
+      }
+
+      case "get_concall_analysis": {
+        const holdingId = input.holding_id;
+        if (!holdingId) return { error: "holding_id is required" };
+        const { analysis, noData } = await getLatest(holdingId, userId);
+        if (noData) return { message: "No concall analysis found for this holding yet. The user can fetch one from the holding's Concall panel." };
+        const history = await getHistory(holdingId, userId);
+        return {
+          quarter:      analysis.quarter,
+          quarter_date: analysis.quarter_date,
+          score:        analysis.score,
+          signal:       analysis.signal,
+          score_breakdown: {
+            guidance: analysis.score_guidance,
+            tone:     analysis.score_tone,
+            clarity:  analysis.score_clarity,
+            surprise: analysis.score_surprise,
+          },
+          summary:         analysis.summary,
+          bull_points:     analysis.bull_points,
+          bear_points:     analysis.bear_points,
+          guidance:        analysis.guidance,
+          key_risks:       analysis.key_risks,
+          source_provider: analysis.source_provider,
+          analysed_at:     analysis.analysed_at,
+          recent_history:  history.map(h => ({ quarter: h.quarter, score: h.score, signal: h.signal })),
+        };
+      }
+
+      case "get_concall_transcript": {
+        const holdingId = input.holding_id;
+        if (!holdingId) return { error: "holding_id is required" };
+        const holding = await getHolding(holdingId);
+        if (!holding || holding._notFound) return { error: "Holding not found" };
+        if (!holding.ticker) return { error: "This holding has no ticker symbol — cannot fetch a transcript." };
+
+        const found = await findTranscript(holding.ticker, holding.type);
+        if (!found) return { message: `Could not find a public transcript for ${holding.name}. Try get_concall_analysis for the last saved summary instead.` };
+
+        const prepared = prepareTranscript(found.text);
+        const TRANSCRIPT_TOOL_CHARS = 12000;
+        const excerpt = prepared.length > TRANSCRIPT_TOOL_CHARS
+          ? prepared.slice(0, TRANSCRIPT_TOOL_CHARS) + "\n\n[...truncated for length — ask a more specific question to narrow this down...]"
+          : prepared;
+
+        return { ticker: holding.ticker, source: found.provider, source_url: found.url, transcript_excerpt: excerpt };
       }
 
       default: return { error: `Unknown tool: ${name}` };

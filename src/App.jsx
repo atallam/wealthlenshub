@@ -464,6 +464,22 @@ TRIGGERED ALERTS:
 ${alertsText}`;
   }
 
+  // "💬 Ask the Advisor" bridge — ConcallPanel (and any future deeply-nested
+  // panel) dispatches this event instead of needing onAskAdvisor prop-drilled
+  // through HoldingsTab/holding-row components down to it. We own both
+  // `tab`/`setTab` and the `ai` hook here, so this is the natural place to
+  // switch tabs, pre-fill the question, and kick off the Advisor call.
+  useEffect(() => {
+    function handleAskAdvisor(e) {
+      const question = e.detail?.question;
+      if (!question) return;
+      setTab('advisor');
+      setTimeout(() => ai.askAI(buildPortfolioContext(), aiBottomRef, question), 60);
+    }
+    window.addEventListener('wl:ask-advisor', handleAskAdvisor);
+    return () => window.removeEventListener('wl:ask-advisor', handleAskAdvisor);
+  }, [ai, allHoldings, allMembers, valINRCache, invINRCache, xirrCache]);
+
   // ── buildSuggestedQuestions — portfolio-state-aware advisor prompts ──────────
   function buildSuggestedQuestions() {
     const questions = [];

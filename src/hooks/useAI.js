@@ -18,6 +18,8 @@ const TOOL_LABELS = {
   get_transactions:      "📋 Loading transactions",
   get_goal_progress:     "🎯 Reviewing goals",
   get_tax_summary:       "🧾 Computing tax",
+  get_concall_analysis:   "📞 Checking concall analysis",
+  get_concall_transcript: "📜 Reading transcript",
 };
 
 const MAX_PERSISTED = 60; // keep last 60 messages in localStorage

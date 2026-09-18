@@ -391,6 +391,25 @@ export default function ConcallPanel({ holding, onClose }) {
             </div>
           </div>
 
+          {/* Ask the Advisor — hands this holding + quarter off to the AI Advisor
+              chat via a window event (see App.jsx), instead of duplicating a
+              chat UI here. */}
+          <button
+            onClick={() => {
+              const question = `What did ${holding.name} say in its ${analysis.quarter} earnings call, and does it confirm or challenge the investment thesis?`;
+              window.dispatchEvent(new CustomEvent("wl:ask-advisor", { detail: { question } }));
+            }}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: ".4rem",
+              padding: ".35rem .75rem", borderRadius: 6, cursor: "pointer",
+              fontSize: ".72rem", fontWeight: 600, color: "#a084ca",
+              background: "rgba(160,132,202,.08)", border: "1px solid rgba(160,132,202,.25)",
+              marginBottom: "1rem",
+            }}
+          >
+            💬 Ask the Advisor about this
+          </button>
+
           {/* Sub-scores */}
           <div style={{ marginBottom: "1rem", padding: ".75rem", background: "rgba(255,255,255,.02)", borderRadius: 8 }}>
             <div style={{ fontSize: ".7rem", fontWeight: 600, color: "var(--text-muted)", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: ".6rem" }}>
