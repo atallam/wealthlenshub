@@ -83,6 +83,7 @@ import ImportHub from './components/modals/ImportHub.jsx';
 
 // ── Context ──────────────────────────────────────────────────────
 import { PortfolioProvider } from './contexts/PortfolioContext.jsx';
+import { AppShellProvider } from './contexts/AppShellContext.jsx';
 import { useMask } from './contexts/MaskContext.jsx';
 
 // ── Error boundary ───────────────────────────────────────────────
@@ -131,6 +132,9 @@ export default function App() {
   const { user, authLoading, authErr } = useAuth();
 
   // ── Cross-tab UI state ────────────────────────────────────────
+  // tab/selMember stay owned here (P3-5) but are also exposed via
+  // AppShellProvider below, reachable from any nested component via
+  // useAppShell() without new prop drilling.
   const [tab,              setTab]              = useState('overview');
   const [selMember,        setSelMember]        = useState('all');
   // Modal/sheet/dropdown UI toggles now live in useUiState().
@@ -631,7 +635,11 @@ ${alertsText}`;
   };
 
   // ══════════════════════════════════════════════════════════════
+  // AppShellProvider (P3-5, step 2): makes tab/selMember reachable via
+  // useAppShell() for any nested component, without new prop drilling.
+  // State ownership stays right here — same pattern as PortfolioProvider.
   return (
+    <AppShellProvider value={{ tab, setTab, selMember, setSelMember }}>
     <div className="app">
 
       {/* ── HEADER ─────────────────────────────────────────────── */}
@@ -1732,5 +1740,6 @@ ${alertsText}`;
       <InstallPrompt />
 
     </div>
+    </AppShellProvider>
   );
 }
