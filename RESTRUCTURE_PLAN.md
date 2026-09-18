@@ -316,6 +316,64 @@ session have been either verified live or confirmed as expected/pre-existing beh
 (see prior follow-up entries above for detail on individual items). Nothing outstanding
 from this verification pass remains open.
 
+**2026-09-19 (same session, ninth follow-up) — P3-5 steps 1 and 2 completed (state-only
+lifts + AppShellContext), each verified live**
+
+With a working `npm run dev` session now available, resumed P3-5 (the App.jsx split)
+where the earlier follow-ups left it: step 1 (feature folders) was already done, but
+most of App.jsx's own cross-tab `useState`s hadn't been lifted into their tabs' hooks
+yet, and step 2 (`AppShellContext`) hadn't been started.
+
+**Approach:** strictly incremental, one small hook per tab/concern, in the exact same
+low-risk shape as the P3-2 service extractions — move only the `useState` declarations
+into a new `use<X>.js` hook, keep every returned variable name identical, so every
+downstream prop and every consuming component's markup is untouched. Each hook was
+syntax-checked (babel parse), diffed for stray references, committed, then confirmed
+working live by the user in the browser before moving to the next one. Nine extractions
+landed this way:
+
+- `useGoalForm` (`src/features/goals/`) — `goalForm`, `editGoalId`.
+- `useAlertForm` (`src/features/strategy/`) — `alertForm`.
+- `useHoldingActions` (`src/features/holdings/`) — `txnHolding`, `txnForm`,
+  `artifactHolding` (Transaction/Artifact panel triggers).
+- `useHoldingForm` (`src/features/holdings/`) — `form`, `editHolding` (the big
+  Add/Edit Holding modal's state; the modal's markup itself stayed in App.jsx).
+- `useMemberForm` (`src/features/members/`) — `newMember`, `editingMemberId`,
+  `memberAction`.
+- `useRebalanceState` (`src/features/strategy/`) — `targetAlloc`, `rebalMember`,
+  `rebalCash`.
+- `useOverviewState` (`src/features/overview/`) — `nwMember`, `bmPeriod`.
+- `useCalendarState` (`src/features/calendar/`) — `calMonth`.
+- `useGmailStatus` (`src/hooks/`) — `gmailStatus`, `gmailLoading`, `gmailChecking`,
+  plus the `fetchGmailStatus` callback and both effects that were tied to it (the
+  showSettings-driven auto-refetch, and the OAuth-callback query-param handler) — the
+  only one of the nine that moved more than bare `useState`s, since the callback and
+  effects were logically part of the same concern. Removed the now-unused `useCallback`
+  import from App.jsx as a result.
+
+Each was confirmed live in the browser after its own commit: Goals add/edit, Strategy's
+Add Alert, Holdings' Transaction/Artifact panels, Add/Edit Holding (all asset types),
+Add/Edit Member, Strategy's rebalance panel, Overview's member/benchmark filters,
+Calendar's month navigation, and Settings → Gmail (status load, Check Now,
+connect/disconnect, OAuth-redirect banner) — no regressions found in any of them.
+
+**Step 2 — AppShellContext:** added `src/contexts/AppShellContext.jsx`, mirroring the
+existing `contexts/PortfolioContext.jsx` "dumb provider" pattern exactly: state
+ownership for `tab`/`selMember` stays in App.jsx as plain `useState`s (unchanged),
+`AppShellProvider` just wraps the whole app tree so any nested component can call
+`useAppShell()` to reach them without a new prop being threaded down. Deliberately
+did **not** rewire `OverviewTab`/`TaxTab` (which currently receive `selMember` as an
+explicit prop) to consume the context instead — that would be a real behavior-risk
+change to those components' interfaces, out of scope for this pass. Confirmed live:
+clicked through every tab after this change (it's the one edit that touches the render
+path of the entire app, even though logically no state moved).
+
+**P3-5 status:** steps 1 and 2 are now done (see the updated P3-5 section below for
+detail). Step 3 (App.jsx as a <200-line shell) is **not** done — the big inline
+modals (Add/Edit Holding, Add Alert, Add/Edit Member) and the header/nav markup are
+still in App.jsx. That's markup-level extraction, a materially different risk profile
+than the state-only lifts done in this follow-up, and is deferred to a future pass.
+
 ---
 
 ## P3-2 — Service layer across all routes
@@ -405,14 +463,35 @@ tab components and hooks — the remaining bulk is cross-tab state and orchestra
 **Acceptance:** `App.jsx` under ~200 lines; each feature owns its state; no prop drilling
 of more than ~5 props; app behaves identically. This step MUST be done with `npm run dev`.
 
-**Status (2026-09-18):** step 1 is already done — all tab components live under
+**Status (2026-09-19):** step 1 is done — all tab components live under
 `src/features/<name>/`. The Goals "Add/Edit" modal has been extracted to
-`src/features/goals/GoalFormModal.jsx` (markup only — `goalForm`/`editGoalId`/`modal`
-state still lives in `App.jsx`). `TaxTab` had no extractable state, so nothing to do
-there. `App.jsx` is now 92,186 bytes (was 99,123). Step 2 (`AppShellContext`) not started
-— still needs a real `npm run dev` session to extract the remaining ~24 `useState`s
-(mostly cross-tab: `tab`, `selMember`, `modal`, and other tabs' form state) one at a time.
-See Progress Log above.
+`src/features/goals/GoalFormModal.jsx` (markup only). `TaxTab` had no extractable
+state, so nothing to do there.
+
+Step 1's remaining per-tab `useState` lift-outs are now **done**, one small hook per
+tab/concern, each verified live with a real `npm run dev` session (see the ninth
+follow-up in the Progress Log above for the full list and verification notes):
+`useGoalForm`, `useAlertForm`, `useHoldingActions`, `useHoldingForm`, `useMemberForm`,
+`useRebalanceState`, `useOverviewState`, `useCalendarState`, `useGmailStatus`. Every one
+of these follows the same pattern — the hook owns the `useState`s, App.jsx keeps the
+exact same variable names, so every downstream prop stays unchanged — no component's
+interface changed and no behavior changed, only where the state lives.
+
+Step 2 (`AppShellContext`) is also **done**, for the two genuinely cross-cutting pieces:
+`tab` and `selMember`. It follows the same "dumb provider" pattern already established
+by `contexts/PortfolioContext.jsx` — state ownership stays in `App.jsx` (still plain
+`useState`s there), and `AppShellProvider` (`src/contexts/AppShellContext.jsx`) just
+wraps the app tree so any nested component can reach `tab`/`selMember` via
+`useAppShell()` without new prop drilling. No existing prop interface changed on this
+step either — it makes future extractions easier without being a behavior change itself.
+
+**Not yet done:** step 3 (App.jsx as a < 200-line shell — it's still ~93KB; the big
+inline modals — Add/Edit Holding, Add Alert, Add/Edit Member — and the header/nav
+markup are still in App.jsx, not yet split into their own components) and the leftover
+non-form cross-tab `useState`s not covered above (`confirmSignOut`, `showAuditLog`,
+`filterType`/`sortCol`/`sortDir` already in `useHoldingsView()`). These are markup-level
+extractions, higher risk than the state-only lifts done so far — deferred to a future
+pass.
 
 ---
 
