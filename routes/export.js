@@ -10,7 +10,7 @@ import { Router } from "express";
 import ExcelJS    from "exceljs";
 import { auth, sendError } from "../lib/auth.js";
 import { list } from "../services/holdings.service.js";
-import { supabase } from "../lib/db.js";
+import { listAllTransactions, getProfileEmail, listActiveFds } from "../services/export.service.js";
 
 const router = Router();
 
@@ -93,12 +93,7 @@ router.get("/holdings", auth, async (req, res) => {
 // ── Transactions ──────────────────────────────────────────────────────────────
 router.get("/transactions", auth, async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("*, holdings(name, type, ticker, scheme_code, member_id)")
-      .eq("user_id", req.user.id)
-      .order("txn_date", { ascending: false });
-    if (error) throw new Error(error.message);
+    const data = await listAllTransactions(req.user.id);
 
     const headers = [
       "Date","Holding Name","Holding Type","Member ID",
@@ -142,9 +137,9 @@ router.get("/report", auth, async (req, res) => {
     const dateStr  = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
     const isoDate  = today();
 
-    const [holdings, { data: profile }] = await Promise.all([
+    const [holdings, profileEmail] = await Promise.all([
       list(userId),
-      supabase.from("profiles").select("email").eq("id", userId).single(),
+      getProfileEmail(userId),
     ]);
 
     const totalInv = holdings.reduce((s, h) => {
@@ -269,7 +264,7 @@ router.get("/report", auth, async (req, res) => {
     </div>
     <div class="report-meta">
       Generated: ${dateStr}<br>
-      ${profile?.email ? `Account: ${profile.email}<br>` : ""}
+      ${profileEmail ? `Account: ${profileEmail}<br>` : ""}
       Holdings: ${holdings.length}
     </div>
   </header>
@@ -339,19 +334,10 @@ router.get("/xlsx", auth, async (req, res) => {
     const userId = req.user.id;
 
     // Fetch data in parallel
-    const [holdings, { data: txns }, { data: fds }] = await Promise.all([
+    const [holdings, txns, fds] = await Promise.all([
       list(userId),
-      supabase
-        .from("transactions")
-        .select("*, holdings(name, type, ticker, scheme_code, member_id)")
-        .eq("user_id", userId)
-        .order("txn_date", { ascending: false }),
-      supabase
-        .from("holdings")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("type", "FD")
-        .order("maturity_date", { ascending: true }),
+      listAllTransactions(userId),
+      listActiveFds(userId),
     ]);
 
     const wb = new ExcelJS.Workbook();
