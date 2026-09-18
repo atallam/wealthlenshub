@@ -5,10 +5,13 @@ import { getCrossingHoldings } from "../lib/stale-holdings.js";
 import { sendStaleNudge, sendAlertDigest } from "../services/alert-mailer.js";
 import { sendPushToUser, pushEnabled } from "./push.js";
 import { insertNotification } from "./notifications.js";
+import { isIsin, resolveIsinSymbol } from "../lib/prices.js";
+import { pLimit } from "../lib/utils.js";
 import {
   listHoldingUserIds, listGmailAutoImportProfiles, listFdsForAlerts, getProfileEmail,
   listHoldingsForStaleCheck, listPortfoliosWithAlerts, listHoldingsForAlertCheck,
   listInsurancePolicies, listPortfoliosWithGoals, listHoldingValuesByUser, updatePortfolioGoals,
+  listIsinTickerHoldings, updateHoldingTicker,
 } from "../services/cron.service.js";
 
 const router = Router();
@@ -39,6 +42,46 @@ router.post("/refresh-all-prices", cronAuth, async (req, res) => {
   }
   console.log(`Cron complete: ${totalUpdated} holdings updated, ${totalUnpriced} still unpriced, across ${userIds.length} users`);
   res.json({ users: userIds.length, totalUpdated, totalUnpriced, results });
+});
+
+/**
+ * One-time (re-runnable) backfill: persist a real trading symbol onto
+ * holdings.ticker for IN_STOCK/IN_ETF rows that still hold the ISIN
+ * (CAS-imported holdings — depository statements list by ISIN, not symbol).
+ * Safe to run repeatedly — it only touches rows where isIsin(ticker) is
+ * still true, and only ever writes `ticker`, never `isin` (the separate
+ * CAS natural-key column from migration 0029). Not on a schedule; call it
+ * manually after a CAS import, or whenever /debug shows an unresolved ISIN.
+ */
+router.post("/backfill-isin-tickers", cronAuth, async (req, res) => {
+  try {
+    const holdings = await listIsinTickerHoldings();
+    const candidates = holdings.filter(h => isIsin(h.ticker));
+    if (!candidates.length) {
+      return res.json({ checked: holdings.length, candidates: 0, resolved: 0, unresolved: 0, results: [] });
+    }
+
+    const tasks = candidates.map(h => async () => {
+      const symbol = await resolveIsinSymbol(h.ticker);
+      if (!symbol) return { id: h.id, name: h.name, isin: h.ticker, resolved: false };
+      const { error } = await updateHoldingTicker(h.id, symbol);
+      return { id: h.id, name: h.name, isin: h.ticker, symbol, resolved: !error, error: error?.message || null };
+    });
+
+    const results  = await pLimit(tasks, 5);
+    const resolved = results.filter(r => r.resolved).length;
+    console.log(`[cron/backfill-isin-tickers] ${resolved}/${candidates.length} resolved`);
+    res.json({
+      checked:    holdings.length,
+      candidates: candidates.length,
+      resolved,
+      unresolved: candidates.length - resolved,
+      results,
+    });
+  } catch (e) {
+    console.error("[cron/backfill-isin-tickers] failed:", e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.post("/check-cas-email", cronAuth, async (req, res) => {

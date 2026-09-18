@@ -95,3 +95,29 @@ export async function listHoldingValuesByUser(userId) {
 export function updatePortfolioGoals(userId, goals) {
   return supabase.from("portfolio").update({ goals }).eq("user_id", userId);
 }
+
+/**
+ * IN_STOCK/IN_ETF holdings across all users, for the ISIN-as-ticker backfill
+ * cron (migration 0029 added a dedicated `isin` column for CAS dedup, but
+ * `ticker` on older/CAS-imported rows can still hold the ISIN — see
+ * lib/concall/providers.js and lib/refresh.js for the two places that
+ * currently work around this live). The route filters to actual ISIN-shaped
+ * tickers with isIsin() before resolving.
+ */
+export async function listIsinTickerHoldings() {
+  const { data } = await supabase
+    .from("holdings")
+    .select("id, name, ticker, type")
+    .in("type", ["IN_STOCK", "IN_ETF"]);
+  return data || [];
+}
+
+/**
+ * Persist a resolved trading symbol onto a holding's ticker column.
+ * Deliberately leaves holdings.isin (the CAS natural-key column, migration
+ * 0029) untouched — this only fixes the column that pricing/concall read.
+ * Returns the raw { error } — the route branches on it.
+ */
+export function updateHoldingTicker(id, ticker) {
+  return supabase.from("holdings").update({ ticker }).eq("id", id);
+}
