@@ -18,3 +18,7 @@ Thumbs.db
 # Replit
 .replit
 replit.nix
+
+# One-off local scratch scripts / DB dumps (never meant to ship)
+_*_tmp.mjs
+orphan_holdings_backup_*.json

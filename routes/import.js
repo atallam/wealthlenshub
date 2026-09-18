@@ -9,7 +9,7 @@ import {
   parseNSDLCASStatement, parseFidelityPDFStatement,
 } from "../lib/parsers.js";
 import { getAmfiList, yahooPrice, resolveIsinSymbol } from "../lib/prices.js";
-import { pLimit } from "../lib/refresh.js";
+import { pLimit } from "../lib/utils.js"; // P2-2 — moved out of lib/refresh.js, generic concurrency helper
 import { auditImport } from "../lib/importLogger.js";
 import { decrypt } from "../lib/crypto.js";
 
