@@ -11,7 +11,7 @@
 import { Router } from "express";
 import webpush from "web-push";
 import { auth, sendError } from "../lib/auth.js";
-import { supabase } from "../lib/db.js";
+import * as pushStore from "../services/push.service.js";
 
 const router = Router();
 
@@ -35,11 +35,7 @@ export function pushEnabled() {
 // ── Send a push to all subscriptions for a user ───────────────────────────────
 export async function sendPushToUser(userId, payload) {
   if (!pushEnabled()) return;
-  const { data: subs } = await supabase
-    .from("push_subscriptions")
-    .select("endpoint, p256dh, auth_key")
-    .eq("user_id", userId);
-
+  const subs = await pushStore.getSubscriptions(userId);
   if (!subs?.length) return;
 
   const body = JSON.stringify(typeof payload === "string" ? { title: payload } : payload);
@@ -53,8 +49,7 @@ export async function sendPushToUser(userId, payload) {
       ).catch(async err => {
         // 410 Gone or 404 = subscription expired → delete it
         if (err.statusCode === 410 || err.statusCode === 404) {
-          await supabase.from("push_subscriptions")
-            .delete().eq("endpoint", sub.endpoint);
+          await pushStore.deleteByEndpoint(sub.endpoint);
         }
       })
     )
@@ -78,11 +73,7 @@ router.post("/subscribe", auth, async (req, res) => {
       return res.status(400).json({ error: "endpoint, keys.p256dh and keys.auth required" });
     }
     const ua = req.headers["user-agent"] || "";
-    const { error } = await supabase.from("push_subscriptions").upsert(
-      { user_id: req.user.id, endpoint, p256dh: keys.p256dh, auth_key: keys.auth, user_agent: ua },
-      { onConflict: "user_id,endpoint" }
-    );
-    if (error) throw error;
+    await pushStore.upsertSubscription(req.user.id, { endpoint, p256dh: keys.p256dh, authKey: keys.auth, userAgent: ua });
     res.json({ ok: true });
   } catch (e) { sendError(res, e); }
 });
@@ -92,8 +83,7 @@ router.delete("/unsubscribe", auth, async (req, res) => {
   try {
     const { endpoint } = req.body;
     if (!endpoint) return res.status(400).json({ error: "endpoint required" });
-    await supabase.from("push_subscriptions")
-      .delete().eq("user_id", req.user.id).eq("endpoint", endpoint);
+    await pushStore.deleteSubscription(req.user.id, endpoint);
     res.json({ ok: true });
   } catch (e) { sendError(res, e); }
 });
