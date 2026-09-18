@@ -200,6 +200,57 @@ P4-2 (Plaid/Gmail status wiring if desired, plus the full loading/empty-states a
 and — now more than ever — an actual run-and-click-through verification pass, since
 nothing from this session's P3-2 through P4-2 work has been executed in a live app yet.
 
+**2026-09-18 (same session, sixth follow-up) — first live verification pass; local backend never worked, now fixed**
+
+User got `npm run dev` running and walked through the Goals modal and Import Hub live —
+the first time anything from this entire session (P3-2 through P4-2) was actually
+executed rather than reviewed by reading code. Two real problems surfaced, both fixed:
+
+- **Stale Vite dev cache / service worker** — first load crashed with `Invalid hook
+  call` / `Cannot read properties of null (reading 'useState')` at the very first hook
+  call in `App.jsx` (`useAuth`). Not caused by this session's edits (nothing touched
+  `useAuth.js` or the App component's hook order) — `npm ls react react-dom` confirmed
+  a single deduped React 18.3.1, ruling out a duplicate-copy issue. Root cause was Vite's
+  stale dependency pre-bundle cache combined with the registered PWA service worker
+  serving an old bundle. **Fix (no code change):** delete `node_modules/.vite` and
+  reload in an incognito window. Resolved.
+- **Backend was never runnable locally at all — `server.js` never loaded `.env`.**
+  `npm start` (`node server.js`) crashed immediately with `Error: supabaseUrl is
+  required.` `server.js` has no `dotenv` import anywhere, and `dotenv` isn't even in
+  `package.json` — it only ever worked in production because Render's `startCommand`
+  (`node server.js`, confirmed in `render.yaml` — it does **not** go through `npm start`)
+  injects real env vars via its own dashboard, no `.env` file involved. Locally, without
+  something loading `.env` into `process.env`, the backend could never start, which is
+  consistent with this entire session's "no build/test loop available" constraint — the
+  backend-verification gap wasn't a tooling limitation of this session, it was a real,
+  pre-existing local-dev gap in the repo itself.
+  **Fix ✅ committed & pushed:** added `import "dotenv/config";` as the first line of
+  `server.js`, and added `dotenv` (`^16.4.5`) to `package.json` dependencies. Chosen over
+  the alternative (changing the `start` script to `node --env-file=.env server.js`)
+  because that would only fix the `npm start` path — running `node server.js` directly
+  (as `npm start` itself does, and as Render's `startCommand` does) would still crash,
+  which is exactly what had just happened. The in-file `dotenv/config` import works no
+  matter how the file is launched, and is a no-op in production (no `.env` file exists
+  there, and real env vars are already set). Confirmed safe for prod by checking
+  `render.yaml`'s `startCommand` directly rather than assuming.
+
+**Verified working, live, for the first time this session:**
+- App loads and logs in cleanly (after the Vite cache fix above).
+- **Goals modal (P3-5 extraction):** open, fill, save, edit-prefill, and cancel all work
+  identically to before the extraction — confirmed by the user directly.
+- **Import Hub (P4-2 SourceStatus wiring):** SnapTrade's "Bad Gateway" was purely the
+  missing local backend — gone once the server was actually reachable. Setu AA correctly
+  shows the existing (pre-session) "Setu AA Not Configured" screen rather than a banner,
+  because this session's `fetchSetuStatus` deliberately checks `/api/setu/status` first
+  and skips rendering a banner when Setu isn't configured/enabled — confirmed behaving
+  as designed, not a bug.
+
+**Not yet verified live:** the 15 P3-2 route/service extractions from earlier in this
+session (notifications, push, tax, audit, watchlist, concall, analytics, import/import_v2,
+ai, export, plaid, snaptrade's non-status endpoints, setu's non-status endpoints, cron),
+and the export.js FD-filter behavior change. These still only have manual-review +
+`grep` verification, not a live run.
+
 ---
 
 ## P3-2 — Service layer across all routes

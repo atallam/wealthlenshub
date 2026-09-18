@@ -1,3 +1,9 @@
+// Load .env into process.env for local/manual runs (node server.js, a debugger,
+// a test that boots the server, etc). No-op in production: Render's startCommand
+// runs this file directly and injects real env vars via its own dashboard, and
+// there's no .env file in that deployment for this to find.
+import "dotenv/config";
+
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
