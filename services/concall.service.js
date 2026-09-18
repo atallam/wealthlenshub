@@ -142,3 +142,63 @@ export async function getHistory(holdingId, userId) {
   if (error && error.code !== "42P01" && error.code !== "22P02") throw error;
   return data || [];
 }
+
+/**
+ * Concall history for trend analysis (lib/concall/trend.js) — same rows as
+ * getHistory() plus sub-scores, but returned oldest → newest since the
+ * trend prompt reads as a timeline. Defaults to the most recent 8 quarters.
+ */
+export async function getTrendHistory(holdingId, userId, limit = 8) {
+  const { data, error } = await supabase
+    .from("concall_analyses")
+    .select("quarter, quarter_date, score, signal, score_guidance, score_tone, score_clarity, score_surprise, summary")
+    .eq("holding_id", holdingId)
+    .eq("user_id", userId)
+    .order("quarter_date", { ascending: false })
+    .limit(limit);
+
+  // 42P01 = table not yet migrated
+  // 22P02 = holding_id type mismatch (run migration 0017)
+  if (error && error.code !== "42P01" && error.code !== "22P02") throw error;
+  return (data || []).slice().reverse(); // oldest → newest for the trend timeline
+}
+
+/**
+ * All equity holdings for a user — id/name/ticker/type only. Used by the
+ * portfolio-wide concall calendar and insights endpoints, which don't need
+ * the full holdings.service.list() join (artifacts, transactions, SIP math).
+ */
+export async function getEquityHoldings(userId) {
+  const { data, error } = await supabase
+    .from("holdings")
+    .select("id, name, ticker, type")
+    .eq("user_id", userId)
+    .in("type", ["IN_STOCK", "IN_ETF", "US_STOCK", "US_ETF"]);
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Latest concall_analyses row per holding for a user, as a Map<holding_id, row>.
+ * Fetches all rows ordered by quarter_date desc and keeps the first (most
+ * recent) one seen per holding — Supabase's JS client has no clean
+ * `DISTINCT ON`, and portfolio-sized result sets here are small enough that
+ * this is simpler and cheaper than N+1 per-holding queries.
+ */
+export async function getLatestPerHolding(userId) {
+  const { data, error } = await supabase
+    .from("concall_analyses")
+    .select("holding_id, quarter, quarter_date, score, signal, summary")
+    .eq("user_id", userId)
+    .order("quarter_date", { ascending: false });
+
+  // 42P01 = table not yet migrated
+  // 22P02 = holding_id type mismatch (run migration 0017)
+  if (error && error.code !== "42P01" && error.code !== "22P02") throw error;
+
+  const latest = new Map();
+  for (const row of (data || [])) {
+    if (!latest.has(row.holding_id)) latest.set(row.holding_id, row);
+  }
+  return latest;
+}

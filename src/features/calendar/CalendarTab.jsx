@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import FDLadderPlanner from '../../components/shared/FDLadderPlanner.jsx';
+import ConcallOutlookCard from './ConcallOutlookCard.jsx';
 
 const MONTH_NAMES = [
   'January','February','March','April','May','June',
@@ -610,6 +611,9 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
                 })
             }
           </div>
+
+          {/* Concall outlook — insights + upcoming concalls across the portfolio */}
+          <ConcallOutlookCard />
 
           {/* Legend card */}
           <div className="card">
