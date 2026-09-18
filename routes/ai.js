@@ -13,9 +13,13 @@
 import { Router }    from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { auth, sendError } from "../lib/auth.js";
-import { supabase }  from "../lib/db.js";
 import { currentFY, fyRange, computeGains, summarizeRealized } from "../lib/tax.js";
 import { decrypt } from "../lib/crypto.js";
+import {
+  getPortfolioSummaryData, getHoldingsData, getTransactionsData, getGoalsData,
+  getTaxSummaryData, getBudgetTransactionsData, getWatchlistData,
+  getSnapshotHistoryData, getFdMaturitiesData,
+} from "../services/ai-tools.service.js";
 
 const router = Router();
 
@@ -136,10 +140,7 @@ async function execTool(name, input, userId) {
     switch (name) {
 
       case "get_portfolio_summary": {
-        const { data: h } = await supabase
-          .from("holdings")
-          .select("type, current_value, invested_value, member_name")
-          .eq("user_id", userId);
+        const h = await getPortfolioSummaryData(userId);
         if (!h?.length) return { message: "No holdings found." };
 
         const cur = h.reduce((s, x) => s + (+x.current_value || 0), 0);
@@ -161,14 +162,7 @@ async function execTool(name, input, userId) {
       }
 
       case "get_holdings": {
-        let q = supabase.from("holdings")
-          .select("id, name, ticker, symbol, type, units, current_price, current_nav, current_value, invested_value, member_name")
-          .eq("user_id", userId)
-          .order("current_value", { ascending: false })
-          .limit(500);   // no practical limit — surface all holdings to the AI
-        if (input.asset_type) q = q.eq("type", input.asset_type);
-        if (input.member_id)  q = q.eq("member_id", input.member_id);
-        const { data: h } = await q;
+        const h = await getHoldingsData(userId, { asset_type: input.asset_type, member_id: input.member_id });
         if (!h?.length) return { holdings: [], count: 0 };
         return {
           count: h.length,
@@ -192,34 +186,20 @@ async function execTool(name, input, userId) {
         // IDOR guard: scope to the caller's own transactions. Without this,
         // a user could ask the advisor for another user's holding_id and
         // exfiltrate their transactions through the model.
-        const { data: t } = await supabase
-          .from("transactions")
-          .select("txn_type, units, price, txn_date, notes")
-          .eq("holding_id", input.holding_id)
-          .eq("user_id", userId)
-          .order("txn_date", { ascending: false })
-          .limit(25);
+        const t = await getTransactionsData(userId, input.holding_id);
         return { transactions: t || [], count: t?.length || 0 };
       }
 
       case "get_goal_progress": {
-        const { data: p } = await supabase
-          .from("portfolio").select("goals").eq("user_id", userId).single();
-        return { goals: p?.goals || [], count: p?.goals?.length || 0 };
+        const goals = await getGoalsData(userId);
+        return { goals, count: goals.length };
       }
 
       case "get_tax_summary": {
         const fy = input.fy || currentFY();
         const { start, end } = fyRange(fy);
-        const { data: holdings } = await supabase
-          .from("holdings").select("id, name, type").eq("user_id", userId)
-          .in("type", ["IN_STOCK", "IN_ETF", "MF"]);
+        const { holdings, txnMap } = await getTaxSummaryData(userId);
         if (!holdings?.length) return { fy, stcg: 0, ltcg: 0, estimated_tax: 0 };
-        const { data: txns } = await supabase
-          .from("transactions").select("holding_id, txn_type, units, price, txn_date")
-          .in("holding_id", holdings.map(h => h.id));
-        const txnMap = {};
-        for (const t of (txns || [])) (txnMap[t.holding_id] ||= []).push(t);
         // Shared FIFO math (lib/tax.js) — aggregate realized rows across holdings.
         const realizedAll = [];
         for (const h of holdings) {
@@ -240,13 +220,7 @@ async function execTool(name, input, userId) {
         since.setMonth(since.getMonth() - lookbackMonths);
         const sinceStr = since.toISOString().slice(0, 10);
 
-        const { data: txns } = await supabase
-          .from("budget_transactions")
-          .select("category, amount, txn_type, txn_date, description")
-          .eq("user_id", userId)
-          .gte("txn_date", sinceStr)
-          .order("txn_date", { ascending: false })
-          .limit(2000);
+        const txns = await getBudgetTransactionsData(userId, sinceStr);
 
         if (!txns?.length) return { message: "No budget transactions found for this period." };
 
@@ -284,11 +258,7 @@ async function execTool(name, input, userId) {
       }
 
       case "get_watchlist": {
-        const { data: items } = await supabase
-          .from("watchlist")
-          .select("id, name, ticker, asset_type, target_price, notes, current_price, price_change_pct, created_at")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false });
+        const items = await getWatchlistData(userId);
 
         if (!items?.length) return { watchlist: [], count: 0 };
 
@@ -314,12 +284,7 @@ async function execTool(name, input, userId) {
         cutoff.setMonth(cutoff.getMonth() - lookbackMonths);
         const cutoffMonth = cutoff.toISOString().slice(0, 7);
 
-        const { data: snaps } = await supabase
-          .from("net_worth_snapshots")
-          .select("snapshot_month, total_invested, total_current, source")
-          .eq("user_id", userId)
-          .gte("snapshot_month", cutoffMonth)
-          .order("snapshot_month", { ascending: true });
+        const snaps = await getSnapshotHistoryData(userId, cutoffMonth);
 
         if (!snaps?.length) return { message: "No snapshot history found. Take a snapshot first via the Portfolio refresh button." };
 
@@ -353,33 +318,7 @@ async function execTool(name, input, userId) {
         const today    = new Date().toISOString().slice(0, 10);
         const maxDate  = new Date(Date.now() + lookAheadDays * 864e5).toISOString().slice(0, 10);
 
-        let { data: fds, error: fdErr } = await supabase
-          .from("holdings")
-          .select("name, member_name, principal, current_value, interest_rate, start_date, maturity_date, currency")
-          .eq("user_id", userId)
-          .eq("type", "FD")
-          .or("maturity_status.is.null,maturity_status.eq.active")
-          .gte("maturity_date", today)
-          .lte("maturity_date", maxDate)
-          .order("maturity_date", { ascending: true });
-        if (fdErr) ({ data: fds } = await supabase   // column missing → unfiltered
-          .from("holdings")
-          .select("name, member_name, principal, current_value, interest_rate, start_date, maturity_date, currency")
-          .eq("user_id", userId)
-          .eq("type", "FD")
-          .gte("maturity_date", today)
-          .lte("maturity_date", maxDate)
-          .order("maturity_date", { ascending: true }));
-
-        // Already matured but the user hasn't renewed / converted / closed it — idle money.
-        const { data: maturedRows } = await supabase   // errors → null → [] (column missing = nothing to report)
-          .from("holdings")
-          .select("name, member_name, principal, current_value, maturity_amount, interest_rate, maturity_date, currency")
-          .eq("user_id", userId)
-          .eq("type", "FD")
-          .or("maturity_status.is.null,maturity_status.eq.active")
-          .lt("maturity_date", today)
-          .order("maturity_date", { ascending: true });
+        const { fds, maturedRows } = await getFdMaturitiesData(userId, today, maxDate);
         const matured_unresolved = (maturedRows || []).map(fd => ({
           name:           fd.name,
           member:         fd.member_name || null,
