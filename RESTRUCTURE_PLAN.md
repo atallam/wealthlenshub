@@ -36,20 +36,32 @@ Routes moved to a service file and verified `supabase`-free (✅ committed & pus
 - `services/ai-tools.service.js` ← `routes/ai.js` (surgical: all 9 `execTool` case-branch
   queries moved one function each; response shaping/aggregation/math stayed in the route)
 
+**2026-09-18 (same session, follow-up) — `routes/export.js` resolved and extracted**
+
+The FD-filter question was put to the user directly: the Excel export's FD sheet was
+unfiltered (included closed/matured FDs) while the app's Holdings view excludes them via
+`NOT_CLOSED`/`NOT_EXITED`. User decision: **filter to match Holdings** (a deliberate
+behavior change, not a preservation of the old export output). Extracted into
+`services/export.service.js` ✅ committed & pushed:
+- `listAllTransactions(userId)` — used by both the CSV `/transactions` route and the
+  `/xlsx` route's Transactions sheet (previously two copies of the same query).
+- `getProfileEmail(userId)` — used by the `/report` route.
+- `listActiveFds(userId)` — the `/xlsx` FD sheet query, now filtered with the same
+  `NOT_CLOSED`/`NOT_EXITED` `.or()` filters and graceful-degradation fallback as
+  `holdings.service.js`'s `list()`.
+`routes/export.js` verified `supabase`-free.
+
 **Deferred / explicitly out of scope for this pass:**
-- `routes/export.js` — its `/xlsx` FD query is missing the `NOT_CLOSED`/`NOT_EXITED` filters
-  that `services/holdings.service.js`'s `list()` applies; reusing `list()` would silently
-  exclude closed FDs from exports, so this was left untouched pending a decision.
 - Setu (`routes/setu.js`, 21 raw queries), SnapTrade (11), Plaid (10), `routes/cron.js` (16) —
   real-money/bank-linked integrations, explicitly held back until either a build/test loop
   exists or this is re-authorized.
 - `App.jsx` further restructuring (P3-5) — only the initial `useAuth` hook extraction is done.
 
-**Acceptance check for the above 9 files:** `grep -rn "supabase" routes/notifications.js
+**Acceptance check for the above 10 files:** `grep -rn "supabase" routes/notifications.js
 routes/push.js routes/tax.js routes/audit.js routes/watchlist.js routes/concall.js
-routes/analytics.js routes/import.js routes/import_v2.js routes/ai.js` → zero matches.
-Full-repo `grep -rn "supabase.from" routes/` acceptance bar (line 43) is **not yet met** —
-`export.js`, `setu.js`, `snaptrade.js`, `plaid.js`, `cron.js` still have direct calls.
+routes/analytics.js routes/import.js routes/import_v2.js routes/ai.js routes/export.js`
+→ zero matches. Full-repo `grep -rn "supabase.from" routes/` acceptance bar (line 43) is
+**not yet met** — `setu.js`, `snaptrade.js`, `plaid.js`, `cron.js` still have direct calls.
 
 ---
 

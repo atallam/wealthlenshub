@@ -1,8 +1,12 @@
 import { Router } from "express";
 import { Snaptrade } from "snaptrade-typescript-sdk";
-import { supabase } from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
-import { encrypt, decrypt } from "../lib/crypto.js";
+import { encrypt } from "../lib/crypto.js";
+import {
+  getSnapConn, getExistingRegistration, insertConnection, listHoldingsForDiff,
+  deleteAccountHoldings, insertHoldings, updateLastSynced, listSnaptradeHoldingRefs,
+  deleteHoldingsByIds, deleteConnectionRow, deleteAllSnaptradeHoldings,
+} from "../services/snaptrade.service.js";
 
 const router = Router();
 
@@ -15,12 +19,6 @@ function getSnapClient() {
     _snapClient = new Snaptrade({ clientId: cid, consumerKey: ckey });
   }
   return _snapClient;
-}
-
-async function getSnapConn(userId) {
-  const { data, error } = await supabase.from("snaptrade_connections").select("*").eq("owner_id", userId).single();
-  if (error || !data) throw new Error("No SnapTrade connection found — register first.");
-  return { ...data, user_secret: decrypt(data.user_secret_enc) };
 }
 
 function _extractTypeCode(typeField) {
@@ -70,7 +68,7 @@ router.get("/status", auth, async (_req, res) => {
 
 router.post("/register", auth, async (req, res) => {
   try {
-    const { data: existing } = await supabase.from("snaptrade_connections").select("snaptrade_user_id").eq("owner_id", req.user.id).single();
+    const existing = await getExistingRegistration(req.user.id);
     if (existing) return res.json({ snaptrade_user_id: existing.snaptrade_user_id, already_registered: true });
     const snapUserId = `wlh-${req.user.id}`;
     let userSecret;
@@ -83,7 +81,7 @@ router.post("/register", auth, async (req, res) => {
         userSecret = resetResp.data.userSecret;
       } else throw regErr;
     }
-    await supabase.from("snaptrade_connections").insert({ owner_id: req.user.id, snaptrade_user_id: snapUserId, user_secret_enc: encrypt(userSecret), status: "active" });
+    await insertConnection({ owner_id: req.user.id, snaptrade_user_id: snapUserId, user_secret_enc: encrypt(userSecret), status: "active" });
     res.json({ snaptrade_user_id: snapUserId, registered: true });
   } catch (e) { const status = e.status || e.response?.status || 500; res.status(status).json({ error: e.message }); }
 });
@@ -118,16 +116,16 @@ router.get("/holdings/:accountId", auth, async (req, res) => {
     // Fetch live positions, balances, and existing DB holdings in parallel.
     // We only care about: (a) holdings already from THIS account's last sync,
     // and (b) manually-added holdings for conflict warnings.
-    const [posResp, balResp, existingResp] = await Promise.all([
+    const [posResp, balResp, existingHoldings] = await Promise.all([
       client.accountInformation.getUserAccountPositions({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: acctId }),
       client.accountInformation.getUserAccountBalance({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: acctId }),
-      supabase.from("holdings").select("id, ticker, units, name, source, source_account").eq("user_id", req.user.id),
+      listHoldingsForDiff(req.user.id),
     ]);
 
     // Split existing holdings: this account's previous snapshot vs manual entries.
     const thisAcctMap = {};   // ticker → holding (from this SnapTrade account)
     const manualMap   = {};   // ticker → holding (manual/non-snaptrade)
-    for (const h of existingResp.data || []) {
+    for (const h of existingHoldings) {
       if (!h.ticker) continue;
       const key = h.ticker.toUpperCase();
       if (h.source === "snaptrade" && h.source_account === acctId) thisAcctMap[key] = h;
@@ -198,10 +196,7 @@ router.post("/import/:accountId", auth, async (req, res) => {
 
     // Flush-and-fill: delete ONLY this account's previous snapshot.
     // Manual holdings (source != 'snaptrade') and other accounts are never touched.
-    await supabase.from("holdings").delete()
-      .eq("user_id", req.user.id)
-      .eq("source", "snaptrade")
-      .eq("source_account", acctId);
+    await deleteAccountHoldings(req.user.id, acctId);
 
     // Build fresh rows from live positions.
     const newRows = [];
@@ -229,11 +224,11 @@ router.post("/import/:accountId", auth, async (req, res) => {
     if (newRows.length > 0) console.log("[ST row0]", JSON.stringify(newRows[0]).slice(0,300));
     let imported = 0;
     if (newRows.length > 0) {
-      const { error } = await supabase.from("holdings").insert(newRows);
+      const { error } = await insertHoldings(newRows);
       if (error) { console.error("[ST insert ERR]:", error.message, error.details, error.hint); return res.status(500).json({ error: error.message, details: error.details, hint: error.hint }); }
       imported = newRows.length;
     }
-    await supabase.from("snaptrade_connections").update({ last_synced_at: now }).eq("owner_id", req.user.id);
+    await updateLastSynced(req.user.id, now);
 
     res.json({ status: "refreshed", assets_imported: imported, assets_skipped: skipped, account_id: acctId, brokerage_name: brokerageName });
   } catch (e) { sendError(res, e); }
@@ -257,13 +252,10 @@ router.delete("/connections/:authId", auth, async (req, res) => {
     const remainingAccts = await client.accountInformation.listUserAccounts({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret });
     const remainingAccountIds = new Set((remainingAccts.data || []).map(a => a.id));
     // Fetch all snaptrade holdings from DB and delete only the ones whose account is gone
-    const { data: existingHoldings } = await supabase.from("holdings")
-      .select("id, source_account")
-      .eq("user_id", req.user.id)
-      .eq("source", "snaptrade");
-    const toDelete = (existingHoldings || []).filter(h => !remainingAccountIds.has(h.source_account)).map(h => h.id);
+    const existingHoldings = await listSnaptradeHoldingRefs(req.user.id);
+    const toDelete = existingHoldings.filter(h => !remainingAccountIds.has(h.source_account)).map(h => h.id);
     if (toDelete.length > 0) {
-      await supabase.from("holdings").delete().eq("user_id", req.user.id).in("id", toDelete);
+      await deleteHoldingsByIds(req.user.id, toDelete);
     }
     const remaining = await client.connections.listBrokerageAuthorizations({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret });
     res.json({ status: "disconnected", authorization_id: req.params.authId, remaining_connections: (remaining.data || []).length });
@@ -274,8 +266,8 @@ router.delete("/disconnect", auth, async (req, res) => {
   try {
     const conn = await getSnapConn(req.user.id);
     await getSnapClient().authentication.deleteSnapTradeUser({ userId: conn.snaptrade_user_id });
-    await supabase.from("snaptrade_connections").delete().eq("owner_id", req.user.id);
-    await supabase.from("holdings").delete().eq("user_id", req.user.id).eq("source", "snaptrade");
+    await deleteConnectionRow(req.user.id);
+    await deleteAllSnaptradeHoldings(req.user.id);
     res.json({ status: "disconnected" });
   } catch (e) { sendError(res, e); }
 });

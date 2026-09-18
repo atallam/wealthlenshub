@@ -1,7 +1,11 @@
 import { Router } from "express";
 import crypto from "crypto";
-import { supabase } from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
+import {
+  insertConsent, getConsent, getConsentBySessionId, updateConsent, updateConsentUnscoped,
+  upsertHoldings, listConsents, insertBudgetStatement, findDuplicateBudgetTxn,
+  insertBudgetTransaction, upsertConnection, listConnections, deleteConnection,
+} from "../services/setu.service.js";
 
 const SETU_ENABLED = process.env.SETU_ENABLED === "true";
 const router = Router();
@@ -133,7 +137,7 @@ if (!SETU_ENABLED) {
       const cr = await fetch(`${SETU_BASE}/v2/consents`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentDuration: { unit: "MONTH", value: "6" }, vua: toVua(mobile), dataRange: { from, to }, context: [], consentTypes: ["PROFILE","SUMMARY","TRANSACTIONS"], fiTypes: ["DEPOSIT","TERM_DEPOSIT","RECURRING_DEPOSIT","MUTUAL_FUNDS","EQUITIES","ETF"] }) });
       const cd = await readJson(cr);
       if (!cr.ok) { console.error("Setu consent error:", cr.status, JSON.stringify(cd).slice(0, 300)); return res.status(cr.status >= 500 ? 502 : cr.status).json({ error: setuMsg(cd, "Consent creation failed") }); }
-      await supabase.from("setu_consents").insert({ user_id: req.user.id, consent_id: cd.id, status: cd.status || "PENDING", fi_types: ["DEPOSIT","TERM_DEPOSIT","MUTUAL_FUNDS","EQUITIES","ETF","EPF","PPF"], data_range_from: from, data_range_to: to, redirect_url: cd.url });
+      await insertConsent({ user_id: req.user.id, consent_id: cd.id, status: cd.status || "PENDING", fi_types: ["DEPOSIT","TERM_DEPOSIT","MUTUAL_FUNDS","EQUITIES","ETF","EPF","PPF"], data_range_from: from, data_range_to: to, redirect_url: cd.url });
       res.json({ consent_id: cd.id, url: cd.url, status: cd.status });
     } catch (e) { if (e.code === "SETU_AUTH") return res.status(502).json({ error: e.message }); sendError(res, e); }
   });
@@ -144,7 +148,7 @@ if (!SETU_ENABLED) {
       const r = await fetch(`${SETU_BASE}/v2/consents/${req.params.consentId}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
       const d = await readJson(r);
       if (!r.ok) return res.status(r.status).json({ error: d.errorMsg || "Failed" });
-      await supabase.from("setu_consents").update({ status: d.status, updated_at: new Date().toISOString() }).eq("consent_id", req.params.consentId).eq("user_id", req.user.id);
+      await updateConsent(req.user.id, req.params.consentId, { status: d.status, updated_at: new Date().toISOString() });
       res.json({ status: d.status, accounts_linked: d.accountsLinked || [] });
     } catch (e) { sendError(res, e); }
   });
@@ -153,19 +157,19 @@ if (!SETU_ENABLED) {
     try {
       const token = await getSetuToken();
       const cid = req.params.consentId;
-      const { data: cr } = await supabase.from("setu_consents").select("*").eq("consent_id", cid).eq("user_id", req.user.id).single();
+      const cr = await getConsent(req.user.id, cid);
       if (!cr) return res.status(404).json({ error: "Consent not found" });
       const sr = await fetch(`${SETU_BASE}/v2/sessions`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentId: cid, dataRange: _isoRange(cr), format: "json" }) });
       const sd = await readJson(sr);
       if (!sr.ok) { console.error("Setu session error:", sr.status, JSON.stringify(sd).slice(0, 300)); return res.status(sr.status >= 500 ? 502 : sr.status).json({ error: setuMsg(sd, "Data session failed") }); }
-      await supabase.from("setu_consents").update({ session_id: sd.id, fi_data_status: "PENDING", updated_at: new Date().toISOString() }).eq("consent_id", cid).eq("user_id", req.user.id);
+      await updateConsent(req.user.id, cid, { session_id: sd.id, fi_data_status: "PENDING", updated_at: new Date().toISOString() });
       let fiData;
       try { fiData = await pollSession(sd.id, token); }
       catch (pe) { return res.status(pe.status || 502).json({ error: pe.message }); }
       const accounts = sessionSummary(fiData);
       console.log(`Setu session ${sd.id} ${fiData.status}:`, JSON.stringify(accounts));
       const holdings = parseSetuFIData(fiData);
-      await supabase.from("setu_consents").update({ fi_data_status: fiData.status, last_fetched_at: new Date().toISOString(), holdings_count: holdings.length, updated_at: new Date().toISOString() }).eq("consent_id", cid).eq("user_id", req.user.id);
+      await updateConsent(req.user.id, cid, { fi_data_status: fiData.status, last_fetched_at: new Date().toISOString(), holdings_count: holdings.length, updated_at: new Date().toISOString() });
       res.json({ status: fiData.status, holdings, accounts, session_id: sd.id });
     } catch (e) { sendError(res, e); }
   });
@@ -181,9 +185,9 @@ if (!SETU_ENABLED) {
         for (const c of COLS) if (h[c] !== undefined && h[c] !== null && h[c] !== "") row[c] = h[c];
         return row;
       });
-      const { error } = await supabase.from("holdings").upsert(rows, { onConflict: "id" });
+      const { error } = await upsertHoldings(rows);
       if (error) return res.status(500).json({ error: error.message });
-      if (consent_id) await supabase.from("setu_consents").update({ holdings_count: rows.length, updated_at: new Date().toISOString() }).eq("consent_id", consent_id).eq("user_id", req.user.id);
+      if (consent_id) await updateConsent(req.user.id, consent_id, { holdings_count: rows.length, updated_at: new Date().toISOString() });
       res.json({ imported: rows.length });
     } catch (e) { sendError(res, e); }
   });
@@ -192,7 +196,7 @@ if (!SETU_ENABLED) {
   // Only sessions that belong to one of the caller's consents are readable.
   router.get("/session/:sessionId/raw", auth, async (req, res) => {
     try {
-      const { data: cr } = await supabase.from("setu_consents").select("consent_id").eq("session_id", req.params.sessionId).eq("user_id", req.user.id).maybeSingle();
+      const cr = await getConsentBySessionId(req.user.id, req.params.sessionId);
       if (!cr) return res.status(404).json({ error: "Session not found" });
       const token = await getSetuToken();
       const fr = await fetch(`${SETU_BASE}/v2/sessions/${req.params.sessionId}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
@@ -202,7 +206,7 @@ if (!SETU_ENABLED) {
   });
 
   router.get("/consents", auth, async (req, res) => {
-    const { data, error } = await supabase.from("setu_consents").select("*").eq("user_id", req.user.id).order("created_at", { ascending: false });
+    const { data, error } = await listConsents(req.user.id);
     if (error) return res.status(500).json({ error: error.message });
     res.json({ consents: data || [] });
   });
@@ -215,8 +219,8 @@ if (!SETU_ENABLED) {
     const webhookSecret = req.headers["x-webhook-secret"] || req.headers["x-cron-secret"];
     if (webhookSecret !== expected) return res.status(401).json({ error: "Unauthorized webhook" });
     const { type, consentId, status } = req.body;
-    if (type === "CONSENT_STATUS_UPDATE" && consentId) await supabase.from("setu_consents").update({ status, updated_at: new Date().toISOString() }).eq("consent_id", consentId);
-    if (type === "FI_DATA_READY" && consentId) await supabase.from("setu_consents").update({ fi_data_status: status, last_fetched_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("consent_id", consentId);
+    if (type === "CONSENT_STATUS_UPDATE" && consentId) await updateConsentUnscoped(consentId, { status, updated_at: new Date().toISOString() });
+    if (type === "FI_DATA_READY" && consentId) await updateConsentUnscoped(consentId, { fi_data_status: status, last_fetched_at: new Date().toISOString(), updated_at: new Date().toISOString() });
     res.json({ ok: true });
   });
 
@@ -319,7 +323,7 @@ if (!SETU_ENABLED) {
       });
       const cd = await readJson(cr);
       if (!cr.ok) { console.error("Setu consent error:", cr.status, JSON.stringify(cd).slice(0, 300)); return res.status(cr.status >= 500 ? 502 : cr.status).json({ error: setuMsg(cd, "Consent creation failed") }); }
-      await supabase.from("setu_consents").insert({
+      await insertConsent({
         user_id: req.user.id,
         consent_id: cd.id,
         status: cd.status || "PENDING",
@@ -339,7 +343,7 @@ if (!SETU_ENABLED) {
     try {
       const token = await getSetuToken();
       const cid = req.params.consentId;
-      const { data: cr } = await supabase.from("setu_consents").select("*").eq("consent_id", cid).eq("user_id", req.user.id).single();
+      const cr = await getConsent(req.user.id, cid);
       if (!cr) return res.status(404).json({ error: "Consent not found" });
       const sr = await fetch(`${SETU_BASE}/v2/sessions`, {
         method: "POST",
@@ -348,14 +352,14 @@ if (!SETU_ENABLED) {
       });
       const sd = await readJson(sr);
       if (!sr.ok) { console.error("Setu session error:", sr.status, JSON.stringify(sd).slice(0, 300)); return res.status(sr.status >= 500 ? 502 : sr.status).json({ error: setuMsg(sd, "Data session failed") }); }
-      await supabase.from("setu_consents").update({ session_id: sd.id, fi_data_status: "PENDING", updated_at: new Date().toISOString() }).eq("consent_id", cid).eq("user_id", req.user.id);
+      await updateConsent(req.user.id, cid, { session_id: sd.id, fi_data_status: "PENDING", updated_at: new Date().toISOString() });
       let fiData;
       try { fiData = await pollSession(sd.id, token); }
       catch (pe) { return res.status(pe.status || 502).json({ error: pe.message }); }
       const accounts = sessionSummary(fiData);
       console.log(`Setu session ${sd.id} ${fiData.status}:`, JSON.stringify(accounts));
       const transactions = parseSetuTransactions(fiData);
-      await supabase.from("setu_consents").update({ fi_data_status: fiData.status, last_fetched_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("consent_id", cid).eq("user_id", req.user.id);
+      await updateConsent(req.user.id, cid, { fi_data_status: fiData.status, last_fetched_at: new Date().toISOString(), updated_at: new Date().toISOString() });
       res.json({ status: fiData.status, transactions, count: transactions.length, accounts, session_id: sd.id });
     } catch (e) { sendError(res, e); }
   });
@@ -386,7 +390,7 @@ if (!SETU_ENABLED) {
         const periodEnd = dates[dates.length - 1];
 
         // Create statement row
-        await supabase.from("budget_statements").insert({
+        await insertBudgetStatement({
           id: stmtId,
           user_id: req.user.id,
           member_id: member_id || null,
@@ -420,22 +424,22 @@ if (!SETU_ENABLED) {
 
         // Upsert with fingerprint dedup (skip duplicates)
         for (const row of rows) {
-          const { data: existing } = await supabase.from("budget_transactions").select("id").eq("user_id", req.user.id).eq("fingerprint", row.fingerprint).maybeSingle();
+          const existing = await findDuplicateBudgetTxn(req.user.id, row.fingerprint);
           if (existing) { totalDupes++; continue; }
-          await supabase.from("budget_transactions").insert(row);
+          await insertBudgetTransaction(row);
           totalImported++;
         }
       }
 
       // Update consent record
       if (consent_id) {
-        await supabase.from("setu_consents").update({ txn_count: totalImported, last_fetched_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("consent_id", consent_id).eq("user_id", req.user.id);
+        await updateConsent(req.user.id, consent_id, { txn_count: totalImported, last_fetched_at: new Date().toISOString(), updated_at: new Date().toISOString() });
       }
 
       // Upsert connection record for future re-sync
       if (consent_id) {
         const connId = "setuconn_" + consent_id.slice(0, 8);
-        await supabase.from("setu_connections").upsert({
+        await upsertConnection({
           id: connId,
           user_id: req.user.id,
           consent_id,
@@ -445,7 +449,7 @@ if (!SETU_ENABLED) {
           txn_count: totalImported,
           last_synced_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        }, { onConflict: "id" });
+        });
       }
 
       res.json({ imported: totalImported, duplicates: totalDupes, statements: Object.keys(bySource).length });
@@ -455,11 +459,7 @@ if (!SETU_ENABLED) {
   // GET /api/setu/connections
   // List saved connections (wealth + budget) for the current user
   router.get("/connections", auth, async (req, res) => {
-    const { data, error } = await supabase
-      .from("setu_connections")
-      .select("*, setu_consents(status, data_range_from, data_range_to)")
-      .eq("user_id", req.user.id)
-      .order("created_at", { ascending: false });
+    const { data, error } = await listConnections(req.user.id);
     if (error) return res.status(500).json({ error: error.message });
     res.json({ connections: data || [] });
   });
@@ -467,7 +467,7 @@ if (!SETU_ENABLED) {
   // DELETE /api/setu/connections/:id
   // Remove a saved connection (does NOT revoke the consent at Setu)
   router.delete("/connections/:id", auth, async (req, res) => {
-    const { error } = await supabase.from("setu_connections").delete().eq("id", req.params.id).eq("user_id", req.user.id);
+    const { error } = await deleteConnection(req.user.id, req.params.id);
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true });
   });

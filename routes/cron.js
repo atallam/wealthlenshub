@@ -1,11 +1,15 @@
 import { Router } from "express";
-import { supabase } from "../lib/db.js";
 import { refreshUserHoldings } from "../lib/refresh.js";
 import { takeSnapshot } from "../lib/snapshot.js";
 import { getCrossingHoldings } from "../lib/stale-holdings.js";
 import { sendStaleNudge, sendAlertDigest } from "../services/alert-mailer.js";
 import { sendPushToUser, pushEnabled } from "./push.js";
 import { insertNotification } from "./notifications.js";
+import {
+  listHoldingUserIds, listGmailAutoImportProfiles, listFdsForAlerts, getProfileEmail,
+  listHoldingsForStaleCheck, listPortfoliosWithAlerts, listHoldingsForAlertCheck,
+  listInsurancePolicies, listPortfoliosWithGoals, listHoldingValuesByUser, updatePortfolioGoals,
+} from "../services/cron.service.js";
 
 const router = Router();
 
@@ -16,8 +20,8 @@ function cronAuth(req, res, next) {
 }
 
 router.post("/refresh-all-prices", cronAuth, async (req, res) => {
-  const { data: rows } = await supabase.from("holdings").select("user_id");
-  const userIds = [...new Set((rows || []).map(r => r.user_id))];
+  const rows = await listHoldingUserIds();
+  const userIds = [...new Set(rows.map(r => r.user_id))];
   console.log(`Cron refresh started: ${userIds.length} users`);
   let totalUpdated = 0, totalUnpriced = 0;
   const results = [];
@@ -42,11 +46,7 @@ router.post("/check-cas-email", cronAuth, async (req, res) => {
     const { checkCasEmail } = await import("./gmail.js");
 
     // Find all users with Gmail auto-import enabled and a connected Gmail account
-    const { data: profiles, error } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("gmail_auto_import", true)
-      .not("gmail_token", "is", null);
+    const { data: profiles, error } = await listGmailAutoImportProfiles();
 
     if (error) return res.status(500).json({ error: error.message });
 
@@ -87,18 +87,7 @@ router.post("/fd-alerts", cronAuth, async (req, res) => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const WINDOWS = [0, 7, 30, 60];   // 0 = matured today → "action needed"
 
-  let { data: fds, error } = await supabase
-    .from("holdings")
-    .select("id, name, user_id, principal, interest_rate, maturity_date, maturity_amount")
-    .eq("type", "FD")
-    .or("maturity_status.is.null,maturity_status.eq.active")   // skip renewed/converted/closed
-    .not("maturity_date", "is", null);
-  if (error) {
-    // maturity_status column missing (migration 0028 not run yet) → scan all FDs
-    ({ data: fds, error } = await supabase.from("holdings")
-      .select("id, name, user_id, principal, interest_rate, maturity_date")
-      .eq("type", "FD").not("maturity_date", "is", null));
-  }
+  const { data: fds, error } = await listFdsForAlerts();
 
   if (error) return res.status(500).json({ error: error.message });
 
@@ -110,8 +99,7 @@ router.post("/fd-alerts", cronAuth, async (req, res) => {
     if (!WINDOWS.includes(dLeft)) continue;
 
     // Resolve email via profiles table
-    const { data: profile } = await supabase.from("profiles").select("email").eq("id", fd.user_id).single();
-    const toEmail = profile?.email;
+    const toEmail = await getProfileEmail(fd.user_id);
     if (!toEmail) { results.push({ fd: fd.id, dLeft, status: "no_email" }); continue; }
 
     const matFormatted = matDate.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
@@ -194,10 +182,7 @@ router.post("/nudge-stale", cronAuth, async (req, res) => {
   }
 
   // 1. Fetch all manual holdings across all users (updated_at is key)
-  const { data: holdings, error } = await supabase
-    .from("holdings")
-    .select("id, user_id, name, type, updated_at, created_at")
-    .in("type", ["FD", "PPF", "EPF", "REAL_ESTATE", "CASH", "INSURANCE", "OTHER"]);
+  const { data: holdings, error } = await listHoldingsForStaleCheck();
 
   if (error) return res.status(500).json({ error: error.message });
 
@@ -219,13 +204,7 @@ router.post("/nudge-stale", cronAuth, async (req, res) => {
     }
 
     // Resolve user email
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("email")
-      .eq("id", userId)
-      .single();
-
-    const toEmail = profile?.email;
+    const toEmail = await getProfileEmail(userId);
     if (!toEmail) {
       results.push({ userId, staleCount: stale.length, status: "no_email" });
       continue;
@@ -260,9 +239,7 @@ router.post("/alert-check", cronAuth, async (req, res) => {
   }
 
   // 1. Fetch all portfolios that have at least one active alert rule
-  const { data: portfolios, error: pErr } = await supabase
-    .from("portfolio")
-    .select("user_id, alerts, goals");
+  const { data: portfolios, error: pErr } = await listPortfoliosWithAlerts();
   if (pErr) return res.status(500).json({ error: pErr.message });
 
   const results = [];
@@ -272,10 +249,7 @@ router.post("/alert-check", cronAuth, async (req, res) => {
     if (!alertRules.length) continue;
 
     // 2. Fetch user's holdings
-    const { data: holdings } = await supabase
-      .from("holdings")
-      .select("id, type, current_value, avg_cost, net_units, units, purchase_value, principal, usd_inr_rate")
-      .eq("user_id", port.user_id);
+    const holdings = await listHoldingsForAlertCheck(port.user_id);
 
     if (!holdings?.length) continue;
 
@@ -337,13 +311,7 @@ router.post("/alert-check", cronAuth, async (req, res) => {
     }
 
     // 5. Resolve user email
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("email")
-      .eq("id", port.user_id)
-      .single();
-
-    const toEmail = profile?.email;
+    const toEmail = await getProfileEmail(port.user_id);
     if (!toEmail) {
       results.push({ userId: port.user_id, triggered: triggered.length, status: "no_email" });
       continue;
@@ -389,12 +357,7 @@ router.post("/insurance-reminders", cronAuth, async (req, res) => {
   const WINDOWS = [7, 30];
 
   // Fetch all INSURANCE holdings with premium fields
-  const { data: policies, error } = await supabase
-    .from("holdings")
-    .select("id, name, user_id, premium, premium_frequency, start_date, maturity_date, sum_assured")
-    .eq("type", "INSURANCE")
-    .not("premium", "is", null)
-    .not("start_date", "is", null);
+  const { data: policies, error } = await listInsurancePolicies();
 
   if (error) return res.status(500).json({ error: error.message });
 
@@ -426,8 +389,7 @@ router.post("/insurance-reminders", cronAuth, async (req, res) => {
     const daysUntil = Math.round((nextDue - today) / 864e5);
     if (!WINDOWS.includes(daysUntil)) continue;
 
-    const { data: profile } = await supabase.from("profiles").select("email").eq("id", policy.user_id).single();
-    const toEmail = profile?.email;
+    const toEmail = await getProfileEmail(policy.user_id);
     if (!toEmail) { results.push({ policy: policy.id, status: "no_email" }); continue; }
 
     const dueFmt = nextDue.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
@@ -508,9 +470,7 @@ router.post("/goal-milestones", cronAuth, async (req, res) => {
   const appUrl = process.env.APP_URL || "https://app.wealthlenshub.com";
 
   // Fetch all portfolios with goals
-  const { data: portfolios, error: pErr } = await supabase
-    .from("portfolio")
-    .select("user_id, goals");
+  const { data: portfolios, error: pErr } = await listPortfoliosWithGoals();
   if (pErr) return res.status(500).json({ error: pErr.message });
 
   const results = [];
@@ -520,10 +480,7 @@ router.post("/goal-milestones", cronAuth, async (req, res) => {
     if (!goals.length) { results.push({ userId: port.user_id, status: "no_goals" }); continue; }
 
     // Fetch total current value for this user
-    const { data: holdings } = await supabase
-      .from("holdings")
-      .select("current_value, type")
-      .eq("user_id", port.user_id);
+    const holdings = await listHoldingValuesByUser(port.user_id);
     if (!holdings?.length) continue;
 
     const totalValue = holdings.reduce((s, h) => s + (Number(h.current_value) || 0), 0);
@@ -551,12 +508,11 @@ router.post("/goal-milestones", cronAuth, async (req, res) => {
 
     // Persist updated notified_milestone values
     if (goalsUpdated) {
-      await supabase.from("portfolio").update({ goals: newGoals }).eq("user_id", port.user_id).catch(e => console.error("goal update failed", e));
+      await updatePortfolioGoals(port.user_id, newGoals).catch(e => console.error("goal update failed", e));
     }
 
     // Resolve email
-    const { data: profile } = await supabase.from("profiles").select("email").eq("id", port.user_id).single();
-    const toEmail = profile?.email;
+    const toEmail = await getProfileEmail(port.user_id);
     if (!toEmail) { results.push({ userId: port.user_id, status: "no_email" }); continue; }
 
     // Build email for all new milestone notifications
