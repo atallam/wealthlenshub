@@ -10,42 +10,7 @@
 > August 2026: SnapTrade Auto-Sync (P2 Item 3) also moved to Won't Do — SnapTrade is already a live connection.
 > August 2026: Embedded Financial News Feed (P3 Item 9) shipped and moved to Completed; Item 10 renumbered to 9.
 > August 2026: Financial News Feed upgraded — Indian market RSS sources (ET Markets, Livemint), macro RSS sources (SEBI, ET Economy), and per-stock filter UI added.
-> **September 2026: Production-readiness review — 4 P0/P1 infrastructure fixes shipped (see below); 5 P2 infra items added.**
-> September 2026: P2-2 (pLimit extracted to shared `lib/utils.js`) and P2-4 (CAS import done screen — statement date + depository shown) shipped and moved to Completed; remaining P2 items renumbered.
-
----
-
-## ✅ P0 — Production Infrastructure (Sep 2026) — All Completed
-
-> These were blocking issues identified in the Sep 2026 production-readiness review. All four are shipped.
-
-### ✅ P0-1 · Parallelize ISIN resolution in CAS import
-**File:** `routes/import.js`  
-**Problem:** Serial `for` loop with `await setTimeout(2000)` between each demat holding — 10 stocks = 20+ s, any CAS with 15+ stocks timed out Render's 30 s request limit.  
-**Fix:** Replaced with `pLimit(8)` parallel worker pool + 25 s hard deadline. Imports `resolveIsinSymbol` from `lib/prices.js` and `pLimit` from `lib/refresh.js`.  
-**Shipped:** Sep 18 2026
-
-### ✅ P0-2 · Add `/health` endpoint + fix render.yaml healthCheckPath
-**Files:** `server.js`, `render.yaml`  
-**Problem:** `healthCheckPath: /` caused Render to treat the HTML SPA shell as the health signal — a broken deploy could go undetected.  
-**Fix:** Added `GET /health → {ok: true, ts: Date.now()}` before static middleware. Updated `healthCheckPath: /health` in render.yaml.  
-**Shipped:** Sep 18 2026
-
----
-
-## ✅ P1 — Infrastructure (Sep 2026) — All Completed
-
-### ✅ P1-1 · Gmail check-now: fire-and-forget + job polling
-**File:** `routes/gmail.js`  
-**Problem:** `POST /check-now` awaited `autoImportCASForUser()` synchronously — PDF fetch + casparser can take 2–5 min, well beyond Render's 30 s timeout.  
-**Fix:** Returns `{started: true, job_id}` immediately; runs import in the background via a `pendingJobs` Map; added `GET /gmail/job/:id` for client polling.  
-**Shipped:** Sep 18 2026
-
-### ✅ P1-2 · Flush-and-fill destructive UX warning in CAS Import modal
-**File:** `src/components/modals/CASImportModal.jsx`  
-**Problem:** The replace-count warning (e.g. "42 existing CAS holdings will be replaced") was buried in the same yellow generic warning box as informational notices — users didn't realize the action was destructive.  
-**Fix:** Matching step now splits warnings into two boxes: generic amber box (informational) + distinct orange "🔄 Full Replace — CAS Source" box showing the replace count with explanation. `casReplaceCount` derived locally from warning text.  
-**Shipped:** Sep 18 2026
+> September 2026: Production-readiness review — P0-1, P0-2, P1-1, P1-2 shipped Sep 18; P2-2, P2-4 shipped shortly after. All six moved to Completed (Production-Readiness Fixes, Sep 2026); remaining P2 items renumbered.
 
 ---
 
@@ -145,10 +110,24 @@ XIRR captures the aggregate effect of SIPs but there is no breakdown showing whi
 > These are shipped and live — do not re-add to the active backlog.
 
 ### Production-Readiness Fixes (Sep 2026)
-- ✅ **P0-1 — ISIN resolution parallelized** — `routes/import.js`: `pLimit(8)` parallel batches + 25 s deadline (was serial with 2 s sleeps per holding)
-- ✅ **P0-2 — /health endpoint** — `server.js` + `render.yaml`: `GET /health → {ok, ts}`; `healthCheckPath: /health`
-- ✅ **P1-1 — Gmail check-now async** — `routes/gmail.js`: fire-and-forget + `GET /job/:id` polling
-- ✅ **P1-2 — CAS flush-and-fill UX** — `CASImportModal.jsx`: split warnings into generic amber + destructive orange box with replace count
+Identified in the Sep 2026 production-readiness review.
+
+- ✅ **P0-1 — Parallelize ISIN resolution in CAS import** — `routes/import.js`  
+  **Problem:** Serial `for` loop with `await setTimeout(2000)` between each demat holding — 10 stocks = 20+ s, any CAS with 15+ stocks timed out Render's 30 s request limit.  
+  **Fix:** Replaced with `pLimit(8)` parallel worker pool + 25 s hard deadline. Imports `resolveIsinSymbol` from `lib/prices.js`.  
+  **Shipped:** Sep 18 2026
+- ✅ **P0-2 — Add `/health` endpoint + fix render.yaml healthCheckPath** — `server.js`, `render.yaml`  
+  **Problem:** `healthCheckPath: /` caused Render to treat the HTML SPA shell as the health signal — a broken deploy could go undetected.  
+  **Fix:** Added `GET /health → {ok: true, ts: Date.now()}` before static middleware. Updated `healthCheckPath: /health` in render.yaml.  
+  **Shipped:** Sep 18 2026
+- ✅ **P1-1 — Gmail check-now: fire-and-forget + job polling** — `routes/gmail.js`  
+  **Problem:** `POST /check-now` awaited `autoImportCASForUser()` synchronously — PDF fetch + casparser can take 2–5 min, well beyond Render's 30 s timeout.  
+  **Fix:** Returns `{started: true, job_id}` immediately; runs import in the background via a `pendingJobs` Map; added `GET /gmail/job/:id` for client polling.  
+  **Shipped:** Sep 18 2026
+- ✅ **P1-2 — Flush-and-fill destructive UX warning in CAS Import modal** — `src/components/modals/CASImportModal.jsx`  
+  **Problem:** The replace-count warning (e.g. "42 existing CAS holdings will be replaced") was buried in the same yellow generic warning box as informational notices — users didn't realize the action was destructive.  
+  **Fix:** Matching step now splits warnings into two boxes: generic amber box (informational) + distinct orange "🔄 Full Replace — CAS Source" box showing the replace count with explanation. `casReplaceCount` derived locally from warning text.  
+  **Shipped:** Sep 18 2026
 - ✅ **P2-2 — pLimit extracted to shared `lib/utils.js`** — `lib/utils.js` now owns `pLimit()`; `lib/refresh.js` re-exports it for existing import sites; `routes/import.js` imports it directly from `lib/utils.js`
 - ✅ **P2-4 — CAS done screen shows statement date + depository** — `CASImportModal.jsx`: done step now displays `casDepository` (CAMS/CDSL/NSDL/KFin) and `casStatementDate` alongside the success summary
 
