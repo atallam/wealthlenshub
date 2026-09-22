@@ -5,8 +5,7 @@ import { getCrossingHoldings } from "../lib/stale-holdings.js";
 import { sendStaleNudge, sendAlertDigest } from "../services/alert-mailer.js";
 import { sendPushToUser, pushEnabled } from "./push.js";
 import { insertNotification } from "./notifications.js";
-import { isIsin, resolveIsinSymbol } from "../lib/prices.js";
-import { pLimit } from "../lib/utils.js";
+import { backfillIsinTickers } from "../lib/isinBackfill.js";
 import {
   listHoldingUserIds, listGmailAutoImportProfiles, listFdsForAlerts, getProfileEmail,
   listHoldingsForStaleCheck, listPortfoliosWithAlerts, listHoldingsForAlertCheck,
@@ -52,32 +51,18 @@ router.post("/refresh-all-prices", cronAuth, async (req, res) => {
  * still true, and only ever writes `ticker`, never `isin` (the separate
  * CAS natural-key column from migration 0029). Not on a schedule; call it
  * manually after a CAS import, or whenever /debug shows an unresolved ISIN.
+ *
+ * Note: applyCasImport() (services/casImport.service.js) now runs this same
+ * logic automatically, scoped to the importing user, right after every CAS
+ * import — so this endpoint exists mainly as a one-off catch-up for
+ * holdings imported before that existed, and as a manual re-run tool.
  */
 router.post("/backfill-isin-tickers", cronAuth, async (req, res) => {
   try {
     const holdings = await listIsinTickerHoldings();
-    const candidates = holdings.filter(h => isIsin(h.ticker));
-    if (!candidates.length) {
-      return res.json({ checked: holdings.length, candidates: 0, resolved: 0, unresolved: 0, results: [] });
-    }
-
-    const tasks = candidates.map(h => async () => {
-      const symbol = await resolveIsinSymbol(h.ticker);
-      if (!symbol) return { id: h.id, name: h.name, isin: h.ticker, resolved: false };
-      const { error } = await updateHoldingTicker(h.id, symbol);
-      return { id: h.id, name: h.name, isin: h.ticker, symbol, resolved: !error, error: error?.message || null };
-    });
-
-    const results  = await pLimit(tasks, 5);
-    const resolved = results.filter(r => r.resolved).length;
-    console.log(`[cron/backfill-isin-tickers] ${resolved}/${candidates.length} resolved`);
-    res.json({
-      checked:    holdings.length,
-      candidates: candidates.length,
-      resolved,
-      unresolved: candidates.length - resolved,
-      results,
-    });
+    const result   = await backfillIsinTickers(holdings, updateHoldingTicker);
+    console.log(`[cron/backfill-isin-tickers] ${result.resolved}/${result.candidates} resolved`);
+    res.json(result);
   } catch (e) {
     console.error("[cron/backfill-isin-tickers] failed:", e.message);
     res.status(500).json({ error: e.message });

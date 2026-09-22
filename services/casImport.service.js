@@ -20,6 +20,8 @@ import { randomUUID } from "crypto";
 import { supabase } from "../lib/db.js";
 import { groupByMember, diffCas, buildApplyGroups } from "../lib/casDiff.js";
 import { inferLedgerGaps } from "./ledgerInfer.service.js";
+import { backfillIsinTickers } from "../lib/isinBackfill.js";
+import { listIsinTickerHoldingsForUser, updateHoldingTicker } from "./cron.service.js";
 
 const VALID_DEPOSITORIES = new Set(["NSDL", "CDSL", "CAMS", "KFINTECH"]);
 
@@ -122,6 +124,27 @@ export async function applyCasImport(userId, body) {
     } catch (e) { console.warn("[casImport] ledger inference failed:", e.message); }
   }
 
+  // Phase 5: CAS statements list holdings by ISIN, so normalizeCasHolding()
+  // (lib/casDiff.js) stores the ISIN in `ticker` when no real trading symbol
+  // was parsed — otherwise-normal for a depository CAS. Resolve+persist a
+  // real symbol right away so this import doesn't reintroduce the
+  // ISIN-as-ticker bug that used to silently break pricing and concall for
+  // every CAS-imported stock (see lib/isinBackfill.js and project memory
+  // "wealthlenshub-cron-and-pricing"). Best-effort — a lookup failure just
+  // leaves that one holding for the next manual
+  // /api/cron/backfill-isin-tickers run or the concall/pricing live-resolve
+  // fallback, never blocks the import itself.
+  let isinBackfill = { checked: 0, candidates: 0, resolved: 0, unresolved: 0 };
+  if ((r.inserted || 0) + (r.updated || 0) > 0) {
+    try {
+      const holdings = await listIsinTickerHoldingsForUser(userId);
+      isinBackfill = await backfillIsinTickers(holdings, updateHoldingTicker);
+      if (isinBackfill.candidates) {
+        console.log(`[casImport] ISIN backfill: ${isinBackfill.resolved}/${isinBackfill.candidates} resolved`);
+      }
+    } catch (e) { console.warn("[casImport] ISIN backfill failed:", e.message); }
+  }
+
   // Idempotency / audit trail (best-effort, never blocks the import).
   try {
     await supabase.from("import_logs").insert({
@@ -133,7 +156,8 @@ export async function applyCasImport(userId, body) {
       depository, statement_date: body.cas_statement_date || null,
       summary: { ...r, import_id: importId, import_method: body.import_method || "manual_upload",
                  members: applyGroups.map((g) => g.member_id), unmatched: unmatched.length,
-                 inferred: infer.inferred + infer.updated },
+                 inferred: infer.inferred + infer.updated,
+                 isin_backfill_resolved: isinBackfill.resolved, isin_backfill_candidates: isinBackfill.candidates },
     });
   } catch (e) { console.warn("[casImport] import_logs insert failed:", e.message); }
 
@@ -151,6 +175,7 @@ export async function applyCasImport(userId, body) {
     inferred_replaced: r.inferred_replaced || 0,
     inferred_count: infer.inferred + infer.updated,
     inferred: infer.details.map((d) => ({ name: d.name, txn_type: d.txn_type, units: d.units, txn_date: d.txn_date, estimated: d.estimated })),
+    isin_backfill: { resolved: isinBackfill.resolved, candidates: isinBackfill.candidates },
     deleted_count:  r.deleted  || 0,
     legacy_retired: r.legacy_retired || 0,
     skipped_older:  r.skipped_older || 0,

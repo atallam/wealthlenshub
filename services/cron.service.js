@@ -113,6 +113,21 @@ export async function listIsinTickerHoldings() {
 }
 
 /**
+ * Same as listIsinTickerHoldings(), scoped to one user — used right after a
+ * CAS import (services/casImport.service.js) so a fresh import can't
+ * reintroduce the ISIN-as-ticker bug without waiting for the next manual
+ * /api/cron/backfill-isin-tickers run.
+ */
+export async function listIsinTickerHoldingsForUser(userId) {
+  const { data } = await supabase
+    .from("holdings")
+    .select("id, name, ticker, type")
+    .eq("user_id", userId)
+    .in("type", ["IN_STOCK", "IN_ETF"]);
+  return data || [];
+}
+
+/**
  * Persist a resolved trading symbol onto a holding's ticker column.
  * Deliberately leaves holdings.isin (the CAS natural-key column, migration
  * 0029) untouched — this only fixes the column that pricing/concall read.
