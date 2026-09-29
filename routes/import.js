@@ -10,7 +10,7 @@ import {
   scoreHoldings, scoreTransactions,
   parseNSDLCASStatement, parseFidelityPDFStatement,
 } from "../lib/parsers.js";
-import { getAmfiList, yahooPrice, resolveIsinSymbol } from "../lib/prices.js";
+import { getAmfiList, yahooPrice, resolveIsinSymbol, indianStockPrice } from "../lib/prices.js";
 import { pLimit } from "../lib/utils.js"; // P2-2 — moved out of lib/refresh.js, generic concurrency helper
 import { auditImport } from "../lib/importLogger.js";
 import { decrypt } from "../lib/crypto.js";
@@ -229,8 +229,7 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
               await pLimit(needsPriceHoldings.map(h => async () => {
                 if (Date.now() > PRICE_DEADLINE) return;
                 try {
-                  const price = await yahooPrice(`${h.ticker.toUpperCase()}.NS`) ||
-                                await yahooPrice(`${h.ticker.toUpperCase()}.BO`);
+                  const price = await indianStockPrice(h.ticker);
                   if (price && price > 0) {
                     h.current_price = price;
                     h.current_value = (h.units || 0) * price;

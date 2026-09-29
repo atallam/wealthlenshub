@@ -3,7 +3,7 @@
  * Moved out of routes/watchlist.js (P3-2) — same queries, same enrichment logic.
  */
 import { supabase } from "../lib/db.js";
-import { stockPrice, mfNav, yahooPrice, fetchUsdInr } from "../lib/prices.js";
+import { stockPrice, mfNav, fetchUsdInr, indianStockQuote } from "../lib/prices.js";
 
 async function enrichWithPrice(items) {
   if (!items.length) return items;
@@ -19,8 +19,8 @@ async function enrichWithPrice(items) {
       if (item.asset_type === "MF") {
         current_price = await mfNav(t).catch(() => null);
       } else if (item.asset_type === "IN_STOCK" || item.asset_type === "IN_ETF") {
-        const q = await stockPrice(`${t}.NS`, "NSE").catch(() => null);
-        current_price = q?.price ?? await yahooPrice(`${t}.BO`).catch(() => null);
+        const q = await indianStockQuote(t).catch(() => null);
+        current_price = q?.price ?? null;
         price_change_pct = q?.changePercent ?? null;
       } else if (["US_STOCK","US_ETF","CRYPTO"].includes(item.asset_type)) {
         const sym = item.asset_type === "CRYPTO" && !t.includes("-") ? `${t}-USD` : t;

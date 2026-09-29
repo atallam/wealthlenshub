@@ -249,29 +249,42 @@ export default function HoldingsTab({
   const livePriceHoldings = visH.filter(h => h.price_fetched_at && LIVE_PRICE_TYPES.has(h.type));
   const priceFreshnessEl = (() => {
     if (!livePriceHoldings.length) return null;
-    const oldest = new Date(Math.min(...livePriceHoldings.map(h => new Date(h.price_fetched_at))));
-    const ageMs  = Date.now() - oldest.getTime();
-    const ageMin = Math.floor(ageMs / 60_000);
+    // Badge shows the LATEST refresh; holdings that didn't update with it are
+    // called out separately. (Showing the oldest timestamp made one stuck
+    // holding look like the whole refresh button was broken.)
+    const times  = livePriceHoldings.map(h => new Date(h.price_fetched_at).getTime());
+    const newest = Math.max(...times);
+    const STALE_GAP_MS = 6 * 3600_000;   // >6h older than the latest refresh = didn't update
+    const staleLive = livePriceHoldings.filter(h => newest - new Date(h.price_fetched_at).getTime() > STALE_GAP_MS);
+    const fmtAge = (ms) => {
+      const m = Math.floor(ms / 60_000);
+      return m < 1 ? "just now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`;
+    };
+    const ageMin = Math.floor((Date.now() - newest) / 60_000);
     const color  = ageMin < 60 ? "#4caf9a" : ageMin < 240 ? "#c9a84c" : "#e07c5a";
-    const label  = ageMin < 1
-      ? "just now"
-      : ageMin < 60
-        ? `${ageMin}m ago`
-        : ageMin < 1440
-          ? `${Math.floor(ageMin / 60)}h ago`
-          : `${Math.floor(ageMin / 1440)}d ago`;
+    const chip = (c) => ({
+      display: "inline-flex", alignItems: "center", gap: ".35rem",
+      padding: ".2rem .6rem", borderRadius: 20,
+      background: `${c}1A`, border: `1px solid ${c}44`,
+      fontSize: ".65rem", color: c, fontWeight: 600,
+      marginLeft: ".5rem", verticalAlign: "middle", cursor: "default",
+    });
+    const staleTip = staleLive
+      .sort((a, b) => new Date(a.price_fetched_at) - new Date(b.price_fetched_at))
+      .map(h => `${h.ticker || h.name} — ${fmtAge(Date.now() - new Date(h.price_fetched_at).getTime())}`)
+      .join("\n");
     return (
-      <span style={{
-        display: "inline-flex", alignItems: "center", gap: ".35rem",
-        padding: ".2rem .6rem", borderRadius: 20,
-        background: `${color}1A`, border: `1px solid ${color}44`,
-        fontSize: ".65rem", color, fontWeight: 600,
-        marginLeft: ".5rem", verticalAlign: "middle",
-        cursor: "default",
-      }} title={`Oldest live price fetched at ${oldest.toLocaleTimeString("en-IN")}`}>
-        <span style={{width: 6, height: 6, borderRadius: "50%", background: color, display:"inline-block"}}/>
-        Prices {label} · {livePriceHoldings.length} live
-      </span>
+      <>
+        <span style={chip(color)} title={`Latest refresh: ${new Date(newest).toLocaleString("en-IN")}`}>
+          <span style={{width: 6, height: 6, borderRadius: "50%", background: color, display:"inline-block"}}/>
+          Prices {fmtAge(Date.now() - newest)} · {livePriceHoldings.length - staleLive.length}/{livePriceHoldings.length} live
+        </span>
+        {staleLive.length > 0 && (
+          <span style={chip("#e07c5a")} title={`Didn't update in the latest refresh:\n${staleTip}`}>
+            ⚠ {staleLive.length} not updated
+          </span>
+        )}
+      </>
     );
   })();
 

@@ -6,7 +6,7 @@
 import { randomUUID } from "crypto";
 import { supabase } from "../lib/db.js";
 import { sanitizeDates, enrichHoldings } from "../lib/holdings-utils.js";
-import { yahooPrice, stockPrice } from "../lib/prices.js";
+import { indianStockPrice } from "../lib/prices.js";
 import { holdingSchema, validateRows } from "../lib/validate.js";
 import { takeSnapshot } from "../lib/snapshot.js";
 import { applyCasImport } from "./casImport.service.js";
@@ -203,8 +203,7 @@ export function runPostImport(userId, casStatementDate) {
       for (const h of fresh) {
         if (!h.ticker || h.ticker.startsWith("INE")) continue;
         try {
-          const q = await stockPrice(`${h.ticker.toUpperCase()}.NS`, "NSE");
-          const price = q?.price ?? await yahooPrice(`${h.ticker.toUpperCase()}.BO`);
+          const price = await indianStockPrice(h.ticker);
           if (price && price > 0) {
             await supabase.from("holdings").update({ current_price: price, current_value: (h.units || 0) * price, price_fetched_at: new Date().toISOString() }).eq("id", h.id);
           }

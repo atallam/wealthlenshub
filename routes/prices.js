@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { supabase } from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
-import { fetchUsdInr, fetchAllFxRates, fetchMfNav, getAmfiList, scoreMf, stockSearch, stockPrice, yahooPrice, timedFetch, TWELVE_KEY, twelveQuote, mfNav } from "../lib/prices.js";
+import { fetchUsdInr, fetchAllFxRates, fetchMfNav, getAmfiList, scoreMf, stockSearch, stockPrice, yahooPrice, timedFetch, TWELVE_KEY, twelveQuote, mfNav, inSymbolCandidates } from "../lib/prices.js";
 import { takeSnapshot } from "../lib/snapshot.js";
 import { refreshUserHoldings } from "../lib/refresh.js";
 
@@ -86,14 +86,14 @@ router.get("/stock/search", auth, async (req, res) => {
 router.get("/stock/info", auth, async (req, res) => {
   const { ticker, market } = req.query;
   if (!ticker) return res.status(400).json({ error: "ticker required" });
-  const t = ticker.toUpperCase();
+  const t = market === "IN" ? ticker.toUpperCase().replace(/\.(NS|BO)$/, "") : ticker.toUpperCase();
   if (TWELVE_KEY) {
     const q = await twelveQuote(market === "IN" ? `${t}:NSE` : t);
     if (q?.price) return res.json({ found: true, ...q, symbol: t });
     if (market === "IN") { const q2 = await twelveQuote(`${t}:BSE`); if (q2?.price) return res.json({ found: true, ...q2, symbol: t }); }
   }
   const { yahooChart } = await import("../lib/prices.js");
-  for (const symbol of market === "IN" ? [`${t}.NS`, `${t}.BO`] : [t]) {
+  for (const symbol of market === "IN" ? inSymbolCandidates(ticker) : [t]) {
     const meta = await yahooChart(symbol);
     if (!meta) continue;
     const price = meta.regularMarketPrice ?? meta.chartPreviousClose;

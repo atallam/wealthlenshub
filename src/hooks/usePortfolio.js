@@ -122,6 +122,16 @@ export function usePortfolio(user) {
       setHoldings(hlds || []);
       setLastPriceRefresh(new Date());
       setPriceCount(result.updated || 0);
+      // Tell the user exactly what did and didn't refresh — silent partial
+      // failures made the "Prices Nd ago" badge look like the button was broken.
+      const missed = (result.unpriced || []).filter(u => u.type !== "CASH");
+      if (missed.length) {
+        const names = missed.slice(0, 4).map(u => u.ticker || u.name).join(", ");
+        const more  = missed.length > 4 ? ` +${missed.length - 4} more` : "";
+        toast.warn(`Refreshed ${result.updated || 0} · couldn't price ${missed.length}: ${names}${more}`, 8000);
+      } else {
+        toast.success(`Prices refreshed · ${result.updated || 0} holdings updated`);
+      }
     } catch (e) { toast.error("Price refresh failed: " + e.message); }
     setPriceRefreshing(false);
   }
@@ -210,7 +220,7 @@ export function usePortfolio(user) {
         // Queue for background sync when connectivity returns
         await queueRequest("/api/transactions", "POST", { "Content-Type": "application/json" }, txnBody);
         await registerSync();
-        showToast?.("Offline — transaction queued and will sync automatically.", "info");
+        toast.info("Offline — transaction queued and will sync automatically.");
         if (txnSavingRef) txnSavingRef.current = false;
         return;
       }
