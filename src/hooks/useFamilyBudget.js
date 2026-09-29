@@ -74,6 +74,13 @@ export function useFamilyBudget(user) {
   const [fbEditCat,     setFbEditCat]     = useState(null);
   const [fbNewCat,      setFbNewCat]      = useState({ name: '', color: '#c9a84c', icon: '📁', monthly_limit: 0, keywords: '', is_essential: false });
 
+  // ── Per-member category limit overrides (migrations/0032) ─────
+  // Map of { [category_id]: { monthly_limit, is_override } } for the
+  // currently-selected member; empty when viewing "All" (no per-member
+  // limits apply there — see the saved spec).
+  const [fbCatLimits,        setFbCatLimits]        = useState({});
+  const [fbCatLimitsLoading, setFbCatLimitsLoading] = useState(false);
+
   // ── Goals ─────────────────────────────────────────────────────
   const [fbGoals,       setFbGoals]       = useState([]);
   const [fbGoalLoading, setFbGoalLoading] = useState(false);
@@ -186,6 +193,33 @@ export function useFamilyBudget(user) {
     try { setFbCategories(await api('/api/budget/categories')); } catch (e) { console.error(e); }
     setFbCatLoading(false);
   }, []);
+
+  // Per-member category limits — a no-op back to {} when memberId is falsy
+  // ("All family" has no per-member limits to show).
+  const loadCategoryLimits = useCallback(async (memberId) => {
+    if (!memberId) { setFbCatLimits({}); return; }
+    setFbCatLimitsLoading(true);
+    try {
+      const params = new URLSearchParams({ member_id: memberId });
+      const data = await api(`/api/budget/category-limits?${params}`);
+      const map = {};
+      for (const row of data || []) map[row.category_id] = { monthly_limit: row.monthly_limit, is_override: row.is_override };
+      setFbCatLimits(map);
+    } catch (e) { console.error('categoryLimits', e); }
+    setFbCatLimitsLoading(false);
+  }, []);
+
+  async function setCategoryLimit(categoryId, memberId, monthlyLimit) {
+    await api('/api/budget/category-limits', {
+      method: 'PUT',
+      body: JSON.stringify({ category_id: categoryId, member_id: memberId, monthly_limit: monthlyLimit }),
+    });
+    setFbCatLimits(p => ({ ...p, [categoryId]: { monthly_limit: Number(monthlyLimit) || 0, is_override: true } }));
+  }
+  async function resetCategoryLimit(categoryId, memberId, sharedLimit) {
+    await api(`/api/budget/category-limits/${categoryId}/${memberId}`, { method: 'DELETE' });
+    setFbCatLimits(p => ({ ...p, [categoryId]: { monthly_limit: sharedLimit || 0, is_override: false } }));
+  }
 
   const loadGoals = useCallback(async () => {
     setFbGoalLoading(true);
@@ -359,6 +393,9 @@ export function useFamilyBudget(user) {
     fbEditCat, setFbEditCat,
     fbNewCat, setFbNewCat,
     loadCategories, saveCategory, deleteCategory,
+    // Per-member category limits
+    fbCatLimits, fbCatLimitsLoading,
+    loadCategoryLimits, setCategoryLimit, resetCategoryLimit,
     // Goals
     fbGoals, fbGoalLoading,
     fbEditGoal, setFbEditGoal,

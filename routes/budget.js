@@ -135,3 +135,24 @@ router.get("/recurring", auth, async (req, res) => {
   try { res.json(await budget.detectRecurring(req.user.id, member_id || null)); }
   catch (e) { sendError(res, e); }
 });
+
+// ── Per-member category limits (migrations/0032) ──────────────────────────────
+// Overrides budget_categories.monthly_limit for one family member — see
+// services/budget.service.js's getCategoryLimits() for the fallback rule.
+router.get("/category-limits", auth, async (req, res) => {
+  try { res.json(await budget.getCategoryLimits(req.user.id, req.query.member_id || null)); }
+  catch (e) { sendError(res, e); }
+});
+router.put("/category-limits", auth, async (req, res) => {
+  const { category_id, member_id, monthly_limit } = req.body;
+  if (!category_id || !member_id) return res.status(400).json({ error: "category_id and member_id required" });
+  try { res.json(await budget.setCategoryLimit(req.user.id, category_id, member_id, monthly_limit)); }
+  catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    sendError(res, e);
+  }
+});
+router.delete("/category-limits/:category_id/:member_id", auth, async (req, res) => {
+  try { res.json(await budget.deleteCategoryLimit(req.user.id, req.params.category_id, req.params.member_id)); }
+  catch (e) { sendError(res, e); }
+});

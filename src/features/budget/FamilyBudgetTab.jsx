@@ -6,7 +6,7 @@
 //   Phase 4 — Merchant rollup, recurring detection, burn rate, trend badges, Budget vs Actual
 //   Phase 5 — AI Spending Coach, Wants/Needs tagging
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFamilyBudget } from '../../hooks/useFamilyBudget.js';
 import SetuAAImport from '../../SetuAAImport.jsx';
 import { useToast } from '../../components/shared/Toast.jsx';
@@ -614,10 +614,51 @@ function TransactionList({ fb }) {
   );
 }
 
+// ── Per-member category limit field (migrations/0032) ──────────────
+// Shown next to a category row when a specific family member is selected.
+// Defaults to the shared family limit until the user sets an override; a
+// ↺ button appears once one exists, to revert back to the shared value.
+function MemberLimitField({ category, memberId, memberName, override, fb }) {
+  const shared = category.monthly_limit || 0;
+  const current = override ? override.monthly_limit : shared;
+  const [val, setVal] = useState(current);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setVal(current); }, [current]);
+
+  async function commit() {
+    const n = Number(val) || 0;
+    if (n === current) return;
+    setSaving(true);
+    try { await fb.setCategoryLimit(category.id, memberId, n); }
+    catch (e) { console.error('setCategoryLimit', e); setVal(current); }
+    setSaving(false);
+  }
+  async function reset() {
+    setSaving(true);
+    try { await fb.resetCategoryLimit(category.id, memberId, shared); }
+    catch (e) { console.error('resetCategoryLimit', e); }
+    setSaving(false);
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '.25rem' }}>
+      <input className="fi" type="number" value={val || ''} placeholder={String(shared)}
+        onChange={e => setVal(e.target.value)} onBlur={commit} disabled={saving}
+        title={override ? `Custom limit for ${memberName}` : `Using shared limit (${fmtAmt(shared, true)}) — set one for ${memberName}`}
+        style={{ width: 84, fontSize: '.7rem', padding: '.2rem .4rem', ...(override ? { borderColor: GOLD } : {}) }} />
+      {override && (
+        <button onClick={reset} disabled={saving} title={`Reset to shared limit (${fmtAmt(shared, true)})`}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '.75rem' }}>↺</button>
+      )}
+    </div>
+  );
+}
+
 // ── Categories Manager ────────────────────────────────────────────
-function CategoriesManager({ fb }) {
-  const { fbCategories: cats, fbEditCat: editing, setFbEditCat, fbNewCat: newCat, setFbNewCat, saveCategory, deleteCategory } = fb;
+function CategoriesManager({ fb, members = [], selectedMember }) {
+  const { fbCategories: cats, fbEditCat: editing, setFbEditCat, fbNewCat: newCat, setFbNewCat, saveCategory, deleteCategory, fbCatLimits } = fb;
   const toast = useToast();
+  const memberName = selectedMember ? (members.find(m => m.id === selectedMember)?.name || 'this member') : null;
 
   const essential = cats.filter(c => c.is_essential);
   const discretionary = cats.filter(c => !c.is_essential);
@@ -627,6 +668,7 @@ function CategoriesManager({ fb }) {
     <div>
       <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
         {cats.filter(c => c.monthly_limit > 0).length} categories with limits · Total budget: {fmtAmt(total)}
+        {selectedMember && <> · setting limits for <strong style={{ color: 'var(--text)' }}>{memberName}</strong> (falls back to the shared limit until you set one)</>}
       </div>
 
       {/* Add new category inline */}
@@ -669,7 +711,11 @@ function CategoriesManager({ fb }) {
                 <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '.6rem', padding: '.5rem 0', borderBottom: '1px solid var(--border)' }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color || GOLD, flexShrink: 0 }} />
                   <span style={{ fontSize: '.75rem', color: 'var(--text)', flex: 1 }}>{c.icon} {c.name}</span>
-                  {c.monthly_limit > 0 && <span style={{ fontSize: '.7rem', fontFamily: "'DM Mono',monospace", color: 'var(--text-muted)' }}>{fmtAmt(c.monthly_limit, true)}/mo</span>}
+                  {selectedMember ? (
+                    <MemberLimitField category={c} memberId={selectedMember} memberName={memberName} override={fbCatLimits[c.id]} fb={fb} />
+                  ) : (
+                    c.monthly_limit > 0 && <span style={{ fontSize: '.7rem', fontFamily: "'DM Mono',monospace", color: 'var(--text-muted)' }}>{fmtAmt(c.monthly_limit, true)}/mo</span>
+                  )}
                   <button onClick={() => setFbEditCat({ ...c })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '.75rem' }}>✏️</button>
                   <button onClick={() => deleteCategory(c, toast.confirm)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: RED, fontSize: '.75rem' }}>🗑</button>
                 </div>
@@ -770,7 +816,17 @@ function GoalsPanel({ fb }) {
 
 // ── Overview ──────────────────────────────────────────────────────
 function OverviewTab({ fb, members, selectedMember }) {
-  const { fbAnalytics: anal, fbAnalLoading: loading, fbMerchants: merchants, fbMerchLoading, fbRecurring: recurring, fbRecLoading, fbCategories: categories } = fb;
+  const { fbAnalytics: anal, fbAnalLoading: loading, fbMerchants: merchants, fbMerchLoading, fbRecurring: recurring, fbRecLoading, fbCategories: rawCategories, fbCatLimits } = fb;
+  // Budget Health + Budget vs Actual should compare spend against the
+  // selected member's own limit overrides (migrations/0032), not the shared
+  // family limit, once a specific member is selected. "All" is untouched.
+  const categories = useMemo(() => {
+    if (!selectedMember) return rawCategories;
+    return rawCategories.map(c => {
+      const override = fbCatLimits[c.id];
+      return override ? { ...c, monthly_limit: override.monthly_limit } : c;
+    });
+  }, [rawCategories, fbCatLimits, selectedMember]);
   if (loading && !anal) return <div style={{ color: 'var(--text-muted)', padding: '3rem', textAlign: 'center' }}>Loading analytics…</div>;
   const byCategory = anal?.byCategory || {};
   const totalDebit = anal?.totalDebit || 0;
@@ -842,7 +898,7 @@ export default function FamilyBudgetTab({ user, members = [], Overlay }) {
   const toast = useToast();
   const fb = useFamilyBudget(user);
   const { fbView: view, setFbView, fbMember: memberFilter, setFbMember, fbMonth: month, setFbMonth, fbPeriod: period, setFbPeriod,
-    loadAnalytics, loadMerchants, loadRecurring, loadTransactions, loadCategories, loadGoals, loadBanks, loadStatements,
+    loadAnalytics, loadMerchants, loadRecurring, loadTransactions, loadCategories, loadCategoryLimits, loadGoals, loadBanks, loadStatements,
     fbTxnCat, fbTxnSearch } = fb;
 
   // Initial load on mount
@@ -859,6 +915,13 @@ export default function FamilyBudgetTab({ user, members = [], Overlay }) {
     loadMerchants(period, month, memberFilter);
     loadRecurring(memberFilter);
   }, [memberFilter, period, month]);
+
+  // Per-member category limit overrides only depend on who's selected, not
+  // the period/month — reload separately so switching periods doesn't
+  // re-fetch them needlessly.
+  useEffect(() => {
+    loadCategoryLimits(memberFilter);
+  }, [memberFilter]);
 
   // Reload transactions when filters change
   useEffect(() => {
@@ -942,7 +1005,7 @@ export default function FamilyBudgetTab({ user, members = [], Overlay }) {
           <TransactionList fb={fb} />
         </SectionCard>
       )}
-      {view === 'categories' && <CategoriesManager fb={fb} />}
+      {view === 'categories' && <CategoriesManager fb={fb} members={members} selectedMember={memberFilter} />}
       {view === 'goals' && <GoalsPanel fb={fb} />}
     </div>
   );

@@ -16,6 +16,7 @@ const err = (msg, status, extra = {}) => Object.assign(new Error(msg), { status,
 const stId = () => "bst_" + randomUUID().replace(/-/g, "").slice(0, 16);
 const txId = () => "btx_" + randomUUID().replace(/-/g, "").slice(0, 16);
 const aliasId = () => "baa_" + randomUUID().replace(/-/g, "").slice(0, 16);
+const catLimitId = () => "bcl_" + randomUUID().replace(/-/g, "").slice(0, 16);
 
 /** True if `name` appears in `lower` at least once WITHOUT being immediately
  *  preceded by a "C/O"/"Care Of" address marker. A name that only shows up as
@@ -422,6 +423,58 @@ export async function updateCategory(userId, id, name, keywords, icon, color, mo
 export async function deleteCategory(userId, id) {
   // Only allow deleting user-owned categories; system defaults are protected
   await supabase.from("budget_categories").delete().eq("id", id).eq("user_id", userId);
+  return { ok: true };
+}
+
+// ── Per-member category limit overrides (migrations/0032) ─────────────────────
+// budget_categories.monthly_limit stays the shared/family value; a row here
+// overrides it for one specific member. No override for a (category, member)
+// pair falls back to the shared value — resolved here, not in SQL, so the
+// fallback logic lives in one place.
+
+/** Every category with its effective limit for one member: the override if
+ *  one exists, else the shared family limit, with `is_override` so the UI
+ *  can show "using shared limit" vs a value the user actually set. */
+export async function getCategoryLimits(userId, memberId) {
+  const categories = await listCategories(userId);
+  if (!memberId) {
+    return categories.map(c => ({ category_id: c.id, monthly_limit: c.monthly_limit || 0, is_override: false }));
+  }
+  const { data, error } = await supabase
+    .from("budget_category_limits")
+    .select("category_id, monthly_limit")
+    .eq("user_id", userId).eq("member_id", memberId);
+  if (error) throw new Error(error.message);
+  const overrides = new Map((data || []).map(r => [r.category_id, r.monthly_limit]));
+  return categories.map(c => overrides.has(c.id)
+    ? { category_id: c.id, monthly_limit: overrides.get(c.id), is_override: true }
+    : { category_id: c.id, monthly_limit: c.monthly_limit || 0, is_override: false });
+}
+
+/** Upsert one member's limit override for a category. */
+export async function setCategoryLimit(userId, categoryId, memberId, monthlyLimit) {
+  if (!categoryId || !memberId) throw err("category_id and member_id are required", 400);
+  const limit = Number(monthlyLimit) || 0;
+  const { data: existing } = await supabase
+    .from("budget_category_limits").select("id")
+    .eq("user_id", userId).eq("category_id", categoryId).eq("member_id", memberId).single();
+  if (existing) {
+    const { error } = await supabase.from("budget_category_limits")
+      .update({ monthly_limit: limit, updated_at: new Date().toISOString() }).eq("id", existing.id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabase.from("budget_category_limits").insert({
+      id: catLimitId(), user_id: userId, category_id: categoryId, member_id: memberId, monthly_limit: limit,
+    });
+    if (error) throw new Error(error.message);
+  }
+  return { ok: true, category_id: categoryId, member_id: memberId, monthly_limit: limit };
+}
+
+/** Remove a member's override — that category reverts to the shared family limit. */
+export async function deleteCategoryLimit(userId, categoryId, memberId) {
+  await supabase.from("budget_category_limits").delete()
+    .eq("user_id", userId).eq("category_id", categoryId).eq("member_id", memberId);
   return { ok: true };
 }
 
