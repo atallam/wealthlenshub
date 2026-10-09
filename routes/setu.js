@@ -7,7 +7,7 @@ import {
   insertBudgetTransaction, upsertConnection, listConnections, deleteConnection,
 } from "../services/setu.service.js";
 
-const SETU_ENABLED = process.env.SETU_ENABLED === "true";
+const SETU_ENABLED = String(process.env.SETU_ENABLED || "").trim().toLowerCase() === "true";
 const router = Router();
 
 if (!SETU_ENABLED) {
@@ -98,6 +98,8 @@ if (!SETU_ENABLED) {
     if (last && ["COMPLETED", "PARTIAL"].includes(String(last.status || "").toUpperCase())) return last;
     const e = new Error("Data not ready. Try again shortly."); e.status = 408; throw e;
   }
+  // Single source of truth: what we request is exactly what we store on the consent row.
+  const CONSENT_FI_TYPES = ["DEPOSIT","TERM_DEPOSIT","RECURRING_DEPOSIT","MUTUAL_FUNDS","EQUITIES","ETF"];
   const _isoRange = (cr) => ({ from: new Date(cr.data_range_from).toISOString(), to: new Date(cr.data_range_to).toISOString() });
 
   function _setuDate(d) { if (!d) return null; if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0,10); const m = d.match(/^(\d{2})-(\d{2})-(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : d; }
@@ -134,10 +136,10 @@ if (!SETU_ENABLED) {
       const token = await getSetuToken();
       const from = new Date(Date.now() - 3*365*86400000).toISOString();
       const to = new Date().toISOString();
-      const cr = await fetch(`${SETU_BASE}/v2/consents`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentDuration: { unit: "MONTH", value: "6" }, vua: toVua(mobile), dataRange: { from, to }, context: [], consentTypes: ["PROFILE","SUMMARY","TRANSACTIONS"], fiTypes: ["DEPOSIT","TERM_DEPOSIT","RECURRING_DEPOSIT","MUTUAL_FUNDS","EQUITIES","ETF"] }) });
+      const cr = await fetch(`${SETU_BASE}/v2/consents`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentDuration: { unit: "MONTH", value: "6" }, vua: toVua(mobile), dataRange: { from, to }, context: [], consentTypes: ["PROFILE","SUMMARY","TRANSACTIONS"], fiTypes: CONSENT_FI_TYPES }) });
       const cd = await readJson(cr);
       if (!cr.ok) { console.error("Setu consent error:", cr.status, JSON.stringify(cd).slice(0, 300)); return res.status(cr.status >= 500 ? 502 : cr.status).json({ error: setuMsg(cd, "Consent creation failed") }); }
-      await insertConsent({ user_id: req.user.id, consent_id: cd.id, status: cd.status || "PENDING", fi_types: ["DEPOSIT","TERM_DEPOSIT","MUTUAL_FUNDS","EQUITIES","ETF","EPF","PPF"], data_range_from: from, data_range_to: to, redirect_url: cd.url });
+      await insertConsent({ user_id: req.user.id, consent_id: cd.id, status: cd.status || "PENDING", fi_types: CONSENT_FI_TYPES, data_range_from: from, data_range_to: to, redirect_url: cd.url });
       res.json({ consent_id: cd.id, url: cd.url, status: cd.status });
     } catch (e) { if (e.code === "SETU_AUTH") return res.status(502).json({ error: e.message }); sendError(res, e); }
   });
@@ -147,7 +149,7 @@ if (!SETU_ENABLED) {
       const token = await getSetuToken();
       const r = await fetch(`${SETU_BASE}/v2/consents/${req.params.consentId}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
       const d = await readJson(r);
-      if (!r.ok) return res.status(r.status).json({ error: d.errorMsg || "Failed" });
+      if (!r.ok) return res.status(r.status >= 500 ? 502 : r.status).json({ error: setuMsg(d, "Failed") });
       await updateConsent(req.user.id, req.params.consentId, { status: d.status, updated_at: new Date().toISOString() });
       res.json({ status: d.status, accounts_linked: d.accountsLinked || [] });
     } catch (e) { sendError(res, e); }
@@ -211,17 +213,34 @@ if (!SETU_ENABLED) {
     res.json({ consents: data || [] });
   });
 
+  // Setu notification webhook. Payload shapes (docs.setu.co → AA → notifications):
+  //   { type:"CONSENT_STATUS_UPDATE", consentId, success, data:{ status:"ACTIVE|REJECTED|REVOKED|PAUSED|EXPIRED" } }
+  //   { type:"SESSION_STATUS_UPDATE", consentId, dataSessionId, success, data:{ status:"PENDING|PARTIAL|COMPLETED|EXPIRED|FAILED" } }
+  // Setu documents no signature/auth header, so the shared secret is accepted either as the
+  // `x-webhook-secret` header or as a `?secret=` query param on the URL registered in Bridge,
+  // e.g. https://wealthlens.pro/api/setu/webhook?secret=<SETU_WEBHOOK_SECRET>. Never log the URL.
+  const _safeEq = (a, b) => { const x = Buffer.from(String(a || "")), y = Buffer.from(String(b || "")); return x.length === y.length && crypto.timingSafeEqual(x, y); };
   router.post("/webhook", async (req, res) => {
-    // Require the shared secret unconditionally. Previously, if CRON_SECRET was
-    // unset the webhook accepted unauthenticated consent-status writes.
-    const expected = process.env.SETU_WEBHOOK_SECRET || process.env.CRON_SECRET;
+    // Dedicated secret only (no CRON_SECRET fallback). Always required.
+    const expected = process.env.SETU_WEBHOOK_SECRET;
     if (!expected) return res.status(503).json({ error: "Webhook secret not configured" });
-    const webhookSecret = req.headers["x-webhook-secret"] || req.headers["x-cron-secret"];
-    if (webhookSecret !== expected) return res.status(401).json({ error: "Unauthorized webhook" });
-    const { type, consentId, status } = req.body;
-    if (type === "CONSENT_STATUS_UPDATE" && consentId) await updateConsentUnscoped(consentId, { status, updated_at: new Date().toISOString() });
-    if (type === "FI_DATA_READY" && consentId) await updateConsentUnscoped(consentId, { fi_data_status: status, last_fetched_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-    res.json({ ok: true });
+    if (!_safeEq(req.headers["x-webhook-secret"] || req.query.secret, expected)) return res.status(401).json({ error: "Unauthorized webhook" });
+    try {
+      const body = req.body || {};
+      const { type, consentId, dataSessionId } = body;
+      const status = body.data?.status || body.status;   // body.status = legacy shape
+      if (!consentId || !status) return res.json({ ok: true, ignored: true }); // e.g. success:false notifications carry error, not status
+      const now = new Date().toISOString();
+      if (type === "CONSENT_STATUS_UPDATE") {
+        await updateConsentUnscoped(consentId, { status, updated_at: now });
+      } else if (type === "SESSION_STATUS_UPDATE" || type === "FI_DATA_READY") {
+        const patch = { fi_data_status: status, updated_at: now };
+        if (dataSessionId) patch.session_id = dataSessionId;
+        if (["COMPLETED", "PARTIAL"].includes(String(status).toUpperCase())) patch.last_fetched_at = now;
+        await updateConsentUnscoped(consentId, patch);
+      }
+      res.json({ ok: true });
+    } catch (e) { console.error("Setu webhook error:", e.message); res.status(500).json({ error: "Webhook processing failed" }); }
   });
 
 
