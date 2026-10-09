@@ -197,7 +197,7 @@ See `.env.example` for the full annotated template. Key variables:
 
 All endpoints require the header `x-cron-secret: $CRON_SECRET`.
 
-Scheduling is done by **GitHub Actions** (`.github/workflows/scheduled-jobs.yml`, free) — set the repo secret `CRON_SECRET`. The paid Render cron services are kept commented out in `render.yaml` and can be re-enabled later.
+Scheduling is done by **GitHub Actions** (`.github/workflows/scheduled-jobs.yml`, free) — set the repo secret `CRON_SECRET`.
 
 | Endpoint | Recommended Schedule | Purpose |
 |---|---|---|
