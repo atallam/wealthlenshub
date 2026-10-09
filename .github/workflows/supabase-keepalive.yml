@@ -22,9 +22,21 @@ jobs:
             echo "Missing SUPABASE_URL or SUPABASE_ANON_KEY repo secret"; exit 1
           fi
           # Real DB query (RLS may return [], which is fine -- a 200 is all we need)
-          status=$(curl -sS --retry 3 --retry-delay 5 -o /dev/null -w "%{http_code}" \
+          status=$(curl -sS -m 30 --retry 3 --retry-delay 5 --retry-all-errors -o /dev/null -w "%{http_code}" \
             "${SUPABASE_URL%/}/rest/v1/holdings?select=id&limit=1" \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
           echo "Supabase responded with HTTP ${status}"
+          [ "$status" -ge 200 ] && [ "$status" -lt 300 ]
+
+  app-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check app health endpoint
+        run: |
+          set -euo pipefail
+          status=$(curl -sS -m 60 --retry 3 --retry-delay 10 --retry-all-errors \
+            -o /dev/null -w "%{http_code}" https://wealthlens.pro/health)
+          echo "App /health responded with HTTP ${status}"
           [ "$status" -ge 200 ] && [ "$status" -lt 300 ]
