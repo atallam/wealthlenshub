@@ -18,6 +18,9 @@ if (!SETU_ENABLED) {
   const SETU_CLIENT  = process.env.SETU_CLIENT_ID;
   const SETU_SECRET  = process.env.SETU_CLIENT_SECRET;
   const SETU_PRODUCT = process.env.SETU_PRODUCT_INSTANCE_ID;
+  // Without fetchType/frequency Setu treats a consent as single-use: the 2nd POST /v2/sessions fails with
+  // 400 "Consent use exceeded". PERIODIC lets one consent be re-fetched (Setu max: 1 request/hour).
+  const CONSENT_FETCH = { fetchType: "PERIODIC", frequency: { unit: "DAILY", value: 10 }, dataLife: { unit: "MONTH", value: 6 } };
   const SETU_AUTH_URL = process.env.SETU_AUTH_URL || "https://orgservice-prod.setu.co/v1/users/login";
   // Sandbox uses the OneMoney AA handle; prod handle is configurable.
   const SETU_VUA_HANDLE = process.env.SETU_VUA_HANDLE || "onemoney";
@@ -136,7 +139,7 @@ if (!SETU_ENABLED) {
       const token = await getSetuToken();
       const from = new Date(Date.now() - 3*365*86400000).toISOString();
       const to = new Date().toISOString();
-      const cr = await fetch(`${SETU_BASE}/v2/consents`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentDuration: { unit: "MONTH", value: "6" }, vua: toVua(mobile), dataRange: { from, to }, context: [], consentTypes: ["PROFILE","SUMMARY","TRANSACTIONS"], fiTypes: CONSENT_FI_TYPES }) });
+      const cr = await fetch(`${SETU_BASE}/v2/consents`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentDuration: { unit: "MONTH", value: "6" }, vua: toVua(mobile), dataRange: { from, to }, context: [], consentTypes: ["PROFILE","SUMMARY","TRANSACTIONS"], fiTypes: CONSENT_FI_TYPES, ...CONSENT_FETCH }) });
       const cd = await readJson(cr);
       if (!cr.ok) { console.error("Setu consent error:", cr.status, JSON.stringify(cd).slice(0, 300)); return res.status(cr.status >= 500 ? 502 : cr.status).json({ error: setuMsg(cd, "Consent creation failed") }); }
       await insertConsent({ user_id: req.user.id, consent_id: cd.id, status: cd.status || "PENDING", fi_types: CONSENT_FI_TYPES, data_range_from: from, data_range_to: to, redirect_url: cd.url });
@@ -163,7 +166,7 @@ if (!SETU_ENABLED) {
       if (!cr) return res.status(404).json({ error: "Consent not found" });
       const sr = await fetch(`${SETU_BASE}/v2/sessions`, { method: "POST", headers: { ...setuHeaders(), Authorization: `Bearer ${token}` }, body: JSON.stringify({ consentId: cid, dataRange: _isoRange(cr), format: "json" }) });
       const sd = await readJson(sr);
-      if (!sr.ok) { console.error("Setu session error:", sr.status, JSON.stringify(sd).slice(0, 300)); return res.status(sr.status >= 500 ? 502 : sr.status).json({ error: setuMsg(sd, "Data session failed") }); }
+      if (!sr.ok) { console.error("Setu session error:", sr.status, JSON.stringify(sd).slice(0, 300)); if (/consent use exceeded/i.test(JSON.stringify(sd))) return res.status(409).json({ error: "This consent has already been used for a data fetch. Create a new consent to fetch again.", code: "CONSENT_USED" }); return res.status(sr.status >= 500 ? 502 : sr.status).json({ error: setuMsg(sd, "Data session failed") }); }
       await updateConsent(req.user.id, cid, { session_id: sd.id, fi_data_status: "PENDING", updated_at: new Date().toISOString() });
       let fiData;
       try { fiData = await pollSession(sd.id, token); }
@@ -338,6 +341,7 @@ if (!SETU_ENABLED) {
           consentTypes: ["PROFILE", "SUMMARY", "TRANSACTIONS"],
           // CREDIT_CARD is not a valid AA fiType in Setu's spec; DEPOSIT covers savings/current
           fiTypes: ["DEPOSIT"],
+          ...CONSENT_FETCH,
         }),
       });
       const cd = await readJson(cr);
@@ -370,7 +374,7 @@ if (!SETU_ENABLED) {
         body: JSON.stringify({ consentId: cid, dataRange: _isoRange(cr), format: "json" }),
       });
       const sd = await readJson(sr);
-      if (!sr.ok) { console.error("Setu session error:", sr.status, JSON.stringify(sd).slice(0, 300)); return res.status(sr.status >= 500 ? 502 : sr.status).json({ error: setuMsg(sd, "Data session failed") }); }
+      if (!sr.ok) { console.error("Setu session error:", sr.status, JSON.stringify(sd).slice(0, 300)); if (/consent use exceeded/i.test(JSON.stringify(sd))) return res.status(409).json({ error: "This consent has already been used for a data fetch. Create a new consent to fetch again.", code: "CONSENT_USED" }); return res.status(sr.status >= 500 ? 502 : sr.status).json({ error: setuMsg(sd, "Data session failed") }); }
       await updateConsent(req.user.id, cid, { session_id: sd.id, fi_data_status: "PENDING", updated_at: new Date().toISOString() });
       let fiData;
       try { fiData = await pollSession(sd.id, token); }
