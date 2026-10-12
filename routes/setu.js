@@ -20,7 +20,7 @@ if (!SETU_ENABLED) {
   const SETU_PRODUCT = process.env.SETU_PRODUCT_INSTANCE_ID;
   // Without fetchType/frequency Setu treats a consent as single-use: the 2nd POST /v2/sessions fails with
   // 400 "Consent use exceeded". PERIODIC lets one consent be re-fetched (Setu max: 1 request/hour).
-  const CONSENT_FETCH = { fetchType: "PERIODIC", frequency: { unit: "DAILY", value: 10 }, dataLife: { unit: "MONTH", value: 6 } };
+  const CONSENT_FETCH = { fetchType: "PERIODIC", frequency: { unit: "DAY", value: 10 }, dataLife: { unit: "MONTH", value: 6 } };
   const SETU_AUTH_URL = process.env.SETU_AUTH_URL || "https://orgservice-prod.setu.co/v1/users/login";
   // Sandbox uses the OneMoney AA handle; prod handle is configurable.
   const SETU_VUA_HANDLE = process.env.SETU_VUA_HANDLE || "onemoney";
