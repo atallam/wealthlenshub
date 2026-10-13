@@ -21,17 +21,19 @@ jobs:
           if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
             echo "Missing SUPABASE_URL or SUPABASE_ANON_KEY repo secret"; exit 1
           fi
-          # Legacy anon keys are JWTs (eyJ...) and need the Bearer header.
-          # New-style keys (sb_publishable_...) are NOT JWTs: sending them as
-          # a Bearer token makes the gateway return 401, so send apikey only.
+          # Calls the public.keepalive() RPC (migrations/keepalive_migration.sql).
+          # holdings is not readable by the anon role, so don't query it here.
+          # Legacy anon keys are JWTs (eyJ...); new-style keys must skip Authorization.
           auth=()
           case "$SUPABASE_ANON_KEY" in
             eyJ*) auth=(-H "Authorization: Bearer ${SUPABASE_ANON_KEY}") ;;
           esac
-          # Real DB query (RLS may return [], which is fine -- a 200 is all we need)
-          status=$(curl -sS -m 30 --retry 3 --retry-delay 5 --retry-all-errors -o /dev/null -w "%{http_code}" \
-            "${SUPABASE_URL%/}/rest/v1/holdings?select=id&limit=1" \
-            -H "apikey: ${SUPABASE_ANON_KEY}" "${auth[@]}")
+          status=$(curl -sS -m 30 --retry 3 --retry-delay 5 --retry-all-errors \
+            -X POST -o /tmp/body.txt -w "%{http_code}" \
+            "${SUPABASE_URL%/}/rest/v1/rpc/keepalive" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" -H "Content-Type: application/json" \
+            -d '{}' "${auth[@]}")
+          if [ "$status" -ge 300 ]; then echo "Response body: $(head -c 300 /tmp/body.txt)"; fi
           echo "Supabase responded with HTTP ${status}"
           [ "$status" -ge 200 ] && [ "$status" -lt 300 ]
 
