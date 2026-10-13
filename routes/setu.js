@@ -94,7 +94,14 @@ if (!SETU_ENABLED) {
       if (!fr.ok) { const e = new Error(setuMsg(fd, `Session fetch failed (${fr.status})`)); e.status = fr.status >= 500 ? 502 : fr.status; throw e; }
       last = fd;
       const st = String(fd.status || "").toUpperCase();
-      if (st === "FAILED" || st === "EXPIRED") { const e = new Error(`Data session ${st}`); e.status = 502; throw e; }
+      if (st === "FAILED" || st === "EXPIRED") {
+        // Setu marks the WHOLE session FAILED when any linked account fails (e.g. sandbox "FAILURE" test
+        // accounts come back DENIED/TIMEOUT) even though the other accounts are READY with data.
+        // Keep the usable accounts instead of throwing them away; report the session as PARTIAL.
+        if (_hasAnyData(fd)) return { ...fd, status: "PARTIAL", setuStatus: st };
+        const counts = sessionSummary(fd).reduce((m, a) => (m[a.status] = (m[a.status] || 0) + 1, m), {});
+        const e = new Error(`Data session ${st} — no account returned data (${JSON.stringify(counts)})`); e.status = 502; throw e;
+      }
       if ((st === "COMPLETED" || st === "PARTIAL") && _hasAnyData(fd)) return fd;
       if (st === "COMPLETED" && i >= 2) return fd; // completed but empty — give up polling, let caller report
     }
@@ -118,8 +125,9 @@ if (!SETU_ENABLED) {
         try {
           if (fiType === "deposit") { holdings.push({ name: `Bank Account ${masked}`, type: "CASH", purchase_value: +summary.currentBalance || 0, current_value: +summary.currentBalance || 0, fip_name: fipName, source_account: masked }); }
           else if (fiType === "term_deposit" || fiType === "recurring_deposit") { holdings.push({ name: `${fiType==="term_deposit"?"FD":"RD"} ${masked}`, type: "FD", principal: +summary.principalAmount || 0, purchase_value: +summary.principalAmount || 0, current_value: +summary.currentValue || 0, interest_rate: +summary.interestRate || 0, start_date: _setuDate(summary.openingDate), maturity_date: _setuDate(summary.maturityDate), fip_name: fipName, source_account: masked }); }
-          else if (fiType === "mutual_funds") { for (const mf of [].concat(summary.investment?.holdings?.holding || [])) { const u = +mf.closingUnits || +mf.units || 0, r = +mf.rate || 0, n = +mf.nav || 0; holdings.push({ name: `${mf.amc||"MF"} · ${mf.schemeCode||""}`, type: "MF", scheme_code: mf.amfiCode||mf.schemeCode||"", units: u, purchase_nav: r, current_nav: n, purchase_value: r*u, current_value: n*u, fip_name: fipName, source_account: masked }); } }
+          else if (fiType === "mutual_funds") { for (const mf of [].concat(summary.investment?.holdings?.holding || [])) { const u = +mf.closingUnits || +mf.units || 0, n = +mf.nav || 0, r = +mf.rate || n; /* AA gives no cost basis for MFs — fall back to NAV so returns aren't -100%/inf */ holdings.push({ name: mf.isinDescription || `${mf.amc||"MF"} · ${mf.schemeCode||""}`, type: "MF", scheme_code: mf.amfiCode||mf.schemeCode||"", units: u, purchase_nav: r, current_nav: n, purchase_value: r*u, current_value: n*u, fip_name: fipName, source_account: masked }); } }
           else if (fiType === "equities") { for (const eq of [].concat(summary.investment?.holdings?.holding || [])) { const u = +eq.units || 0, r = +eq.rate || 0, p = +eq.lastTradedPrice || r; holdings.push({ name: eq.issuerName||`Stock ${eq.isin||""}`, type: "IN_STOCK", ticker: eq.symbol||"", units: u, purchase_price: r, current_price: p, purchase_value: r*u, current_value: p*u, fip_name: fipName, source_account: masked }); } }
+          else if (fiType === "etf") { for (const e of [].concat(summary.investment?.holdings?.holding || [])) { const u = +e.units || 0, p = +e.nav || +e.lastTradedPrice || +e.rate || 0, r = +e.rate || p; holdings.push({ name: e.isinDescription || e.issuerName || `ETF ${e.isin||""}`, type: "IN_ETF", ticker: e.symbol||"", units: u, purchase_price: r, current_price: p, purchase_value: r*u, current_value: p*u, fip_name: fipName, source_account: masked }); } }
           else if (fiType === "epf") { holdings.push({ name: `EPF · ${summary.establishmentName||""}`, type: "EPF", principal: +summary.employeeBalance || 0, purchase_value: +summary.totalBalance || 0, current_value: +summary.totalBalance || 0, start_date: _setuDate(summary.openingDate), fip_name: fipName, source_account: summary.establishmentId||masked }); }
           else if (fiType === "ppf") { holdings.push({ name: `PPF Account ${masked}`, type: "PPF", principal: +summary.currentBalance || 0, purchase_value: +summary.currentBalance || 0, current_value: +summary.currentBalance || 0, start_date: _setuDate(summary.openingDate), maturity_date: _setuDate(summary.maturityDate), fip_name: fipName, source_account: masked }); }
           else { holdings.push({ name: `${fiType} · ${masked}`, type: "OTHER", purchase_value: +summary.currentBalance || +summary.currentValue || 0, current_value: +summary.currentValue || +summary.currentBalance || 0, fip_name: fipName, source_account: masked }); }
