@@ -2,7 +2,7 @@
  * services/casImport.service.js — CAS (NSDL / CDSL / CAMS / KFintech) reconcile.
  *
  * Replaces the old flush-and-fill in holdings.service.js and routes/gmail.js.
- * Both the manual upload route and the Gmail auto-import cron call the same
+ * Both the manual upload route and the Gmail auto-import call the same
  * two functions:
  *
  *   previewCasImport(userId, body) → diff only, nothing written
@@ -21,7 +21,21 @@ import { supabase } from "../lib/db.js";
 import { groupByMember, diffCas, buildApplyGroups } from "../lib/casDiff.js";
 import { inferLedgerGaps } from "./ledgerInfer.service.js";
 import { backfillIsinTickers } from "../lib/isinBackfill.js";
-import { listIsinTickerHoldingsForUser, updateHoldingTicker } from "./cron.service.js";
+
+/** IN_STOCK/IN_ETF holdings for one user — candidates for the ISIN-as-ticker backfill that runs after each CAS import. */
+async function listIsinTickerHoldingsForUser(userId) {
+  const { data } = await supabase
+    .from("holdings")
+    .select("id, name, ticker, type")
+    .eq("user_id", userId)
+    .in("type", ["IN_STOCK", "IN_ETF"]);
+  return data || [];
+}
+
+/** Persist a resolved trading symbol onto holdings.ticker (leaves holdings.isin, the CAS natural key, untouched). Returns the raw { error }. */
+function updateHoldingTicker(id, ticker) {
+  return supabase.from("holdings").update({ ticker }).eq("id", id);
+}
 
 const VALID_DEPOSITORIES = new Set(["NSDL", "CDSL", "CAMS", "KFINTECH"]);
 
@@ -131,9 +145,8 @@ export async function applyCasImport(userId, body) {
   // ISIN-as-ticker bug that used to silently break pricing and concall for
   // every CAS-imported stock (see lib/isinBackfill.js and project memory
   // "wealthlenshub-cron-and-pricing"). Best-effort — a lookup failure just
-  // leaves that one holding for the next manual
-  // /api/cron/backfill-isin-tickers run or the concall/pricing live-resolve
-  // fallback, never blocks the import itself.
+  // leaves that one holding to the concall/pricing live-resolve
+  // fallback (or the next CAS import), never blocks the import itself.
   let isinBackfill = { checked: 0, candidates: 0, resolved: 0, unresolved: 0 };
   if ((r.inserted || 0) + (r.updated || 0) > 0) {
     try {

@@ -179,7 +179,6 @@ See `.env.example` for the full annotated template. Key variables:
 | `RESEND_API_KEY` | Email delivery for alerts and reminders |
 | `RESEND_FROM` | Verified sender address |
 | `APP_URL` | Base URL for email CTAs |
-| `CRON_SECRET` | Secures all `/api/cron/*` endpoints |
 | `SNAPTRADE_CLIENT_ID / CONSUMER_KEY` | US brokerage sync |
 | `PLAID_CLIENT_ID / PLAID_SECRET / PLAID_ENV` | US bank import |
 | `GMAIL_CLIENT_ID / SECRET / REDIRECT_URI / STATE_SECRET` | Gmail CAS auto-import |
@@ -190,22 +189,6 @@ See `.env.example` for the full annotated template. Key variables:
 |---|---|
 | `VITE_SUPABASE_URL` | Supabase URL (public) |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon key (public) |
-
----
-
-## ⏰ Cron Schedule
-
-All endpoints require the header `x-cron-secret: $CRON_SECRET`.
-
-Scheduling is done by **GitHub Actions** (`.github/workflows/scheduled-jobs.yml`, free) — set the repo secret `CRON_SECRET`.
-
-| Endpoint | Recommended Schedule | Purpose |
-|---|---|---|
-| `POST /api/cron/refresh-all-prices` | Daily 08:00 IST | Refresh stock / MF / FX prices (shared engine `lib/refresh.js`; resolves ISIN tickers) |
-| `POST /api/cron/alert-check` | Daily 08:00 | Evaluate alert rules → email digest |
-| `POST /api/cron/fd-alerts` | Daily 08:00 | FD maturity reminders (7 / 30 / 60 days) |
-| `POST /api/cron/nudge-stale` | Daily 08:00 IST (emails only on threshold crossing) | Stale holdings digest email |
-| `POST /api/cron/check-cas-email` | Weekly, Sunday 08:00 IST | Auto-import CAS from Gmail |
 
 ---
 

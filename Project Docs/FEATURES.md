@@ -58,9 +58,11 @@ Returns cascade through three methods until one succeeds:
 ### 2f. Holding-Level Alerts
 - Set price-threshold or return-threshold alerts on any holding.
 - Bell icon in the desktop row opens an inline `HoldingAlertPanel`.
-- Evaluated daily by the `/api/cron/alert-check` job; email digest sent via Resend.
+- Scheduled evaluation and email digests were removed along with the cron jobs (Oct 2026); alerts are not evaluated automatically.
 
 ### 2g. Stale Holdings Nudge
+> Scheduled email nudges were removed with the cron jobs (Oct 2026).
+
 Detects manual holdings that haven't been updated past per-type thresholds:
 
 | Type | Threshold |

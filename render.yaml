@@ -30,9 +30,6 @@ services:
         sync: false
       - key: ENCRYPT_KEY
         sync: false
-      # Cron
-      - key: CRON_SECRET
-        sync: false
       # SnapTrade
       - key: SNAPTRADE_CLIENT_ID
         sync: false
