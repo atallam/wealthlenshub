@@ -17,6 +17,10 @@ import SourceStatus from '../shared/SourceStatus.jsx';
  *                    sources (CAS, FD, CSV, manual) have no persistent
  *                    connection, so they never get a banner.
  */
+// Account Aggregator (Setu) is hidden: only Setu's sandbox (mock data) is reachable without RBI FIU
+// status. Set VITE_SETU_AA_ENABLED=true at build time to bring the option back.
+export const AA_ENABLED = import.meta.env.VITE_SETU_AA_ENABLED === 'true';
+
 const SECTIONS = [
   {
     label: '🇮🇳 India',
@@ -88,7 +92,7 @@ export default function ImportHub({ onClose, onSelect, api }) {
     if (!api) return;
     let cancelled = false;
     (async () => {
-      const [snaptrade, setu] = await Promise.all([fetchSnapTradeStatus(api), fetchSetuStatus(api)]);
+      const [snaptrade, setu] = await Promise.all([fetchSnapTradeStatus(api), AA_ENABLED ? fetchSetuStatus(api) : null]);
       if (!cancelled) setStatusMap({ snaptrade, setu });
     })();
     return () => { cancelled = true; };
@@ -108,7 +112,7 @@ export default function ImportHub({ onClose, onSelect, api }) {
             {section.label}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '.45rem', marginBottom: '1.1rem' }}>
-            {section.items.map((it) => (
+            {section.items.filter((it) => AA_ENABLED || it.key !== 'setu').map((it) => (
               <div key={it.key}>
                 <button
                   className="btn-o import-hub-row"

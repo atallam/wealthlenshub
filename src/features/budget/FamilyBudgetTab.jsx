@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFamilyBudget } from '../../hooks/useFamilyBudget.js';
 import SetuAAImport from '../../SetuAAImport.jsx';
+import { AA_ENABLED } from '../../components/modals/ImportHub.jsx';
 import { useToast } from '../../components/shared/Toast.jsx';
 
 // ── Tiny format helpers ───────────────────────────────────────────
@@ -433,6 +434,7 @@ function ImportWizard({ fb, members }) {
             Next →
           </button>
 
+          {AA_ENABLED && (<>
           {/* ── Account Aggregator shortcut ── */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', marginTop: '1rem' }}>
             <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
@@ -449,6 +451,7 @@ function ImportWizard({ fb, members }) {
             </div>
             <span style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>→</span>
           </button>
+          </>)}
         </div>
       )}
 
