@@ -34,7 +34,6 @@ import { useCASImport } from './hooks/useCASImport.js';
 import { useAI } from './hooks/useAI.js';
 import { useBrokerSearch } from './hooks/useBrokerSearch.js';
 import { useUiState } from './hooks/useUiState.js';
-import { useGmailStatus } from './hooks/useGmailStatus.js';
 import { useHoldingsView } from './hooks/useHoldingsView.js';
 import { useAuth } from './hooks/useAuth.js';
 
@@ -216,27 +215,6 @@ export default function App() {
   }, [tab]);
 
   const { supported: pushSupported, subscribed: pushSubscribed, loading: pushLoading, toggle: togglePush } = usePushNotifications();
-
-  // Gmail status now lives in useGmailStatus() (P3-5) — auto-refetches
-  // whenever the Settings panel (showSettings) opens.
-  const {
-    gmailStatus, setGmailStatus, gmailLoading, setGmailLoading,
-    gmailChecking, setGmailChecking, fetchGmailStatus,
-  } = useGmailStatus(showSettings);
-
-  // Handle OAuth callback params (?gmail_connected=1 or ?gmail_error=...)
-  useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    if (p.has('gmail_connected')) {
-      window.history.replaceState({}, '', window.location.pathname);
-      setShowSettings(true);
-      fetchGmailStatus();
-    }
-    if (p.has('gmail_error')) {
-      window.history.replaceState({}, '', window.location.pathname);
-      toast.error(`Gmail connection failed: ${p.get('gmail_error')}`);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Destructure hook state ────────────────────────────────────
   const {
@@ -932,10 +910,6 @@ ${alertsText}`;
         setShowImportHub={setShowImportHub} setShowAuditLog={setShowAuditLog}
         theme={theme} setTheme={setTheme}
         portfolio={portfolio} api={api} setPpfRate={setPpfRate} setEpfRate={setEpfRate}
-        gmailStatus={gmailStatus} setGmailStatus={setGmailStatus}
-        gmailLoading={gmailLoading} setGmailLoading={setGmailLoading}
-        gmailChecking={gmailChecking} setGmailChecking={setGmailChecking}
-        fetchGmailStatus={fetchGmailStatus}
         pushSupported={pushSupported} pushSubscribed={pushSubscribed} pushLoading={pushLoading} togglePush={togglePush}
         confirmSignOut={confirmSignOut} setConfirmSignOut={setConfirmSignOut}
         toast={toast}

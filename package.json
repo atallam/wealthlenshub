@@ -27,7 +27,6 @@
     "exceljs": "^4.4.0",
     "express": "^4.22.2",
     "express-rate-limit": "^8.5.2",
-    "googleapis": "^173.0.0",
     "helmet": "^8.1.0",
     "lucide-react": "^1.21.0",
     "multer": "^2.2.0",

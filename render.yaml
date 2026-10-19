@@ -42,13 +42,6 @@ services:
         sync: false
       - key: PLAID_ENV
         value: sandbox
-      # Gmail / Google OAuth
-      - key: GMAIL_CLIENT_ID
-        sync: false
-      - key: GMAIL_CLIENT_SECRET
-        sync: false
-      - key: GMAIL_REDIRECT_URI
-        sync: false
       # Setu (optional — set SETU_ENABLED=true to activate)
       - key: SETU_ENABLED
         value: "false"

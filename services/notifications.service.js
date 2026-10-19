@@ -59,7 +59,7 @@ export async function clearRead(userId) {
   return { ok: true };
 }
 
-/** Insert a notification (called from cron routes via routes/notifications.js). */
+/** Insert a notification (called from routes/notifications.js). */
 export async function insert(userId, kind, title, body = null, url = null) {
   try {
     await supabase.from("notifications").insert({ user_id: userId, kind, title, body, url });

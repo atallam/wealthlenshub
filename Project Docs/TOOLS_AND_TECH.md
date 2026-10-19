@@ -99,7 +99,6 @@ Claude is used in **agentic tool-use mode** in the Advisor tab — it can call p
 | **Zerodha Kite** | API / CSV | Import Indian equity holdings directly |
 | **Breeze Connect (ICICI)** | API | Import ICICI Demat holdings |
 | **Setu Account Aggregator** | AA consent flow + webhook | RBI-compliant aggregation of Indian bank/investment accounts |
-| **Gmail API** (`googleapis`) | OAuth | Scan inbox for CAS statement emails and auto-import every 6 hours |
 
 ---
 

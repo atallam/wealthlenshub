@@ -44,7 +44,6 @@ Return calculation cascades: **XIRR** → **CAGR** → **Simple return**
 | Breeze Connect (ICICI) | Direct broker import |
 | Setu Account Aggregator | RBI AA-compliant Indian accounts |
 | ImportHub | 14+ bank CSV / Excel / PDF parsers |
-| Gmail Auto-Import | Scans inbox for CAS emails every 6 h |
 
 ### 💰 Budget Tracker
 - Import statements from 14+ Indian and US banks
@@ -181,7 +180,6 @@ See `.env.example` for the full annotated template. Key variables:
 | `APP_URL` | Base URL for email CTAs |
 | `SNAPTRADE_CLIENT_ID / CONSUMER_KEY` | US brokerage sync |
 | `PLAID_CLIENT_ID / PLAID_SECRET / PLAID_ENV` | US bank import |
-| `GMAIL_CLIENT_ID / SECRET / REDIRECT_URI / STATE_SECRET` | Gmail CAS auto-import |
 | `SETU_CLIENT_ID / SECRET / PRODUCT_INSTANCE_ID / WEBHOOK_SECRET` | Setu AA integration |
 
 ### Client-side (Vite)

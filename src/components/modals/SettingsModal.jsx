@@ -1,7 +1,7 @@
 // SettingsModal.jsx — the Settings panel, extracted out of App.jsx (P3-5, step 3).
 //
 // Pure lift-and-shift, same convention as the other extracted modals: state
-// ownership (theme, showSettings, gmailStatus/etc, confirmSignOut, ...) all stays
+// ownership (theme, showSettings, confirmSignOut, ...) all stays
 // in App.jsx and is passed in as props.
 
 import { Download, Activity, Sun, Moon, LogOut } from 'lucide-react';
@@ -12,7 +12,6 @@ export default function SettingsModal({
   setShowImportHub, setShowAuditLog,
   theme, setTheme,
   portfolio, api, setPpfRate, setEpfRate,
-  gmailStatus, setGmailStatus, gmailLoading, setGmailLoading, gmailChecking, setGmailChecking, fetchGmailStatus,
   pushSupported, pushSubscribed, pushLoading, togglePush,
   confirmSignOut, setConfirmSignOut,
   toast,
@@ -120,96 +119,6 @@ export default function SettingsModal({
           ))}
         </div>
         <div style={{fontSize:'.65rem',color:'var(--text-muted)'}}>Number of days before a manually-tracked holding is flagged as stale. "Show badge after" controls how early the reminder starts appearing.</div>
-      </div>
-
-      {/* ── Gmail / CAS auto-import ── */}
-      <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',marginBottom:'1rem'}}>
-        <div style={{fontSize:'.72rem',color:'var(--text-muted)',marginBottom:'.65rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.07em'}}>
-          Gmail — CAS Auto-Import
-        </div>
-        {gmailStatus === null ? (
-          <div style={{fontSize:'.78rem',color:'var(--text-muted)'}}>Loading…</div>
-        ) : !gmailStatus.enabled ? (
-          <div style={{fontSize:'.78rem',color:'var(--text-muted)'}}>Gmail integration not configured on the server (GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET missing).</div>
-        ) : gmailStatus.connected ? (
-          <>
-            <div style={{display:'flex',alignItems:'center',gap:'.5rem',marginBottom:'.6rem'}}>
-              <span style={{width:7,height:7,borderRadius:'50%',background:'#4caf9a',flexShrink:0,display:'inline-block'}}/>
-              <span style={{fontSize:'.8rem',color:'var(--text)',fontWeight:500}}>{gmailStatus.gmail_email}</span>
-            </div>
-            {gmailStatus.last_check && (
-              <div style={{fontSize:'.7rem',color:'var(--text-muted)',marginBottom:'.6rem'}}>
-                Last checked: {new Date(gmailStatus.last_check).toLocaleString()}
-              </div>
-            )}
-            <div style={{display:'flex',alignItems:'center',gap:'.5rem',marginBottom:'.75rem'}}>
-              <label style={{fontSize:'.78rem',color:'var(--text)',display:'flex',alignItems:'center',gap:'.4rem',cursor:'pointer',userSelect:'none'}}>
-                <input type="checkbox" checked={gmailStatus.auto_import ?? true}
-                  onChange={async e => {
-                    const enabled = e.target.checked;
-                    setGmailStatus(p => ({ ...p, auto_import: enabled }));
-                    try { await api('/api/gmail/toggle-auto', { method: 'POST', body: JSON.stringify({ enabled }) }); } catch {}
-                  }}
-                />
-                Auto-import weekly (every Monday)
-              </label>
-            </div>
-            <div style={{display:'flex',gap:'.5rem',flexWrap:'wrap'}}>
-              <button className="btn-o" style={{fontSize:'.78rem'}} disabled={gmailChecking}
-                onClick={async () => {
-                  setGmailChecking(true);
-                  try {
-                    const r = await api('/api/gmail/check-now', { method: 'POST' });
-                    await fetchGmailStatus();
-                    toast.success(`Done — ${r.imported ?? 0} added, ${r.updated ?? 0} updated, ${r.skipped ?? 0} skipped.`);
-                  } catch (e) { toast.error('Check failed: ' + e.message); }
-                  finally { setGmailChecking(false); }
-                }}>
-                {gmailChecking ? 'Checking…' : '↻ Check Now'}
-              </button>
-              <button className="btn-o" style={{fontSize:'.78rem',color:'var(--loss)',borderColor:'rgba(220,38,38,.25)'}}
-                onClick={async () => {
-                  const ok = await toast.confirm('Disconnect Gmail?', { confirmLabel: 'Disconnect', danger: true });
-                  if (!ok) return;
-                  try {
-                    await api('/api/gmail/disconnect', { method: 'DELETE' });
-                    setGmailStatus(p => ({ ...p, connected: false, gmail_email: null }));
-                  } catch (e) { toast.error('Failed: ' + e.message); }
-                }}>
-                Disconnect
-              </button>
-            </div>
-            {gmailStatus.recent_imports?.length > 0 && (
-              <div style={{marginTop:'.75rem'}}>
-                <div style={{fontSize:'.68rem',color:'var(--text-muted)',marginBottom:'.3rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'.06em'}}>Recent imports</div>
-                {gmailStatus.recent_imports.slice(0,5).map((imp, i) => (
-                  <div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:'.7rem',color:'var(--text-muted)',padding:'.2rem 0',borderBottom:'1px solid var(--border)'}}>
-                    <span style={{color: imp.status === 'success' ? '#4caf9a' : imp.status === 'error' ? 'var(--loss)' : 'var(--text-muted)'}}>
-                      {imp.status}
-                    </span>
-                    <span>{imp.status === 'success' ? `+${imp.holdings_added ?? 0} / ~${imp.holdings_updated ?? 0}` : ''}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <div style={{fontSize:'.78rem',color:'var(--text-muted)',marginBottom:'.6rem'}}>
-              Connect your Gmail so CAS statements from NSDL, CAMS and KFintech are imported automatically.
-            </div>
-            <button className="btn-o" style={{fontSize:'.78rem'}} disabled={gmailLoading}
-              onClick={async () => {
-                setGmailLoading(true);
-                try {
-                  const { url } = await api('/api/gmail/auth');
-                  window.location.href = url;
-                } catch (e) { toast.error('Failed to start Gmail auth: ' + e.message); setGmailLoading(false); }
-              }}>
-              {gmailLoading ? 'Redirecting…' : '🔗 Connect Gmail'}
-            </button>
-          </>
-        )}
       </div>
 
       <div style={{borderTop:'1px solid var(--border)',paddingTop:'1rem',marginTop:'.5rem',display:'flex',alignItems:'center',gap:'.6rem',flexWrap:'wrap'}}>

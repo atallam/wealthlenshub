@@ -26,7 +26,6 @@ import importRouter       from "./routes/import.js";
 import importV2Router     from "./routes/import_v2.js";    // casparser parallel path
 import budgetRouter       from "./routes/budget.js";
 import snapshotsRouter    from "./routes/snapshots.js";
-import gmailRouter        from "./routes/gmail.js";
 import fdRouter           from "./routes/fd.js";
 import taxRouter          from "./routes/tax.js";
 import analyticsRouter    from "./routes/analytics.js";   // XIRR + FIFO lots from the transaction ledger
@@ -92,7 +91,6 @@ app.use("/api/import",        importRouter);
 app.use("/api/import",        importV2Router);   // casparser route: POST /detect-casparser
 app.use("/api/budget",        budgetRouter);
 app.use("/api/snapshots",     snapshotsRouter);
-app.use("/api/gmail",         gmailRouter);
 app.use("/api/fd",            fdRouter);
 app.use("/api/tax",           taxRouter);
 app.use("/api/analytics",     analyticsRouter);

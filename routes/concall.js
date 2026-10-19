@@ -49,8 +49,8 @@ const upload = multer({
 // quarter seen in that holding's history. Once a new quarter's analysis is
 // saved the key changes and the old entry is simply never hit again — no
 // explicit invalidation needed. Lost on server restart, which is fine: the
-// next request just recomputes it once (same trade-off as the Gmail
-// pendingJobs Map in routes/gmail.js).
+// next request just recomputes it once (same in-process trade-off as other
+// per-instance caches).
 const trendCache = new Map(); // `${holdingId}:${latestQuarter}` -> { trend, cachedAt }
 const TREND_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 

@@ -2,7 +2,7 @@
  * services/casImport.service.js — CAS (NSDL / CDSL / CAMS / KFintech) reconcile.
  *
  * Replaces the old flush-and-fill in holdings.service.js and routes/gmail.js.
- * Both the manual upload route and the Gmail auto-import call the same
+ * The manual upload route calls the same
  * two functions:
  *
  *   previewCasImport(userId, body) → diff only, nothing written
