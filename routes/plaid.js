@@ -87,8 +87,8 @@ router.post("/sync/:connectionId", auth, async (req, res) => {
       const txns = added.map(t => ({ id: "ptxn_" + t.transaction_id, statement_id: stmtId, user_id: req.user.id, txn_date: t.date, description: encrypt(t.name || t.merchant_name || "Transaction"), amount: Math.abs(t.amount), txn_type: t.amount > 0 ? "DEBIT" : "CREDIT", category: mapPlaidCategory(t.personal_finance_category), raw_desc: encrypt(JSON.stringify({ merchant: t.merchant_name, plaid_category: t.personal_finance_category, payment_channel: t.payment_channel, account_id: t.account_id })), ref_number: t.transaction_id, currency: "USD" }));
       await insertTransactionsBatched(txns);
     }
-    if (removed.length > 0) await deleteTransactionsByIds(removed.map(r => "ptxn_" + r.transaction_id));
-    await updateConnectionById(conn.id, { cursor, last_synced: now, status: "active", error_code: null, updated_at: now });
+    if (removed.length > 0) await deleteTransactionsByIds(req.user.id, removed.map(r => "ptxn_" + r.transaction_id));
+    await updateConnectionById(req.user.id, conn.id, { cursor, last_synced: now, status: "active", error_code: null, updated_at: now });
     res.json({ ok: true, added: added.length, modified: modified.length, removed: removed.length });
   } catch (e) {
     await updateConnectionError(req.user.id, req.params.connectionId, { status: "error", error_code: e?.response?.data?.error_code || e.message, updated_at: new Date().toISOString() });
@@ -101,7 +101,7 @@ router.delete("/connections/:connectionId", auth, async (req, res) => {
     const conn = await getConnection(req.user.id, req.params.connectionId);
     if (!conn) return res.status(404).json({ error: "Connection not found" });
     try { const plaid = await getPlaidClient(); await plaid.itemRemove({ access_token: decrypt(conn.access_token) }); } catch { /* best effort */ }
-    await deleteConnection(conn.id);
+    await deleteConnection(req.user.id, conn.id);
     res.json({ ok: true });
   } catch (e) { sendError(res, e); }
 });

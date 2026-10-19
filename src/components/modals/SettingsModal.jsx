@@ -75,7 +75,7 @@ export default function SettingsModal({
                     await api('/api/profile', { method: 'PUT', body: JSON.stringify({ settings: newSettings }) });
                     if (key === 'ppf_rate') setPpfRate(val);
                     if (key === 'epf_rate') setEpfRate(val);
-                  } catch {}
+                  } catch { /* settings save is best-effort; UI already updated */ }
                 }}
               />
             </div>
@@ -112,7 +112,7 @@ export default function SettingsModal({
                   try {
                     await api('/api/profile', { method: 'PUT', body: JSON.stringify({ settings: newSettings }) });
                     portfolio.setProfile?.(p => ({ ...p, settings: newSettings }));
-                  } catch {}
+                  } catch { /* settings save is best-effort; UI already updated */ }
                 }}
               />
             </div>

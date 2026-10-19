@@ -11,24 +11,12 @@ import {
   extractPDFText, parseUSPDF, parseIndianPDF, parseDateForRegion, parseAmtBudget,
 } from "../lib/parsers.js";
 import { yahooFetch } from "../lib/prices.js";
+import { fetchAll } from "../lib/utils.js";
 
 const err = (msg, status, extra = {}) => Object.assign(new Error(msg), { status, extra });
 const stId = () => "bst_" + randomUUID().replace(/-/g, "").slice(0, 16);
 const txId = () => "btx_" + randomUUID().replace(/-/g, "").slice(0, 16);
 const aliasId = () => "baa_" + randomUUID().replace(/-/g, "").slice(0, 16);
-/** PostgREST caps every response at 1000 rows no matter what .limit() asks for,
- *  so any aggregate over transactions must page. `makeQ` must return a FRESH
- *  query builder each call; rows are ordered by id for stable paging. */
-async function fetchAll(makeQ, pageSize = 1000, maxRows = 100000) {
-  const out = [];
-  for (let from = 0; out.length < maxRows; from += pageSize) {
-    const { data, error } = await makeQ().order("id").range(from, from + pageSize - 1);
-    if (error) throw new Error(error.message);
-    out.push(...(data || []));
-    if (!data || data.length < pageSize) break;
-  }
-  return out;
-}
 const catLimitId = () => "bcl_" + randomUUID().replace(/-/g, "").slice(0, 16);
 
 /** True if `name` appears in `lower` at least once WITHOUT being immediately
@@ -70,7 +58,7 @@ export function extractLast4(text) {
   if (!text) return null;
   const masked = text.match(/[Xx*]{4,}\s*(\d{4})\b/);
   if (masked) return masked[1];
-  const ending = text.match(/ending\s*(?:in|with)?\s*[:\-]?\s*(\d{4})\b/i);
+  const ending = text.match(/ending\s*(?:in|with)?\s*[:-]?\s*(\d{4})\b/i);
   if (ending) return ending[1];
   return null;
 }
@@ -947,7 +935,7 @@ export function normalizeMerchant(desc) {
        .replace(/\b\d{4}X{2,}\d{2,4}\b|\b\d*X{3,}\d*\b/g, "")  // masked card numbers
        .replace(/\s*\d{2}[-/]\d{2}(?:[-/]\d{2,4})?\s*$/, "")   // trailing dd-mm / dd-mm-yy
        .replace(/\s+\d{6,}\s*$/, "")                           // trailing long ref numbers
-       .replace(/^[\s\/\-:]+|[\s\/\-:]+$/g, "")
+       .replace(/^[\s/\-:]+|[\s/\-:]+$/g, "")
        .replace(/\s{2,}/g, " ")
        .trim();
   if (!m) return "Unknown";

@@ -5,25 +5,45 @@
  * this module only owns the raw Supabase reads, one function per tool.
  */
 import { supabase } from "../lib/db.js";
+import { fetchAll } from "../lib/utils.js";
+
+/**
+ * The user's live holdings, shaped for the advisor tools.
+ * Reads `*` on purpose: this used to select invested_value / member_name / symbol,
+ * none of which are holdings columns, so PostgREST rejected the query and the old
+ * `const { data }` destructure swallowed it — the advisor was told "No holdings found".
+ * Cost basis is purchase_value; the member's name comes from portfolio.members.
+ * Exited (dropped off the latest CAS) and closed (matured, resolved) rows are excluded,
+ * matching every other portfolio view.
+ */
+async function loadLiveHoldings(userId) {
+  const { data, error } = await supabase.from("holdings").select("*").eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  const { data: pf } = await supabase.from("portfolio").select("members").eq("user_id", userId).maybeSingle();
+  const memberName = new Map((pf?.members || []).map((m) => [m.id, m.name]));
+  return (data || [])
+    .filter((h) => h.holding_status !== "exited" && h.maturity_status !== "closed")
+    .map((h) => ({
+      ...h,
+      invested_value: Number(h.invested_value) || Number(h.purchase_value) || 0,
+      member_name: h.member_name || memberName.get(h.member_id) || "Unknown",
+    }));
+}
 
 export async function getPortfolioSummaryData(userId) {
-  const { data } = await supabase
-    .from("holdings")
-    .select("type, current_value, invested_value, member_name")
-    .eq("user_id", userId);
-  return data || [];
+  const rows = await loadLiveHoldings(userId);
+  return rows.map(({ type, current_value, invested_value, member_name }) => ({ type, current_value, invested_value, member_name }));
 }
 
 export async function getHoldingsData(userId, { asset_type, member_id } = {}) {
-  let q = supabase.from("holdings")
-    .select("id, name, ticker, symbol, type, units, current_price, current_nav, current_value, invested_value, member_name")
-    .eq("user_id", userId)
-    .order("current_value", { ascending: false })
-    .limit(500);   // no practical limit — surface all holdings to the AI
-  if (asset_type) q = q.eq("type", asset_type);
-  if (member_id)  q = q.eq("member_id", member_id);
-  const { data } = await q;
-  return data || [];
+  let rows = await loadLiveHoldings(userId);
+  if (asset_type) rows = rows.filter((h) => h.type === asset_type);
+  if (member_id)  rows = rows.filter((h) => h.member_id === member_id);
+  return rows
+    .sort((a, b) => (Number(b.current_value) || 0) - (Number(a.current_value) || 0))
+    .slice(0, 500)   // surface (practically) all holdings to the AI
+    .map(({ id, name, ticker, symbol, type, units, current_price, current_nav, current_value, invested_value, member_name }) =>
+      ({ id, name, ticker, symbol, type, units, current_price, current_nav, current_value, invested_value, member_name }));
 }
 
 /** IDOR guard: scope to the caller's own transactions (see routes/ai.js comment). */
@@ -50,23 +70,22 @@ export async function getTaxSummaryData(userId) {
     .from("holdings").select("id, name, type").eq("user_id", userId)
     .in("type", ["IN_STOCK", "IN_ETF", "MF"]);
   if (!holdings?.length) return { holdings: [], txnMap: {} };
-  const { data: txns } = await supabase
-    .from("transactions").select("holding_id, txn_type, units, price, txn_date")
-    .in("holding_id", holdings.map(h => h.id));
+  const txns = await fetchAll(() => supabase
+    .from("transactions").select("id, holding_id, txn_type, units, price, txn_date")
+    .eq("user_id", userId)
+    .in("holding_id", holdings.map(h => h.id)));
   const txnMap = {};
   for (const t of (txns || [])) (txnMap[t.holding_id] ||= []).push(t);
   return { holdings, txnMap };
 }
 
 export async function getBudgetTransactionsData(userId, sinceStr) {
-  const { data } = await supabase
+  return fetchAll(() => supabase
     .from("budget_transactions")
-    .select("category, amount, txn_type, txn_date, description")
+    .select("id, category, amount, txn_type, txn_date, description")
     .eq("user_id", userId)
     .gte("txn_date", sinceStr)
-    .order("txn_date", { ascending: false })
-    .limit(2000);
-  return data || [];
+    .order("txn_date", { ascending: false }));
 }
 
 export async function getWatchlistData(userId) {

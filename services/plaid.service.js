@@ -48,14 +48,14 @@ export async function insertTransactionsBatched(txns) {
   }
 }
 
-/** Delete budget_transactions rows by id (Plaid-reported removals). Errors are not checked — matches original fire-and-forget behavior. */
-export async function deleteTransactionsByIds(ids) {
-  await supabase.from("budget_transactions").delete().in("id", ids);
+/** Delete budget_transactions rows by id (Plaid-reported removals), scoped to the owner. Errors are not checked — matches original fire-and-forget behavior. */
+export async function deleteTransactionsByIds(userId, ids) {
+  await supabase.from("budget_transactions").delete().eq("user_id", userId).in("id", ids);
 }
 
-/** Update a connection by id only (success path — id was already ownership-verified). Errors are not checked — matches original fire-and-forget behavior. */
-export async function updateConnectionById(id, patch) {
-  await supabase.from("plaid_connections").update(patch).eq("id", id);
+/** Update a connection (success path — the connection was already ownership-verified; user scope kept as defense in depth). Errors are not checked — matches original fire-and-forget behavior. */
+export async function updateConnectionById(userId, id, patch) {
+  await supabase.from("plaid_connections").update(patch).eq("id", id).eq("user_id", userId);
 }
 
 /** Update a connection's error status, scoped by user (catch-block path, no prior fetch). Errors are not checked — matches original fire-and-forget behavior. */
@@ -68,6 +68,6 @@ export async function updateConnectionError(userId, connectionId, patch) {
 }
 
 /** Delete a connection by id. Errors are not checked — matches original fire-and-forget behavior. */
-export async function deleteConnection(id) {
-  await supabase.from("plaid_connections").delete().eq("id", id);
+export async function deleteConnection(userId, id) {
+  await supabase.from("plaid_connections").delete().eq("id", id).eq("user_id", userId);
 }

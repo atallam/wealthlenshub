@@ -10,7 +10,7 @@ function chain(table) {
   const q = {
     _table: table, _filters: [],
     select() { return q; }, eq(...a) { q._filters.push(["eq", ...a]); return q; },
-    in(...a) { q._filters.push(["in", ...a]); return q; }, order() { return q; },
+    in(...a) { q._filters.push(["in", ...a]); return q; }, order() { return q; }, range() { return q; },
     limit() { return q; },
     insert(row) { calls.inserts.push({ table, row }); return Promise.resolve({ error: null }); },
     then(resolve) {

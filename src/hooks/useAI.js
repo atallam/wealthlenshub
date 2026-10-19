@@ -210,7 +210,7 @@ ${portfolioContext}`,
   function clearConversation() {
     setAiMessages([]);
     if (userIdRef.current) {
-      try { localStorage.removeItem(lsKey(userIdRef.current)); } catch {}
+      try { localStorage.removeItem(lsKey(userIdRef.current)); } catch { /* storage unavailable — non-fatal */ }
     }
   }
 

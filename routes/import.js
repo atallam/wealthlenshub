@@ -235,7 +235,7 @@ router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), 
                     h.current_value = (h.units || 0) * price;
                     h._needs_price = false;
                   }
-                } catch {}
+                } catch { /* best-effort */ }
               }), 8);
             }
 

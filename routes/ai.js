@@ -518,7 +518,7 @@ async function runAgenticLoop(req, res, key, model, maxTokens, systemPrompt, ini
           case "content_block_stop":
             if (toolBlock) {
               let parsed = {};
-              try { parsed = JSON.parse(toolInput || "{}"); } catch {}
+              try { parsed = JSON.parse(toolInput || "{}"); } catch { /* partial tool input — fall back to {} */ }
               const idx = contentBlocks.findIndex(b => b.type === "tool_use" && b.id === toolBlock.id);
               if (idx >= 0) contentBlocks[idx].input = parsed;
               toolBlock  = null;

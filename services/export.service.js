@@ -7,19 +7,18 @@
  * (explicit decision, 2026-09-18 — previously unfiltered).
  */
 import { supabase } from "../lib/db.js";
+import { fetchAll } from "../lib/utils.js";
 
 const NOT_CLOSED = "maturity_status.is.null,maturity_status.neq.closed";
 const NOT_EXITED = "holding_status.is.null,holding_status.neq.exited";
 
 /** All of the user's transactions, joined with their holding's name/type/ticker/etc. */
 export async function listAllTransactions(userId) {
-  const { data, error } = await supabase
+  return fetchAll(() => supabase
     .from("transactions")
     .select("*, holdings(name, type, ticker, scheme_code, member_id)")
     .eq("user_id", userId)
-    .order("txn_date", { ascending: false });
-  if (error) throw new Error(error.message);
-  return data || [];
+    .order("txn_date", { ascending: false }));
 }
 
 /** The user's profile email, for the printed report header. */

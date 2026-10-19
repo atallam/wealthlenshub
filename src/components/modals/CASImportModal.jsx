@@ -471,6 +471,11 @@ export default function CASImportModal({
             <div style={{ fontSize: "1.1rem", fontWeight: 600, color: "#4caf9a", marginBottom: ".3rem" }}>
               {(casResult.inserted_count || 0) + (casResult.updated_count || 0)} holdings imported
             </div>
+            {casDepository && (
+              <div style={{ fontSize: ".72rem", color: "var(--text-muted)" }}>
+                {casDepository}{casStatementDate ? ` · statement as of ${casStatementDate}` : ""}
+              </div>
+            )}
             {casResult.inserted_count > 0 && <div style={{ fontSize: ".75rem", color: "var(--text)" }}>+ {casResult.inserted_count} new</div>}
             {casResult.updated_count > 0 && <div style={{ fontSize: ".75rem", color: "#5a9ce0" }}>refreshed {casResult.updated_count}</div>}
             {casResult.exited_count > 0 && <div style={{ fontSize: ".75rem", color: "#e07c5a" }}>{casResult.exited_count} marked exited</div>}

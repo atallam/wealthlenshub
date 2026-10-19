@@ -4,6 +4,7 @@
  * is unchanged and still shared with routes/ai.js's get_tax_summary tool).
  */
 import { supabase } from "../lib/db.js";
+import { fetchAll } from "../lib/utils.js";
 import { fyRange, computeGains, summarizeRealized } from "../lib/tax.js";
 
 /**
@@ -17,7 +18,7 @@ export async function getGains(userId, { fy, member = "all" }) {
   // 1. Fetch taxable holdings
   let hq = supabase
     .from("holdings")
-    .select("id, name, symbol, type, current_price, current_nav, member_id, asset_class, holding_status")
+    .select("*")   // not a column list: `symbol` doesn't exist on holdings (it's `ticker`) and an unknown column fails the whole query
     .eq("user_id", userId)
     .in("type", ["IN_STOCK", "IN_ETF", "MF"]);
 
@@ -36,13 +37,13 @@ export async function getGains(userId, { fy, member = "all" }) {
 
   // 2. Fetch all transactions for those holdings
   const holdingIds = holdings.map(h => h.id);
-  const { data: transactions, error: tErr } = await supabase
+  // Paged: FIFO needs the COMPLETE ledger — a silent 1000-row cut would mis-state every gain.
+  const transactions = await fetchAll(() => supabase
     .from("transactions")
     .select("id, holding_id, txn_type, units, price, txn_date, source_type")
+    .eq("user_id", userId)
     .in("holding_id", holdingIds)
-    .order("txn_date", { ascending: true });
-
-  if (tErr) throw new Error(tErr.message);
+    .order("txn_date", { ascending: true }));
 
   // 3. Group transactions by holding
   const txnMap = {};
@@ -55,13 +56,14 @@ export async function getGains(userId, { fy, member = "all" }) {
   const unrealizedAll = [];
 
   for (const h of holdings) {
+    if (h.maturity_status === "closed") continue;
     const txns = txnMap[h.id] || [];
     if (txns.length === 0) continue;
 
     const currentPrice = +(h.current_price || h.current_nav || 0);
     const { realized, unrealized } = computeGains(txns, fyStart, fyEnd, h.holding_status === "exited" ? 0 : currentPrice, { assetClass: h.asset_class });
 
-    const meta = { holding_id: h.id, name: h.name, symbol: h.symbol, type: h.type, member_id: h.member_id, asset_class: h.asset_class || "EQUITY" };
+    const meta = { holding_id: h.id, name: h.name, symbol: h.ticker || h.symbol, type: h.type, member_id: h.member_id, asset_class: h.asset_class || "EQUITY" };
     for (const r of realized)   realizedAll.push({ ...meta, ...r });
     for (const u of unrealized) unrealizedAll.push({ ...meta, ...u });
   }

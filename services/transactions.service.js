@@ -58,9 +58,11 @@ export async function importRows(userId, transactions) {
   }
   const imported = [], unmatched = [], errors = [];
   for (const t of transactions) {
-    const sym = (t._symbol || "").toLowerCase();
-    const holdingId = holdingMap[sym] || holdingMap[sym.replace(/\s+/g, "")]
-      || Object.entries(holdingMap).find(([k]) => k.includes(sym))?.[1];
+    const sym = (t._symbol || "").toLowerCase().trim();
+    // An empty symbol would "match" every key via includes("") and book the row on a random holding;
+    // fuzzy containment is only trusted for 3+ characters (so "ge" can't claim "tata elxsi").
+    const holdingId = sym && (holdingMap[sym] || holdingMap[sym.replace(/\s+/g, "")]
+      || (sym.length >= 3 ? Object.entries(holdingMap).find(([k]) => k.includes(sym))?.[1] : undefined));
     if (!holdingId) { unmatched.push(t._symbol); continue; }
     const { error } = await supabase.from("transactions").insert({
       id: txnId(), holding_id: holdingId, user_id: userId,

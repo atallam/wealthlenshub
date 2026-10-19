@@ -27,7 +27,8 @@ function computeSipFields(transactions = []) {
   const prevMo = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
   const lastMo = buyTxns[0].txn_date.slice(0, 7);
   if (!(lastMo === nowMo || lastMo === prevMo)) return { transaction_count, sip_day: null, sip_active: false, sip_avg_amount: null };
-  const cutoff = new Date(now.getFullYear(), now.getMonth() - 6, 1).toISOString().slice(0, 7);
+  const cut = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+  const cutoff = `${cut.getFullYear()}-${String(cut.getMonth() + 1).padStart(2, "0")}`; // local parts — toISOString() shifts to UTC and can land in the previous month
   const activeMos = new Set(buyTxns.filter((t) => t.txn_date.slice(0, 7) >= cutoff).map((t) => t.txn_date.slice(0, 7)));
   if (activeMos.size < 3) return { transaction_count, sip_day: null, sip_active: false, sip_avg_amount: null };
   const freq = {};
@@ -224,7 +225,8 @@ export async function create(userId, body) {
   const { error } = await supabase.from("holdings").insert(sanitizeDates(insertData));
   if (error) throw new Error(error.message);
   if (first_transaction && first_transaction.units && first_transaction.price) {
-    await supabase.from("transactions").insert({ id: tId(), holding_id: holdingData.id, txn_type: first_transaction.txn_type || "BUY", units: Number(first_transaction.units), price: Number(first_transaction.price), txn_date: first_transaction.txn_date || holdingData.start_date || new Date().toISOString().slice(0, 10), notes: first_transaction.notes || "" });
+    const { error: txErr } = await supabase.from("transactions").insert({ id: tId(), holding_id: holdingData.id, user_id: userId, txn_type: first_transaction.txn_type || "BUY", units: Number(first_transaction.units), price: Number(first_transaction.price), txn_date: first_transaction.txn_date || holdingData.start_date || new Date().toISOString().slice(0, 10), notes: first_transaction.notes || "" });
+    if (txErr) throw new Error(`Holding saved but its first transaction failed: ${txErr.message}`);
   }
   return { ok: true };
 }
@@ -239,7 +241,10 @@ export async function update(userId, id, body) {
     throw Object.assign(new Error("Imported holdings cannot be edited via the UI. Re-import to update."), { status: 403 });
   }
 
-  const { artifacts, transactions, net_units, avg_cost, purchase_nav, current_nav, purchase_price, ...holdingData } = body;
+  // Strip derived/joined fields AND ownership/provenance columns: the body is client-controlled, so
+  // without this a request could re-parent the row (user_id), or relabel it as imported (source).
+  const { artifacts, transactions, net_units, avg_cost, purchase_nav, current_nav, purchase_price,
+          id: _id, user_id: _uid, source: _src, created_at: _ca, import_method: _im, holding_status: _hs, ...holdingData } = body;
   const isMF = holdingData.type === "MF";
   const updateData = { ...holdingData, ...(isMF ? { purchase_nav: purchase_nav || 0, current_nav: current_nav || 0 } : {}) };
   const { error } = await supabase.from("holdings").update(sanitizeDates(updateData)).eq("id", id).eq("user_id", userId);

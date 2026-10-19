@@ -12,6 +12,7 @@
  */
 import { randomUUID } from "crypto";
 import { supabase } from "../lib/db.js";
+import { fetchAll } from "../lib/utils.js";
 import { planInference, inferredKey } from "../lib/ledgerInfer.js";
 import { fetchMfNavOn, schemeCodeForIsin } from "../lib/prices.js";
 
@@ -49,9 +50,9 @@ export async function inferLedgerGaps(userId, importId, { statementDate, periodS
   const active = holdings.filter((h) => h.holding_status !== "exited");
   if (!active.length) return out;
 
-  const { data: txns } = await supabase.from("transactions")
+  const txns = await fetchAll(() => supabase.from("transactions")
     .select("id, holding_id, txn_type, units, txn_date, source, source_type, external_key")
-    .eq("user_id", userId).in("holding_id", active.map((h) => h.id));
+    .eq("user_id", userId).in("holding_id", active.map((h) => h.id)));
   const byHolding = {};
   for (const t of txns || []) (byHolding[t.holding_id] ||= []).push(t);
 

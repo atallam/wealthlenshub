@@ -29,7 +29,7 @@ function getSeenIds() {
   try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); } catch { return new Set(); }
 }
 function markSeen(ids) {
-  try { localStorage.setItem(SEEN_KEY, JSON.stringify([...ids])); } catch {}
+  try { localStorage.setItem(SEEN_KEY, JSON.stringify([...ids])); } catch { /* storage unavailable — non-fatal */ }
 }
 
 export default function NotificationBell({ trigAlerts = [], alerts = [], AT = {}, onGoToStrategy }) {

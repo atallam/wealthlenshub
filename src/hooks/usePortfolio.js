@@ -67,7 +67,7 @@ export function usePortfolio(user) {
           if (prof.settings?.ppf_rate) setPpfRate(prof.settings.ppf_rate);
           if (prof.settings?.epf_rate) setEpfRate(prof.settings.epf_rate);
         }
-        try { const fxData = await api("/api/forex/usdinr"); if (fxData?.rate) setLiveUsdInr(fxData.rate); } catch {}
+        try { const fxData = await api("/api/forex/usdinr"); if (fxData?.rate) setLiveUsdInr(fxData.rate); } catch { /* FX refresh is best-effort; keeps the last rate */ }
         if (ats?.length) setAssetTypes(ats);
       } catch (e) {
         console.error("Load error", e);

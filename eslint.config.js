@@ -14,7 +14,7 @@ export default [
 
   // Backend (Node, ESM)
   {
-    files: ["server.js", "lib/**/*.js", "routes/**/*.js"],
+    files: ["server.js", "lib/**/*.js", "routes/**/*.js", "services/**/*.js", "tools/**/*.js"],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: "module",

@@ -50,10 +50,39 @@ const app = express();
 app.set("trust proxy", 1);
 
 // ── Security headers ─────────────────────────────────────────────────────────
-// Helmet sets HSTS, X-Content-Type-Options, frameguard, etc. The default CSP is
-// left OFF because it can break the Vite-built SPA (inline styles/module scripts);
-// tighten it once the exact asset origins are pinned. See AUDIT_REPORT.md P1-3.
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+// Helmet sets HSTS, X-Content-Type-Options, frameguard, etc.
+// Content-Security-Policy is pinned to the SPA's real origins: its own scripts
+// (Vite emits no inline script), Google Fonts, and Supabase. Inline *styles* are
+// allowed because the UI uses style={{…}} throughout.
+//   CSP_MODE=report-only (default) → violations show in the browser console but
+//                                    nothing is blocked — safe to deploy
+//   CSP_MODE=enforce               → block violations (switch once the console is clean)
+//   CSP_MODE=off                   → no CSP header
+// Anything new that loads from another origin (a script CDN, a Plaid/SnapTrade
+// embed, an image host that isn't https) must be added here before enforcing.
+function supabaseOrigins() {
+  const out = ["https://*.supabase.co", "wss://*.supabase.co"];
+  try { if (process.env.SUPABASE_URL) { const u = new URL(process.env.SUPABASE_URL); out.push(u.origin, `wss://${u.host}`); } } catch { /* bad URL — wildcard above still applies */ }
+  return out;
+}
+const CSP_MODE = (process.env.CSP_MODE || "report-only").toLowerCase();
+const cspDirectives = {
+  defaultSrc: ["'self'"],
+  scriptSrc: ["'self'"],
+  styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+  fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+  imgSrc: ["'self'", "data:", "blob:", "https:"],
+  connectSrc: ["'self'", ...supabaseOrigins()],
+  workerSrc: ["'self'", "blob:"],
+  manifestSrc: ["'self'"],
+  objectSrc: ["'none'"],
+  baseUri: ["'self'"],
+  formAction: ["'self'"],
+};
+app.use(helmet({
+  contentSecurityPolicy: CSP_MODE === "off" ? false : { useDefaults: false, reportOnly: CSP_MODE !== "enforce", directives: cspDirectives },
+  crossOriginEmbedderPolicy: false,
+}));
 
 // CORS: same-origin by default (the SPA is served from this server). Set
 // CORS_ORIGINS (comma-separated) only if a separate frontend origin needs access.
