@@ -305,7 +305,18 @@ export function useFamilyBudget(user) {
       await api('/api/budget/categories', { method: 'POST', body: JSON.stringify(form) });
       setFbNewCat({ name: '', color: '#c9a84c', icon: '📁', monthly_limit: 0, keywords: '', is_essential: false });
     } else {
-      await api(`/api/budget/categories/${form.id}`, { method: 'PUT', body: JSON.stringify(form) });
+      const oldName = fbCategories.find(c => c.id === form.id)?.name;
+      const r = await api(`/api/budget/categories/${form.id}`, { method: 'PUT', body: JSON.stringify(form) });
+      // A rename re-labels existing transactions server-side — refresh every view that shows category names.
+      if (r?.transactionsUpdated) {
+        const txnCat = (fbTxnCat !== 'All' && fbTxnCat === oldName) ? form.name : fbTxnCat;
+        if (txnCat !== fbTxnCat) setFbTxnCat(txnCat);
+        await Promise.all([
+          loadAnalytics(fbPeriod, fbMonth, fbMember),
+          loadMerchants(fbPeriod, fbMonth, fbMember),
+          loadTransactions(fbPeriod, fbMonth, fbMember, txnCat, fbTxnSearch),
+        ]);
+      }
     }
     setFbEditCat(null);
     await loadCategories();

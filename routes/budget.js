@@ -72,7 +72,7 @@ router.post("/categories", auth, async (req, res) => {
 });
 router.put("/categories/:id", auth, async (req, res) => {
   const { name, keywords, icon, color, monthly_limit, is_essential } = req.body;
-  try { res.json(await budget.updateCategory(req.user.id, req.params.id, name, keywords, icon, color, monthly_limit, is_essential)); } catch (e) { sendError(res, e); }
+  try { res.json(await budget.updateCategory(req.user.id, req.params.id, name, keywords, icon, color, monthly_limit, is_essential)); } catch (e) { sendError(res, e, e.status || 500); }
 });
 router.delete("/categories/:id", auth, async (req, res) => {
   try { res.json(await budget.deleteCategory(req.user.id, req.params.id)); } catch (e) { sendError(res, e); }
