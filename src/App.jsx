@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   LayoutDashboard, BarChart2, Target, Compass,
-  Users, Wallet, CalendarDays, MessageSquare,
+  Users, CalendarDays, MessageSquare,
   X,
-  AlertTriangle, Receipt, Bookmark, PieChart,
+  AlertTriangle,
   Newspaper, TrendingUp,
 } from 'lucide-react';
-import { supabase, signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, resetPassword, signOut } from './supabase.js';
+import { supabase, signOut } from './supabase.js';
 import { api } from './lib/api.js';
 import SnapTradeImport from './SnapTradeImport.jsx';
 import NotificationCentre from './components/NotificationCentre.jsx';
@@ -27,8 +27,6 @@ import './styles.css';
 
 // ── Hooks ────────────────────────────────────────────────────────
 import { usePortfolio } from './hooks/usePortfolio.js';
-import { useBudget } from './hooks/useBudget.js';
-import { useBudget2 } from './hooks/useBudget2.js';
 import { useImport } from './hooks/useImport.js';
 import { useCASImport } from './hooks/useCASImport.js';
 import { useAI } from './hooks/useAI.js';
@@ -54,14 +52,10 @@ import { useRebalanceState } from './features/strategy/useRebalanceState.js';
 import MembersTab from './features/members/MembersTab.jsx';
 import { useMemberForm } from './features/members/useMemberForm.js';
 import MemberFormModal from './features/members/MemberFormModal.jsx';
-import BudgetTab from './features/budget/BudgetTab.jsx';
-import Budget2Tab from './features/budget/Budget2Tab.jsx';
 import FamilyBudgetTab from './features/budget/FamilyBudgetTab.jsx';
 import CalendarTab from './features/calendar/CalendarTab.jsx';
 import { useCalendarState } from './features/calendar/useCalendarState.js';
 import AdvisorTab from './features/AdvisorTab.jsx';
-import TaxTab from './features/TaxTab.jsx';
-import WatchlistTab from './features/WatchlistTab.jsx';
 import NewsTab      from './features/NewsTab.jsx';
 import AuditLogPanel from './features/AuditLogPanel.jsx';
 
@@ -87,7 +81,6 @@ import ImportHub from './components/modals/ImportHub.jsx';
 import SettingsModal from './components/modals/SettingsModal.jsx';
 
 // ── Context ──────────────────────────────────────────────────────
-import { PortfolioProvider } from './contexts/PortfolioContext.jsx';
 import { AppShellProvider } from './contexts/AppShellContext.jsx';
 import { useMask } from './contexts/MaskContext.jsx';
 
@@ -109,12 +102,8 @@ const TABS = [
   { key: 'goals',     label: 'Goals',     Icon: Target },
   { key: 'strategy',  label: 'Strategy',  Icon: Compass },
   { key: 'members',   label: 'Family',    Icon: Users },
-  // { key: 'budget',    label: 'Budget',    Icon: Wallet },   // hidden — using Family Budget
-  // { key: 'budget2',   label: 'Budget 2',  Icon: PieChart }, // hidden — using Family Budget
   { key: 'familybudget', label: 'Family Budget', Icon: TrendingUp },
   { key: 'calendar',  label: 'Calendar',  Icon: CalendarDays },
-  // { key: 'tax',       label: 'Tax',       Icon: Receipt },       // hidden — not actively used
-  // { key: 'watchlist', label: 'Watchlist', Icon: Bookmark },      // hidden — not actively used
   { key: 'advisor',   label: 'Advisor',   Icon: MessageSquare },
   { key: 'news',      label: 'News',      Icon: Newspaper },
 ];
@@ -182,8 +171,6 @@ export default function App() {
 
   // ── Hooks ─────────────────────────────────────────────────────
   const portfolio  = usePortfolio(user);
-  const budget     = useBudget(user);
-  const budget2    = useBudget2(user);
   const importHook = useImport(user, () => portfolio.reloadHoldings());
   const casImport  = useCASImport(user, () => portfolio.reloadHoldings());
   const ai         = useAI();
@@ -637,7 +624,7 @@ ${alertsText}`;
   // ══════════════════════════════════════════════════════════════
   // AppShellProvider (P3-5, step 2): makes tab/selMember reachable via
   // useAppShell() for any nested component, without new prop drilling.
-  // State ownership stays right here — same pattern as PortfolioProvider.
+  // State ownership stays right here.
   return (
     <AppShellProvider value={{ tab, setTab, selMember, setSelMember }}>
     <div className="app">
@@ -658,7 +645,6 @@ ${alertsText}`;
 
       {/* ── MAIN CONTENT ───────────────────────────────────────── */}
       <main className="main">
-      <PortfolioProvider value={sharedPortfolioProps}>
 
         {/* Loading skeleton shown while portfolio data fetches after auth */}
         {!loaded && <LoadingSkeleton />}
@@ -744,29 +730,6 @@ ${alertsText}`;
           </ErrorBoundary>
         )}
 
-        {loaded && tab === 'budget' && (
-          <ErrorBoundary tab="Budget">
-            <BudgetTab
-              {...budget}
-              allCur={allCur} allInv={allInv} totInv={totInv} totPct={totPct}
-              sipHoldings={allHoldings.filter(h=>h.type==='MF').slice(0,5).map(h=>({id:h.id,name:h.name}))}
-              allMembers={allMembers}
-              fmtCr={fmtCr} fmtPct={fmtPct}
-              api={api} FG={FG} MA={MA} Overlay={Overlay}
-            />
-          </ErrorBoundary>
-        )}
-
-        {loaded && tab === 'budget2' && (
-          <ErrorBoundary tab="Budget 2">
-            <Budget2Tab
-              {...budget2}
-              api={api}
-              Overlay={Overlay}
-            />
-          </ErrorBoundary>
-        )}
-
         {loaded && tab === 'familybudget' && (
           <ErrorBoundary tab="Family Budget">
             <FamilyBudgetTab
@@ -783,21 +746,6 @@ ${alertsText}`;
               holdings={holdings} goals={goals}
               calMonth={calMonth} setCalMonth={setCalMonth}
             />
-          </ErrorBoundary>
-        )}
-
-        {loaded && tab === 'tax' && (
-          <ErrorBoundary tab="Tax">
-            <TaxTab
-              members={members}
-              selMember={selMember}
-            />
-          </ErrorBoundary>
-        )}
-
-        {loaded && tab === 'watchlist' && (
-          <ErrorBoundary tab="Watchlist">
-            <WatchlistTab />
           </ErrorBoundary>
         )}
 
@@ -823,7 +771,6 @@ ${alertsText}`;
           </ErrorBoundary>
         )}
 
-      </PortfolioProvider>
       </main>
 
       {/* ── Mobile FAB / bottom nav / more sheet ────────────────

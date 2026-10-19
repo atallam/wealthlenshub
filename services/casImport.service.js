@@ -60,7 +60,7 @@ async function loadExistingCas(userId, memberIds) {
 }
 
 /** Has this exact statement (by content hash) already been applied for this user? */
-export async function findPriorImport(userId, statementHash) {
+async function findPriorImport(userId, statementHash) {
   if (!statementHash) return null;
   const { data } = await supabase.from("import_logs")
     .select("id, created_at, summary, depository, statement_date")

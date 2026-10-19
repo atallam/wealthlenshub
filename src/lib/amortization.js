@@ -103,7 +103,7 @@ export function computeOutstanding(liability, asOfDate = new Date()) {
  * @param {object} liability
  * @returns {Date|null}
  */
-export function getPayoffDate(liability) {
+function getPayoffDate(liability) {
   if (!isAutoCalc(liability)) return null;
 
   const P = +liability.outstanding_amount;

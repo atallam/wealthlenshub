@@ -88,7 +88,7 @@ function mapHolders(holderNames = [], holderPans = [], panToMember) {
  * in order inside ONE process (previously each candidate re-spawned Python and
  * re-parsed the PDF: a 4-member family meant up to 5 full parses).
  */
-export function runCasparser(pdfPath, password) {
+function runCasparser(pdfPath, password) {
   return new Promise((resolve, reject) => {
     const scriptPath = join(__dirname, "..", "services", "cas_casparser_service.py");
     const pwArg = Array.isArray(password) ? JSON.stringify(password) : (password ?? "");

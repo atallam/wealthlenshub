@@ -31,7 +31,7 @@ export async function getHolding(holdingId) {
 }
 
 /** Date representing the end of the given quarter (for sorting). */
-export function quarterDate() {
+function quarterDate() {
   const d  = new Date();
   const m  = d.getMonth() + 1;
   const y  = d.getFullYear();

@@ -88,15 +88,6 @@ export async function getBudgetTransactionsData(userId, sinceStr) {
     .order("txn_date", { ascending: false }));
 }
 
-export async function getWatchlistData(userId) {
-  const { data } = await supabase
-    .from("watchlist")
-    .select("id, name, ticker, asset_type, target_price, notes, current_price, price_change_pct, created_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-  return data || [];
-}
-
 export async function getSnapshotHistoryData(userId, cutoffMonth) {
   const { data } = await supabase
     .from("net_worth_snapshots")

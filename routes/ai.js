@@ -17,7 +17,7 @@ import { currentFY, fyRange, computeGains, summarizeRealized } from "../lib/tax.
 import { decrypt } from "../lib/crypto.js";
 import {
   getPortfolioSummaryData, getHoldingsData, getTransactionsData, getGoalsData,
-  getTaxSummaryData, getBudgetTransactionsData, getWatchlistData,
+  getTaxSummaryData, getBudgetTransactionsData,
   getSnapshotHistoryData, getFdMaturitiesData,
 } from "../services/ai-tools.service.js";
 // Concall tools reuse services/concall.service.js and lib/concall/* directly
@@ -110,11 +110,6 @@ const ADVISOR_TOOLS = [
         months: { type: "number", description: "How many recent months to summarise (default 3, max 12)" },
       },
     },
-  },
-  {
-    name: "get_watchlist",
-    description: "Get the user's watchlist — tickers they are tracking with target prices and current prices. Use when the user asks about stocks they are watching, target prices, or what to buy next.",
-    input_schema: { type: "object", properties: {} },
   },
   {
     name: "get_snapshot_history",
@@ -284,27 +279,6 @@ async function execTool(name, input, userId) {
           net_cashflow: Math.round(totalIncome - totalSpend),
           transaction_count: txns.length,
           top_categories: categories,
-        };
-      }
-
-      case "get_watchlist": {
-        const items = await getWatchlistData(userId);
-
-        if (!items?.length) return { watchlist: [], count: 0 };
-
-        return {
-          count: items.length,
-          watchlist: items.map(w => ({
-            name:             w.name,
-            ticker:           w.ticker,
-            asset_type:       w.asset_type,
-            target_price:     w.target_price ? Number(w.target_price) : null,
-            current_price:    w.current_price ? Number(w.current_price) : null,
-            price_change_pct: w.price_change_pct ? Number(w.price_change_pct).toFixed(2) : null,
-            hit_target:       w.target_price && w.current_price
-              ? Number(w.current_price) >= Number(w.target_price) : null,
-            notes: w.notes || null,
-          })),
         };
       }
 

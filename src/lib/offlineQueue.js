@@ -58,16 +58,3 @@ export async function registerSync() {
     console.warn("[OfflineQueue] Background Sync not supported:", e);
   }
 }
-
-/** How many items are currently queued */
-export async function pendingCount() {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(TX_STORE, "readonly");
-      const r = tx.objectStore(TX_STORE).count();
-      r.onsuccess = () => resolve(r.result);
-      r.onerror   = reject;
-    });
-  } catch { return 0; }
-}

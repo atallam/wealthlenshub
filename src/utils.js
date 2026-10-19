@@ -14,9 +14,6 @@ let _ppfRate = 7.1;
 let _epfRate = 8.15;
 export function setPpfRate(r) { if (r > 0 && r < 30) _ppfRate = r; }
 export function setEpfRate(r) { if (r > 0 && r < 30) _epfRate = r; }
-export function getPpfRate() { return _ppfRate; }
-export function getEpfRate() { return _epfRate; }
-
 // ── Math ─────────────────────────────────────────────────────────
 export function calcFD(p,r,s,mat){const start=new Date(s),now=new Date(),m=new Date(mat);const end=now<m?now:m;const y=Math.max(0,(end-start)/(864e5*365.25));return p*Math.pow(1+r/400,y*4);}
 
@@ -50,13 +47,6 @@ export function isUSDHolding(h) {
   // CASH from SnapTrade is always USD (even if currency field is missing in DB)
   if (h.type === "CASH" && (h.source === "snaptrade" || (h.ticker||"").toUpperCase().includes("USD") || (h.name||"").includes("USD"))) return true;
   return false;
-}
-
-// Native currency code for a holding (e.g. "USD", "SGD", "INR")
-export function nativeCurrency(h) {
-  if (h.currency && h.currency.toUpperCase() !== "INR") return h.currency.toUpperCase();
-  if (USD_TYPES.has(h.type)) return "USD";
-  return "INR";
 }
 
 // getVal / getInv return NATIVE currency (₹ for Indian, $ for US)
@@ -99,16 +89,12 @@ export function getInv(h){
     default:           return(h.purchase_value||h.principal||0);
   }
 }
-export function hasCostBasis(h) {
-  const inv = getInv(h);
-  return inv !== null && inv > 0;
-}
 // Convert native value → INR for unified portfolio totals
 // toINR: uses purchase-time FX rate (h.usd_inr_rate) — for historical cost basis
 export function toINR(val, h) { return isUSDHolding(h) ? val * (h.usd_inr_rate || _liveUsdInr) : val; }
 // toINRCurrent: uses live USD rate for USD holdings; stored rate for other foreign currencies
 // (SGD/GBP/EUR FDs have no live feed — usd_inr_rate stores the user-entered conversion rate)
-export function toINRCurrent(val, h) {
+function toINRCurrent(val, h) {
   if (!isUSDHolding(h)) return val;
   const cur = (h.currency || "USD").toUpperCase();
   // Pure USD-type holdings (stocks, ETFs, crypto) → live rate

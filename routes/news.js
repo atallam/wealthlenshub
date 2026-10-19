@@ -171,7 +171,7 @@ async function livemintNews() {
 }
 
 // ── Non-ticker source names (for UI to know these aren't portfolio holdings) ──
-export const RSS_SOURCES = new Set(["RBI","SEBI","ET_ECONOMY","ET_MARKETS","LIVEMINT"]);
+const RSS_SOURCES = new Set(["RBI","SEBI","ET_ECONOMY","ET_MARKETS","LIVEMINT"]);
 
 // ── GET /api/news?tickers=RELIANCE.NS,HDFCBANK.NS,AAPL ───────────────────────
 router.get("/news", auth, async (req, res) => {

@@ -2,7 +2,7 @@
  * AppShellContext.jsx — React context for the two truly cross-cutting pieces
  * of UI state: which tab is active, and which family member is selected.
  *
- * Same "dumb provider" pattern as PortfolioContext.jsx: state ownership stays
+ * "Dumb provider" pattern: state ownership stays
  * in App.jsx (tab/selMember are still plain useStates there); this context
  * just makes them reachable via useAppShell() from any nested component,
  * without threading them through props. Extracted from App.jsx (P3-5, step 2).

@@ -86,20 +86,6 @@ describe("AI advisor holdings tools", () => {
   });
 });
 
-describe("tax.getGains", () => {
-  it("never selects a non-existent column and reads the full ledger in pages", async () => {
-    const txns = Array.from({ length: 1200 }, (_, i) => ({ id: `t${i}`, holding_id: "h1", txn_type: "BUY", units: 1, price: 100, txn_date: "2020-01-01" }));
-    const db = makeDb({
-      holdings: [{ id: "h1", name: "X", ticker: "XYZ", type: "IN_STOCK", current_price: 150, member_id: "m1" }],
-      transactions: txns,
-    });
-    const { getGains } = await load(db, "../services/tax.service.js");
-    const r = await getGains("u1", { fy: "2025-26" });
-    expect(db.calls.filter(c => c.table === "transactions")).toHaveLength(2);   // 1000 + 200
-    expect(r.unrealized.details[0].symbol).toBe("XYZ");
-  });
-});
-
 describe("holdings.update ownership", () => {
   it("strips user_id / source / id from the client body", async () => {
     const db = makeDb({ holdings: (st) => st.op === "select" ? { data: { source: "manual" }, error: null } : { data: null, error: null } });

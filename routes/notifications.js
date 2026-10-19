@@ -51,8 +51,4 @@ router.delete("/clear", auth, async (req, res) => {
   }
 });
 
-// ── Helper: insert a notification ─────────────────────────────────────────────
-// Re-exported from the service so `import { insertNotification } from "./notifications.js"` works.
-export const insertNotification = notifications.insert;
-
 export default router;

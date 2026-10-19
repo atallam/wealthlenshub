@@ -27,12 +27,10 @@ import importV2Router     from "./routes/import_v2.js";    // casparser parallel
 import budgetRouter       from "./routes/budget.js";
 import snapshotsRouter    from "./routes/snapshots.js";
 import fdRouter           from "./routes/fd.js";
-import taxRouter          from "./routes/tax.js";
 import analyticsRouter    from "./routes/analytics.js";   // XIRR + FIFO lots from the transaction ledger
 import concallRouter      from "./routes/concall.js";
 import exportRouter       from "./routes/export.js";
 import alertsRouter       from "./routes/alerts.js";
-import watchlistRouter    from "./routes/watchlist.js";
 import auditRouter       from "./routes/audit.js";
 import pushRouter        from "./routes/push.js";
 import notificationsRouter from "./routes/notifications.js";
@@ -121,12 +119,10 @@ app.use("/api/import",        importV2Router);   // casparser route: POST /detec
 app.use("/api/budget",        budgetRouter);
 app.use("/api/snapshots",     snapshotsRouter);
 app.use("/api/fd",            fdRouter);
-app.use("/api/tax",           taxRouter);
 app.use("/api/analytics",     analyticsRouter);
 app.use("/api/concall",       concallRouter);
 app.use("/api/export",        exportRouter);
 app.use("/api/alerts",        alertsRouter);
-app.use("/api/watchlist",     watchlistRouter);
 app.use("/api/audit-logs",    auditRouter);
 app.use("/api/notifications",  notificationsRouter);
 app.use("/api/push",          pushRouter);

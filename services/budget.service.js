@@ -275,28 +275,6 @@ export async function uploadStatement(userId, file, body, isProd) {
   };
 }
 
-/** Assign (or reassign) which family member a statement belongs to. Manually
- *  fixing an unassigned/misassigned statement is exactly the "confirm once"
- *  moment budget_account_aliases exists for — if this statement has a card/
- *  account last-4 on file, seed (or correct) the alias so future imports from
- *  the same card/account auto-assign without needing to be fixed again. */
-export async function updateStatementMember(userId, id, memberId) {
-  const { data: portfolioRow } = await supabase.from("portfolio").select("members").eq("user_id", userId).single();
-  const members = portfolioRow?.members || [];
-  if (memberId && !members.some(m => m.id === memberId)) throw err("Unknown member_id", 400);
-  const { data: stmt, error } = await supabase.from("budget_statements")
-    .update({ member_id: memberId || null }).eq("id", id).eq("user_id", userId)
-    .select("bank_key, account_last4").single();
-  if (error) {
-    const { isSchemaDrift, friendly } = describeDbError(error);
-    const e2 = new Error(friendly);
-    if (isSchemaDrift) e2.code = "SCHEMA_DRIFT";
-    throw e2;
-  }
-  if (memberId && stmt?.account_last4) await saveAccountAlias(userId, stmt.bank_key || "", stmt.account_last4, memberId);
-  return { ok: true };
-}
-
 /** Bank/region registry for the import form's dropdowns — single source of truth
  *  shared with the parser, so the UI can never offer a bank the parser doesn't know. */
 export function listBanks() {
@@ -308,31 +286,6 @@ export async function listStatements(userId) {
   if (error) throw new Error(error.message);
   return data || [];
 }
-export async function deleteStatement(userId, id) {
-  await supabase.from("budget_statements").delete().eq("id", id).eq("user_id", userId);
-  return { ok: true };
-}
-
-export async function listTransactions(userId, query) {
-  const { statement_id, category, month, search, from, limit } = query;
-  let q = supabase.from("budget_transactions").select("*").eq("user_id", userId).order("txn_date", { ascending: false });
-  if (statement_id) q = q.eq("statement_id", statement_id);
-  if (category && category !== "All") q = q.eq("category", category);
-  if (month) {
-    const [y, m] = month.split("-").map(Number);
-    const lastDay = new Date(y, m, 0).getDate(); // correct last day for any month
-    q = q.gte("txn_date", `${month}-01`).lte("txn_date", `${month}-${String(lastDay).padStart(2, "0")}`);
-  } else if (from) {
-    q = q.gte("txn_date", from);
-  }
-  // search_text is a plaintext index column; supports ilike without decrypting description
-  if (search) q = q.ilike("search_text", `%${search.toLowerCase()}%`);
-  const maxRows = Math.min(Number(limit) || 500, 2000);
-  q = q.limit(maxRows);
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
-  return (data || []).map((t) => ({ ...t, description: decrypt(t.description), balance: t.balance ? decrypt(t.balance) : null }));
-}
 export async function setTxnCategory(userId, id, category) {
   const { error } = await supabase.from("budget_transactions").update({ category }).eq("id", id).eq("user_id", userId);
   if (error) throw new Error(error.message);
@@ -342,45 +295,6 @@ export async function recategorise(userId, ids, category) {
   const { error } = await supabase.from("budget_transactions").update({ category }).in("id", ids).eq("user_id", userId);
   if (error) throw new Error(error.message);
   return { ok: true, updated: ids.length };
-}
-
-/** Re-run keyword-based auto-categorisation against a user's existing transactions.
- *  Needed for a common gap: transactions imported before any budget_categories rows
- *  existed (e.g. the default-category seed insert was never run against this
- *  Supabase project) all landed in "Other" — autoCategorise() has nothing to match
- *  against with 0 categories loaded. Seeding categories afterward only fixes *future*
- *  imports; this fixes the ones already sitting in the database. Only touches rows
- *  whose category is exactly "Other" by default, so manual recategorisations a user
- *  already made are never overwritten (pass onlyOther=false to re-run over every
- *  transaction, e.g. after adding new keywords to an existing category).
- *  Uses the plaintext `search_text` column (already stored for ilike search) instead
- *  of decrypting `description` for every row — much cheaper for a bulk pass. */
-export async function recategoriseAll(userId, { onlyOther = true } = {}) {
-  const catList = await loadCategoriesForBulk(userId);
-  if (!catList.length) return { ok: false, error: "No categories found — seed default categories first.", updated: 0, scanned: 0 };
-
-  let q = supabase.from("budget_transactions").select("id, search_text, category").eq("user_id", userId);
-  if (onlyOther) q = q.eq("category", "Other");
-  const { data: txns, error } = await q;
-  if (error) throw new Error(error.message);
-
-  const changes = [];
-  for (const t of txns || []) {
-    const newCat = autoCategorise(t.search_text || "", catList);
-    if (newCat !== t.category) changes.push({ id: t.id, category: newCat });
-  }
-
-  // Group by target category so each batch is a single UPDATE ... WHERE id IN (...)
-  // rather than one round-trip per transaction.
-  const byCategory = {};
-  for (const c of changes) (byCategory[c.category] ||= []).push(c.id);
-  for (const [category, ids] of Object.entries(byCategory)) {
-    for (let i = 0; i < ids.length; i += 200) {
-      const { error: upErr } = await supabase.from("budget_transactions").update({ category }).in("id", ids.slice(i, i + 200)).eq("user_id", userId);
-      if (upErr) throw new Error(upErr.message);
-    }
-  }
-  return { ok: true, scanned: (txns || []).length, updated: changes.length };
 }
 
 export async function listCategories(userId) {
@@ -507,57 +421,6 @@ export async function deleteCategoryLimit(userId, categoryId, memberId) {
   await supabase.from("budget_category_limits").delete()
     .eq("user_id", userId).eq("category_id", categoryId).eq("member_id", memberId);
   return { ok: true };
-}
-
-export async function analytics(userId, month, { from: rangeFrom, to: rangeTo } = {}) {
-  // Determine date range for KPI totals
-  let qFrom, qTo;
-  if (month) {
-    const [ay, am] = month.split("-").map(Number);
-    qFrom = `${month}-01`;
-    qTo   = `${month}-${String(new Date(ay, am, 0).getDate()).padStart(2, "0")}`; // real last day (…-31 is invalid for Apr/Jun/Sep/Nov/Feb)
-  } else if (rangeFrom) {
-    qFrom = rangeFrom;
-    qTo   = rangeTo || new Date().toISOString().slice(0, 10);
-  } else if (rangeFrom === null && rangeTo === null) {
-    // Explicit "all time" — no date filter
-    qFrom = null;
-    qTo   = null;
-  } else {
-    // Legacy default: last 30 days
-    qFrom = new Date(Date.now() - 30 * 24 * 3600_000).toISOString().slice(0, 10);
-    qTo   = new Date().toISOString().slice(0, 10);
-  }
-
-  const txns = await fetchAll(() => {
-    let q = supabase.from("budget_transactions").select("id, amount, txn_type, category, txn_date").eq("user_id", userId);
-    if (qFrom) q = q.gte("txn_date", qFrom);
-    if (qTo)   q = q.lte("txn_date", qTo);
-    return q;
-  });
-
-  const byCategory = {}; let totalDebit = 0, totalCredit = 0;
-  for (const t of txns || []) {
-    if (t.txn_type === "DEBIT") { totalDebit += t.amount; byCategory[t.category] = (byCategory[t.category] || 0) + t.amount; }
-    else totalCredit += t.amount;
-  }
-
-  // Monthly spending trend (last 6 months, debit only — for existing Budget tab)
-  const allTxns = await fetchAll(() => supabase.from("budget_transactions").select("id, amount, txn_type, txn_date").eq("user_id", userId).gte("txn_date", new Date(Date.now() - 180 * 24 * 3600_000).toISOString().slice(0, 10)).eq("txn_type", "DEBIT"));
-  const monthly = {};
-  for (const t of allTxns || []) { const mo = t.txn_date.slice(0, 7); monthly[mo] = (monthly[mo] || 0) + t.amount; }
-
-  // Dual cashflow trend (last 12 months, both debit + credit — for Budget 2 chart)
-  const cfTxns = await fetchAll(() => supabase.from("budget_transactions").select("id, amount, txn_type, txn_date").eq("user_id", userId).gte("txn_date", new Date(Date.now() - 365 * 24 * 3600_000).toISOString().slice(0, 10)));
-  const cashflow = {}; // { "YYYY-MM": { debit, credit } }
-  for (const t of cfTxns || []) {
-    const mo = t.txn_date.slice(0, 7);
-    if (!cashflow[mo]) cashflow[mo] = { debit: 0, credit: 0 };
-    if (t.txn_type === "DEBIT") cashflow[mo].debit += t.amount;
-    else cashflow[mo].credit += t.amount;
-  }
-
-  return { byCategory, totalDebit, totalCredit, monthly, cashflow };
 }
 
 // ── Goals (Budget 2) ──────────────────────────────────────────────

@@ -28,12 +28,12 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
   console.warn("⚠️  VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY not set — Web Push disabled.");
 }
 
-export function pushEnabled() {
+function pushEnabled() {
   return !!(VAPID_PUBLIC && VAPID_PRIVATE);
 }
 
 // ── Send a push to all subscriptions for a user ───────────────────────────────
-export async function sendPushToUser(userId, payload) {
+async function sendPushToUser(userId, payload) {
   if (!pushEnabled()) return;
   const subs = await pushStore.getSubscriptions(userId);
   if (!subs?.length) return;

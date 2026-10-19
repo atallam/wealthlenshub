@@ -33,16 +33,7 @@ router.post("/debug-pdf", auth, upload.single("file"), async (req, res) => {
 router.get("/statements", auth, async (req, res) => {
   try { res.json(await budget.listStatements(req.user.id)); } catch (e) { sendError(res, e); }
 });
-router.delete("/statements/:id", auth, async (req, res) => {
-  try { res.json(await budget.deleteStatement(req.user.id, req.params.id)); } catch (e) { sendError(res, e); }
-});
-router.patch("/statements/:id/member", auth, async (req, res) => {
-  try { res.json(await budget.updateStatementMember(req.user.id, req.params.id, req.body.member_id)); } catch (e) { sendError(res, e); }
-});
 
-router.get("/transactions", auth, async (req, res) => {
-  try { res.json(await budget.listTransactions(req.user.id, req.query)); } catch (e) { sendError(res, e); }
-});
 router.patch("/transactions/:id", auth, async (req, res) => {
   const { category } = req.body;
   if (!category) return res.status(400).json({ error: "category required" });
@@ -53,13 +44,6 @@ router.post("/recategorise", auth, async (req, res) => {
   if (!ids?.length || !category) return res.status(400).json({ error: "ids and category required" });
   if (ids.length > 500) return res.status(400).json({ error: "Too many IDs (max 500)" });
   try { res.json(await budget.recategorise(req.user.id, ids, category)); } catch (e) { sendError(res, e); }
-});
-// Re-run keyword auto-categorisation over existing transactions (e.g. after seeding
-// default categories that didn't exist at import time, or after editing a category's
-// keyword list). Defaults to only touching "Other" transactions — pass
-// { only_other: false } to re-run over everything.
-router.post("/recategorise-all", auth, async (req, res) => {
-  try { res.json(await budget.recategoriseAll(req.user.id, { onlyOther: req.body?.only_other !== false })); } catch (e) { sendError(res, e); }
 });
 
 router.get("/categories", auth, async (req, res) => {
@@ -78,13 +62,6 @@ router.delete("/categories/:id", auth, async (req, res) => {
   try { res.json(await budget.deleteCategory(req.user.id, req.params.id)); } catch (e) { sendError(res, e); }
 });
 
-router.get("/analytics", auth, async (req, res) => {
-  const { month, from, to } = req.query;
-  // "alltime" sentinel → explicit null range (no date filter)
-  const rangeFrom = from === "alltime" ? null : (from || undefined);
-  const rangeTo   = from === "alltime" ? null : (to   || undefined);
-  try { res.json(await budget.analytics(req.user.id, month, { from: rangeFrom, to: rangeTo })); } catch (e) { sendError(res, e); }
-});
 router.get("/benchmark", auth, async (req, res) => {
   try { res.json(await budget.benchmark(req.query.period)); } catch (e) { sendError(res, e); }
 });
