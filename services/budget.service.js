@@ -681,6 +681,130 @@ async function resolveStatementIds(userId, memberId) {
   return null;
 }
 
+// ── Split transactions (migrations/0033) ──────────────────────────────────────
+// A transaction normally belongs wholly to its statement's member. A split
+// transaction instead contributes one allocation per share. Every reader that
+// attributes spend to members goes through resolveTransactionAllocations() so
+// the rule lives in exactly one place.
+
+/** Turn transactions into per-member allocations.
+ *  - unsplit txn  → one allocation for the parent statement's member (may be null = unassigned)
+ *  - split txn    → one allocation per share (category stays the parent's)
+ *  Pure function — no I/O. */
+export function resolveTransactionAllocations(txns, splitsByTxn, memberByStatement) {
+  const out = [];
+  for (const t of txns) {
+    const shares = splitsByTxn.get(t.id);
+    if (shares?.length) {
+      for (const sh of shares) out.push({ ...t, amount: Number(sh.amount), member_id: sh.member_id, is_split: true });
+    } else {
+      out.push({ ...t, member_id: memberByStatement.get(t.statement_id) ?? null, is_split: false });
+    }
+  }
+  return out;
+}
+
+/** All of a user's splits grouped by transaction id. Degrades to "no splits"
+ *  (with a warning) if migration 0033 hasn't been applied, so analytics keep
+ *  working instead of failing every Family Budget view. */
+async function loadSplitsByTxn(userId) {
+  let rows;
+  try {
+    rows = await fetchAll(() => supabase.from("budget_transaction_splits")
+      .select("id, transaction_id, member_id, amount, note").eq("user_id", userId));
+  } catch (e) {
+    console.warn("[budget] split transactions unavailable (migration 0033 not applied?):", e.message);
+    return new Map();
+  }
+  const m = new Map();
+  for (const r of rows) { if (!m.has(r.transaction_id)) m.set(r.transaction_id, []); m.get(r.transaction_id).push(r); }
+  return m;
+}
+
+async function loadMemberByStatement(userId) {
+  const rows = await fetchAll(() => supabase.from("budget_statements").select("id, member_id").eq("user_id", userId));
+  return new Map(rows.map(r => [r.id, r.member_id || null]));
+}
+
+/** Member-attributed allocations for a date window. memberId=null → everyone.
+ *  `extraCols` adds columns (e.g. "description, search_text") to the txn select. */
+async function loadAllocations(userId, memberId, { from, to, txnType, extraCols = "" } = {}) {
+  const cols = ["id", "statement_id", "amount", "txn_type", "category", "txn_date", extraCols].filter(Boolean).join(", ");
+  const [txns, memberByStatement, splitsByTxn] = await Promise.all([
+    fetchAll(() => {
+      let q = supabase.from("budget_transactions").select(cols).eq("user_id", userId);
+      if (txnType) q = q.eq("txn_type", txnType);
+      if (from) q = q.gte("txn_date", from);
+      if (to)   q = q.lte("txn_date", to);
+      return q;
+    }),
+    loadMemberByStatement(userId),
+    loadSplitsByTxn(userId),
+  ]);
+  const allocs = resolveTransactionAllocations(txns, splitsByTxn, memberByStatement);
+  return memberId ? allocs.filter(a => a.member_id === memberId) : allocs;
+}
+
+export async function getSplits(userId, transactionId) {
+  const { data, error } = await supabase.from("budget_transaction_splits")
+    .select("id, member_id, amount, note").eq("user_id", userId).eq("transaction_id", transactionId);
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+/** Replace-all: set the member shares of one transaction. An empty array
+ *  un-splits it. Shares must total the transaction amount (to the paisa). */
+export async function setSplits(userId, transactionId, splits) {
+  if (!Array.isArray(splits)) throw err("splits must be an array", 400);
+  const { data: txn, error: tErr } = await supabase.from("budget_transactions")
+    .select("id, amount, category").eq("id", transactionId).eq("user_id", userId).maybeSingle();
+  if (tErr) throw new Error(tErr.message);
+  if (!txn) throw err("Transaction not found", 404);
+
+  const before = await getSplits(userId, transactionId);
+  const clear = () => supabase.from("budget_transaction_splits").delete().eq("user_id", userId).eq("transaction_id", transactionId);
+
+  if (splits.length === 0) {
+    const { error } = await clear();
+    if (error) throw new Error(error.message);
+    return { ok: true, splits: [] };
+  }
+
+  if (splits.length < 2) throw err("A split needs at least two members", 400);
+  const { data: pf } = await supabase.from("portfolio").select("members").eq("user_id", userId).maybeSingle();
+  const validMembers = new Set((pf?.members || []).map(m => m.id));
+  const seen = new Set();
+  let cents = 0;
+  const rows = splits.map(sh => {
+    const amount = Math.round(Number(sh.amount) * 100) / 100;
+    if (!sh.member_id || !validMembers.has(sh.member_id)) throw err("Each share needs a valid family member", 400);
+    if (seen.has(sh.member_id)) throw err("A member can only appear once in a split", 400);
+    if (!(amount > 0)) throw err("Each share must be greater than zero", 400);
+    seen.add(sh.member_id);
+    cents += Math.round(amount * 100);
+    return { id: "spl_" + randomUUID().replace(/-/g, "").slice(0, 16), transaction_id: transactionId, user_id: userId,
+             member_id: sh.member_id, category: txn.category, amount, note: String(sh.note || "").slice(0, 200) };
+  });
+  const total = Math.round(Number(txn.amount) * 100);
+  if (cents !== total) {
+    throw err(`Shares total ${(cents / 100).toFixed(2)} but the transaction is ${(total / 100).toFixed(2)} (difference ${((total - cents) / 100).toFixed(2)})`, 400);
+  }
+
+  const { error: dErr } = await clear();
+  if (dErr) throw new Error(dErr.message);
+  const { error: iErr } = await supabase.from("budget_transaction_splits").insert(rows);
+  if (iErr) {
+    // put the previous shares back so a failed save never loses a split
+    if (before.length) {
+      await supabase.from("budget_transaction_splits").insert(before.map(b => ({
+        id: b.id, transaction_id: transactionId, user_id: userId, member_id: b.member_id, category: txn.category, amount: b.amount, note: b.note || "",
+      })));
+    }
+    throw new Error(iErr.message);
+  }
+  return { ok: true, splits: rows.map(r => ({ id: r.id, member_id: r.member_id, amount: r.amount, note: r.note })) };
+}
+
 /** Full analytics for FamilyBudget — supports member_id, custom date range,
  *  and returns both KPIs (totalDebit, totalCredit, savingsRate, byCategory)
  *  and trend data (monthly cashflow for 12 months, per-member comparison).
@@ -705,24 +829,12 @@ export async function familyAnalytics(userId, memberId, month, { from: rangeFrom
     qTo   = `${y}-${m}-${String(lastDay).padStart(2, "0")}`;
   }
 
-  const stmtIds = await resolveStatementIds(userId, memberId);
-  // If member has no statements yet, return empty result
-  if (Array.isArray(stmtIds) && stmtIds.length === 0) {
-    return { byCategory: {}, totalDebit: 0, totalCredit: 0, savingsRate: 0,
-             monthly: {}, cashflow: {}, memberBreakdown: [], qFrom, qTo };
-  }
-
-  // KPI query for current window
-  const kpiTxns = await fetchAll(() => {
-    let q = supabase.from("budget_transactions").select("id,amount,txn_type,category").eq("user_id", userId);
-    if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
-    if (qFrom) q = q.gte("txn_date", qFrom);
-    if (qTo)   q = q.lte("txn_date", qTo);
-    return q;
-  });
+  // Everyone's allocations in the window (split-aware); the member view is a filter on top
+  const windowAllocs = await loadAllocations(userId, null, { from: qFrom, to: qTo });
+  const scoped = memberId ? windowAllocs.filter(a => a.member_id === memberId) : windowAllocs;
 
   const byCategory = {}; let totalDebit = 0, totalCredit = 0;
-  for (const t of kpiTxns || []) {
+  for (const t of scoped) {
     if (t.txn_type === "DEBIT") {
       totalDebit += t.amount;
       byCategory[t.category] = (byCategory[t.category] || 0) + t.amount;
@@ -734,35 +846,25 @@ export async function familyAnalytics(userId, memberId, month, { from: rangeFrom
 
   // 12-month cashflow trend
   const cfFrom = new Date(Date.now() - 365 * 24 * 3600_000).toISOString().slice(0, 10);
-  const cfTxns = await fetchAll(() => {
-    let q = supabase.from("budget_transactions").select("id,amount,txn_type,txn_date").eq("user_id", userId).gte("txn_date", cfFrom);
-    if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
-    return q;
-  });
+  const cfAllocs = await loadAllocations(userId, memberId || null, { from: cfFrom });
   const cashflow = {}, monthly = {};
-  for (const t of cfTxns || []) {
+  for (const t of cfAllocs) {
     const mo = t.txn_date.slice(0, 7);
     if (!cashflow[mo]) cashflow[mo] = { debit: 0, credit: 0 };
     if (t.txn_type === "DEBIT") { cashflow[mo].debit += t.amount; monthly[mo] = (monthly[mo] || 0) + t.amount; }
     else cashflow[mo].credit += t.amount;
   }
 
-  // Per-member breakdown (only when viewing "All")
+  // Per-member breakdown (only when viewing "All") — split shares count toward the member who owns them
   let memberBreakdown = [];
   if (!memberId) {
     const { data: portfolioRow } = await supabase.from("portfolio").select("members").eq("user_id", userId).single();
-    const members = portfolioRow?.members || [];
-    for (const mem of members) {
-      const mIds = await resolveStatementIds(userId, mem.id);
-      if (!mIds || mIds.length === 0) continue;
-      const mTxns = await fetchAll(() => {
-        let q = supabase.from("budget_transactions").select("id,amount,txn_type").eq("user_id", userId).in("statement_id", mIds);
-        if (qFrom) q = q.gte("txn_date", qFrom);
-        if (qTo)   q = q.lte("txn_date", qTo);
-        return q;
-      });
+    for (const mem of portfolioRow?.members || []) {
       let mDebit = 0, mCredit = 0;
-      for (const t of mTxns || []) { if (t.txn_type === "DEBIT") mDebit += t.amount; else mCredit += t.amount; }
+      for (const t of windowAllocs) {
+        if (t.member_id !== mem.id) continue;
+        if (t.txn_type === "DEBIT") mDebit += t.amount; else mCredit += t.amount;
+      }
       if (mDebit > 0 || mCredit > 0) memberBreakdown.push({ id: mem.id, name: mem.name, avatar: mem.avatar, debit: mDebit, credit: mCredit });
     }
   }
@@ -775,10 +877,20 @@ export async function familyAnalytics(userId, memberId, month, { from: rangeFrom
 export async function familyTransactions(userId, query) {
   const { member_id, category, month, search, from, limit, offset } = query;
   const stmtIds = await resolveStatementIds(userId, member_id || null);
-  if (Array.isArray(stmtIds) && stmtIds.length === 0) return [];
+  const splitsByTxn = await loadSplitsByTxn(userId);
+  // Transactions where this member holds a share, even when charged to someone else's statement
+  const sharedTxnIds = member_id
+    ? [...splitsByTxn.entries()].filter(([, shares]) => shares.some(sh => sh.member_id === member_id)).map(([tid]) => tid)
+    : [];
+  if (Array.isArray(stmtIds) && stmtIds.length === 0 && sharedTxnIds.length === 0) return [];
 
   let q = supabase.from("budget_transactions").select("*").eq("user_id", userId).order("txn_date", { ascending: false });
-  if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
+  if (Array.isArray(stmtIds)) {
+    const quote = (ids) => ids.map(i => `"${String(i).replace(/"/g, "")}"`).join(",");
+    if (sharedTxnIds.length && stmtIds.length) q = q.or(`statement_id.in.(${quote(stmtIds)}),id.in.(${quote(sharedTxnIds)})`);
+    else if (sharedTxnIds.length) q = q.in("id", sharedTxnIds);
+    else q = q.in("statement_id", stmtIds);
+  }
   if (category && category !== "All") q = q.eq("category", category);
   if (month) {
     const [y, m] = month.split("-").map(Number);
@@ -793,7 +905,19 @@ export async function familyTransactions(userId, query) {
   q = q.range(startRow, startRow + maxRows - 1);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
-  return (data || []).map(t => ({ ...t, description: decrypt(t.description), balance: t.balance ? decrypt(t.balance) : null }));
+  return (data || [])
+    // In a member's view, hide split transactions on their statement that they hold no share of
+    .filter(t => !(member_id && splitsByTxn.has(t.id) && !splitsByTxn.get(t.id).some(sh => sh.member_id === member_id)))
+    .map(t => {
+      const shares = splitsByTxn.get(t.id);
+      const row = { ...t, description: decrypt(t.description), balance: t.balance ? decrypt(t.balance) : null };
+      if (shares) {
+        row.is_split = true;
+        row.splits = shares.map(sh => ({ member_id: sh.member_id, amount: Number(sh.amount), note: sh.note || "" }));
+        if (member_id) row.member_share = row.splits.find(sh => sh.member_id === member_id)?.amount ?? 0;
+      }
+      return row;
+    });
 }
 
 /** Normalize a transaction description to extract the core merchant name.
@@ -848,16 +972,9 @@ export async function merchantRollup(userId, memberId, month, { from: rangeFrom,
     qFrom = `${y}-${m}-01`; qTo = `${y}-${m}-${String(lastDay).padStart(2, "0")}`;
   }
 
-  const stmtIds = await resolveStatementIds(userId, memberId || null);
-  if (Array.isArray(stmtIds) && stmtIds.length === 0) return [];
-
-  const data = await fetchAll(() => {
-    let q = supabase.from("budget_transactions")
-      .select("id, amount, description, search_text, category").eq("user_id", userId).eq("txn_type", "DEBIT");
-    if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
-    if (qFrom) q = q.gte("txn_date", qFrom);
-    if (qTo)   q = q.lte("txn_date", qTo);
-    return q;
+  // Split-aware: a shared purchase counts only the requested member's share
+  const data = await loadAllocations(userId, memberId || null, {
+    from: qFrom, to: qTo, txnType: "DEBIT", extraCols: "description, search_text",
   });
 
   const grouped = {};
@@ -877,16 +994,9 @@ export async function merchantRollup(userId, memberId, month, { from: rangeFrom,
  *  appearing in 2+ distinct calendar months at a broadly similar amount (within ±30%).
  *  Returns a list of suspected recurring entries sorted by typical monthly cost desc. */
 export async function detectRecurring(userId, memberId) {
-  const stmtIds = await resolveStatementIds(userId, memberId || null);
-  if (Array.isArray(stmtIds) && stmtIds.length === 0) return [];
-
   const cutoff = new Date(Date.now() - 365 * 24 * 3600_000).toISOString().slice(0, 10);
-  const data = await fetchAll(() => {
-    let q = supabase.from("budget_transactions")
-      .select("id, amount, description, search_text, category, txn_date")
-      .eq("user_id", userId).eq("txn_type", "DEBIT").gte("txn_date", cutoff);
-    if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
-    return q;
+  const data = await loadAllocations(userId, memberId || null, {
+    from: cutoff, txnType: "DEBIT", extraCols: "description, search_text",
   });
 
   // Group by merchant → month → list of amounts

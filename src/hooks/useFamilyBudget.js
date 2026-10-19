@@ -340,6 +340,20 @@ export function useFamilyBudget(user) {
     setFbSelTxnIds(new Set()); setFbBulkCat('');
   }
 
+  // ── Split transactions (migrations/0033) ──────────────────────
+  // splits = [{ member_id, amount }]; an empty array un-splits. Throws the
+  // server's validation message (e.g. shares don't total the amount).
+  async function saveSplits(txnId, splits) {
+    await api(`/api/budget/transactions/${txnId}/splits`, { method: 'PUT', body: JSON.stringify({ splits }) });
+    // Splits change per-member totals, merchants and recurring — refresh every view
+    await Promise.all([
+      loadTransactions(fbPeriod, fbMonth, fbMember, fbTxnCat, fbTxnSearch),
+      loadAnalytics(fbPeriod, fbMonth, fbMember),
+      loadMerchants(fbPeriod, fbMonth, fbMember),
+      loadRecurring(fbMember),
+    ]);
+  }
+
   // ── Goal CRUD ─────────────────────────────────────────────────
   async function saveGoal(form, isNew) {
     if (isNew) {
@@ -398,7 +412,7 @@ export function useFamilyBudget(user) {
     fbSelTxnIds, setFbSelTxnIds,
     fbBulkCat, setFbBulkCat,
     loadTransactions,
-    categorizeTxn, bulkCategorize,
+    categorizeTxn, bulkCategorize, saveSplits,
     // Categories
     fbCategories, fbCatLoading,
     fbEditCat, setFbEditCat,

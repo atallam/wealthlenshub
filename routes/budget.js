@@ -156,3 +156,18 @@ router.delete("/category-limits/:category_id/:member_id", auth, async (req, res)
   try { res.json(await budget.deleteCategoryLimit(req.user.id, req.params.category_id, req.params.member_id)); }
   catch (e) { sendError(res, e); }
 });
+
+// ── Split transactions (migrations/0033) ──────────────────────────────────────
+// Share a transaction between family members. PUT replaces all shares; an empty
+// array un-splits. Shares must total the transaction amount.
+router.get("/transactions/:id/splits", auth, async (req, res) => {
+  try { res.json(await budget.getSplits(req.user.id, req.params.id)); }
+  catch (e) { sendError(res, e); }
+});
+router.put("/transactions/:id/splits", auth, async (req, res) => {
+  try { res.json(await budget.setSplits(req.user.id, req.params.id, req.body?.splits)); }
+  catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    sendError(res, e);
+  }
+});
