@@ -16,6 +16,19 @@ const err = (msg, status, extra = {}) => Object.assign(new Error(msg), { status,
 const stId = () => "bst_" + randomUUID().replace(/-/g, "").slice(0, 16);
 const txId = () => "btx_" + randomUUID().replace(/-/g, "").slice(0, 16);
 const aliasId = () => "baa_" + randomUUID().replace(/-/g, "").slice(0, 16);
+/** PostgREST caps every response at 1000 rows no matter what .limit() asks for,
+ *  so any aggregate over transactions must page. `makeQ` must return a FRESH
+ *  query builder each call; rows are ordered by id for stable paging. */
+async function fetchAll(makeQ, pageSize = 1000, maxRows = 100000) {
+  const out = [];
+  for (let from = 0; out.length < maxRows; from += pageSize) {
+    const { data, error } = await makeQ().order("id").range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    out.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return out;
+}
 const catLimitId = () => "bcl_" + randomUUID().replace(/-/g, "").slice(0, 16);
 
 /** True if `name` appears in `lower` at least once WITHOUT being immediately
@@ -411,6 +424,23 @@ export async function updateCategory(userId, id, name, keywords, icon, color, mo
   if (color         !== undefined) patch.color         = color;
   if (monthly_limit !== undefined) patch.monthly_limit = Number(monthly_limit) || 0;
   if (is_essential !== undefined) patch.is_essential = Boolean(is_essential);
+  // Transactions store the category NAME (text), not its id, so a rename has to
+  // carry over to them or they'd be orphaned under the old name.
+  let oldName = null;
+  if (patch.name !== undefined) {
+    patch.name = String(patch.name).trim();
+    if (!patch.name) throw err("Category name cannot be empty", 400);
+    const { data: cur, error: curErr } = await supabase
+      .from("budget_categories").select("name").eq("id", id).eq("user_id", userId).maybeSingle();
+    if (curErr) throw new Error(curErr.message);
+    if (!cur) throw err("Category not found (system defaults can't be edited)", 404);
+    if (cur.name !== patch.name) {
+      const { data: dup } = await supabase.from("budget_categories").select("id")
+        .or(`user_id.eq.${userId},user_id.is.null`).eq("name", patch.name).neq("id", id).limit(1);
+      if (dup?.length) throw err(`A category named "${patch.name}" already exists`, 409);
+      oldName = cur.name;
+    }
+  }
   // Only allow editing user-owned categories (user_id = userId); system defaults (NULL) are read-only
   const { error } = await supabase
     .from("budget_categories")
@@ -418,7 +448,20 @@ export async function updateCategory(userId, id, name, keywords, icon, color, mo
     .eq("id", id)
     .eq("user_id", userId);
   if (error) throw new Error(error.message);
-  return { ok: true };
+
+  let transactionsUpdated = 0;
+  if (oldName) {
+    const { data: moved, error: txErr } = await supabase
+      .from("budget_transactions").update({ category: patch.name })
+      .eq("user_id", userId).eq("category", oldName).select("id");
+    if (txErr) {
+      // keep category + transactions consistent: undo the rename
+      await supabase.from("budget_categories").update({ name: oldName }).eq("id", id).eq("user_id", userId);
+      throw new Error(txErr.message);
+    }
+    transactionsUpdated = moved?.length || 0;
+  }
+  return { ok: true, transactionsUpdated };
 }
 export async function deleteCategory(userId, id) {
   // Only allow deleting user-owned categories; system defaults are protected
@@ -482,8 +525,9 @@ export async function analytics(userId, month, { from: rangeFrom, to: rangeTo } 
   // Determine date range for KPI totals
   let qFrom, qTo;
   if (month) {
+    const [ay, am] = month.split("-").map(Number);
     qFrom = `${month}-01`;
-    qTo   = `${month}-31`;
+    qTo   = `${month}-${String(new Date(ay, am, 0).getDate()).padStart(2, "0")}`; // real last day (…-31 is invalid for Apr/Jun/Sep/Nov/Feb)
   } else if (rangeFrom) {
     qFrom = rangeFrom;
     qTo   = rangeTo || new Date().toISOString().slice(0, 10);
@@ -497,10 +541,12 @@ export async function analytics(userId, month, { from: rangeFrom, to: rangeTo } 
     qTo   = new Date().toISOString().slice(0, 10);
   }
 
-  let kpiQuery = supabase.from("budget_transactions").select("amount, txn_type, category, txn_date").eq("user_id", userId);
-  if (qFrom) kpiQuery = kpiQuery.gte("txn_date", qFrom);
-  if (qTo)   kpiQuery = kpiQuery.lte("txn_date", qTo);
-  const { data: txns } = await kpiQuery;
+  const txns = await fetchAll(() => {
+    let q = supabase.from("budget_transactions").select("id, amount, txn_type, category, txn_date").eq("user_id", userId);
+    if (qFrom) q = q.gte("txn_date", qFrom);
+    if (qTo)   q = q.lte("txn_date", qTo);
+    return q;
+  });
 
   const byCategory = {}; let totalDebit = 0, totalCredit = 0;
   for (const t of txns || []) {
@@ -509,12 +555,12 @@ export async function analytics(userId, month, { from: rangeFrom, to: rangeTo } 
   }
 
   // Monthly spending trend (last 6 months, debit only — for existing Budget tab)
-  const { data: allTxns } = await supabase.from("budget_transactions").select("amount, txn_type, txn_date").eq("user_id", userId).gte("txn_date", new Date(Date.now() - 180 * 24 * 3600_000).toISOString().slice(0, 10)).eq("txn_type", "DEBIT");
+  const allTxns = await fetchAll(() => supabase.from("budget_transactions").select("id, amount, txn_type, txn_date").eq("user_id", userId).gte("txn_date", new Date(Date.now() - 180 * 24 * 3600_000).toISOString().slice(0, 10)).eq("txn_type", "DEBIT"));
   const monthly = {};
   for (const t of allTxns || []) { const mo = t.txn_date.slice(0, 7); monthly[mo] = (monthly[mo] || 0) + t.amount; }
 
   // Dual cashflow trend (last 12 months, both debit + credit — for Budget 2 chart)
-  const { data: cfTxns } = await supabase.from("budget_transactions").select("amount, txn_type, txn_date").eq("user_id", userId).gte("txn_date", new Date(Date.now() - 365 * 24 * 3600_000).toISOString().slice(0, 10));
+  const cfTxns = await fetchAll(() => supabase.from("budget_transactions").select("id, amount, txn_type, txn_date").eq("user_id", userId).gte("txn_date", new Date(Date.now() - 365 * 24 * 3600_000).toISOString().slice(0, 10)));
   const cashflow = {}; // { "YYYY-MM": { debit, credit } }
   for (const t of cfTxns || []) {
     const mo = t.txn_date.slice(0, 7);
@@ -667,11 +713,13 @@ export async function familyAnalytics(userId, memberId, month, { from: rangeFrom
   }
 
   // KPI query for current window
-  let kpiQ = supabase.from("budget_transactions").select("amount,txn_type,category").eq("user_id", userId);
-  if (Array.isArray(stmtIds)) kpiQ = kpiQ.in("statement_id", stmtIds);
-  if (qFrom) kpiQ = kpiQ.gte("txn_date", qFrom);
-  if (qTo)   kpiQ = kpiQ.lte("txn_date", qTo);
-  const { data: kpiTxns } = await kpiQ;
+  const kpiTxns = await fetchAll(() => {
+    let q = supabase.from("budget_transactions").select("id,amount,txn_type,category").eq("user_id", userId);
+    if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
+    if (qFrom) q = q.gte("txn_date", qFrom);
+    if (qTo)   q = q.lte("txn_date", qTo);
+    return q;
+  });
 
   const byCategory = {}; let totalDebit = 0, totalCredit = 0;
   for (const t of kpiTxns || []) {
@@ -686,9 +734,11 @@ export async function familyAnalytics(userId, memberId, month, { from: rangeFrom
 
   // 12-month cashflow trend
   const cfFrom = new Date(Date.now() - 365 * 24 * 3600_000).toISOString().slice(0, 10);
-  let cfQ = supabase.from("budget_transactions").select("amount,txn_type,txn_date").eq("user_id", userId).gte("txn_date", cfFrom);
-  if (Array.isArray(stmtIds)) cfQ = cfQ.in("statement_id", stmtIds);
-  const { data: cfTxns } = await cfQ;
+  const cfTxns = await fetchAll(() => {
+    let q = supabase.from("budget_transactions").select("id,amount,txn_type,txn_date").eq("user_id", userId).gte("txn_date", cfFrom);
+    if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
+    return q;
+  });
   const cashflow = {}, monthly = {};
   for (const t of cfTxns || []) {
     const mo = t.txn_date.slice(0, 7);
@@ -705,10 +755,12 @@ export async function familyAnalytics(userId, memberId, month, { from: rangeFrom
     for (const mem of members) {
       const mIds = await resolveStatementIds(userId, mem.id);
       if (!mIds || mIds.length === 0) continue;
-      let mQ = supabase.from("budget_transactions").select("amount,txn_type").eq("user_id", userId).in("statement_id", mIds);
-      if (qFrom) mQ = mQ.gte("txn_date", qFrom);
-      if (qTo)   mQ = mQ.lte("txn_date", qTo);
-      const { data: mTxns } = await mQ;
+      const mTxns = await fetchAll(() => {
+        let q = supabase.from("budget_transactions").select("id,amount,txn_type").eq("user_id", userId).in("statement_id", mIds);
+        if (qFrom) q = q.gte("txn_date", qFrom);
+        if (qTo)   q = q.lte("txn_date", qTo);
+        return q;
+      });
       let mDebit = 0, mCredit = 0;
       for (const t of mTxns || []) { if (t.txn_type === "DEBIT") mDebit += t.amount; else mCredit += t.amount; }
       if (mDebit > 0 || mCredit > 0) memberBreakdown.push({ id: mem.id, name: mem.name, avatar: mem.avatar, debit: mDebit, credit: mCredit });
@@ -750,23 +802,32 @@ export async function familyTransactions(userId, query) {
  *  - NEFT/RTGS/IMPS: "NEFT/HDFC123/AMAZON PAY" → "AMAZON PAY"
  *  - POS: "POS/TXN/BIGBASKET" → "BIGBASKET"
  *  - Generic: strips trailing dates, ref numbers, slashes */
-function normalizeMerchant(desc) {
+const RAIL = "UPI|NEFT|RTGS|IMPS|POS|ACH|ECS|EMI|ENQ|CLG|TFR|NACH|ATM|INB|MOB|CHQ|DD|DEBIT CARD|CREDIT CARD|PURCHASE|ECOM|BIL|BILLPAY";
+const NOISE_SEG = /^(CR|DR|C|D|P2A|P2M|P2P|TXN|REF|NA|NULL|PAYMENT|PAYMENT FROM PHONE|UPI|PAY|OK|REFUND|TRANSFER)$/;
+const VPA_HANDLES = /^(OK)?(AXIS|HDFCBANK|SBI|ICICI|YBL|IBL|AXL|PAYTM|APL|UPI|FBL|OKAXIS|OKHDFCBANK|OKSBI|OKICICI)$/;
+export function normalizeMerchant(desc) {
   if (!desc) return "Unknown";
   let s = String(desc).toUpperCase().trim();
-  // Strip leading UPI/NEFT/IMPS/RTGS/POS markers + slash-delimited codes
-  s = s.replace(/^(UPI|NEFT|RTGS|IMPS|POS|ACH|ECS|EMI|ENQ|CLG|TFR|NACH|ATM|INB|MOB|CHQ|DD|DEBIT CARD|CREDIT CARD|PURCHASE)\b[\s/\-]*/i, "");
-  // Strip slash-delimited ref codes (all-numeric or alphanumeric >=6 chars) that appear in UPI refs
-  s = s.replace(/\/[A-Z0-9]{6,}(?=\/|$)/g, "");
-  // Strip trailing date patterns like 07-08, 2024-08-07
-  s = s.replace(/\s*\d{2}[-/]\d{2}(?:[-/]\d{2,4})?\s*$/, "");
-  // Strip trailing transaction IDs (long numeric strings)
-  s = s.replace(/\s+\d{8,}\s*$/, "");
-  // Remove leading/trailing slashes and trim
-  s = s.replace(/^[\/\s]+|[\/\s]+$/g, "").trim();
-  // Collapse multiple spaces
-  s = s.replace(/\s{2,}/g, " ");
-  // Title-case
-  return s.split(" ").map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(" ") || "Unknown";
+  const rail = new RegExp(`^(${RAIL})\\b[\\s/\\-:]*`);
+  // Peel leading rail markers (e.g. "UPI/", "POS ", "NEFT-")
+  let hadRail = false;
+  while (rail.test(s)) { s = s.replace(rail, ""); hadRail = true; }
+  // Pick the delimiter: slash-delimited refs, else dash-delimited after a rail marker
+  const delim = s.includes("/") ? "/" : (hadRail && (s.match(/-/g) || []).length >= 2 ? "-" : null);
+  let segs = delim ? s.split(delim) : [s];
+  const isRef = (x) => /\d/.test(x) && /^[A-Z0-9*X]{6,}$/.test(x.replace(/\s/g, "")) && !/\s/.test(x); // ref/ID tokens: alnum, has a digit
+  segs = segs.map(x => x.trim()).filter(x => x && !NOISE_SEG.test(x) && !isRef(x) && !VPA_HANDLES.test(x));
+  // Prefer the first segment that has a real word (3+ letters)
+  let m = segs.find(x => /[A-Z]{3,}/.test(x)) || segs[0] || "";
+  m = m.replace(/@\S+/g, "")                                  // VPA handle
+       .replace(/\b\d{4}X{2,}\d{2,4}\b|\b\d*X{3,}\d*\b/g, "")  // masked card numbers
+       .replace(/\s*\d{2}[-/]\d{2}(?:[-/]\d{2,4})?\s*$/, "")   // trailing dd-mm / dd-mm-yy
+       .replace(/\s+\d{6,}\s*$/, "")                           // trailing long ref numbers
+       .replace(/^[\s\/\-:]+|[\s\/\-:]+$/g, "")
+       .replace(/\s{2,}/g, " ")
+       .trim();
+  if (!m) return "Unknown";
+  return m.split(" ").map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(" ");
 }
 
 /** Top merchants by spend. Groups by normalized description and sums amounts.
@@ -790,14 +851,14 @@ export async function merchantRollup(userId, memberId, month, { from: rangeFrom,
   const stmtIds = await resolveStatementIds(userId, memberId || null);
   if (Array.isArray(stmtIds) && stmtIds.length === 0) return [];
 
-  let q = supabase.from("budget_transactions")
-    .select("amount, description, search_text, category").eq("user_id", userId).eq("txn_type", "DEBIT");
-  if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
-  if (qFrom) q = q.gte("txn_date", qFrom);
-  if (qTo)   q = q.lte("txn_date", qTo);
-  q = q.limit(5000);
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
+  const data = await fetchAll(() => {
+    let q = supabase.from("budget_transactions")
+      .select("id, amount, description, search_text, category").eq("user_id", userId).eq("txn_type", "DEBIT");
+    if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
+    if (qFrom) q = q.gte("txn_date", qFrom);
+    if (qTo)   q = q.lte("txn_date", qTo);
+    return q;
+  });
 
   const grouped = {};
   for (const t of data || []) {
@@ -820,12 +881,13 @@ export async function detectRecurring(userId, memberId) {
   if (Array.isArray(stmtIds) && stmtIds.length === 0) return [];
 
   const cutoff = new Date(Date.now() - 365 * 24 * 3600_000).toISOString().slice(0, 10);
-  let q = supabase.from("budget_transactions")
-    .select("amount, description, search_text, category, txn_date")
-    .eq("user_id", userId).eq("txn_type", "DEBIT").gte("txn_date", cutoff).limit(5000);
-  if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
+  const data = await fetchAll(() => {
+    let q = supabase.from("budget_transactions")
+      .select("id, amount, description, search_text, category, txn_date")
+      .eq("user_id", userId).eq("txn_type", "DEBIT").gte("txn_date", cutoff);
+    if (Array.isArray(stmtIds)) q = q.in("statement_id", stmtIds);
+    return q;
+  });
 
   // Group by merchant → month → list of amounts
   const byMerchant = {};

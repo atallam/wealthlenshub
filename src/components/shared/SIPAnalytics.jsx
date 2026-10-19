@@ -44,11 +44,11 @@ export default function SIPAnalytics({ allHoldings = [], valINRCache, invINRCach
 
   // Portfolio-level SIP totals using cache
   const totalInvested = sipHoldings.reduce((s, h) => {
-    const inv = invINRCache?.get ? invINRCache.get(h.id) : (invINRCache?.[h.id] ?? +h.invested_value ?? 0);
+    const inv = invINRCache?.get ? invINRCache.get(h.id) : (invINRCache?.[h.id] ?? (+h.invested_value || 0));
     return s + (inv || 0);
   }, 0);
   const totalCurrent = sipHoldings.reduce((s, h) => {
-    const cur = valINRCache?.get ? valINRCache.get(h.id) : (valINRCache?.[h.id] ?? +h.current_value ?? 0);
+    const cur = valINRCache?.get ? valINRCache.get(h.id) : (valINRCache?.[h.id] ?? (+h.current_value || 0));
     return s + (cur || 0);
   }, 0);
   const totalGain    = totalCurrent - totalInvested;
@@ -110,8 +110,8 @@ export default function SIPAnalytics({ allHoldings = [], valINRCache, invINRCach
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '.5rem' }}>
             {sipHoldings.map(h => {
-              const cur = valINRCache?.get ? valINRCache.get(h.id) : (valINRCache?.[h.id] ?? +h.current_value ?? 0);
-              const inv = invINRCache?.get ? invINRCache.get(h.id) : (invINRCache?.[h.id] ?? +h.invested_value ?? 0);
+              const cur = valINRCache?.get ? valINRCache.get(h.id) : (valINRCache?.[h.id] ?? (+h.current_value || 0));
+              const inv = invINRCache?.get ? invINRCache.get(h.id) : (invINRCache?.[h.id] ?? (+h.invested_value || 0));
               const gain    = cur - inv;
               const gainPct = inv > 0 ? (gain / inv) * 100 : 0;
               const barPct  = maxSip > 0 ? ((h.sip_avg_amount || 0) / maxSip) * 100 : 0;
