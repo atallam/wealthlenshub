@@ -16,6 +16,12 @@ router.post("/import", auth, async (req, res) => {
   catch (e) { sendError(res, e, e.status); }
 });
 
+// Registered before "/" handlers that take params so it is never shadowed.
+router.post("/cost-basis", auth, async (req, res) => {
+  try { res.json(await txns.setCostBasis(req.user.id, req.body)); }
+  catch (e) { sendError(res, e, e.status || 400); }
+});
+
 router.post("/", auth, async (req, res) => {
   try { res.json(await txns.add(req.user.id, req.body)); }
   catch (e) { sendError(res, e, e.status || 403); }

@@ -5,6 +5,7 @@ import { ClipboardList, Paperclip, Pencil, X as XIcon, Bell } from "lucide-react
 import ConcallPanel from "./ConcallPanel.jsx";
 import SwipeableRow from "../../components/shared/SwipeableRow.jsx";
 import MFOverlapPanel from "./MFOverlapPanel.jsx";
+import CostBasisModal from "./CostBasisModal.jsx";
 import { isMaturedFD, fdDaysLeft, fdValue } from "../../utils.js";
 
 // ── Matured FDs — action needed ───────────────────────────────────────────────
@@ -203,6 +204,8 @@ export default function HoldingsTab({
   setTxnForm,
   setTxnHolding,
   setArtifactHolding,
+  api,
+  setHoldings,
   setModal,
   setShowImportHub,
   loadDemoData,
@@ -231,6 +234,7 @@ export default function HoldingsTab({
   // Merge user-configured thresholds with defaults
   const ST = { ...STALE_DEFAULTS, ...(staleThresholds || {}) };
 
+  const [costBasisHolding, setCostBasisHolding] = useState(null);
   const [concallHolding, setConcallHolding] = useState(null);
   const [alertHolding,   setAlertHolding]   = useState(null);
   const [showStaleOnly, setShowStaleOnly] = useState(false);
@@ -548,11 +552,27 @@ export default function HoldingsTab({
                   const nativeSym = isUS ? "$" : "₹";
                   const fmtH = n => fmtNative(n, h);  // native formatter for this holding
 
+                  const cbUnknown = h.cost_basis==="unknown";
+                  const cbApprox  = h.cost_basis==="approx";
+                  const canSetCost = (cbUnknown||cbApprox) && (h.type==="IN_STOCK"||h.type==="IN_ETF"||h.type==="US_STOCK"||h.type==="US_ETF") && !demoMode;
+                  const costBtn = canSetCost
+                    ? <button title={cbUnknown?"Purchase cost is unknown (depository statement) — set your average buy price":"Cost is approximate — click to revise"}
+                        onClick={()=>setCostBasisHolding(h)}
+                        style={{marginTop:2,padding:"1px 6px",fontSize:".62rem",fontWeight:600,borderRadius:4,cursor:"pointer",
+                          background:cbUnknown?"rgba(201,168,76,.15)":"transparent",color:cbUnknown?"#c9a84c":"var(--text-muted)",
+                          border:`1px solid ${cbUnknown?"rgba(201,168,76,.4)":"var(--border)"}`,fontFamily:"'DM Sans',sans-serif"}}>
+                        {cbUnknown?"Set cost":"Edit"}
+                      </button>
+                    : null;
                   const avgDisplay = avgCost
-                    ? <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"var(--text)"}}>
-                        {nativeSym}{h.type==="MF"?Number(avgCost).toFixed(4):Number(avgCost).toLocaleString(isUS?"en-US":"en-IN",{maximumFractionDigits:2})}
+                    ? <span>
+                        <span style={{fontFamily:"'DM Mono',monospace",fontSize:".75rem",color:"var(--text)"}}>
+                          {cbApprox&&<span title="Approximate cost basis (estimated or user-entered)" style={{color:"#c9a84c",marginRight:2}}>≈</span>}
+                          {nativeSym}{h.type==="MF"?Number(avgCost).toFixed(4):Number(avgCost).toLocaleString(isUS?"en-US":"en-IN",{maximumFractionDigits:2})}
+                        </span>
+                        {costBtn&&<div>{costBtn}</div>}
                       </span>
-                    : <span style={{color:"var(--text-muted)"}}>—</span>;
+                    : <span style={{color:"var(--text-muted)"}}>—{costBtn&&<div>{costBtn}</div>}</span>;
 
                   const rawPrice = h.type==="MF" ? (h.current_nav||h.purchase_nav||null) : (h.current_price||h.purchase_price||null);
                   const curPriceDisplay = rawPrice
@@ -858,7 +878,12 @@ export default function HoldingsTab({
                         </div>
                         <div className="m-hc-cell" style={{textAlign:"right"}}>
                           <span className="m-hc-lbl">Invested</span>
-                          <span className="m-hc-val">{inv==null?"— (CAS import)":fmtCrNative(inv,h)}</span>
+                          <span className="m-hc-val">{inv==null?"— (CAS import)":<>{h.cost_basis==="approx"&&<span title="Approximate cost basis" style={{color:"#c9a84c"}}>≈ </span>}{fmtCrNative(inv,h)}</>}</span>
+                          {(h.cost_basis==="unknown"||h.cost_basis==="approx")&&!demoMode&&(h.type==="IN_STOCK"||h.type==="IN_ETF"||h.type==="US_STOCK"||h.type==="US_ETF")&&(
+                            <button onClick={()=>setCostBasisHolding(h)} style={{marginTop:3,padding:"1px 6px",fontSize:".62rem",fontWeight:600,borderRadius:4,cursor:"pointer",background:"rgba(201,168,76,.15)",color:"#c9a84c",border:"1px solid rgba(201,168,76,.4)"}}>
+                              {h.cost_basis==="unknown"?"Set cost":"Edit"}
+                            </button>
+                          )}
                         </div>
                         <div className="m-hc-cell">
                           <span className="m-hc-lbl">Cur. Price</span>
@@ -947,6 +972,15 @@ export default function HoldingsTab({
       <div style={{marginTop:"1rem",padding:".75rem 1rem",background:"var(--bg-muted)",borderRadius:8,fontSize:".72rem",color:"var(--text-dim)",lineHeight:1.6}}>
         <strong style={{color:"var(--text)"}}>Live prices:</strong> Add NSE ticker (e.g. <code style={{color:"#c9a84c"}}>RELIANCE</code>) or AMFI scheme code (e.g. <code style={{color:"#c9a84c"}}>119551</code>) when adding a holding, then click <strong style={{color:"var(--text)"}}>⟳ Live Prices</strong> to auto-fetch. 📎 button attaches contract notes, statements, or receipts to any holding.
       </div>
+
+      {costBasisHolding && (
+        <CostBasisModal
+          holding={costBasisHolding}
+          api={api}
+          onClose={()=>setCostBasisHolding(null)}
+          onSaved={async()=>{ const hlds = await api("/api/holdings"); setHoldings(hlds || []); }}
+        />
+      )}
     </div>
   );
 }

@@ -675,6 +675,7 @@ ${alertsText}`;
               setTxnForm={setTxnForm}
               setTxnHolding={setTxnHolding}
               setArtifactHolding={setArtifactHolding}
+              setHoldings={setHoldings}
               alerts={alerts}
               setAlerts={portfolio.setAlerts}
               staleThresholds={{

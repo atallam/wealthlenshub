@@ -47,7 +47,9 @@ const NOT_EXITED = "holding_status.is.null,holding_status.neq.exited";
 
 /** List holdings with artifacts + transactions, enriched with SIP/net-unit fields. */
 export async function list(userId) {
-  const FULL  = "*, artifacts(id,file_name,file_type,file_size,description,uploaded_at), transactions(id,txn_type,units,price,txn_date,notes,created_at)";
+  const FULL  = "*, artifacts(id,file_name,file_type,file_size,description,uploaded_at), transactions(id,txn_type,units,price,txn_date,notes,created_at,source_type)";
+  // Pre-0030 databases have no source_type column — same select without it.
+  const FULL_LEGACY = "*, artifacts(id,file_name,file_type,file_size,description,uploaded_at), transactions(id,txn_type,units,price,txn_date,notes,created_at)";
   const BASIC = "*, artifacts(id,file_name,file_type,file_size,description,uploaded_at)";
   const q = (sel, withFilter, withExited) => {
     let b = supabase.from("holdings").select(sel).eq("user_id", userId);
@@ -59,6 +61,7 @@ export async function list(userId) {
   // (migration 0028 / 0029 not run), degrade gracefully so the portfolio never
   // comes back empty because of a missing column.
   let { data, error } = await q(FULL, true, true);
+  if (error) ({ data, error } = await q(FULL_LEGACY, true, true));
   if (error) ({ data, error } = await q(BASIC, true, true));
   if (error) {
     console.warn("holdings.list: exited filter failed (run migrations/0029_cas_natural_key.sql):", error.message);

@@ -5,6 +5,7 @@
 import { randomUUID } from "crypto";
 import { supabase } from "../lib/db.js";
 import { assertOwnsHolding } from "../lib/guards.js";
+import { buildLots } from "../lib/lots.js";
 
 const txnId = () => "t_" + randomUUID().replace(/-/g, "").slice(0, 16);
 
@@ -87,4 +88,65 @@ export async function remove(userId, id) {
   const { error } = await supabase.from("transactions").delete().eq("id", id).eq("user_id", userId);
   if (error) throw new Error(error.message);
   return { ok: true };
+}
+
+/**
+ * "Set cost basis" — for holdings whose purchase cost is unknown (typically CAS
+ * demat stocks). Writes ONE manual OPENING BUY covering the units the ledger does
+ * not already explain, so the lot engine (Holdings + Tax tabs) picks it up and the
+ * holding is flagged cost_basis = "approx".
+ *
+ * Idempotent: keyed OPENING|<holding>, so saving again replaces the previous
+ * estimate instead of stacking a second lot. source stays NULL (manual) so CAS
+ * re-imports never delete it.
+ *
+ * @param {string} userId
+ * @param {{holding_id:string, avg_price:number|string, units?:number|string, buy_date?:string}} body
+ */
+export async function setCostBasis(userId, body) {
+  const bad = (msg) => { const e = new Error(msg); e.status = 400; return e; };
+  const { holding_id } = body || {};
+  const avgPrice = Number(body?.avg_price);
+  if (!holding_id) throw bad("holding_id is required");
+  if (!Number.isFinite(avgPrice) || avgPrice <= 0) throw bad("avg_price must be greater than 0");
+  if (body?.buy_date && !/^\d{4}-\d{2}-\d{2}$/.test(body.buy_date)) throw bad("buy_date must be YYYY-MM-DD");
+  await assertOwnsHolding(userId, holding_id);
+
+  const { data: h, error: hErr } = await supabase.from("holdings")
+    .select("id, units, start_date, created_at").eq("id", holding_id).eq("user_id", userId).single();
+  if (hErr || !h) throw bad("Holding not found");
+
+  const { data: rows, error: tErr } = await supabase.from("transactions")
+    .select("id, txn_type, units, price, txn_date, source, source_type, external_key")
+    .eq("holding_id", holding_id).eq("user_id", userId);
+  if (tErr) throw new Error(tErr.message);
+
+  const key = `OPENING|${holding_id}`;
+  const existing = (rows || []).find((t) => t.external_key === key);
+  // Units the rest of the ledger already explains (excluding our own previous estimate).
+  const others = (rows || []).filter((t) => t.external_key !== key);
+  const covered = buildLots(others).netUnits;
+
+  const held = Number(h.units) || 0;
+  const units = body?.units !== undefined && body.units !== "" ? Number(body.units) : +(held - covered).toFixed(6);
+  if (!Number.isFinite(units) || units <= 0) {
+    throw bad("Nothing to price: the transaction ledger already accounts for every unit of this holding");
+  }
+
+  const txn_date = body?.buy_date || h.start_date || String(h.created_at || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const payload = {
+    txn_type: "BUY", units, price: avgPrice, amount: Math.round(units * avgPrice * 100) / 100,
+    txn_date, source: null, source_type: "OPENING", external_key: key,
+    description: "User-entered average cost (cost basis was unknown)",
+    notes: "Cost basis set manually" + (body?.buy_date ? "" : " · buy date approximate"),
+  };
+
+  if (existing) {
+    const { error } = await supabase.from("transactions").update(payload).eq("id", existing.id).eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    return { ok: true, updated: true, units, avg_price: avgPrice, txn_date };
+  }
+  const { error } = await supabase.from("transactions").insert({ id: txnId(), holding_id, user_id: userId, ...payload });
+  if (error) throw new Error(error.message);
+  return { ok: true, updated: false, units, avg_price: avgPrice, txn_date };
 }
