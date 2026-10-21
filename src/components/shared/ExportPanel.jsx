@@ -13,39 +13,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Download, FileSpreadsheet, FileText, Table2, X } from 'lucide-react';
-import { supabase } from '../../supabase.js';
-
-async function getToken() {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || '';
-  } catch { return ''; }
-}
-
-async function triggerDownload(path, filename) {
-  const token = await getToken();
-  const res   = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new Error(`Export failed: ${res.status}`);
-  const blob  = await res.blob();
-  const url   = URL.createObjectURL(blob);
-  const a     = document.createElement('a');
-  a.href      = url;
-  a.download  = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-async function openReport() {
-  const token = await getToken();
-  const res   = await fetch('/api/export/report', { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new Error('Report failed');
-  const html  = await res.text();
-  const blob  = new Blob([html], { type: 'text/html' });
-  const url   = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-}
+import { downloadExport as triggerDownload, openReportExport as openReport } from '../../lib/exportDownload.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 

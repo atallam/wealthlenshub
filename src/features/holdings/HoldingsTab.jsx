@@ -7,6 +7,7 @@ import SwipeableRow from "../../components/shared/SwipeableRow.jsx";
 import MFOverlapPanel from "./MFOverlapPanel.jsx";
 import CostBasisModal from "./CostBasisModal.jsx";
 import { isMaturedFD, fdDaysLeft, fdValue } from "../../utils.js";
+import { downloadExport, openReportExport, exportToday } from "../../lib/exportDownload.js";
 
 // ── Matured FDs — action needed ───────────────────────────────────────────────
 // An FD past its maturity date is idle money until the user decides what to do.
@@ -239,6 +240,15 @@ export default function HoldingsTab({
   const [alertHolding,   setAlertHolding]   = useState(null);
   const [showStaleOnly, setShowStaleOnly] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exportBusy, setExportBusy] = useState(null);   // key of in-flight export
+  const [exportError, setExportError] = useState("");
+  async function runExport(item){
+    if(exportBusy) return;
+    setExportError(""); setExportBusy(item.key);
+    try{ await (item.report ? openReportExport() : downloadExport(item.href, item.file)); setShowExportMenu(false); }
+    catch(e){ console.error("Export error:", e); setExportError(e.message||"Export failed"); }
+    finally{ setExportBusy(null); }
+  }
 
   // Stale detection — computed before render so JSX can reference staleH + displayH
   const staleH   = computeStale(visH, ST);
@@ -438,22 +448,21 @@ export default function HoldingsTab({
               <div onClick={()=>setShowExportMenu(false)} style={{position:"fixed",inset:0,zIndex:99}}/>
               <div style={{position:"absolute",top:"calc(100% + .35rem)",right:0,zIndex:100,background:"var(--bg-card)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 6px 24px rgba(0,0,0,.18)",minWidth:170,overflow:"hidden"}}>
                 {[
-                  {href:"/api/export/report",  label:"⎙ PDF Report",        color:"var(--accent-3,#c9a84c)", target:"_blank", download:false},
-                  {href:"/api/export/xlsx",    label:"⬇ Excel (full)",      color:"var(--accent)",           target:"_self",  download:true},
-                  {href:"/api/export/holdings",label:"⬇ Holdings CSV",      color:"var(--text)",             target:"_self",  download:true},
-                  {href:"/api/export/transactions",label:"⬇ Transactions CSV",color:"var(--accent-2)",       target:"_self",  download:true},
+                  {key:"report",label:"⎙ PDF Report",        color:"var(--accent-3,#c9a84c)", report:true},
+                  {key:"xlsx",  label:"⬇ Excel (full)",      color:"var(--accent)",           href:"/api/export/xlsx",         file:`wealthlens-portfolio-${exportToday()}.xlsx`},
+                  {key:"csv-h", label:"⬇ Holdings CSV",      color:"var(--text)",             href:"/api/export/holdings",     file:`wealthlens-holdings-${exportToday()}.csv`},
+                  {key:"csv-t", label:"⬇ Transactions CSV",  color:"var(--accent-2)",         href:"/api/export/transactions", file:`wealthlens-transactions-${exportToday()}.csv`},
                 ].map(item=>(
-                  <a
-                    key={item.href}
-                    href={item.href}
-                    target={item.target}
-                    rel="noopener noreferrer"
-                    {...(item.download?{download:true}:{})}
-                    onClick={()=>setShowExportMenu(false)}
-                    style={{display:"block",padding:".65rem 1rem",fontSize:".78rem",fontWeight:600,color:item.color,textDecoration:"none",borderBottom:"1px solid var(--border)",fontFamily:"var(--font-ui)"}}>
-                    {item.label}
-                  </a>
+                  <button
+                    key={item.key}
+                    type="button"
+                    disabled={!!exportBusy}
+                    onClick={()=>runExport(item)}
+                    style={{display:"block",width:"100%",textAlign:"left",background:"none",border:"none",cursor:exportBusy?"wait":"pointer",opacity:exportBusy&&exportBusy!==item.key?.5:1,padding:".65rem 1rem",fontSize:".78rem",fontWeight:600,color:item.color,borderBottom:"1px solid var(--border)",fontFamily:"var(--font-ui)"}}>
+                    {exportBusy===item.key?"Preparing…":item.label}
+                  </button>
                 ))}
+                {exportError&&<div role="alert" style={{padding:".5rem 1rem",fontSize:".7rem",color:"var(--red,#c82333)",maxWidth:240}}>{exportError}</div>}
               </div>
             </>
           )}
