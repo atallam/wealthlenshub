@@ -78,7 +78,7 @@ describe("diffCas", () => {
     const { groups } = groupByMember([row({ isin: "INFY", account_id: "cd/9", units: 3, current_value: 4500 })], { member_id: "m1" });
     const d = diffCas(groups, existing, { depository: "CDSL" });
     const r = d.rows[0];
-    expect(r.overlap).toEqual([{ id: "h1", depository: "NSDL", account_id: "dp/1", units: 10 }]);   // not h6 (m2), not LEGACY
+    expect(r.overlap).toEqual([{ id: "h1", depository: "NSDL", account_id: "dp/1", units: 10, source_date: "2026-08-31" }]);   // not h6 (m2), not LEGACY
     expect(d.summary.overlap).toBe(1);
   });
 
@@ -107,5 +107,12 @@ describe("buildApplyGroups", () => {
     expect(out[0].rows.map((r) => r.isin)).toEqual(["INFY"]);
     expect(out[0].rows[0]).not.toHaveProperty("_holder_name");
     expect(out[0].account_ids).toEqual(["MF-FOLIOS"]);
+    // skipped ISINs still count as present so exit detection leaves them alone
+    expect(out[0].keep_isins).toEqual(["MF1"]);
+  });
+
+  it("omits keep_isins when nothing was skipped", () => {
+    const { groups } = groupByMember([row({ isin: "INFY", account_id: "dp/1" })], { member_id: "m1" });
+    expect(buildApplyGroups(groups, {})[0]).not.toHaveProperty("keep_isins");
   });
 });

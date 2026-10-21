@@ -11,6 +11,87 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
+// ── Pure helpers shared by the single-file flow and the multi-statement queue ──
+// src = { holdings, holderNames, holderMap, depository, hash, statementDate, periodStart, periodEnd }
+
+/** Member a single-holder statement resolves to (never guesses when several members exist). */
+function singleMemberFor(src, members) {
+  const names = src.holderNames || [];
+  const map = src.holderMap || {};
+  return names.length <= 1 && members.length > 0
+    ? (map[names[0]] || map["__default__"] || (members.length === 1 ? members[0]?.id : undefined))
+    : undefined;
+}
+
+/** True while some holder in this statement still has no family member assigned. */
+export function queueItemNeedsMember(src, members) {
+  if (!src) return false;
+  const names = src.holderNames || [];
+  const map = src.holderMap || {};
+  const owning = new Set((src.holdings || []).map(h => h._holder_name).filter(Boolean));
+  const multi = names.length > 1 && members.length > 1;
+  return multi
+    ? names.some(n => owning.has(n) && !map[n])
+    : (names.length <= 1 && members.length > 1 && !(map[names[0]] || map["__default__"]));
+}
+
+/** Request body for /api/holdings/import[/preview]. */
+export function buildCasImportBody(src, members, dupActions = {}, retireLegacy = true) {
+  const dup_actions = {};
+  for (const [k, v] of Object.entries(dupActions)) if (k.includes("|")) dup_actions[k] = v;
+  const map = src.holderMap || {};
+  return {
+    holdings: src.holdings,
+    member_id: singleMemberFor(src, members) || "",
+    account_map: Object.keys(map).length > 0 ? map : undefined,
+    depository: src.depository,
+    statement_hash: src.hash,
+    cas_statement_date: src.statementDate,
+    cas_period_start: src.periodStart,
+    cas_period_end: src.periodEnd,
+    dup_actions,
+    retire_legacy: retireLegacy,
+  };
+}
+
+/** Same member resolution the server uses (account_map[holder] → single member). */
+function rowMemberId(src, row, members) {
+  return (src.holderMap && row._holder_name && src.holderMap[row._holder_name]) || singleMemberFor(src, members) || row.member_id || null;
+}
+
+const isinOf = (h) => String(h.isin || h.ticker || h.scheme_code || "").trim().toUpperCase();
+const RTA = new Set(["CAMS", "KFINTECH"]);
+
+/**
+ * Newest statement wins for a mutual fund listed in statements from different
+ * depositories (the same folio shown by an RTA CAS and a depository CAS).
+ * Ties prefer the RTA statement (it can carry the transaction ledger).
+ * Returns Map<itemId, { "member|isin": "skip" }>. Stocks are left alone — the same
+ * stock in two demat accounts is legitimate.
+ */
+export function planQueueOverlaps(items, members) {
+  const skips = new Map(items.map(i => [i.id, {}]));
+  const byKey = new Map();
+  for (const it of items) {
+    for (const row of it.src.holdings || []) {
+      if (row.type !== "MF") continue;
+      const mid = rowMemberId(it.src, row, members);
+      const isin = isinOf(row);
+      if (!mid || !isin) continue;
+      const k = `${mid}|${isin}`;
+      if (!byKey.has(k)) byKey.set(k, []);
+      byKey.get(k).push({ id: it.id, dep: it.src.depository, date: it.src.statementDate || "" });
+    }
+  }
+  for (const [k, entries] of byKey) {
+    if (new Set(entries.map(e => e.dep)).size < 2) continue;
+    const winner = [...entries].sort((a, b) =>
+      b.date.localeCompare(a.date) || (RTA.has(b.dep) ? 1 : 0) - (RTA.has(a.dep) ? 1 : 0))[0];
+    for (const e of entries) if (e.dep !== winner.dep) skips.get(e.id)[k] = "skip";
+  }
+  return skips;
+}
+
 // Lines 1076-1097 (CAS state) + lines 1460-1712 (CAS upload/import/retry/reset + helper functions)
 export function useCASImport(user, onSuccess) {
   // CAS Downloader state
@@ -39,6 +120,10 @@ export function useCASImport(user, onSuccess) {
   const [casPreviewing,    setCasPreviewing]    = useState(false);
   const [casRetireLegacy,  setCasRetireLegacy]  = useState(true);
   const previewSeq = useRef(0);
+  // Multi-statement queue: several CAS files (NSDL + CDSL, one or more months) in one go.
+  const [casQueue,        setCasQueue]        = useState([]);
+  const [casQueueRunning, setCasQueueRunning] = useState(false);
+  const [casQueueDone,    setCasQueueDone]    = useState(false);
 
   function fuzzyMemberMatch(name, members) {
     if (!name || name.length < 2) return null;
@@ -108,33 +193,13 @@ export function useCASImport(user, onSuccess) {
   //   setCasUploading(false);
   // }
 
-  // Resolve the member for a single-holder CAS.
-  // Priority: (1) server/fuzzy-matched map entry for the holder name,
-  //           (2) user manually picked from dropdown (stored under "__default__"),
-  //           (3) first member only when there is exactly ONE member (unambiguous).
-  // Never silently fall back to members[0] when there are multiple members.
-  function resolveSingleMember(members) {
-    return casHolderNames.length <= 1 && members.length > 0
-      ? (casHolderMap[casHolderNames[0]] || casHolderMap["__default__"] || (members.length === 1 ? members[0]?.id : undefined))
-      : undefined;   // multi-holder: always use account_map on the server side
-  }
-
   function importBody(members) {
     // dup_actions: "<member>|<isin>" → "skip" | "update" (cross-source overlaps only)
-    const dup_actions = {};
-    for (const [k, v] of Object.entries(casDupAction)) if (k.includes("|")) dup_actions[k] = v;
-    return {
-      holdings: casHoldings,
-      member_id: resolveSingleMember(members) || "",
-      account_map: Object.keys(casHolderMap).length > 0 ? casHolderMap : undefined,
-      depository: casDepository,
-      statement_hash: casStatementHash,
-      cas_statement_date: casStatementDate,
-      cas_period_start: casPeriodStart,
-      cas_period_end: casPeriodEnd,
-      dup_actions,
-      retire_legacy: casRetireLegacy,
-    };
+    return buildCasImportBody({
+      holdings: casHoldings, holderNames: casHolderNames, holderMap: casHolderMap,
+      depository: casDepository, hash: casStatementHash, statementDate: casStatementDate,
+      periodStart: casPeriodStart, periodEnd: casPeriodEnd,
+    }, members, casDupAction, casRetireLegacy);
   }
 
   /** Diff-only call; safe to re-run whenever the member mapping changes. */
@@ -304,6 +369,133 @@ export function useCASImport(user, onSuccess) {
     setCasUploading(false);
   }
 
+  // ── Multi-statement queue ────────────────────────────────────────────────────
+  const patchQueueItem = (id, patch) =>
+    setCasQueue(q => q.map(i => (i.id === id ? { ...i, ...patch } : i)));
+
+  /** Diff-only preview of one queued statement against what is stored. */
+  async function previewQueueItem(id, src, members) {
+    if (queueItemNeedsMember(src, members)) { patchQueueItem(id, { preview: null }); return; }
+    try {
+      const pv = await api("/api/holdings/import/preview", { method: "POST", body: JSON.stringify(buildCasImportBody(src, members)) });
+      patchQueueItem(id, { preview: pv });
+    } catch (e) { patchQueueItem(id, { preview: { error: e.message } }); }
+  }
+
+  async function parseQueueItem(id, file, pan, members) {
+    patchQueueItem(id, { status: "parsing", error: "" });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const fd = new FormData();
+      fd.append("file", file);
+      if (pan) fd.append("password", pan);
+      const res = await fetch("/api/import/detect-casparser", {
+        method: "POST", headers: { Authorization: `Bearer ${session?.access_token || ""}` }, body: fd,
+      });
+      const data = await res.json();
+      if (data.error === "password_required" || data.error === "password_incorrect") {
+        patchQueueItem(id, { status: "password", error: data.error === "password_incorrect" ? "Incorrect PAN — check and retry" : "" });
+        return;
+      }
+      if (data.error) { patchQueueItem(id, { status: "error", error: data.error }); return; }
+      if (!data.statement_date) { patchQueueItem(id, { status: "error", error: "Could not read the statement date from this PDF" }); return; }
+      if (!(data.holdings || []).length) { patchQueueItem(id, { status: "error", error: "No holdings could be parsed from this statement" }); return; }
+      const src = {
+        holdings: data.holdings, holderNames: data.holder_names || [], holderPans: data.holder_pans || [],
+        holderMap: autoMapCASHolders(data.holder_names || [], data.holder_pans || [], members, data.holder_member_map || {}),
+        depository: data.depository || "", hash: data.statement_hash || "", statementDate: data.statement_date,
+        periodStart: data.period_start || null, periodEnd: data.period_end || null,
+      };
+      let dupOf = null;
+      setCasQueue(q => {
+        dupOf = src.hash && q.find(i => i.id !== id && i.status !== "error" && i.src?.hash === src.hash);
+        return q.map(i => (i.id === id
+          ? { ...i, ...(dupOf ? { status: "error", error: `Same file as ${dupOf.name}` } : { status: "ready", error: "", src, format: data.format || "", warnings: data.warnings || [] }) }
+          : i));
+      });
+      if (!dupOf) await previewQueueItem(id, src, members);
+    } catch (e) {
+      patchQueueItem(id, { status: "error", error: `Upload failed: ${e.message}` });
+    }
+  }
+
+  /** Entry point for any number of PDFs. One file keeps the classic single-statement review. */
+  async function handleCASFiles(files, members) {
+    const list = Array.from(files || []).filter(f => /\.pdf$/i.test(f.name));
+    if (!list.length) { setCasWarnings(["Please choose CAS statements in PDF format"]); return; }
+    if (list.length === 1 && casQueue.length === 0) { handleCASUploadV2(list[0], members); return; }
+    const stamp = Date.now();
+    const items = list.map((file, n) => ({
+      id: `q${stamp}_${n}`, name: file.name, file, status: "parsing", error: "", src: null, format: "", warnings: [], pan: "", preview: null, result: null,
+    }));
+    setCasWarnings([]); setCasQueueDone(false);
+    setCasQueue(q => [...q, ...items]);
+    setCasStep("queue");
+    for (const it of items) await parseQueueItem(it.id, it.file, "", members);   // sequential: one Python parse at a time
+  }
+
+  const setQueuePan = (id, pan) => patchQueueItem(id, { pan: pan.toUpperCase() });
+  const retryQueueItem = (id, members) => {
+    const it = casQueue.find(i => i.id === id);
+    if (it && it.pan.length === 10) parseQueueItem(id, it.file, it.pan, members);
+  };
+  function setQueueHolder(id, holder, memberId, members) {
+    const it = casQueue.find(i => i.id === id);
+    if (!it?.src) return;
+    const src = { ...it.src, holderMap: { ...it.src.holderMap, [holder]: memberId || null } };
+    patchQueueItem(id, { src });
+    previewQueueItem(id, src, members);
+  }
+  function removeQueueItem(id) {
+    setCasQueue(q => {
+      const next = q.filter(i => i.id !== id);
+      if (next.length === 0) setCasStep("intro");
+      return next;
+    });
+  }
+
+  /**
+   * Apply every ready statement, oldest first, one atomic server call per statement.
+   * Rules: the newest statement wins per account (the server never lets an older
+   * file overwrite newer numbers); a mutual fund listed by two depositories is kept
+   * from the newest statement; one failing file doesn't stop the others.
+   */
+  async function runCASQueue(members, onPriceRefresh) {
+    const ready = casQueue.filter(i => i.status === "ready" && i.src && !queueItemNeedsMember(i.src, members));
+    if (!ready.length) return;
+    const order = [...ready].sort((a, b) =>
+      (a.src.statementDate || "").localeCompare(b.src.statementDate || "") || a.name.localeCompare(b.name));
+    const plan = planQueueOverlaps(order, members);
+    setCasQueueRunning(true);
+    let changed = 0;
+    for (const it of order) {
+      patchQueueItem(it.id, { status: "importing" });
+      try {
+        const dup = { ...(plan.get(it.id) || {}) };
+        // Fresh look at what is stored now (earlier files in this batch are already in).
+        let pv = null;
+        try { pv = await api("/api/holdings/import/preview", { method: "POST", body: JSON.stringify(buildCasImportBody(it.src, members, dup)) }); } catch { /* import still works without it */ }
+        let possibleDouble = 0;
+        for (const o of pv?.overlaps || []) {
+          if (o.type !== "MF") continue;
+          const k = `${o.member_id}|${o.isin}`;
+          if (dup[k] === "skip") continue;
+          if (o.with.some(w => w.source_date && w.source_date >= it.src.statementDate)) dup[k] = "skip";
+          else possibleDouble++;
+        }
+        const result = await api("/api/holdings/import", { method: "POST", body: JSON.stringify(buildCasImportBody(it.src, members, dup)) });
+        changed += (result.inserted_count || 0) + (result.updated_count || 0);
+        patchQueueItem(it.id, { status: "done", result: { ...result, possible_double: possibleDouble, skipped_overlap: Object.values(dup).filter(v => v === "skip").length } });
+      } catch (e) {
+        patchQueueItem(it.id, { status: "failed", error: e.message });
+      }
+    }
+    setCasQueueRunning(false);
+    setCasQueueDone(true);
+    if (onSuccess) onSuccess({});
+    if (onPriceRefresh && changed > 0) setTimeout(() => { onPriceRefresh().catch(() => {}); }, 1500);
+  }
+
   function resetCASDownloader() {
     setCasModal(false);
     setCasStep("intro");
@@ -328,6 +520,9 @@ export function useCASImport(user, onSuccess) {
     setCasPreview(null);
     setCasPreviewing(false);
     setCasRetireLegacy(true);
+    setCasQueue([]);
+    setCasQueueRunning(false);
+    setCasQueueDone(false);
     previewSeq.current++;
   }
 
@@ -361,5 +556,8 @@ export function useCASImport(user, onSuccess) {
     autoMapCASHolders,
     handleCASUploadV2,
     retryCASWithPasswordV2,
+    // multi-statement queue
+    casQueue, casQueueRunning, casQueueDone,
+    handleCASFiles, setQueuePan, retryQueueItem, setQueueHolder, removeQueueItem, runCASQueue,
   };
 }

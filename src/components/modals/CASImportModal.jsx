@@ -10,6 +10,7 @@
 
 import { useRef, useEffect } from "react";
 import { Overlay } from "../shared/Overlay.jsx";
+import CASQueuePanel from "./CASQueuePanel.jsx";
 
 export default function CASImportModal({
   casImport,
@@ -26,15 +27,16 @@ export default function CASImportModal({
     casSavePan, setCasSavePan,
     // handleCASUpload, retryCASWithPassword,  // old parser — removed
     executeCASImport, resetCASDownloader,
-    handleCASUploadV2, retryCASWithPasswordV2,
+    handleCASUploadV2, retryCASWithPasswordV2, handleCASFiles,
     casDepository, casStatementDate,
     casPreview, casPreviewing, previewCASImport,
     casDupAction, setCasDupAction,
     casRetireLegacy, setCasRetireLegacy,
   } = casImport;
 
-  function handleFile(file) {
-    if (file) handleCASUploadV2(file, members);
+  // One PDF → the classic single-statement review; several PDFs → the batch queue.
+  function handleFiles(files) {
+    if (files && files.length) handleCASFiles(files, members);
   }
 
   const isDone       = casStep === "done";
@@ -42,9 +44,11 @@ export default function CASImportModal({
   const isMatching   = casStep === "matching";
   // const isPassword = casStep === "password";  // old parser step — removed
   const isPasswordV2 = casStep === "password_v2";
+  const isQueue      = casStep === "queue";
   const isUploading  = casStep === "uploading" || casUploading;
 
-  const title = isDone       ? "CAS Imported"
+  const title = isQueue      ? "Import CAS statements"
+    : isDone       ? "CAS Imported"
     : isImporting  ? "Importing..."
     : isPasswordV2 ? "Unlock CAS PDF"
     : isMatching   ? "Import CAS"
@@ -88,17 +92,6 @@ export default function CASImportModal({
   const importCount = casHoldings.length - skippedCount;
   const fmtInr = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
-  // ── Flush-and-fill replace count (P1-2) ──────────────────────────────────
-  // The server pushes a warning like "42 existing CAS holding(s) will be replaced …"
-  // into casWarnings. We parse the count out so we can show a distinct destructive
-  // UX box in the matching step, separate from generic informational warnings.
-  const casReplaceCount = (() => {
-    const w = casWarnings.find(w => /will be replaced/.test(w));
-    if (!w) return 0;
-    const m = w.match(/^(\d+)/);
-    return m ? parseInt(m[1], 10) : 0;
-  })();
-
   return (
     <Overlay onClose={() => { resetCASDownloader(); onClose(); }} wide>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.2rem" }}>
@@ -128,14 +121,15 @@ export default function CASImportModal({
             style={{ border: "2px dashed var(--border)", borderRadius: 12, padding: "2.5rem 1.5rem", textAlign: "center", cursor: "pointer", background: "var(--bg-muted)", marginBottom: ".75rem" }}
             onClick={() => fileRef.current?.click()}
             onDragOver={e => e.preventDefault()}
-            onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}>
+            onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}>
             <div style={{ fontSize: "2.2rem", marginBottom: ".6rem" }}>📄</div>
-            <div style={{ fontSize: ".85rem", color: "var(--text)", fontWeight: 500 }}>Drag &amp; drop your CAS PDF here</div>
+            <div style={{ fontSize: ".85rem", color: "var(--text)", fontWeight: 500 }}>Drag &amp; drop your CAS PDF(s) here</div>
             <div style={{ fontSize: ".72rem", color: "var(--text)", marginTop: ".4rem" }}>NSDL · CDSL · CAMS / KFintech (detailed CAS adds XIRR &amp; tax lots) · Password = your PAN</div>
+            <div style={{ fontSize: ".7rem", color: "#4caf9a", marginTop: ".3rem" }}>Select several files (e.g. NSDL + CDSL) to import them together — nothing is replaced</div>
             <button className="btns" style={{ marginTop: "1rem", fontSize: ".75rem" }}>Browse File</button>
           </div>
-          <input ref={fileRef} type="file" accept=".pdf" style={{ display: "none" }}
-            onChange={e => { const f = e.target.files[0]; if (f) handleFile(f); e.target.value = ""; }} />
+          <input ref={fileRef} type="file" accept=".pdf" multiple style={{ display: "none" }}
+            onChange={e => { handleFiles(e.target.files); e.target.value = ""; }} />
 
           {/* OLD: secondary "Try Smart Parser" card — removed now that casparser is the default.
           <div style={{ border: "1px solid rgba(76,175,154,.25)", ... }}>
@@ -150,6 +144,9 @@ export default function CASImportModal({
           )}
         </>
       )}
+
+      {/* Multi-statement batch (NSDL + CDSL, one or more months) */}
+      {isQueue && <CASQueuePanel casImport={casImport} members={members} onClose={onClose} onPriceRefresh={onPriceRefresh} />}
 
       {/* Smart Parser password unlock step */}
       {!isUploading && isPasswordV2 && (
@@ -188,26 +185,11 @@ export default function CASImportModal({
       {/* Matching / preview step */}
       {!isUploading && isMatching && (
         <>
-          {/* Generic informational warnings (non-destructive) */}
-          {casWarnings.filter(w => !w.includes("will be replaced")).length > 0 && (
+          {casWarnings.length > 0 && (
             <div style={{ background: "rgba(201,168,76,.06)", border: "1px solid rgba(201,168,76,.15)", borderRadius: 8, padding: ".55rem .75rem", marginBottom: ".8rem" }}>
-              {casWarnings.filter(w => !w.includes("will be replaced")).map((w, i) => (
+              {casWarnings.map((w, i) => (
                 <div key={i} style={{ fontSize: ".7rem", color: "#c9a84c" }}>⚠ {w}</div>
               ))}
-            </div>
-          )}
-          {/* Flush-and-fill destructive warning (P1-2) */}
-          {(casReplaceCount > 0 || casWarnings.some(w => w.includes("will be replaced"))) && (
-            <div style={{ background: "rgba(224,124,90,.1)", border: "1.5px solid rgba(224,124,90,.4)", borderRadius: 8, padding: ".65rem .85rem", marginBottom: ".8rem" }}>
-              <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#e07c5a", marginBottom: ".25rem" }}>🔄 Full Replace — CAS Source</div>
-              <div style={{ fontSize: ".68rem", color: "var(--text)" }}>
-                {casReplaceCount > 0
-                  ? `${casReplaceCount} existing CAS-sourced holding${casReplaceCount !== 1 ? "s" : ""} will be replaced by this statement.`
-                  : casWarnings.find(w => w.includes("will be replaced")) || "Existing CAS holdings will be replaced."}
-              </div>
-              <div style={{ fontSize: ".63rem", color: "var(--text)", opacity: .75, marginTop: ".2rem" }}>
-                Manually-entered holdings and other statement sources are untouched. If you have both CAMS and CDSL statements, import both — each replaces only its own source.
-              </div>
             </div>
           )}
           <div style={{ display: "flex", gap: ".5rem", flexWrap: "wrap", marginBottom: ".8rem" }}>
