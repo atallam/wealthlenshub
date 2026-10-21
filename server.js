@@ -15,6 +15,7 @@ import { apiLimiter, IS_PROD } from "./lib/auth.js";
 import portfolioRouter    from "./routes/portfolio.js";
 import holdingsRouter     from "./routes/holdings.js";
 import transactionsRouter from "./routes/transactions.js";
+import tradebookRouter    from "./routes/tradebook.js";
 import profileRouter      from "./routes/profile.js";
 import pricesRouter       from "./routes/prices.js";
 import aiRouter           from "./routes/ai.js";
@@ -107,6 +108,7 @@ app.use(express.static(path.join(__dirname, "dist")));
 app.use("/api/portfolio",     portfolioRouter);
 app.use("/api/holdings",      holdingsRouter);
 app.use("/api/transactions",  transactionsRouter);
+app.use("/api/tradebook",     tradebookRouter);
 app.use("/api/profile",       profileRouter);
 app.use("/api",               pricesRouter);       // mounts /api/forex, /api/mf, /api/stock, /api/prices
 app.use("/api/ai",            aiRouter);

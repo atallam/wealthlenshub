@@ -78,6 +78,7 @@ import FDScanSheet from './components/shared/FDScanSheet.jsx';
 import GoalPlanModal from './components/modals/GoalPlanModal.jsx';
 import ImportModal from './components/modals/ImportModal.jsx';
 import ImportHub from './components/modals/ImportHub.jsx';
+import TradebookImportModal from './features/holdings/TradebookImportModal.jsx';
 import SettingsModal from './components/modals/SettingsModal.jsx';
 
 // ── Context ──────────────────────────────────────────────────────
@@ -193,6 +194,7 @@ export default function App() {
   } = ui;
   const { filterType, setFilterType, sortCol, setSortCol, sortDir, setSortDir, toggleSort } = useHoldingsView();
   const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [showTradebook,   setShowTradebook]   = useState(false);
   const [showAuditLog,   setShowAuditLog]   = useState(false);
 
   // Reset sheet/expanded on tab change
@@ -587,6 +589,7 @@ ${alertsText}`;
   function handleImportSelect(key) {
     switch (key) {
       case 'cas':       casImport.setCasModal(true); break;
+      case 'tradebook': setShowTradebook(true); break;
       case 'fd':        setForm(p => ({ ...p, type: 'FD' })); setModal('add'); break;
       case 'snaptrade': setShowSnapTrade(true); break;
       case 'csv':       setModal('import'); break;
@@ -863,6 +866,16 @@ ${alertsText}`;
         toast={toast}
         Overlay={Overlay}
       />
+
+      {/* ── Broker tradebook import ──────────────────────────────── */}
+      {showTradebook && (
+        <TradebookImportModal
+          members={members}
+          api={api}
+          onClose={() => setShowTradebook(false)}
+          onDone={async () => { const hlds = await api('/api/holdings'); setHoldings(hlds || []); }}
+        />
+      )}
 
       {/* ── Import Hub ───────────────────────────────────────────── */}
       {showImportHub && (
