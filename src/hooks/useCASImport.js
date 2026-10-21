@@ -454,6 +454,21 @@ export function useCASImport(user, onSuccess) {
     });
   }
 
+  /** "Keep newest only": retire the older copies of funds that this statement also lists. */
+  async function retireOlderCopies(itemId) {
+    const it = casQueue.find(i => i.id === itemId);
+    const ids = (it?.result?.doubles || []).flatMap(d => d.older.map(o => o.id));
+    if (!ids.length) return;
+    patchQueueItem(itemId, { retiring: true, retireError: "" });
+    try {
+      const r = await api("/api/holdings/import/retire-overlaps", { method: "POST", body: JSON.stringify({ ids, statement_date: it.src?.statementDate || null }) });
+      patchQueueItem(itemId, { retiring: false, result: { ...it.result, doubles: [], possible_double: 0, retired_older: (r.deleted || 0) + (r.exited || 0) } });
+      if (onSuccess) onSuccess({});
+    } catch (e) {
+      patchQueueItem(itemId, { retiring: false, retireError: e.message });
+    }
+  }
+
   /**
    * Apply every ready statement, oldest first, one atomic server call per statement.
    * Rules: the newest statement wins per account (the server never lets an older
@@ -476,16 +491,24 @@ export function useCASImport(user, onSuccess) {
         let pv = null;
         try { pv = await api("/api/holdings/import/preview", { method: "POST", body: JSON.stringify(buildCasImportBody(it.src, members, dup)) }); } catch { /* import still works without it */ }
         let possibleDouble = 0;
+        const doubles = [];   // MFs whose OLDER copy in another depository is still active
         for (const o of pv?.overlaps || []) {
           if (o.type !== "MF") continue;
           const k = `${o.member_id}|${o.isin}`;
           if (dup[k] === "skip") continue;
           if (o.with.some(w => w.source_date && w.source_date >= it.src.statementDate)) dup[k] = "skip";
-          else possibleDouble++;
+          else {
+            possibleDouble++;
+            const mine = (pv.rows || []).find(r => r.member_id === o.member_id && r.isin === o.isin);
+            doubles.push({
+              isin: o.isin, name: o.name, units: mine?.units ?? null,
+              older: o.with.map(w => ({ id: w.id, depository: w.depository, units: w.units, source_date: w.source_date })),
+            });
+          }
         }
         const result = await api("/api/holdings/import", { method: "POST", body: JSON.stringify(buildCasImportBody(it.src, members, dup)) });
         changed += (result.inserted_count || 0) + (result.updated_count || 0);
-        patchQueueItem(it.id, { status: "done", result: { ...result, possible_double: possibleDouble, skipped_overlap: Object.values(dup).filter(v => v === "skip").length } });
+        patchQueueItem(it.id, { status: "done", result: { ...result, possible_double: possibleDouble, doubles, skipped_overlap: Object.values(dup).filter(v => v === "skip").length } });
       } catch (e) {
         patchQueueItem(it.id, { status: "failed", error: e.message });
       }
@@ -558,6 +581,6 @@ export function useCASImport(user, onSuccess) {
     retryCASWithPasswordV2,
     // multi-statement queue
     casQueue, casQueueRunning, casQueueDone,
-    handleCASFiles, setQueuePan, retryQueueItem, setQueueHolder, removeQueueItem, runCASQueue,
+    handleCASFiles, setQueuePan, retryQueueItem, setQueueHolder, removeQueueItem, runCASQueue, retireOlderCopies,
   };
 }

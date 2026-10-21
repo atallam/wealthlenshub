@@ -2,7 +2,7 @@ import { Router } from "express";
 import { auth, sendError } from "../lib/auth.js";
 import { auditImport } from "../lib/importLogger.js";
 import * as holdings from "../services/holdings.service.js";
-import { previewCasImport } from "../services/casImport.service.js";
+import { previewCasImport, retireOverlapCopies } from "../services/casImport.service.js";
 
 const router = Router();
 
@@ -25,6 +25,14 @@ router.post("/import/preview", auth, async (req, res) => {
   const { holdings: rows } = req.body;
   if (!rows?.length) return res.status(400).json({ error: "No holdings to preview" });
   try { res.json(await previewCasImport(req.user.id, req.body)); }
+  catch (e) { sendError(res, e, e.status || 500); }
+});
+
+// Retire the older copy of a mutual fund two statements both list ("keep newest only").
+router.post("/import/retire-overlaps", auth, async (req, res) => {
+  const { ids, statement_date } = req.body || {};
+  if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: "No holdings given" });
+  try { res.json(await retireOverlapCopies(req.user.id, ids, statement_date || null)); }
   catch (e) { sendError(res, e, e.status || 500); }
 });
 

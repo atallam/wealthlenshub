@@ -27,7 +27,7 @@ export default function CASQueuePanel({ casImport, members, onClose, onPriceRefr
   const addRef = useRef(null);
   const {
     casQueue, casQueueRunning, casQueueDone,
-    handleCASFiles, setQueuePan, retryQueueItem, setQueueHolder, removeQueueItem, runCASQueue,
+    handleCASFiles, setQueuePan, retryQueueItem, setQueueHolder, removeQueueItem, runCASQueue, retireOlderCopies,
     resetCASDownloader,
   } = casImport;
 
@@ -138,9 +138,28 @@ export default function CASQueuePanel({ casImport, members, onClose, onPriceRefr
               {it.status === "done" && it.result && (
                 <div style={{ fontSize: ".7rem", marginTop: ".3rem" }}>
                   <span style={{ color: "#4caf9a" }}>{resultLine(it.result)}</span>
-                  {it.result.possible_double > 0 && (
-                    <div style={{ color: "#c9a84c", marginTop: ".15rem" }}>
-                      ⚠ {it.result.possible_double} fund{it.result.possible_double > 1 ? "s are" : " is"} also in an older statement from another depository — possible double count. Re-import that older statement and untick the overlapping fund(s).
+                  {it.result.retired_older > 0 && (
+                    <div style={{ color: "#4caf9a", marginTop: ".15rem" }}>✓ Removed {it.result.retired_older} older cop{it.result.retired_older > 1 ? "ies" : "y"} — each fund now counts once, from the newest statement.</div>
+                  )}
+                  {it.result.doubles?.length > 0 && (
+                    <div style={{ marginTop: ".3rem", background: "rgba(201,168,76,.07)", border: "1px solid rgba(201,168,76,.25)", borderRadius: 6, padding: ".45rem .6rem" }}>
+                      <div style={{ color: "#c9a84c", fontWeight: 600, marginBottom: ".2rem" }}>
+                        {it.result.doubles.length} fund{it.result.doubles.length > 1 ? "s are" : " is"} also listed in an older statement — likely counted twice
+                      </div>
+                      {it.result.doubles.slice(0, 8).map(d => (
+                        <div key={d.isin} style={{ fontSize: ".66rem", color: "var(--text)", display: "flex", gap: ".5rem" }}>
+                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
+                          <span className="mono dim">{Number(d.units ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 3 })}u here · {d.older.map(o => `${Number(o.units).toLocaleString("en-IN", { maximumFractionDigits: 3 })}u in ${o.depository}${o.source_date ? ` (${o.source_date})` : ""}`).join(", ")}</span>
+                        </div>
+                      ))}
+                      {it.result.doubles.length > 8 && <div style={{ fontSize: ".64rem", opacity: .7 }}>+{it.result.doubles.length - 8} more</div>}
+                      <div style={{ fontSize: ".64rem", color: "var(--text)", opacity: .75, margin: ".3rem 0" }}>
+                        If these are the same folio, keep only the newest copy. If you hold the fund separately in both places (e.g. a demat and a folio), leave them as they are. Removed copies keep their transactions and can be re-imported.
+                      </div>
+                      <button className="btns" style={{ fontSize: ".68rem", padding: ".25rem .7rem" }} disabled={it.retiring} onClick={() => retireOlderCopies(it.id)}>
+                        {it.retiring ? "Removing…" : "Keep newest only"}
+                      </button>
+                      {it.retireError && <span style={{ fontSize: ".66rem", color: "#e07c5a", marginLeft: ".5rem" }}>⚠ {it.retireError}</span>}
                     </div>
                   )}
                 </div>

@@ -582,8 +582,9 @@ export default function OverviewTab({
         for (const h of allHoldings) {
           const src = h.source === "cas" ? "CAS" : h.source === "snaptrade" ? "SnapTrade" : h.source === "csv" ? "CSV" : "Manual";
           const mem = allMembers.find(m => m.id === h.member_id)?.name || "Unassigned";
-          const key = `${src}|${mem}`;
-          if (!srcMap[key]) srcMap[key] = { src, member: mem, date: h.source_date || null, count: 0, hasLive: src === "SnapTrade", lastRefresh: null, casPeriodStart: null, casPeriodEnd: null, importDate: null };
+          const dep = h.source === "cas" && h.depository && h.depository !== "LEGACY" ? h.depository : "";
+          const key = `${src}|${dep}|${mem}`;
+          if (!srcMap[key]) srcMap[key] = { src, dep, member: mem, date: h.source_date || null, count: 0, hasLive: src === "SnapTrade", lastRefresh: null, casPeriodStart: null, casPeriodEnd: null, importDate: null };
           srcMap[key].count++;
           if (h.source_date && (!srcMap[key].date || h.source_date > srcMap[key].date)) srcMap[key].date = h.source_date;
           if (h.price_fetched_at && (!srcMap[key].lastRefresh || h.price_fetched_at > srcMap[key].lastRefresh)) srcMap[key].lastRefresh = h.price_fetched_at;
@@ -604,7 +605,7 @@ export default function OverviewTab({
                   <div style={{fontSize:".95rem",width:22,textAlign:"center"}}>{r.src==="CAS"?"📥":r.src==="SnapTrade"?"🔗":r.src==="CSV"?"📄":"✍️"}</div>
                   <div style={{flex:1}}>
                     <div style={{fontSize:".75rem",color:"var(--text)",fontWeight:500}}>{r.member}</div>
-                    <div style={{fontSize:".65rem",color:"var(--text-muted)"}}>{r.src} · {r.count} holding{r.count!==1?"s":""}</div>
+                    <div style={{fontSize:".65rem",color:"var(--text-muted)"}}>{r.src}{r.dep ? ` · ${r.dep}` : ""} · {r.count} holding{r.count!==1?"s":""}</div>
                   </div>
                   <div style={{textAlign:"right"}}>
                     {r.hasLive ? (

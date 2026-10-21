@@ -299,25 +299,24 @@ export default function HoldingsTab({
       )}
       {/* ── Data Freshness Banner ── */}
       {(()=>{
-        // Group by member only (latest source_date wins) — avoids repeating member per broker
-        const byMember = {};
+        // Group by member + statement source (NSDL / CDSL / CAMS…): each account can be a different month.
+        const byKey = {};
         for (const h of visH) {
           if (!h.source_date) continue;
           const mem = allMembers.find(m => m.id === h.member_id);
           const memName = mem?.name || "Unassigned";
-          if (!byMember[memName] || h.source_date > byMember[memName]) {
-            byMember[memName] = h.source_date;
-          }
+          const dep = h.source === "cas" && h.depository && h.depository !== "LEGACY" ? h.depository : "";
+          const key = `${memName}|${dep}`;
+          if (!byKey[key] || h.source_date > byKey[key].date) byKey[key] = { member: memName, dep, date: h.source_date };
         }
-        // Order entries by allMembers order (matches the top member filter tabs)
-        const entries = allMembers
-          .filter(m => byMember[m.name])
-          .map(m => ({ member: m.name, date: byMember[m.name] }));
-        // Include any unmatched (e.g. "Unassigned")
-        if (byMember["Unassigned"]) entries.push({ member: "Unassigned", date: byMember["Unassigned"] });
+        // Order by allMembers order (matches the top member filter tabs), then source
+        const order = (n) => { const i = allMembers.findIndex(m => m.name === n); return i < 0 ? 999 : i; };
+        const entries = Object.values(byKey).sort((a, b) => order(a.member) - order(b.member) || a.dep.localeCompare(b.dep));
         if (entries.length === 0) return null;
         const fmt = d => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
         const allSame = entries.every(e => e.date === entries[0].date);
+        const newest = entries.reduce((m, e) => (e.date > m ? e.date : m), "");
+        const daysBehind = (d) => Math.round((new Date(newest) - new Date(d)) / 86400000);
         return (
           <div style={{background:"linear-gradient(135deg,rgba(76,175,154,.08),rgba(160,132,202,.06))",border:"1px solid rgba(76,175,154,.18)",borderRadius:8,padding:".55rem .85rem",marginBottom:".65rem",display:"flex",alignItems:"center",gap:".65rem"}}>
             <div style={{fontSize:"1.15rem",lineHeight:1}}>📅</div>
@@ -325,19 +324,26 @@ export default function HoldingsTab({
               {allSame ? (
                 <div style={{fontSize:".75rem",color:"#4caf9a",fontWeight:500}}>
                   Data as on {fmt(entries[0].date)}
-                  <span style={{color:"var(--text-muted)",fontWeight:400,marginLeft:".5rem"}}>{entries.map(e=>e.member).join(", ")}</span>
+                  <span style={{color:"var(--text-muted)",fontWeight:400,marginLeft:".5rem"}}>{[...new Set(entries.map(e=>e.member))].join(", ")}</span>
                 </div>
               ) : (
                 <div style={{display:"flex",flexWrap:"wrap",gap:".25rem .8rem"}}>
-                  {entries.map((e,i) => (
-                    <div key={i} style={{fontSize:".72rem"}}>
-                      <span style={{color:"var(--text-dim)"}}>{e.member}:</span>{" "}
-                      <span style={{color:"#4caf9a",fontWeight:500}}>{fmt(e.date)}</span>
-                    </div>
-                  ))}
+                  {entries.map((e,i) => {
+                    const behind = daysBehind(e.date);
+                    return (
+                      <div key={i} style={{fontSize:".72rem"}}>
+                        <span style={{color:"var(--text-dim)"}}>{e.member}{e.dep ? ` · ${e.dep}` : ""}:</span>{" "}
+                        <span style={{color: behind > 0 ? "#c9a84c" : "#4caf9a",fontWeight:500}}>{fmt(e.date)}</span>
+                        {behind > 0 && <span style={{color:"#c9a84c",marginLeft:".3rem",fontSize:".65rem"}}>({behind} day{behind!==1?"s":""} behind)</span>}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
-              <div style={{fontSize:".65rem",color:"var(--text-muted)",marginTop:".15rem"}}>NAVs & prices reflect the CAS statement date, not live market</div>
+              <div style={{fontSize:".65rem",color:"var(--text-muted)",marginTop:".15rem"}}>
+                {allSame ? "NAVs & prices reflect the CAS statement date, not live market"
+                  : "Each account shows its own statement date — import the newer statement for any account marked behind. Refresh prices to bring values to today."}
+              </div>
             </div>
           </div>
         );

@@ -199,3 +199,24 @@ export async function applyCasImport(userId, body) {
     _cas_statement_date: body.cas_statement_date || null,
   };
 }
+
+/**
+ * "Keep newest only": retire the older copy of a mutual fund that two depositories / RTAs
+ * both list. Rows with no transactions/documents are deleted, the rest are soft-exited
+ * (migration 0035 → _retire_cas_rows). Only the caller's own active CAS MF rows qualify.
+ */
+export async function retireOverlapCopies(userId, ids, statementDate = null) {
+  const clean = [...new Set((Array.isArray(ids) ? ids : []).filter((x) => typeof x === "string" && x))].slice(0, 500);
+  if (!clean.length) return { ok: true, deleted: 0, exited: 0 };
+  const { data, error } = await supabase.rpc("retire_cas_overlap_rows", {
+    p_user_id: userId,
+    p_ids: clean,
+    p_statement_date: statementDate || null,
+    p_import_id: "imp_" + randomUUID().replace(/-/g, "").slice(0, 16),
+  });
+  if (error) {
+    const err = new Error(`Could not remove the older copies (run migrations/0035_cas_retire_overlap.sql): ${error.message}`);
+    err.status = 500; throw err;
+  }
+  return { ok: true, deleted: data?.deleted || 0, exited: data?.exited || 0 };
+}
