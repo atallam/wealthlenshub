@@ -27,6 +27,19 @@ function row(cells) { return cells.map(cell).join(","); }
 function today()    { return new Date().toISOString().slice(0, 10); }
 function n2(v)      { return v != null ? Number(v).toFixed(2) : ""; }
 
+/**
+ * Optional "current view" scope. The Holdings tab POSTs { ids: [...] } with the
+ * holding ids on screen (after type / member / stale filters). GET (or no ids)
+ * = export everything. Returns a Set of ids, or null for "no scoping".
+ */
+function scopeIds(req) {
+  const raw = req.body?.ids ?? (req.query?.ids ? String(req.query.ids).split(",") : null);
+  if (!Array.isArray(raw)) return null;
+  return new Set(raw.map(String));
+}
+const pickRows = (ids, rows) => (ids ? rows.filter(h => ids.has(String(h.id))) : rows);
+const pickTxns = (ids, rows) => (ids ? rows.filter(t => ids.has(String(t.holding_id))) : rows);
+
 /** Serve a CSV string as a file download. */
 function sendCsv(res, csv, filename) {
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -36,9 +49,10 @@ function sendCsv(res, csv, filename) {
 }
 
 // ── Holdings ──────────────────────────────────────────────────────────────────
-router.get("/holdings", auth, async (req, res) => {
+const holdingsCsv = async (req, res) => {
   try {
-    const holdings = await list(req.user.id);
+    const ids = scopeIds(req);
+    const holdings = pickRows(ids, await list(req.user.id));
 
     const headers = [
       "Name","Type","Member ID","Ticker","Scheme Code",
@@ -88,12 +102,15 @@ router.get("/holdings", auth, async (req, res) => {
 
     sendCsv(res, rows.join("\r\n"), `wealthlens-holdings-${today()}.csv`);
   } catch (e) { sendError(res, e); }
-});
+};
+router.get("/holdings", auth, holdingsCsv);
+router.post("/holdings", auth, holdingsCsv);
 
 // ── Transactions ──────────────────────────────────────────────────────────────
-router.get("/transactions", auth, async (req, res) => {
+const transactionsCsv = async (req, res) => {
   try {
-    const data = await listAllTransactions(req.user.id);
+    const ids = scopeIds(req);
+    const data = pickTxns(ids, (await listAllTransactions(req.user.id)) || []);
 
     const headers = [
       "Date","Holding Name","Holding Type","Member ID",
@@ -128,19 +145,23 @@ router.get("/transactions", auth, async (req, res) => {
 
     sendCsv(res, rows.join("\r\n"), `wealthlens-transactions-${today()}.csv`);
   } catch (e) { sendError(res, e); }
-});
+};
+router.get("/transactions", auth, transactionsCsv);
+router.post("/transactions", auth, transactionsCsv);
 
 // ── Portfolio PDF Report (print-optimized HTML) ───────────────────────────────
-router.get("/report", auth, async (req, res) => {
+const reportHtml = async (req, res) => {
   try {
     const userId   = req.user.id;
+    const ids      = scopeIds(req);
     const dateStr  = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
     const isoDate  = today();
 
-    const [holdings, profileEmail] = await Promise.all([
+    const [allHoldings, profileEmail] = await Promise.all([
       list(userId),
       getProfileEmail(userId),
     ]);
+    const holdings = pickRows(ids, allHoldings);
 
     const totalInv = holdings.reduce((s, h) => {
       const inv = h.avg_cost != null && h.net_units != null
@@ -326,19 +347,25 @@ router.get("/report", auth, async (req, res) => {
     res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
     res.send(html);
   } catch (e) { sendError(res, e); }
-});
+};
+router.get("/report", auth, reportHtml);
+router.post("/report", auth, reportHtml);
 
 // ── Excel (multi-sheet) ───────────────────────────────────────────────────────
-router.get("/xlsx", auth, async (req, res) => {
+const xlsxBook = async (req, res) => {
   try {
     const userId = req.user.id;
+    const ids = scopeIds(req);
 
     // Fetch data in parallel
-    const [holdings, txns, fds] = await Promise.all([
+    const [allHoldings, allTxns, allFds] = await Promise.all([
       list(userId),
       listAllTransactions(userId),
       listActiveFds(userId),
     ]);
+    const holdings = pickRows(ids, allHoldings);
+    const txns     = pickTxns(ids, allTxns || []);
+    const fds      = pickRows(ids, allFds || []);
 
     const wb = new ExcelJS.Workbook();
     wb.creator = "WealthLens Hub";
@@ -511,6 +538,8 @@ router.get("/xlsx", auth, async (req, res) => {
     await wb.xlsx.write(res);
     res.end();
   } catch (e) { sendError(res, e); }
-});
+};
+router.get("/xlsx", auth, xlsxBook);
+router.post("/xlsx", auth, xlsxBook);
 
 export default router;

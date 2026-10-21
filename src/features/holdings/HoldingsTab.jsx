@@ -242,10 +242,16 @@ export default function HoldingsTab({
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exportBusy, setExportBusy] = useState(null);   // key of in-flight export
   const [exportError, setExportError] = useState("");
+  const [exportScope, setExportScope] = useState("view");   // "view" = what is on screen, "all" = everything
   async function runExport(item){
     if(exportBusy) return;
     setExportError(""); setExportBusy(item.key);
-    try{ await (item.report ? openReportExport() : downloadExport(item.href, item.file)); setShowExportMenu(false); }
+    try{
+      // Scoped to the rows currently shown (type / member / stale filters); undefined = everything
+      const ids = exportScope==="view" ? displayH.map(h=>h.id) : undefined;
+      await (item.report ? openReportExport(ids) : downloadExport(item.href, item.file, ids));
+      setShowExportMenu(false);
+    }
     catch(e){ console.error("Export error:", e); setExportError(e.message||"Export failed"); }
     finally{ setExportBusy(null); }
   }
@@ -447,6 +453,12 @@ export default function HoldingsTab({
               {/* backdrop to close on outside tap */}
               <div onClick={()=>setShowExportMenu(false)} style={{position:"fixed",inset:0,zIndex:99}}/>
               <div style={{position:"absolute",top:"calc(100% + .35rem)",right:0,zIndex:100,background:"var(--bg-card)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 6px 24px rgba(0,0,0,.18)",minWidth:170,overflow:"hidden"}}>
+                <div role="radiogroup" aria-label="Export scope" style={{display:"flex",gap:0,padding:".4rem",borderBottom:"1px solid var(--border)"}}>
+                  {[["view",`Current view (${displayH.length})`],["all","All holdings"]].map(([k,l])=>(
+                    <button key={k} type="button" role="radio" aria-checked={exportScope===k} onClick={()=>setExportScope(k)}
+                      style={{flex:1,fontSize:".68rem",fontWeight:600,padding:".3rem .5rem",cursor:"pointer",border:"1px solid var(--border)",background:exportScope===k?"var(--accent)":"transparent",color:exportScope===k?"#fff":"var(--text-muted)",borderRadius:k==="view"?"6px 0 0 6px":"0 6px 6px 0",fontFamily:"var(--font-ui)",whiteSpace:"nowrap"}}>{l}</button>
+                  ))}
+                </div>
                 {[
                   {key:"report",label:"⎙ PDF Report",        color:"var(--accent-3,#c9a84c)", report:true},
                   {key:"xlsx",  label:"⬇ Excel (full)",      color:"var(--accent)",           href:"/api/export/xlsx",         file:`wealthlens-portfolio-${exportToday()}.xlsx`},

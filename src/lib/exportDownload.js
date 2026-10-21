@@ -12,10 +12,17 @@ async function getToken() {
   } catch { return ''; }
 }
 
-async function authedFetch(path) {
+// ids = optional array of holding ids to scope the export to ("current view").
+// Sent as a POST body (not the URL) so large portfolios never hit URL limits.
+async function authedFetch(path, ids) {
   const token = await getToken();
   if (!token) throw new Error('Not signed in — please log in again and retry.');
-  const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
+  const scoped = Array.isArray(ids);
+  const res = await fetch(path, scoped
+    ? { method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }) }
+    : { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.json())?.error || ''; } catch { /* non-JSON body */ }
@@ -24,8 +31,8 @@ async function authedFetch(path) {
   return res;
 }
 
-export async function downloadExport(path, filename) {
-  const res  = await authedFetch(path);
+export async function downloadExport(path, filename, ids) {
+  const res  = await authedFetch(path, ids);
   const blob = await res.blob();
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
@@ -40,10 +47,10 @@ export async function downloadExport(path, filename) {
 // Opens the print-ready report in a new tab. The tab is opened synchronously
 // (inside the click gesture) so popup blockers allow it, then filled once the
 // authenticated fetch resolves.
-export async function openReportExport() {
+export async function openReportExport(ids) {
   const win = window.open('', '_blank');
   try {
-    const res  = await authedFetch('/api/export/report');
+    const res  = await authedFetch('/api/export/report', ids);
     const html = await res.text();
     const url  = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
     if (win) win.location.href = url; else window.open(url, '_blank');
