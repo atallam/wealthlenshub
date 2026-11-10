@@ -32,6 +32,7 @@ export default function CASImportModal({
     casPreview, casPreviewing, previewCASImport,
     casDupAction, setCasDupAction,
     casRetireLegacy, setCasRetireLegacy,
+    casReconciliation, casReconAck, setCasReconAck,
   } = casImport;
 
   // One PDF → the classic single-statement review; several PDFs → the batch queue.
@@ -91,6 +92,8 @@ export default function CASImportModal({
   const skippedCount = Object.values(casDupAction).filter(v => v === "skip").length;
   const importCount = casHoldings.length - skippedCount;
   const fmtInr = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+  // Parser read less than the statement says it holds -> gate the import until acknowledged.
+  const reconBlocked = casReconciliation?.ok === false && !casReconAck;
 
   return (
     <Overlay onClose={() => { resetCASDownloader(); onClose(); }} wide>
@@ -192,6 +195,29 @@ export default function CASImportModal({
               ))}
             </div>
           )}
+          {casReconciliation && (casReconciliation.ok ? (
+            <div style={{ fontSize: ".7rem", color: "#4caf9a", marginBottom: ".8rem" }}>
+              ✓ Reconciles with the statement: {fmtInr(casReconciliation.statement_total)} across {casReconciliation.accounts.length} account{casReconciliation.accounts.length !== 1 ? "s" : ""}
+            </div>
+          ) : (
+            <div style={{ background: "rgba(224,124,90,.08)", border: "1px solid rgba(224,124,90,.35)", borderRadius: 8, padding: ".65rem .8rem", marginBottom: ".8rem" }}>
+              <div style={{ fontSize: ".76rem", color: "#e07c5a", fontWeight: 600, marginBottom: ".35rem" }}>
+                ⚠ Only {fmtInr(casReconciliation.parsed_total)} of {fmtInr(casReconciliation.statement_total)} in this statement could be read
+              </div>
+              {casReconciliation.accounts.filter(a => !a.ok).map(a => (
+                <div key={a.account_id} style={{ fontSize: ".68rem", color: "var(--text)", marginBottom: ".15rem" }}>
+                  {a.name}: statement {fmtInr(a.statement_value)} · read {fmtInr(a.parsed_value)}
+                </div>
+              ))}
+              <div style={{ fontSize: ".66rem", color: "var(--text)", margin: ".35rem 0" }}>
+                The PDF layout may have changed. Importing now would store an incomplete portfolio.
+              </div>
+              <label style={{ fontSize: ".68rem", color: "var(--text)", cursor: "pointer" }}>
+                <input type="checkbox" checked={!!casReconAck} onChange={e => setCasReconAck(e.target.checked)} style={{ marginRight: ".4rem" }} />
+                Import the partial data anyway
+              </label>
+            </div>
+          ))}
           <div style={{ display: "flex", gap: ".5rem", flexWrap: "wrap", marginBottom: ".8rem" }}>
             {casFormat && (
               <span style={{ fontSize: ".68rem", padding: ".2rem .55rem", borderRadius: 4, background: "rgba(201,168,76,.12)", color: "#c9a84c", border: "1px solid rgba(201,168,76,.2)", fontWeight: 600 }}>
@@ -428,8 +454,8 @@ export default function CASImportModal({
             <div style={{ display: "flex", alignItems: "center", gap: ".6rem" }}>
               {casPreview?.summary?.older > 0 && <span style={{ fontSize: ".64rem", color: "#e07c5a" }}>Older rows won't overwrite newer data</span>}
               <button className="btns"
-                disabled={casHoldings.length === 0 || needsMemberPick || casPreviewing}
-                title={needsMemberPick ? "Select a family member above before importing" : undefined}
+                disabled={casHoldings.length === 0 || needsMemberPick || casPreviewing || reconBlocked}
+                title={needsMemberPick ? "Select a family member above before importing" : reconBlocked ? "Part of the statement could not be read - acknowledge above to import anyway" : undefined}
                 onClick={() => executeCASImport(members, onPriceRefresh)}>
                 Import {importCount} Holding{importCount !== 1 ? "s" : ""}
               </button>

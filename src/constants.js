@@ -10,6 +10,7 @@ export const AT = {
   CASH:        { label:"Cash",          color:"#8cb8c9", icon:"💵", cat:"US Market" },
   IN_STOCK:    { label:"Indian Stocks", color:"#e07c5a", icon:"📈", cat:"Indian Market" },
   IN_ETF:      { label:"Indian ETF",   color:"#f0a050", icon:"🔷", cat:"Indian Market" },
+  IN_BOND:     { label:"Indian Bonds", color:"#b5835a", icon:"📑", cat:"Debt" },
   MF:          { label:"Mutual Fund",   color:"#a084ca", icon:"📊", cat:"Indian Market" },
   FD:          { label:"Fixed Deposit", color:"#c9a84c", icon:"🏦", cat:"Debt" },
   PPF:         { label:"PPF",           color:"#4caf9a", icon:"📗", cat:"Debt" },

@@ -54,6 +54,7 @@ export function getVal(h){
   const units = h.net_units!=null ? h.net_units : (h.units||0);
   switch(h.type){
     case"FD":          return fdValue(h);
+    case"IN_BOND":     return(h.current_value||units*(h.current_price||h.purchase_price||0));
     case"PPF":         return calcAccr(h.principal,_ppfRate,h.start_date);
     case"EPF":         return calcAccr(h.principal,_epfRate,h.start_date);
     case"MF":          return units*(h.current_nav||h.purchase_nav||0);
@@ -75,6 +76,10 @@ export function getInv(h){
   if(h.avg_cost!=null && h.net_units!=null) return h.net_units * h.avg_cost;
   switch(h.type){
     case"INSURANCE":   return(h.principal||0); // total premiums paid to date
+    case"IN_BOND":
+      // CAS bonds carry no cost basis - null (shown as "-") rather than a fake 0
+      if(h.purchase_price==null && h.purchase_value==null) return null;
+      return(h.units||0)*(h.purchase_price||0)||(h.purchase_value||0);
     case"MF":          return(h.units||0)*(h.purchase_nav||0)||(h.purchase_value||0);
     case"IN_STOCK":
     case"IN_ETF":

@@ -70,7 +70,7 @@ const ADVISOR_TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        asset_type: { type: "string", description: "One of: IN_STOCK, IN_ETF, MF, US_STOCK, US_ETF, US_BOND, FD, PPF, EPF, CRYPTO, REAL_ESTATE, CASH, OTHER" },
+        asset_type: { type: "string", description: "One of: IN_STOCK, IN_ETF, IN_BOND, MF, US_STOCK, US_ETF, US_BOND, FD, PPF, EPF, CRYPTO, REAL_ESTATE, CASH, OTHER" },
         member_id:  { type: "string", description: "Family member ID to filter by" },
       },
     },

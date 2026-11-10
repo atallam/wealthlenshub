@@ -11,6 +11,7 @@ export const ASSET_CAGR = {
   CRYPTO:      0.12,
   US_ETF:      0.10,
   IN_ETF:      0.10,
+  IN_BOND:     0.085,   // listed corporate bonds/NCDs - assumption, tune to taste
   MF:          0.11,
   FD:          0.065,
   PPF:         0.071,

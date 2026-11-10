@@ -218,6 +218,7 @@ router.post(
         holder_pans:       result.holder_pans       || [],
         format:            result.format            || "CAS (casparser)",
         warnings:          result.warnings          || [],
+        reconciliation:    result.reconciliation    || null,
         statement_date:    result.statement_date    || null,
         period_start:      result.period_start      || null,
         period_end:        result.period_end        || null,

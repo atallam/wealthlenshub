@@ -8,7 +8,7 @@ vi.mock("../lib/db.js", () => ({
   describeDbError: (e) => ({ isSchemaDrift: false, friendly: e?.message || "Database error" }),
 }));
 
-import { parseCSV, autoDetectBank, parseDateIN, parseDateForRegion, BANK_COLUMN_MAP, BANK_REGISTRY, parseIndianPDF, extractPDFText } from "../lib/parsers.js";
+import { parseCSV, autoDetectBank, parseDateIN, parseDateForRegion, BANK_COLUMN_MAP, BANK_REGISTRY, parseIndianPDF, extractPDFText, parseNSDLCASStatement } from "../lib/parsers.js";
 
 // Every bank a user can pick from the import form must have a matching parser config.
 describe("BANK_COLUMN_MAP coverage", () => {
@@ -332,5 +332,37 @@ describe("Phase 3 — member-detection text helpers", () => {
     expect(extractLast4("A/c No. XXXXXXXX1234")).toBe("1234");
     expect(extractLast4("Card ending in 9981")).toBe("9981");
     expect(extractLast4("no digits here")).toBeNull();
+  });
+});
+
+describe("parseNSDLCASStatement — price/value digit-gluing regression (NSDL 2026 e-CAS)", () => {
+  // Rows are the pdf.js text of an Oct-2026 e-CAS (public fund names + amounts only).
+  // Bug: the split-decimal normaliser merged a 2-dp price with the first two digits of
+  // the next number when that number had a thousands separator, e.g.
+  //   "119.49 47,796.00" -> "119.4947,796.00"  (value read as 796.00)
+  const text = [
+    "Consolidated Account Statement",
+    "NSDL Demat Account",
+    "Mutual Funds (M)",
+    "INF179KC1981 HDFC MUTUAL FUND \t400.000\t0.000\t0.000\t119.49 47,796.00",
+    "INF109KC1NT3 ICICI PRUDENTIAL MUTUAL FUND GOLD EXCHANGE TRADED FUND OPEN ENDED-- 107 119.23 12,757.19",
+    "Sub Total 60,553.19",
+  ].join("\n");
+
+  const byIsin = (r, isin) => r.holdings.find((h) => h.ticker === isin);
+
+  it("keeps a thousands-separated value intact after a 2-dp price (tabbed demat row)", () => {
+    const h = byIsin(parseNSDLCASStatement(text), "INF179KC1981");
+    expect(h, "HDFC MF row should parse").toBeTruthy();
+    expect(h.units).toBe(400);
+    expect(h.current_value).toBeCloseTo(47796, 2);
+    expect(h.current_nav).toBeCloseTo(119.49, 2);
+  });
+
+  it("keeps a thousands-separated value intact after a 2-dp price (single-line row)", () => {
+    const h = byIsin(parseNSDLCASStatement(text), "INF109KC1NT3");
+    expect(h, "Gold ETF row should parse").toBeTruthy();
+    expect(h.units).toBe(107);
+    expect(h.current_value).toBeCloseTo(12757.19, 2);
   });
 });

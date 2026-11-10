@@ -115,6 +115,9 @@ export function useCASImport(user, onSuccess) {
   const [casPeriodEnd,     setCasPeriodEnd]     = useState(null);
   const [casDepository,    setCasDepository]    = useState("");
   const [casStatementHash, setCasStatementHash] = useState("");
+  // Parsed-vs-statement check from the parser (NSDL/CDSL). When it fails, the import is gated.
+  const [casReconciliation, setCasReconciliation] = useState(null);
+  const [casReconAck,       setCasReconAck]       = useState(false);
   // Diff preview (Phase 2): what this statement would change vs. what is stored.
   const [casPreview,       setCasPreview]       = useState(null);
   const [casPreviewing,    setCasPreviewing]    = useState(false);
@@ -303,6 +306,7 @@ export function useCASImport(user, onSuccess) {
       setCasPeriodEnd(data.period_end        || null);
       setCasDepository(data.depository       || "");
       setCasStatementHash(data.statement_hash || "");
+      setCasReconciliation(data.reconciliation || null); setCasReconAck(false);
       setCasPreview(null); setCasDupAction({});
       const autoMap = autoMapCASHolders(holderNames, holderPans, members, data.holder_member_map || {});
       setCasHolderMap(autoMap);
@@ -357,6 +361,7 @@ export function useCASImport(user, onSuccess) {
       setCasPeriodEnd(data.period_end        || null);
       setCasDepository(data.depository       || "");
       setCasStatementHash(data.statement_hash || "");
+      setCasReconciliation(data.reconciliation || null); setCasReconAck(false);
       setCasPreview(null); setCasDupAction({});
       const autoMap = autoMapCASHolders(data.holder_names || [], data.holder_pans || [], members, data.holder_member_map || {});
       setCasHolderMap(autoMap);
@@ -400,6 +405,11 @@ export function useCASImport(user, onSuccess) {
       if (data.error) { patchQueueItem(id, { status: "error", error: data.error }); return; }
       if (!data.statement_date) { patchQueueItem(id, { status: "error", error: "Could not read the statement date from this PDF" }); return; }
       if (!(data.holdings || []).length) { patchQueueItem(id, { status: "error", error: "No holdings could be parsed from this statement" }); return; }
+      if (data.reconciliation && data.reconciliation.ok === false) {
+        const inr = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+        patchQueueItem(id, { status: "error", error: `Only ${inr(data.reconciliation.parsed_total)} of ${inr(data.reconciliation.statement_total)} in this statement could be read - import it on its own to review` });
+        return;
+      }
       const src = {
         holdings: data.holdings, holderNames: data.holder_names || [], holderPans: data.holder_pans || [],
         holderMap: autoMapCASHolders(data.holder_names || [], data.holder_pans || [], members, data.holder_member_map || {}),
@@ -540,6 +550,8 @@ export function useCASImport(user, onSuccess) {
     setCasPeriodEnd(null);
     setCasDepository("");
     setCasStatementHash("");
+    setCasReconciliation(null);
+    setCasReconAck(false);
     setCasPreview(null);
     setCasPreviewing(false);
     setCasRetireLegacy(true);
@@ -570,6 +582,7 @@ export function useCASImport(user, onSuccess) {
     casPeriodEnd,
     casDepository,
     casStatementHash,
+    casReconciliation, casReconAck, setCasReconAck,
     casPreview, casPreviewing, previewCASImport,
     casRetireLegacy, setCasRetireLegacy,
     // handleCASUpload,       // old parser — commented out

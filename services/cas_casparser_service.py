@@ -44,7 +44,96 @@ import sys
 import json
 import re
 import hashlib
+from datetime import datetime
 from pathlib import Path
+
+
+# ── NSDL 2026 e-CAS layout compatibility ──────────────────────────────────────
+# The redesigned NSDL e-CAS renders many labels twice in the same cell, e.g. the
+# page-2 account-type cell reads "NSDL Demat Account\nNSDL Demat Account".
+# casparser (<= 1.4.1) matches that cell with a strict ^(NSDL|CDSL) Demat Account$
+# and so silently drops every demat account (equities, bonds, demat MFs), keeping
+# only the "Mutual Fund Folios" section. Loosen it to accept a repeated label.
+# Harmless once upstream fixes this; no-op if casparser's internals move.
+def _patch_casparser_for_nsdl_2026():
+    try:
+        from casparser.parsers import nsdl as _nsdl
+        _nsdl.DEMAT_TYPE_RE = re.compile(
+            r"^(NSDL|CDSL)\s+Demat\s+Account(?:\s+(?:NSDL|CDSL)\s+Demat\s+Account)*\s*$", re.I)
+    except Exception:
+        pass
+
+
+def _account_id(acc: dict) -> str:
+    """Natural-key account id: demat accounts are dpid/clientid; the "Mutual Fund
+    Folios" section of a depository CAS has neither."""
+    dp_id     = (acc.get("dp_id") or "").strip()
+    client_id = (acc.get("client_id") or "").strip()
+    if dp_id or client_id:
+        return f"{dp_id}/{client_id}"
+    if "mutual fund" in str(acc.get("type") or "").lower():
+        return "MF-FOLIOS"
+    return acc.get("name") or "UNKNOWN"
+
+
+def read_stated_total(pdf_path: str, password: str):
+    """The statement's own headline number ("Your Consolidated Portfolio Value" /
+    "Grand Total"), read straight from the PDF text - independent of casparser, so it
+    still catches accounts casparser failed to detect at all. None if not found."""
+    try:
+        import pypdfium2 as pdfium   # casparser >= 1.0 depends on it
+        doc = pdfium.PdfDocument(pdf_path, password=password or None)
+        try:
+            txt = "\n".join(doc[i].get_textpage().get_text_range() for i in range(min(4, len(doc))))
+        finally:
+            doc.close()
+    except Exception:
+        return None
+    m = (re.search(r"CONSOLIDATED\s+PORTFOLIO\s+VALUE\s*([\d,]+\.\d{2})", txt, re.I)
+         or re.search(r"Grand\s*Total\s*([\d,]+\.\d{2})", txt, re.I))
+    return float(m.group(1).replace(",", "")) if m else None
+
+
+def reconcile_nsdl(d: dict, holdings: list, stated_total=None):
+    """Compare what we parsed with what the statement says it holds, so a layout
+    change can't produce a silently partial import.
+
+      * per account: casparser's page-2 account value vs the holdings we built;
+      * overall: the statement's own headline total (stated_total, read from the PDF
+        text) vs parsed + NPS. Value the statement claims but no detected account
+        explains is reported as an "Accounts not detected" row.
+
+    Returns None when there is nothing to compare (e.g. CAMS/KFintech)."""
+    by_acc = {}
+    for h in holdings:
+        by_acc[h["account_id"]] = by_acc.get(h["account_id"], 0.0) + (h.get("current_value") or 0.0)
+    nps_val = f((d.get("nps") or {}).get("value")) or 0.0    # in the headline total, but not imported
+    rows, acc_stmt_total, parsed_total, ok_all = [], 0.0, 0.0, True
+    for acc in (d.get("accounts") or []):
+        stmt = f(acc.get("balance"))
+        if stmt is None:
+            continue
+        aid = _account_id(acc)
+        parsed = round(by_acc.get(aid, 0.0), 2)
+        ok = abs(stmt - parsed) <= max(1.0, abs(stmt) * 0.0005)
+        rows.append({"account_id": aid, "name": acc.get("name") or str(acc.get("type") or aid),
+                     "type": str(acc.get("type") or ""), "statement_value": round(stmt, 2),
+                     "parsed_value": parsed, "ok": ok})
+        acc_stmt_total += stmt; parsed_total += parsed; ok_all = ok_all and ok
+    statement_total = acc_stmt_total + nps_val
+    if stated_total is not None:
+        unread = round(stated_total - acc_stmt_total - nps_val, 2)
+        if abs(unread) > max(1.0, abs(stated_total) * 0.0005):
+            rows.append({"account_id": "__undetected__", "name": "Accounts not detected in the PDF",
+                         "type": "", "statement_value": unread, "parsed_value": 0.0, "ok": False})
+            ok_all = False
+        statement_total = stated_total
+    if not rows:
+        return None
+    return {"statement_total": round(statement_total, 2), "parsed_total": round(parsed_total, 2),
+            "diff": round(statement_total - parsed_total - nps_val, 2), "ok": ok_all,
+            "nps_not_imported": round(nps_val, 2), "stated_total_read": stated_total is not None,
+            "accounts": rows}
 
 
 # ── Transaction ledger (detailed CAMS/KFin CAS) ───────────────────────────────
@@ -171,6 +260,13 @@ def fmt_date(d):
     m = re.match(r'(\d{2})[-/](\d{2})[-/](\d{4})', s)
     if m:
         return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    # DD-Mon-YYYY (e.g. 31-Oct-2026) - what casparser returns for statement_period
+    m = re.match(r'(\d{1,2})[-/ ]([A-Za-z]{3})[A-Za-z]*[-/ ,]+(\d{4})', s)
+    if m:
+        try:
+            return datetime.strptime(f"{m.group(1)}-{m.group(2).title()}-{m.group(3)}", "%d-%b-%Y").strftime("%Y-%m-%d")
+        except ValueError:
+            pass
     return s or None
 
 
@@ -214,17 +310,7 @@ def parse_nsdl(d: dict) -> tuple:
                 holder_names.append(name)
 
         broker    = acc.get("name", "")
-        dp_id     = (acc.get("dp_id") or "").strip()
-        client_id = (acc.get("client_id") or "").strip()
-        acc_type  = str(acc.get("type") or "")
-        # Natural-key account id: demat accounts are dpid/clientid; the
-        # "Mutual Fund Folios" section of a depository CAS has neither.
-        if dp_id or client_id:
-            account_id = f"{dp_id}/{client_id}"
-        elif "mutual fund" in acc_type.lower():
-            account_id = "MF-FOLIOS"
-        else:
-            account_id = broker or "UNKNOWN"
+        account_id = _account_id(acc)
         folio = account_id
         # ISIN dedup is PER ACCOUNT: the same stock legitimately sits in two
         # demat accounts (e.g. Zerodha + ICICI) and both must be kept.
@@ -252,6 +338,9 @@ def parse_nsdl(d: dict) -> tuple:
             price = f(eq.get("price"))
             value = f(eq.get("value"))
             name  = clean_equity_name(eq.get("name", ""))
+            if not units:
+                warnings.append(f"{name}: zero balance at statement date (position closed) - not imported")
+                continue
 
             asset_type = "IN_STOCK"
             if re.search(r'etf|bees|gold\s*etf|nifty.*etf|sgb|sovereign\s*gold', name, re.I):
@@ -283,6 +372,29 @@ def parse_nsdl(d: dict) -> tuple:
                 "_holder_name":   acc_owner_name,
             })
 
+        # ── Corporate bonds / debentures (NSDL "Corporate Bonds (C)") ──────
+        for bd in (acc.get("bonds") or []):
+            isin = (bd.get("isin") or "").strip().upper()
+            if not isin or isin in seen_isins:
+                continue
+            seen_isins.add(isin)
+            n_bonds = f(bd.get("num_bonds"))
+            value   = f(bd.get("value"))
+            bname   = (bd.get("name") or "").strip()
+            if not n_bonds:
+                warnings.append(f"{bname}: zero balance at statement date (position closed) - not imported")
+                continue
+            price = (value / n_bonds) if value else None
+            holdings.append({
+                "name": bname, "type": "IN_BOND", "ticker": isin, "scheme_code": "",
+                "units": n_bonds, "purchase_nav": None, "current_nav": price,
+                "purchase_price": None, "current_price": price, "purchase_value": None,
+                "current_value": value, "source": "cas", "brokerage_name": broker,
+                "currency": "INR", "isin": isin, "account_id": account_id,
+                "asset_class": "DEBT", "transactions": [], "_folio": folio,
+                "_pan": acc_owner_pan or pan, "_holder_name": acc_owner_name,
+            })
+
         # ── Mutual Funds ───────────────────────────────────────────────────
         for mf in (acc.get("mutual_funds") or []):
             isin = (mf.get("isin") or "").strip().upper()
@@ -297,6 +409,11 @@ def parse_nsdl(d: dict) -> tuple:
             nav   = f(mf.get("nav"))
             value = f(mf.get("value"))
             name  = mf.get("name", "")
+            if not units:
+                # Fully redeemed folio still listed for the period. Not a holding;
+                # the import diff marks any previously stored copy as exited.
+                warnings.append(f"{name}: zero balance at statement date (fully redeemed) - not imported")
+                continue
 
             holdings.append({
                 "name":           name,
@@ -448,6 +565,7 @@ def main():
         class IncorrectPasswordError(Exception):
             pass
 
+    _patch_casparser_for_nsdl_2026()
     data = None
     password_index = -1
     last_pw_error = None
@@ -491,10 +609,12 @@ def main():
             print(json.dumps(out))
             sys.exit(1)
 
+    reconciliation = None
     try:
         if "accounts" in d:
             holdings, warnings, holder_names, holder_pans, period_from, period_to, depository = parse_nsdl(d)
             cas_fmt = f"NSDL CAS (casparser v{casparser.__version__})"
+            reconciliation = reconcile_nsdl(d, holdings, read_stated_total(pdf_path, passwords[password_index]))
         else:
             holdings, warnings, holder_names, holder_pans, period_from, period_to, depository = parse_cams(d)
             cas_fmt = f"CAMS/Kfintech CAS (casparser v{casparser.__version__})"
@@ -521,6 +641,7 @@ def main():
         "cas_detail":        cas_detail,          # DETAILED | SUMMARY | DEMAT
         "transaction_count": txn_count,
         "holder_member_map": {},
+        "reconciliation":    reconciliation,      # NSDL/CDSL only: parsed vs statement values
         "password_index":    password_index,
         "_parser":           "casparser",
         "_version":          getattr(casparser, "__version__", "unknown"),

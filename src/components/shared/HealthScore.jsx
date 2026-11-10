@@ -73,7 +73,7 @@ export default function HealthScore({ allHoldings = [], byType = [], totCur = 0,
     if (['IN_STOCK','IN_ETF','MF'].includes(row.t))         buckets.add('equity-in');
     else if (['US_STOCK','US_ETF','US_BOND'].includes(row.t)) buckets.add('equity-us');
     else if (['PPF','EPF'].includes(row.t))                  buckets.add('ppf-epf');
-    else if (row.t === 'FD')                                 buckets.add('fd');
+    else if (['FD','IN_BOND'].includes(row.t))                                 buckets.add('fd');
     else if (row.t === 'REAL_ESTATE')                        buckets.add('real-estate');
     else if (row.t === 'CRYPTO')                             buckets.add('crypto');
     else if (['CASH','OTHER'].includes(row.t))               buckets.add('cash');
