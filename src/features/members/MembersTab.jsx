@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { computeOutstanding } from '../../lib/amortization.js';
 
+import { Overlay, FG, MA } from '../../components/shared/Overlay.jsx';
 function fmtShort(n) {
   if (!n) return '—';
   const v = +n;

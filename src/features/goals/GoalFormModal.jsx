@@ -10,6 +10,9 @@
 
 import { BG } from '../../constants.js';
 
+import { Overlay, FG, MA } from '../../components/shared/Overlay.jsx';
+import FmtInput from '../../components/shared/FmtInput.jsx';
+import HoldingsPicker from '../../components/shared/HoldingsPicker.jsx';
 export default function GoalFormModal({
   modal, setModal,
   goalForm, setGoalForm,

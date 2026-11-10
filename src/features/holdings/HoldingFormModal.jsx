@@ -13,6 +13,9 @@
 
 import { BF } from '../../constants.js';
 
+import { Overlay, FG, MA } from '../../components/shared/Overlay.jsx';
+import FmtInput from '../../components/shared/FmtInput.jsx';
+import FDScanSheet from '../../components/shared/FDScanSheet.jsx';
 export default function HoldingFormModal({
   modal, setModal,
   form, setForm, editHolding, setEditHolding,

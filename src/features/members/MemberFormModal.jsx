@@ -5,6 +5,8 @@
 // AlertFormModal.jsx: state ownership (newMember, editingMemberId, modal) stays in
 // App.jsx and is passed in as props.
 
+import { Overlay, FG, MA } from '../../components/shared/Overlay.jsx';
+
 const EMPTY_MEMBER = { name: '', relation: '', dob: '', email: '', nominee_name: '', nominee_relation: '' };
 
 export default function MemberFormModal({

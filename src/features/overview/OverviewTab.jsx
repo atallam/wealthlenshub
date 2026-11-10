@@ -9,6 +9,7 @@ import { readSSEStream } from '../../hooks/useGoalAI.js';
 import HealthScore from '../../components/shared/HealthScore.jsx';
 import SIPAnalytics from '../../components/shared/SIPAnalytics.jsx';
 
+import DonutChart from '../../components/shared/DonutChart.jsx';
 // ─── AI Portfolio Morning Brief ───────────────────────────────────────────────
 function briefKey(selMember) {
   return `wl_portfolio_brief_${selMember || 'all'}`;

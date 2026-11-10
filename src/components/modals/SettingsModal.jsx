@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { Download, Activity, Sun, Moon, LogOut, Trash2 } from 'lucide-react';
 
+import { Overlay } from '../shared/Overlay.jsx';
 // Permanent account deletion (DELETE /api/account). Two steps so it can't happen by accident:
 // open the section, then type your own email. On success the session is ended.
 function DeleteAccount({ email, api, signOut }) {

@@ -8,6 +8,7 @@ import { supabase } from '../../supabase.js';
 import { goalStatusCalc } from '../goals/goalMath.js';
 import { readSSEStream } from '../../hooks/useGoalAI.js';
 
+import FmtInput from '../../components/shared/FmtInput.jsx';
 // ─── Tiny utilities ──────────────────────────────────────────────────────────
 function daysUntil(d) {
   return d ? Math.round((new Date(d) - new Date()) / 864e5) : null;

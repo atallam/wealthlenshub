@@ -43,6 +43,7 @@ export default [
       "react-hooks/exhaustive-deps": "warn",
       "react/jsx-uses-react": "off",
       "react/react-in-jsx-scope": "off",
+      "react/jsx-no-undef": "error", // catches components used but never imported (extraction bugs)
     },
   },
 
