@@ -150,6 +150,69 @@ class EtfClassification(unittest.TestCase):
         self.assertFalse(svc.is_exchange_traded_fund("Parag Parikh Flexi Cap Fund - Regular Plan Growth"))
 
 
+class _Cell:
+    def __init__(self, text): self.text = text
+
+
+class _Block:
+    def __init__(self, *texts): self.cells = [_Cell(t) for t in texts]
+    def text(self): return "\t\t".join(c.text for c in self.cells)
+
+
+def _walk(blocks):
+    def header_fn(pb, i):
+        b = pb[i]
+        return (b.cells[0].text[4:], 1) if b.cells and b.cells[0].text.startswith("ACC:") else (None, 0)
+    def marker_fn(b):
+        t = b.text().strip().lower() if len(b.cells) <= 2 else ""
+        return t if t in svc.UNSUPPORTED_SECTIONS or t == "equities (e)" else ""
+    return svc.walk_unsupported_sections(blocks, header_fn, marker_fn, lambda b: False)
+
+
+class UnsupportedSections(unittest.TestCase):
+    GSEC = ["IN0020230010", "7.18% GOI 2033", "10", "100.00", "10,250.50", "102,505.00"]
+
+    def test_row_parser_takes_isin_name_units_and_last_number_as_value(self):
+        r = svc.parse_unsupported_row(self.GSEC)
+        self.assertEqual((r["isin"], r["units"], r["value"]), ("IN0020230010", 10.0, 102505.0))
+        self.assertIn("GOI", r["name"])
+
+    def test_header_total_and_zero_rows_are_ignored(self):
+        self.assertIsNone(svc.parse_unsupported_row(["ISIN", "Description", "Value in Rs"]))
+        self.assertIsNone(svc.parse_unsupported_row(["Sub Total", "", "5,000.00"]))
+        self.assertTrue(svc.parse_unsupported_row(["IN0020230010", "X", "0", "0.00"])["zero"])
+
+    def test_walker_attributes_rows_to_account_and_stops_at_next_section(self):
+        found = _walk([
+            _Block("ACC:IN1/100"), _Block("Government Securities (G)"), _Block(*self.GSEC),
+            _Block("Equities (E)"), _Block("INE000A01010", "ABC LTD", "5", "50.0", "250.00"),
+        ])
+        self.assertEqual([(f["account_id"], f["row"]["isin"]) for f in found], [("IN1/100", "IN0020230010")])
+
+    def test_sgb_becomes_other_and_gsec_becomes_bond(self):
+        found = _walk([_Block("ACC:IN1/100"), _Block("Government Securities (G)"), _Block(*self.GSEC),
+                       _Block("IN0020200001", "SGB 2.50% 2028 SR-I", "2", "6000", "12,000.00")])
+        hs = svc.unsupported_rows_to_holdings(found, {"IN1/100": "ICICI"}, {})
+        self.assertEqual([h["type"] for h in hs], ["IN_BOND", "OTHER"])
+        self.assertEqual(sum(h["current_value"] for h in hs), 114505.0)
+
+    def test_supplement_kept_only_when_it_makes_the_statement_reconcile(self):
+        d = {"accounts": [{"type": "NSDL Demat Account", "name": "N", "dp_id": "IN1", "client_id": "100", "balance": 150000.0}]}
+        base = [{"account_id": "IN1/100", "current_value": 47495.0}]
+        good = [{"account_id": "IN1/100", "current_value": 102505.0, "_unsupported_section": "Government securities"}]
+        bad = [{"account_id": "IN1/100", "current_value": 5000.0, "_unsupported_section": "Government securities"}]
+        orig = svc.extract_unsupported_holdings
+        try:
+            svc.extract_unsupported_holdings = lambda *a: good
+            h, rec, w = svc.reconcile_with_supplement(d, base, None, "x.pdf", "")
+            self.assertTrue(rec["ok"]); self.assertEqual(len(h), 2); self.assertTrue(w)
+            svc.extract_unsupported_holdings = lambda *a: bad
+            h, rec, w = svc.reconcile_with_supplement(d, base, None, "x.pdf", "")
+            self.assertFalse(rec["ok"]); self.assertEqual(len(h), 1); self.assertEqual(w, [])
+        finally:
+            svc.extract_unsupported_holdings = orig
+
+
 class Dates(unittest.TestCase):
     def test_dd_mon_yyyy_to_iso(self):
         self.assertEqual(svc.fmt_date("31-Oct-2026"), "2026-10-31")

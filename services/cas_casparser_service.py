@@ -117,6 +117,162 @@ def read_stated_total(pdf_path: str, password: str):
     return float(m.group(1).replace(",", "")) if m else None
 
 
+# ── Sections casparser recognises but does not parse ───────────────────────────
+# G-Sec / SGB / T-bills, money-market, securitised, zero-coupon, preference shares, AIF,
+# postal savings. casparser skips their rows, so a statement holding any of them comes
+# back short. We read those rows ourselves, and - because the layout is unverified for
+# some of them - only keep them when doing so makes the statement reconcile exactly.
+
+_ISIN_CELL_RE = re.compile(r"^[A-Z]{2}[0-9A-Z]{9}\d$")
+_NUM_CELL_RE  = re.compile(r"^-?(?:\d[\d,]*(?:\.\d+)?|\.\d+)$")
+
+# section marker (lower-cased) -> (WealthLens type, asset_class, label)
+UNSUPPORTED_SECTIONS = {
+    "government securities (g)":     ("IN_BOND", "DEBT",   "Government securities"),
+    "money market instruments (i)":  ("IN_BOND", "DEBT",   "Money market instruments"),
+    "securitised instruments (s)":   ("IN_BOND", "DEBT",   "Securitised instruments"),
+    "zero coupon zero principal(z)": ("IN_BOND", "DEBT",   "Zero coupon bonds"),
+    "preference shares (p)":         ("IN_STOCK", "EQUITY", "Preference shares"),
+    "alternate investment fund (a)": ("OTHER",  "OTHER",  "Alternative investment funds"),
+    "postal saving scheme (o)":      ("OTHER",  "OTHER",  "Postal savings"),
+}
+
+
+def parse_unsupported_row(cell_texts: list):
+    """One table row (list of cell strings) -> {isin,name,units,value} or None.
+    Layout-agnostic: value is the right-most number, units the first number after the
+    ISIN/description. Header and total rows carry no ISIN so they fall out naturally."""
+    isin_idx = next((i for i, t in enumerate(cell_texts)
+                     if _ISIN_CELL_RE.match((t or "").split("\n", 1)[0].strip())), None)
+    if isin_idx is None:
+        return None
+    isin = cell_texts[isin_idx].split("\n", 1)[0].strip()
+    nums, names = [], []
+    for i, t in enumerate(cell_texts):
+        t = (t or "").strip()
+        if i == isin_idx or not t:
+            continue
+        flat = t.replace("\n", " ").strip()
+        if _NUM_CELL_RE.match(flat.replace(" ", "")):
+            nums.append(float(flat.replace(",", "").replace(" ", "")))
+        elif not re.match(r"^\d{1,2}[-/ ][A-Za-z]{3}[-/ ]\d{2,4}$|^\d{1,2}/\d{1,2}/\d{2,4}$", flat):
+            names.append(flat)
+    if not nums:
+        return None
+    value = nums[-1]
+    if value <= 0:
+        return {"isin": isin, "zero": True}
+    units = nums[0] if len(nums) >= 2 and nums[0] > 0 else 1.0
+    name = max(names, key=len) if names else isin
+    return {"isin": isin, "name": name, "units": units, "value": value}
+
+
+def unsupported_rows_to_holdings(found: list, broker_by_account: dict, owner_by_account: dict) -> list:
+    """found: [{account_id, marker, row}] from the block walker -> holdings."""
+    out = []
+    for f in found:
+        r = f["row"]
+        if r.get("zero") or f["marker"] not in UNSUPPORTED_SECTIONS:
+            continue
+        typ, klass, _label = UNSUPPORTED_SECTIONS[f["marker"]]
+        if re.search(r"\bSGB\b|sovereign\s+gold", r["name"], re.I):
+            typ, klass = "OTHER", "OTHER"
+        units, value = r["units"], r["value"]
+        owner_name, owner_pan = owner_by_account.get(f["account_id"], ("", ""))
+        out.append({
+            "name": r["name"], "type": typ, "ticker": r["isin"], "scheme_code": r["isin"],
+            "units": units, "purchase_nav": None, "current_nav": None,
+            "purchase_price": None, "current_price": round(value / units, 4),
+            "purchase_value": None, "current_value": value, "source": "cas",
+            "brokerage_name": broker_by_account.get(f["account_id"], ""),
+            "currency": "INR", "isin": r["isin"], "account_id": f["account_id"],
+            "asset_class": klass, "transactions": [], "_folio": "",
+            "_pan": owner_pan, "_holder_name": owner_name,
+            "_unsupported_section": _label,
+        })
+    return out
+
+
+def walk_unsupported_sections(page_blocks, header_fn, marker_text_fn, other_marker_fn):
+    """Walk statement blocks, tracking the current account and section, and collect the
+    rows that sit under sections casparser skips. The three callables are casparser's
+    own recognisers, injected so this stays testable without a PDF.
+      header_fn(blocks, i)  -> (account_id | None, blocks_consumed)
+      marker_text_fn(block) -> lower-cased text of a short section-marker block, else ""
+      other_marker_fn(block)-> True for a supported-section marker / mode change"""
+    found, cur_acc, cur_marker, i = [], None, None, 0
+    while i < len(page_blocks):
+        b = page_blocks[i]
+        acc, consumed = header_fn(page_blocks, i)
+        if acc is not None:
+            cur_acc, cur_marker = acc, None
+            i += max(consumed, 1)
+            continue
+        mk = marker_text_fn(b)
+        if mk in UNSUPPORTED_SECTIONS:
+            cur_marker = mk
+        elif mk or other_marker_fn(b):
+            cur_marker = None
+        elif cur_marker and cur_acc:
+            row = parse_unsupported_row([c.text for c in b.cells])
+            if row:
+                found.append({"account_id": cur_acc, "marker": cur_marker, "row": row})
+        i += 1
+    return found
+
+
+def extract_unsupported_holdings(pdf_path: str, password: str, d: dict) -> list:
+    """Best effort: any failure returns [] so the statement simply stays flagged."""
+    try:
+        from casparser.parsers import nsdl as _n, pageobj
+        blocks = pageobj.blocks_from_atoms(pageobj.extract_atoms(pdf_path, password))
+        page_blocks = [b for b in blocks if b.page > 2]
+
+        def header_fn(pb, i):
+            key, consumed = _n._try_per_account_header(pb, i)
+            if key is None:
+                return None, 0
+            return f"{(key[1] or '').strip()}/{(key[2] or '').strip()}", consumed
+
+        def marker_text_fn(b):
+            if len(b.cells) > 2:
+                return ""
+            t = b.text().strip().lower()
+            return t if (t in UNSUPPORTED_SECTIONS or _n._section_marker_kind(b)) else ""
+
+        def other_marker_fn(b):
+            return False
+
+        found = walk_unsupported_sections(page_blocks, header_fn, marker_text_fn, other_marker_fn)
+        broker = {_account_id(a): str(a.get("name") or "") for a in (d.get("accounts") or [])}
+        owners = {}
+        for a in (d.get("accounts") or []):
+            o = (a.get("owners") or [{}])[0] if a.get("owners") else {}
+            owners[_account_id(a)] = ((o.get("name") or "").strip(), (o.get("PAN") or "").strip().upper())
+        return unsupported_rows_to_holdings(found, broker, owners)
+    except Exception:
+        return []
+
+
+def reconcile_with_supplement(d, holdings, stated_total, pdf_path, password):
+    """Reconcile; if short, try reading the sections casparser skips and keep them only
+    when that makes the statement reconcile. Returns (holdings, reconciliation, warnings)."""
+    rec = reconcile_nsdl(d, holdings, stated_total)
+    if not rec or rec.get("ok") is not False:
+        return holdings, rec, []
+    extra = extract_unsupported_holdings(pdf_path, password, d)
+    if not extra:
+        return holdings, rec, []
+    rec2 = reconcile_nsdl(d, holdings + extra, stated_total)
+    if rec2 and rec2.get("ok"):
+        labels = sorted({e["_unsupported_section"] for e in extra})
+        rec2["supplemented"] = len(extra)
+        return holdings + extra, rec2, [
+            f"Read {len(extra)} holding(s) from sections the parser skips ({', '.join(labels)}); "
+            "statement totals reconcile. Units and price on these rows are approximate - the value is exact."]
+    return holdings, rec, []
+
+
 def reconcile_nsdl(d: dict, holdings: list, stated_total=None):
     """Compare what we parsed with what the statement says it holds, so a layout
     change can't produce a silently partial import.
@@ -650,7 +806,10 @@ def main():
         if "accounts" in d:
             holdings, warnings, holder_names, holder_pans, period_from, period_to, depository = parse_nsdl(d)
             cas_fmt = f"NSDL CAS (casparser v{casparser.__version__})"
-            reconciliation = reconcile_nsdl(d, holdings, read_stated_total(pdf_path, passwords[password_index]))
+            holdings, reconciliation, extra_warnings = reconcile_with_supplement(
+                d, holdings, read_stated_total(pdf_path, passwords[password_index]),
+                pdf_path, passwords[password_index])
+            warnings.extend(extra_warnings)
         else:
             holdings, warnings, holder_names, holder_pans, period_from, period_to, depository = parse_cams(d)
             cas_fmt = f"CAMS/Kfintech CAS (casparser v{casparser.__version__})"
