@@ -8,6 +8,9 @@
 
 import { RefreshCw, Download, Eye, EyeOff, Settings, LogOut } from 'lucide-react';
 import { useAppShell } from '../../contexts/AppShellContext.jsx';
+import NotificationBell from './NotificationBell.jsx';
+import ExportPanel from './ExportPanel.jsx';
+import NotificationCentre from '../NotificationCentre.jsx';
 
 export default function AppHeader({
   TABS,
