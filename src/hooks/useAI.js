@@ -65,7 +65,7 @@ export function useAI() {
         if (saved.length > 0) setAiMessages(saved);
       } catch { /* session unavailable */ }
     })();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   /**
    * @param {string}  portfolioContext  - Text summary built in App.jsx

@@ -178,7 +178,7 @@ Also mention if any "Trim" action could reduce funding for a goal that uses that
 }
 
 // ─── Computed warnings: FD maturity + goals behind schedule ──────────────────
-function ComputedWarnings({ allHoldings, valINRCache, goals, AT, fmtCr }) {
+function ComputedWarnings({ allHoldings, valINRCache, goals, fmtCr }) {
   const fdWarnings = useMemo(() => {
     return allHoldings
       .filter(h => h.type === 'FD' && h.maturity_date && (h.maturity_status || 'active') === 'active')
@@ -368,11 +368,7 @@ export default function StrategyTab({
   // Modal triggers
   setAlertForm, setModal,
   // Formatting
-  fmt, fmtCr, fmtPct,
-  // Constants
-  AT, BA,
-  // Sub-components
-  FmtInput,
+  fmtCr, AT, BA,
 }) {
   const [undoStack,    setUndoStack]    = useState([]);
   const [expandedRows, setExpandedRows] = useState(new Set());

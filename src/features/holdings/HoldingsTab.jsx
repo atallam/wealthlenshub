@@ -191,9 +191,7 @@ export default function HoldingsTab({
   filterType,
   setFilterType,
   sortCol,
-  setSortCol,
   sortDir,
-  setSortDir,
   expandedHolding,
   setExpandedHolding,
   // Actions (functions defined in parent, touch shared state)
@@ -211,7 +209,6 @@ export default function HoldingsTab({
   setShowImportHub,
   loadDemoData,
   // Formatting helpers
-  fmt,
   fmtCr,
   fmtCrINR,
   fmtCrNative,
@@ -224,8 +221,6 @@ export default function HoldingsTab({
   // Transaction form blank
   BT,
   // Price refresh timestamp
-  lastPriceRefresh,
-  // Holding-level alerts
   alerts,
   setAlerts,
   // Staleness config (from profile.settings)
@@ -571,7 +566,7 @@ export default function HoldingsTab({
                   const avgCost = h.avg_cost  ?? h.purchase_price ?? h.purchase_nav ?? null;
                   const isUS    = isUSDHolding(h);
                   const nativeSym = isUS ? "$" : "₹";
-                  const fmtH = n => fmtNative(n, h);  // native formatter for this holding
+  // native formatter for this holding
 
                   const cbUnknown = h.cost_basis==="unknown";
                   const cbApprox  = h.cost_basis==="approx";

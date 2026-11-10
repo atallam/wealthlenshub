@@ -930,7 +930,7 @@ function GoalsPanel({ fb }) {
 }
 
 // ── Overview ──────────────────────────────────────────────────────
-function OverviewTab({ fb, members, selectedMember }) {
+function OverviewTab({ fb, selectedMember }) {
   const { fbAnalytics: anal, fbAnalLoading: loading, fbMerchants: merchants, fbMerchLoading, fbRecurring: recurring, fbRecLoading, fbCategories: rawCategories, fbCatLimits } = fb;
   // Budget Health + Budget vs Actual should compare spend against the
   // selected member's own limit overrides (migrations/0032), not the shared
@@ -1009,9 +1009,8 @@ function OverviewTab({ fb, members, selectedMember }) {
 }
 
 // ── Main FamilyBudgetTab ──────────────────────────────────────────
-export default function FamilyBudgetTab({ user, members = [], Overlay }) {
-  const toast = useToast();
-  const fb = useFamilyBudget(user);
+export default function FamilyBudgetTab({ members = [] }) {
+  const fb = useFamilyBudget();
   const { fbView: view, setFbView, fbMember: memberFilter, setFbMember, fbMonth: month, setFbMonth, fbPeriod: period, setFbPeriod,
     loadAnalytics, loadMerchants, loadRecurring, loadTransactions, loadCategories, loadCategoryLimits, loadGoals, loadBanks, loadStatements,
     fbTxnCat, fbTxnSearch } = fb;

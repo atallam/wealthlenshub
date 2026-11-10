@@ -12,7 +12,6 @@ export default function MemberFormModal({
   newMember, setNewMember, editingMemberId, setEditingMemberId,
   members,
   saveMember,
-  Overlay, FG, MA,
 }) {
   if (modal !== 'member') return null;
 

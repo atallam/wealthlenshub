@@ -35,7 +35,7 @@ function saveImportDefaults(form) {
   try { localStorage.setItem(IMPORT_KEY, JSON.stringify({ region: form.region, bank_key: form.bank_key, statement_type: form.statement_type, member_id: form.member_id })); } catch { /* ignore */ }
 }
 
-export function useFamilyBudget(user) {
+export function useFamilyBudget() {
   // ── Active sub-tab ────────────────────────────────────────────
   const [fbView, setFbView] = useState('overview'); // overview|import|transactions|categories|goals
 

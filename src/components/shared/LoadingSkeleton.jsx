@@ -9,9 +9,6 @@ export default function LoadingSkeleton() {
     borderRadius: 8,
   };
 
-  const card = (w = '100%', h = 80) => (
-    <div style={{ ...shimmer, width: w, height: h, border: '1px solid var(--border)' }} />
-  );
 
   const row = () => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '.85rem 1rem', borderBottom: '1px solid var(--border)' }}>

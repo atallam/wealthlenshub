@@ -21,7 +21,7 @@ import { randomBytes, createHash } from "crypto";
 import { fileURLToPath }      from "url";
 import { dirname }            from "path";
 
-import { auth, sendError }    from "../lib/auth.js";
+import { auth }    from "../lib/auth.js";
 import { decrypt }            from "../lib/crypto.js";
 import { auditImport }        from "../lib/importLogger.js";
 import { getUnlockContextRows } from "../services/import.service.js";

@@ -37,18 +37,12 @@ export default function MembersTab({
   holdings,
   members,
   liabilities,
-  valINRCache,
   openMemberModal,
   setMemberAction,
   deleteMember,
   mergeMembers,
   memberAction,
   fmt,
-  fmtPct,
-  AT,
-  Overlay,
-  FG,
-  MA,
   onViewHoldings,
 }) {
   const now = new Date();

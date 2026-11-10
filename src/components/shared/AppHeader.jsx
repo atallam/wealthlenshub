@@ -16,7 +16,6 @@ export default function AppHeader({
   refreshPrices, priceRefreshing, lastPriceRefresh, ago,
   setShowImportHub, api, masked, toggleMask, setShowSettings, signOut,
   allMembers,
-  NotificationBell, ExportPanel, NotificationCentre,
 }) {
   const { tab, setTab, selMember, setSelMember } = useAppShell();
 

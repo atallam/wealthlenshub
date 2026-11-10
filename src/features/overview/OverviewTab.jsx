@@ -14,7 +14,7 @@ function briefKey(selMember) {
   return `wl_portfolio_brief_${selMember || 'all'}`;
 }
 
-function PortfolioBrief({ allHoldings, allCur, allInv, totPct, members, mSum,
+function PortfolioBrief({ allHoldings, allCur, allInv, members, mSum,
   goals, trigAlerts, valINRCache, invINRCache, fmtCr, AT, selMember }) {
 
   const key    = briefKey(selMember);
@@ -211,15 +211,10 @@ export default function OverviewTab({
   setBmPeriod,
   api,
   setBenchmark,
-  nwMember,
-  setNwMember,
-  // Formatting functions
   fmt,
   fmtCr,
   fmtCrINR,
   fmtCrUSD,
-  fmtINR,
-  fmtUSD,
   fmtPct,
   // Liabilities
   liabilities,
@@ -235,8 +230,6 @@ export default function OverviewTab({
   // AI features
   goals,
   trigAlerts,
-  // Sub-components
-  DonutChart,
 }) {
   const [confirmResetSnaps, setConfirmResetSnaps] = useState(false);
 

@@ -49,7 +49,6 @@ export default function TransactionPanel({ holding, onAddTxn, onReload, onDelete
   const totalDividends = txns.filter(t=>t.txn_type==="DIVIDEND").reduce((s,t)=>s+Number(t.amount||0),0);
   const isUS   = USD_TYPES.has(holding.type);
   const isMF   = holding.type==="MF";
-  const priceLabel = isMF ? "NAV" : isUS ? "Price $" : "Price ₹";
 
   // Use live USD/INR fallback
   let _liveUsdInr = 94.5;

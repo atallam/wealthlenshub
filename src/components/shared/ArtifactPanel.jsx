@@ -22,7 +22,7 @@ async function api(path, opts={}) {
 const fmtSize = b => b>1e6?`${(b/1e6).toFixed(1)}MB`:b>1e3?`${(b/1e3).toFixed(0)}KB`:`${b}B`;
 const ago = d => { if(!d)return"Never"; const s=Math.floor((Date.now()-new Date(d))/1000); if(s<60)return`${s}s ago`; if(s<3600)return`${Math.floor(s/60)}m ago`; if(s<86400)return`${Math.floor(s/3600)}h ago`; return`${Math.floor(s/86400)}d ago`; };
 
-export default function ArtifactPanel({ holding, token, onClose }) {
+export default function ArtifactPanel({ holding, onClose }) {
   const toast = useToast();
   const [artifacts, setArtifacts] = useState(holding.artifacts || []);
   const [uploading, setUploading] = useState(false);

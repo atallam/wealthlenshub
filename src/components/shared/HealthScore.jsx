@@ -103,7 +103,6 @@ export default function HealthScore({ allHoldings = [], byType = [], totCur = 0,
 
   // ── 4. Equity / Debt Balance (15 pts) ────────────────────────────────────
   const equityVal = byType.filter(r => EQUITY_TYPES.has(r.t)).reduce((s, r) => s + r.v, 0);
-  const debtVal   = byType.filter(r => DEBT_TYPES.has(r.t)).reduce((s, r) => s + r.v, 0);
   const eqPct     = totCur > 0 ? (equityVal / totCur) * 100 : 0;
   // Ideal 40–75% equity; penalise extremes
   const mixScore  = eqPct >= 40 && eqPct <= 75 ? 15 : eqPct >= 25 && eqPct < 40 ? 10 : eqPct > 75 && eqPct <= 90 ? 8 : 4;

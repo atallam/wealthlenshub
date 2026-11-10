@@ -27,7 +27,7 @@ export default function CASImportModal({
     casSavePan, setCasSavePan,
     // handleCASUpload, retryCASWithPassword,  // old parser — removed
     executeCASImport, resetCASDownloader,
-    handleCASUploadV2, retryCASWithPasswordV2, handleCASFiles,
+    retryCASWithPasswordV2, handleCASFiles,
     casDepository, casStatementDate,
     casPreview, casPreviewing, previewCASImport,
     casDupAction, setCasDupAction,

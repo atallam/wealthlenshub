@@ -4,8 +4,6 @@
  * For the full agentic loop (tool use), see useAI.js.
  */
 
-import { useState, useRef, useCallback } from 'react';
-import { supabase } from '../supabase.js';
 
 // ── Low-level SSE reader ──────────────────────────────────────────────────────
 

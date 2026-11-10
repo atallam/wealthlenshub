@@ -50,7 +50,7 @@ export function Overlay({ onClose, children, narrow, wide, label = "Dialog" }) {
       document.removeEventListener("keydown", onKeyDown, true);
       prevFocus.current?.focus?.();   // restore focus to the trigger
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, []); // mount-only — onClose is accessed via ref above
 
   return (

@@ -8,7 +8,7 @@ import { supabase } from '../supabase.js';
 export function useAuth() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [authErr, setAuthErr] = useState('');
+  const [authErr] = useState('');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {

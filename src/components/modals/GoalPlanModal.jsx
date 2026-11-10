@@ -23,7 +23,7 @@ import { readSSEStream } from '../../hooks/useGoalAI.js';
  *   getValINR  — (holding) => number
  *   usdInr     — live USD/INR rate (number)
  */
-export default function GoalPlanModal({ open, onClose, goals, members, holdings, allCur, allInv, AT, getValINR, usdInr = 84 }) {
+export default function GoalPlanModal({ open, onClose, goals, members, holdings, allCur, allInv, AT, getValINR }) {
   const [loading, setLoading] = useState(false);
   const [plan,    setPlan]    = useState('');
   const [error,   setError]   = useState('');

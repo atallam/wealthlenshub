@@ -16,7 +16,6 @@ export default function GoalFormModal({
   editGoalId, setEditGoalId,
   members, AT, allHoldings, valINRCache, goals,
   addGoal,
-  Overlay, FG, MA, FmtInput, HoldingsPicker,
 }) {
   if (modal !== 'goal') return null;
 

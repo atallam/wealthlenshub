@@ -1,7 +1,6 @@
 import { Router } from "express";
-import { supabase } from "../lib/db.js";
 import { auth, sendError } from "../lib/auth.js";
-import { fetchUsdInr, fetchAllFxRates, fetchMfNav, getAmfiList, scoreMf, stockSearch, stockPrice, yahooPrice, timedFetch, TWELVE_KEY, twelveQuote, mfNav, inSymbolCandidates } from "../lib/prices.js";
+import { fetchUsdInr, fetchAllFxRates, fetchMfNav, getAmfiList, scoreMf, stockSearch, timedFetch, TWELVE_KEY, twelveQuote, inSymbolCandidates } from "../lib/prices.js";
 import { takeSnapshot } from "../lib/snapshot.js";
 import { refreshUserHoldings } from "../lib/refresh.js";
 

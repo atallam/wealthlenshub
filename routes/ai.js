@@ -14,7 +14,6 @@ import { Router }    from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { auth, sendError } from "../lib/auth.js";
 import { currentFY, fyRange, computeGains, summarizeRealized } from "../lib/tax.js";
-import { decrypt } from "../lib/crypto.js";
 import {
   getPortfolioSummaryData, getHoldingsData, getTransactionsData, getGoalsData,
   getTaxSummaryData, getBudgetTransactionsData,

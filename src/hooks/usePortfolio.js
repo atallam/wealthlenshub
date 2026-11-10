@@ -233,13 +233,13 @@ export function usePortfolio(user) {
     finally { if (txnSavingRef) txnSavingRef.current = false; }
   }
 
-  async function reloadHoldings(holdingId) {
+  async function reloadHoldings() {
     const hlds = await api("/api/holdings");
     setHoldings(hlds || []);
     return hlds;
   }
 
-  async function deleteTransaction(txnId, holdingId) {
+  async function deleteTransaction(txnId) {
     const ok = await toast.confirm("Delete this transaction? This cannot be undone.", { confirmLabel: "Delete", danger: true });
     if (!ok) return;
     await api(`/api/transactions/${txnId}`, { method: "DELETE" });

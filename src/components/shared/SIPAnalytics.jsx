@@ -30,7 +30,7 @@ function MonthBar({ pct, color }) {
   );
 }
 
-export default function SIPAnalytics({ allHoldings = [], valINRCache, invINRCache, fmtCr, fmtPct }) {
+export default function SIPAnalytics({ allHoldings = [], valINRCache, invINRCache, fmtCr }) {
   const [open, setOpen] = useState(true);
 
   // Active SIPs only

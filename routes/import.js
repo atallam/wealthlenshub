@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import { auth, sendError, IS_PROD } from "../lib/auth.js";
+import { auth, IS_PROD } from "../lib/auth.js";
 import {
   getUnlockContextRows, countCasHoldings, listHoldingsBasic, listHoldingsWithValues,
 } from "../services/import.service.js";

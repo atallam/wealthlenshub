@@ -16,11 +16,9 @@ import SetuAAImport from './SetuAAImport.jsx';
 // ── Extracted modules ─────────────────────────────────────────────
 import {
   fmt, fmtCr, fmtINR, fmtUSD, fmtPct,
-  fmtCrINR, fmtCrUSD, fmtNative, fmtCrNative, fmtSec, fmtCrSec,
-  uid, ago, fmtSize,
+  fmtCrINR, fmtCrUSD, fmtNative, fmtCrNative, ago, fmtSize,
   getVal, getInv, getValINR, getInvINR, getInvINRHist,
-  xirr, getXIRR, isUSDHolding, toINR, toUSD, fxFor,
-  calcFD, calcAccr, setLiveUsdInr, getLiveUsdInr, setPpfRate, setEpfRate,
+  getXIRR, isUSDHolding, getLiveUsdInr, setPpfRate, setEpfRate,
 } from './utils.js';
 import { AT, BF, BT, BG, BA, SEED } from './constants.js';
 import './styles.css';
@@ -177,13 +175,9 @@ export default function App() {
   const ai         = useAI();
   const brokerSearch = useBrokerSearch();
   const {
-    mfSearch, setMfSearch, mfResults, setMfResults, mfSearching, setMfSearching, mfNav, setMfNav,
-    stockSearch, setStockSearch, stockResults, setStockResults, stockSearching, setStockSearching,
-    stockInfo, setStockInfo, stockLooking, setStockLooking,
-    etfSearch, setEtfSearch, etfResults, setEtfResults, etfSearching, setEtfSearching, etfInfo, setEtfInfo,
-    usSearch, setUsSearch, usResults, setUsResults, usSearching, setUsSearching,
-    usdInrRate, setUsdInrRate, usdInrLoading, setUsdInrLoading,
-    handleMfSearch, handleStockSearch, handleEtfSearch, handleUsSearch, fetchUsdInr,
+    mfSearch, setMfSearch, mfResults, setMfResults, mfSearching, setMfNav,
+    stockSearch, setStockSearch, stockResults, setStockResults, stockSearching, setStockInfo, etfSearch, setEtfSearch, etfResults, setEtfResults, etfSearching, setEtfInfo,
+    usSearch, setUsSearch, usResults, setUsResults, usSearching, usdInrRate, usdInrLoading, handleMfSearch, handleStockSearch, handleEtfSearch, handleUsSearch, fetchUsdInr,
   } = brokerSearch;
   const ui = useUiState();
   const {
@@ -208,8 +202,7 @@ export default function App() {
   // ── Destructure hook state ────────────────────────────────────
   const {
     holdings, setHoldings, members, goals, alerts, liabilities, setLiabilities, loaded,
-    assetTypes, syncSt, priceRefreshing, lastPriceRefresh, priceCount,
-    profile, wealthSnapshots, benchmark, demoMode,
+    syncSt, priceRefreshing, lastPriceRefresh, wealthSnapshots, benchmark, demoMode,
   } = portfolio;
 
   // ── Computed / memoized values ────────────────────────────────

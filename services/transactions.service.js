@@ -28,7 +28,6 @@ export async function add(userId, body) {
   await assertOwnsHolding(userId, holding_id);
 
   const type = txn_type || "BUY";
-  const isDividend = type === "DIVIDEND";
 
   const { error } = await supabase.from("transactions").insert({
     id: txnId(), holding_id, user_id: userId,

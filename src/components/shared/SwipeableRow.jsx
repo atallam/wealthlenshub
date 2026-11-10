@@ -29,7 +29,7 @@ export default function SwipeableRow({
   disabled    = false,
 }) {
   const [offset, setOffset]   = useState(0);   // current translate-x (0 = closed)
-  const [open,   setOpen]     = useState(false);
+  const [,   setOpen]     = useState(false);
   const startX  = useRef(null);
   const startOff = useRef(0);
 

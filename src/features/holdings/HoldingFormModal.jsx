@@ -24,7 +24,6 @@ export default function HoldingFormModal({
   usdInrRate, usdInrLoading, fetchUsdInr,
   fdScanOpen, setFdScanOpen,
   saveHolding, api,
-  Overlay, FG, MA, FmtInput, FDScanSheet,
 }) {
   const holdingModalOpen = modal === 'add' || modal === 'quickadd';
   if (!holdingModalOpen && !fdScanOpen) return null;

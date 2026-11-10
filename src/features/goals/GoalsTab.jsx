@@ -1,7 +1,7 @@
 // GoalsTab.jsx — Financial Goals tab with all AI features
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import {
-  goalCagr, projectedFV, projectedCompletionYears, sipRequired,
+  goalCagr, projectedCompletionYears, sipRequired,
   goalStatusCalc, getTaxPath, ASSET_CAGR,
 } from './goalMath.js';
 import { useGoalAI } from '../../hooks/useGoalAI.js';
@@ -174,9 +174,8 @@ function DoubleAllocWarning({ rows, AT, fmtCr }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function GoalsTab({
-  goals, members, allHoldings, allCur, allInv,
-  valINRCache, setGoals, setGoalForm, setEditGoalId, setModal,
-  fmt, fmtCr, fmtPct, AT, BG,
+  goals, members, allHoldings, allCur, valINRCache, setGoals, setGoalForm, setEditGoalId, setModal,
+  fmtCr, AT, BG,
 }) {
   // ── Local UI state ─────────────────────────────────────────────────────────
   const [showInflation,   setShowInflation]   = useState(false);
@@ -245,7 +244,7 @@ export default function GoalsTab({
   // Two goals truly double-count an asset type only when their member scopes overlap.
   // If Goal A is scoped to Avinash and Goal B to Spouse, they share a type but NOT
   // the same holdings — no real double-count.
-  function membersOverlap(lm1, lm2, allMemberIds) {
+  function membersOverlap(lm1, lm2) {
     const all1 = lm1.includes('all') || lm1.length === 0;
     const all2 = lm2.includes('all') || lm2.length === 0;
     if (all1 || all2) return true; // either "all" means full portfolio overlap
@@ -268,7 +267,7 @@ export default function GoalsTab({
       // At least one pair of goals must have overlapping member scopes
       for (let i = 0; i < gs.length; i++)
         for (let j = i + 1; j < gs.length; j++)
-          if (membersOverlap(gs[i].lm, gs[j].lm, allMemberIds)) return true;
+          if (membersOverlap(gs[i].lm, gs[j].lm)) return true;
       return false;
     })
     .map(([t, gs]) => {
@@ -276,7 +275,7 @@ export default function GoalsTab({
       const overlappingMemberIds = new Set();
       for (let i = 0; i < gs.length; i++) {
         for (let j = i + 1; j < gs.length; j++) {
-          if (!membersOverlap(gs[i].lm, gs[j].lm, allMemberIds)) continue;
+          if (!membersOverlap(gs[i].lm, gs[j].lm)) continue;
           const all1 = gs[i].lm.includes('all') || gs[i].lm.length === 0;
           const all2 = gs[j].lm.includes('all') || gs[j].lm.length === 0;
           if (all1 || all2) allMemberIds.forEach(id => overlappingMemberIds.add(id));

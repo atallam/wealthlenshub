@@ -14,8 +14,6 @@ export default function SettingsModal({
   portfolio, api, setPpfRate, setEpfRate,
   pushSupported, pushSubscribed, pushLoading, togglePush,
   confirmSignOut, setConfirmSignOut,
-  toast,
-  Overlay,
 }) {
   if (!showSettings) return null;
 

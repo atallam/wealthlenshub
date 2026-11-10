@@ -124,7 +124,6 @@ export function getXIRR(h){
   const inv = getInv(h);
   if(cur <= 0 || inv === null || inv <= 0) return { value: null, method: null };
   const txns = h.transactions || [];
-  const fx = fxFor(h);
 
   // ── Path A: XIRR from actual transaction history (best) ──
   if(txns.length > 0) {

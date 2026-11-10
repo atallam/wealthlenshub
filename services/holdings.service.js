@@ -246,8 +246,7 @@ export async function update(userId, id, body) {
 
   // Strip derived/joined fields AND ownership/provenance columns: the body is client-controlled, so
   // without this a request could re-parent the row (user_id), or relabel it as imported (source).
-  const { artifacts, transactions, net_units, avg_cost, purchase_nav, current_nav, purchase_price,
-          id: _id, user_id: _uid, source: _src, created_at: _ca, import_method: _im, holding_status: _hs, ...holdingData } = body;
+  const { purchase_nav, current_nav, id: _id, user_id: _uid, source: _src, created_at: _ca, import_method: _im, holding_status: _hs, ...holdingData } = body;
   const isMF = holdingData.type === "MF";
   const updateData = { ...holdingData, ...(isMF ? { purchase_nav: purchase_nav || 0, current_nav: current_nav || 0 } : {}) };
   const { error } = await supabase.from("holdings").update(sanitizeDates(updateData)).eq("id", id).eq("user_id", userId);

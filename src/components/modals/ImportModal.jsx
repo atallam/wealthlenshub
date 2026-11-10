@@ -23,7 +23,7 @@ import { Overlay } from '../shared/Overlay.jsx';
  *   submitCASPassword — () => void
  */
 export default function ImportModal({ importState, setImportState, members, AT, handleImportFile, executeImport, resetImport, importFileRef, onClose, fmt, submitCASPassword }) {
-  const { mode, step, format, holdings, transactions, warnings, result, dragOver, assignMember, accounts, accountMap, needsPassword, casPan, casDob, casRemember } = importState;
+  const { mode, step, format, holdings, transactions, warnings, result, dragOver, assignMember, accounts, accountMap, casPan, casRemember } = importState;
   const items = mode === "transactions" ? transactions : holdings;
   const dupCount = holdings.filter(h => h._duplicate).length;
   const importCount = mode === "transactions" ? transactions.length : holdings.length;

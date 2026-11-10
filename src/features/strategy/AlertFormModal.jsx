@@ -10,7 +10,6 @@ export default function AlertFormModal({
   alertForm, setAlertForm,
   AT,
   addAlert,
-  Overlay, FG, MA,
 }) {
   if (modal !== 'alert') return null;
 
