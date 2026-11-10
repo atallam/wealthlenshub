@@ -86,8 +86,8 @@ router.post("/:holdingId/analyze", auth, analysisLimiter, async (req, res) => {
     const { force = false } = req.body;
     const userId = req.user.id;
 
-    const holding = await concall.getHolding(holdingId);
-    if (!holding || holding._notFound) return res.status(404).json({ error: "Holding not found", debug: holding });
+    const holding = await concall.getHolding(holdingId, req.user.id);
+    if (!holding || holding._notFound) return res.status(404).json({ error: "Holding not found" });
     if (!isEquity(holding.type)) {
       return res.status(400).json({ error: `Concall analysis is only available for equity holdings (got ${holding.type})` });
     }
@@ -158,8 +158,8 @@ router.post("/:holdingId/analyze-text", auth, analysisLimiter, upload.single("fi
     const { holdingId } = req.params;
     const userId = req.user.id;
 
-    const holding = await concall.getHolding(holdingId);
-    if (!holding) return res.status(404).json({ error: "Holding not found" });
+    const holding = await concall.getHolding(holdingId, req.user.id);
+    if (!holding || holding._notFound) return res.status(404).json({ error: "Holding not found" });
     if (!isEquity(holding.type)) {
       return res.status(400).json({ error: `Concall analysis is only available for equity holdings` });
     }
@@ -362,8 +362,8 @@ router.get("/:holdingId", auth, async (req, res) => {
     const { holdingId } = req.params;
     const userId = req.user.id;
 
-    const holding = await concall.getHolding(holdingId);
-    if (!holding || holding._notFound) return res.status(404).json({ error: "Holding not found", debug: holding });
+    const holding = await concall.getHolding(holdingId, req.user.id);
+    if (!holding || holding._notFound) return res.status(404).json({ error: "Holding not found" });
 
     const { analysis, noData } = await concall.getLatest(holdingId, userId);
     if (noData) return res.json({ analysis: null, no_data: true });
@@ -394,9 +394,9 @@ router.get("/:holdingId", auth, async (req, res) => {
 router.get("/:holdingId/debug", auth, async (req, res) => {
   try {
     const { holdingId } = req.params;
-    const holding = await concall.getHolding(holdingId);
+    const holding = await concall.getHolding(holdingId, req.user.id);
     if (!holding || holding._notFound) {
-      return res.status(404).json({ error: "Holding not found", debug: holding });
+      return res.status(404).json({ error: "Holding not found" });
     }
 
     const results = await debugTranscript(holding.ticker, holding.type);
@@ -416,8 +416,8 @@ router.get("/:holdingId/history", auth, async (req, res) => {
     const { holdingId } = req.params;
     const userId = req.user.id;
 
-    const holding = await concall.getHolding(holdingId);
-    if (!holding || holding._notFound) return res.status(404).json({ error: "Holding not found", debug: holding });
+    const holding = await concall.getHolding(holdingId, req.user.id);
+    if (!holding || holding._notFound) return res.status(404).json({ error: "Holding not found" });
 
     const history = await concall.getHistory(holdingId, userId);
     return res.json({ history });
@@ -442,8 +442,8 @@ router.get("/:holdingId/trend", auth, async (req, res) => {
     const { holdingId } = req.params;
     const userId = req.user.id;
 
-    const holding = await concall.getHolding(holdingId);
-    if (!holding || holding._notFound) return res.status(404).json({ error: "Holding not found", debug: holding });
+    const holding = await concall.getHolding(holdingId, req.user.id);
+    if (!holding || holding._notFound) return res.status(404).json({ error: "Holding not found" });
 
     const history = await concall.getTrendHistory(holdingId, userId);
     if (history.length < 2) {

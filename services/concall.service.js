@@ -17,15 +17,18 @@ import { supabase } from "../lib/db.js";
  * If you need to assert ownership, do it after the call by joining through
  * portfolio membership (portfolio.user_id → members[].id → holding.member_id).
  */
-export async function getHolding(holdingId) {
+export async function getHolding(holdingId, userId) {
+  // Scoped to the caller: the service key bypasses RLS, so an id-only lookup would hand
+  // any user another user's holding (name, ticker, type).
   const { data, error } = await supabase
     .from("holdings")
     .select("id, name, ticker, type, user_id, member_id")
     .eq("id", holdingId)
+    .eq("user_id", userId)
     .single();
   if (error || !data) {
     console.error("[concall] getHolding failed — holdingId=%s error=%j", holdingId, error);
-    return { _notFound: true, holdingId, supabaseError: error };
+    return { _notFound: true };
   }
   return data;
 }

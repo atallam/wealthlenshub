@@ -40,6 +40,11 @@ export async function casCredentials(userId) {
   return { pan_masked: maskedPan, has_credentials: true };
 }
 
+// Only these columns may come from the client. Spreading the raw body let a request carry
+// user_id / id / created_at and override the server-set owner on insert, or re-home a row on update.
+const ASSET_TYPE_FIELDS = ["label", "icon", "color", "price_source", "currency", "is_default"];
+const pickAssetType = (body = {}) => Object.fromEntries(Object.entries(body).filter(([k]) => ASSET_TYPE_FIELDS.includes(k)));
+
 const atId = (userId) => "at_" + Date.now().toString(36) + "_" + userId.slice(0, 8);
 
 export async function listAssetTypes(userId) {
@@ -49,12 +54,12 @@ export async function listAssetTypes(userId) {
 }
 export async function createAssetType(userId, body) {
   const id = atId(userId);
-  const { error } = await supabase.from("asset_types").insert({ id, user_id: userId, ...body });
+  const { error } = await supabase.from("asset_types").insert({ ...pickAssetType(body), id, user_id: userId });
   if (error) throw new Error(error.message);
   return { ok: true, id };
 }
 export async function updateAssetType(userId, id, body) {
-  const { error } = await supabase.from("asset_types").update(body).eq("id", id).eq("user_id", userId);
+  const { error } = await supabase.from("asset_types").update(pickAssetType(body)).eq("id", id).eq("user_id", userId);
   if (error) throw new Error(error.message);
   return { ok: true };
 }

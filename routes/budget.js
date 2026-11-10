@@ -3,6 +3,10 @@ import multer from "multer";
 import { auth, sendError, IS_PROD, uploadLimiter } from "../lib/auth.js";
 import { allowExtensions } from "../lib/uploads.js";
 import * as budget from "../services/budget.service.js";
+import {
+  bodyGuard, categorySchema, categoryUpdateSchema, goalSchema, goalUpdateSchema,
+  categoryLimitSchema, txnCategorySchema, recategoriseSchema,
+} from "../lib/validate.js";
 
 const router = Router();
 const upload = multer({
@@ -39,12 +43,12 @@ router.get("/statements", auth, async (req, res) => {
   try { res.json(await budget.listStatements(req.user.id)); } catch (e) { sendError(res, e); }
 });
 
-router.patch("/transactions/:id", auth, async (req, res) => {
+router.patch("/transactions/:id", auth, bodyGuard(txnCategorySchema, "transaction update"), async (req, res) => {
   const { category } = req.body;
   if (!category) return res.status(400).json({ error: "category required" });
   try { res.json(await budget.setTxnCategory(req.user.id, req.params.id, category)); } catch (e) { sendError(res, e); }
 });
-router.post("/recategorise", auth, async (req, res) => {
+router.post("/recategorise", auth, bodyGuard(recategoriseSchema, "recategorise request"), async (req, res) => {
   const { ids, category } = req.body;
   if (!ids?.length || !category) return res.status(400).json({ error: "ids and category required" });
   if (ids.length > 500) return res.status(400).json({ error: "Too many IDs (max 500)" });
@@ -54,12 +58,12 @@ router.post("/recategorise", auth, async (req, res) => {
 router.get("/categories", auth, async (req, res) => {
   try { res.json(await budget.listCategories(req.user.id)); } catch (e) { sendError(res, e); }
 });
-router.post("/categories", auth, async (req, res) => {
+router.post("/categories", auth, bodyGuard(categorySchema, "category"), async (req, res) => {
   const { name, keywords, icon, color, monthly_limit, is_essential } = req.body;
   if (!name) return res.status(400).json({ error: "name required" });
   try { res.json(await budget.createCategory(req.user.id, name, keywords, icon, color, monthly_limit, is_essential)); } catch (e) { sendError(res, e); }
 });
-router.put("/categories/:id", auth, async (req, res) => {
+router.put("/categories/:id", auth, bodyGuard(categoryUpdateSchema, "category"), async (req, res) => {
   const { name, keywords, icon, color, monthly_limit, is_essential } = req.body;
   try { res.json(await budget.updateCategory(req.user.id, req.params.id, name, keywords, icon, color, monthly_limit, is_essential)); } catch (e) { sendError(res, e, e.status || 500); }
 });
@@ -75,12 +79,12 @@ router.get("/benchmark", auth, async (req, res) => {
 router.get("/goals", auth, async (req, res) => {
   try { res.json(await budget.listGoals(req.user.id)); } catch (e) { sendError(res, e); }
 });
-router.post("/goals", auth, async (req, res) => {
+router.post("/goals", auth, bodyGuard(goalSchema, "goal"), async (req, res) => {
   const { name, target } = req.body;
   if (!name || !target) return res.status(400).json({ error: "name and target required" });
   try { res.json(await budget.createGoal(req.user.id, req.body)); } catch (e) { sendError(res, e); }
 });
-router.put("/goals/:id", auth, async (req, res) => {
+router.put("/goals/:id", auth, bodyGuard(goalUpdateSchema, "goal"), async (req, res) => {
   try { res.json(await budget.updateGoal(req.user.id, req.params.id, req.body)); } catch (e) { sendError(res, e); }
 });
 router.delete("/goals/:id", auth, async (req, res) => {
@@ -125,7 +129,7 @@ router.get("/category-limits", auth, async (req, res) => {
   try { res.json(await budget.getCategoryLimits(req.user.id, req.query.member_id || null)); }
   catch (e) { sendError(res, e); }
 });
-router.put("/category-limits", auth, async (req, res) => {
+router.put("/category-limits", auth, bodyGuard(categoryLimitSchema, "category limit"), async (req, res) => {
   const { category_id, member_id, monthly_limit } = req.body;
   if (!category_id || !member_id) return res.status(400).json({ error: "category_id and member_id required" });
   try { res.json(await budget.setCategoryLimit(req.user.id, category_id, member_id, monthly_limit)); }
