@@ -33,18 +33,33 @@ export async function listHoldingsForDiff(userId) {
   return data || [];
 }
 
-/** Flush this account's previous SnapTrade snapshot before a fresh import. Errors are not checked — matches original fire-and-forget behavior. */
+/** Delete ALL of this account's SnapTrade rows (used only when the account now has no positions). Returns { error }. */
 export async function deleteAccountHoldings(userId, accountId) {
-  await supabase.from("holdings").delete()
+  const { error } = await supabase.from("holdings").delete()
     .eq("user_id", userId)
     .eq("source", "snaptrade")
     .eq("source_account", accountId);
+  return { error };
 }
 
-/** Insert freshly-built holding rows. Returns the raw { error } — the route branches on it (detailed error response). */
-export async function insertHoldings(rows) {
-  const { error } = await supabase.from("holdings").insert(rows);
-  return { error };
+/**
+ * Replace an account's SnapTrade snapshot without a window where it is empty:
+ * upsert the fresh rows first (ids are deterministic), and only if that succeeds delete the
+ * account's rows that are no longer present. A failed upsert leaves the old snapshot intact.
+ * Returns { error }.
+ */
+export async function replaceAccountHoldings(userId, accountId, rows) {
+  if (!rows.length) return deleteAccountHoldings(userId, accountId);
+  const { error } = await supabase.from("holdings").upsert(rows, { onConflict: "id" });
+  if (error) return { error };
+  // ids are sanitised to [A-Za-z0-9_-] by the route, so quoting them in the filter is safe
+  const keep = rows.map(r => `"${r.id}"`).join(",");
+  const { error: delErr } = await supabase.from("holdings").delete()
+    .eq("user_id", userId)
+    .eq("source", "snaptrade")
+    .eq("source_account", accountId)
+    .not("id", "in", `(${keep})`);
+  return { error: delErr || null };
 }
 
 /** Update the connection's last_synced_at. Errors are not checked — matches original fire-and-forget behavior. */

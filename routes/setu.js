@@ -178,7 +178,7 @@ if (!SETU_ENABLED) {
       await updateConsent(req.user.id, cid, { session_id: sd.id, fi_data_status: "PENDING", updated_at: new Date().toISOString() });
       let fiData;
       try { fiData = await pollSession(sd.id, token); }
-      catch (pe) { return res.status(pe.status || 502).json({ error: pe.message }); }
+      catch (pe) { return sendError(res, pe, pe.status || 502); }
       const accounts = sessionSummary(fiData);
       console.log(`Setu session ${sd.id} ${fiData.status}:`, JSON.stringify(accounts));
       const holdings = parseSetuFIData(fiData);
@@ -386,7 +386,7 @@ if (!SETU_ENABLED) {
       await updateConsent(req.user.id, cid, { session_id: sd.id, fi_data_status: "PENDING", updated_at: new Date().toISOString() });
       let fiData;
       try { fiData = await pollSession(sd.id, token); }
-      catch (pe) { return res.status(pe.status || 502).json({ error: pe.message }); }
+      catch (pe) { return sendError(res, pe, pe.status || 502); }
       const accounts = sessionSummary(fiData);
       console.log(`Setu session ${sd.id} ${fiData.status}:`, JSON.stringify(accounts));
       const transactions = parseSetuTransactions(fiData);

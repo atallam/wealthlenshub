@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { Snaptrade } from "snaptrade-typescript-sdk";
-import { auth, sendError } from "../lib/auth.js";
+import { auth, sendError, IS_PROD } from "../lib/auth.js";
 import { encrypt } from "../lib/crypto.js";
 import {
   getSnapConn, getExistingRegistration, insertConnection, listHoldingsForDiff,
-  deleteAccountHoldings, insertHoldings, updateLastSynced, listSnaptradeHoldingRefs,
+  replaceAccountHoldings, updateLastSynced, listSnaptradeHoldingRefs,
   deleteHoldingsByIds, deleteConnectionRow, deleteAllSnaptradeHoldings,
 } from "../services/snaptrade.service.js";
 
@@ -71,7 +71,7 @@ router.get("/status", auth, async (_req, res) => {
     if (!cid || !ckey) return res.status(502).json({ error: "SnapTrade not configured" });
     const resp = await getSnapClient().apiStatus.check();
     res.json({ status: "ok", snaptrade: resp.data });
-  } catch (e) { res.status(502).json({ error: "SnapTrade API unreachable", detail: e.message }); }
+  } catch (e) { res.status(502).json({ error: "SnapTrade API unreachable", ...(IS_PROD ? {} : { detail: e.message }) }); }
 });
 
 router.post("/register", auth, async (req, res) => {
@@ -91,7 +91,7 @@ router.post("/register", auth, async (req, res) => {
     }
     await insertConnection({ owner_id: req.user.id, snaptrade_user_id: snapUserId, user_secret_enc: encrypt(userSecret), status: "active" });
     res.json({ snaptrade_user_id: snapUserId, registered: true });
-  } catch (e) { const status = e.status || e.response?.status || 500; res.status(status).json({ error: e.message }); }
+  } catch (e) { sendError(res, e, e.status || e.response?.status || 500); }
 });
 
 router.post("/connect", auth, async (req, res) => {
@@ -202,9 +202,8 @@ router.post("/import/:accountId", auth, async (req, res) => {
       client.accountInformation.getUserAccountBalance({ userId: conn.snaptrade_user_id, userSecret: conn.user_secret, accountId: acctId }),
     ]);
 
-    // Flush-and-fill: delete ONLY this account's previous snapshot.
-    // Manual holdings (source != 'snaptrade') and other accounts are never touched.
-    await deleteAccountHoldings(req.user.id, acctId);
+    // Replace this account's snapshot AFTER the new rows are built (see replaceAccountHoldings): a failed
+    // write must never leave the account empty. Manual holdings and other accounts are never touched.
 
     // Build fresh rows from live positions.
     const newRows = [];
@@ -220,7 +219,7 @@ router.post("/import/:accountId", auth, async (req, res) => {
       const typeCode = _extractTypeCode(p.symbol?.symbol?.type);
       const isCashSweep = CASH_SWEEP_TICKERS.has(ticker.toUpperCase()) || (typeCode === "oef" && (descLow.includes("money market") || descLow.includes("cash") || descLow.includes("sweep")));
       if (isCashSweep) { skipped++; continue; }
-      newRows.push({ id: `snap_${acctId}_${ticker}`.replace(/[^a-zA-Z0-9_-]/g, "_"), user_id: req.user.id, type: snapHoldingType(p.symbol?.symbol), ticker, name: p.symbol?.symbol?.description || ticker, units, purchase_price: avg || price, current_price: price, currency: p.symbol?.symbol?.currency?.code || "USD", source: "snaptrade", source_account: acctId, brokerage_name: brokerageName, ...(memberId && { member_id: memberId }), last_synced: now, price_fetched_at: now, start_date: now.slice(0, 10) });
+      newRows.push({ id: `snap_${acctId}_${ticker === "UNKNOWN" ? "UNKNOWN_" + (p.symbol?.symbol?.description || p.symbol?.symbol?.id || "").slice(0, 40) : ticker}`.replace(/[^a-zA-Z0-9_-]/g, "_"), user_id: req.user.id, type: snapHoldingType(p.symbol?.symbol), ticker, name: p.symbol?.symbol?.description || ticker, units, purchase_price: avg || price, current_price: price, currency: p.symbol?.symbol?.currency?.code || "USD", source: "snaptrade", source_account: acctId, brokerage_name: brokerageName, ...(memberId && { member_id: memberId }), last_synced: now, price_fetched_at: now, start_date: now.slice(0, 10) });
     }
     for (const b of balResp.data || []) {
       const cash = Number(b.cash || 0); if (cash <= 0) continue;
@@ -228,14 +227,21 @@ router.post("/import/:accountId", auth, async (req, res) => {
       newRows.push({ id: `snap_${acctId}_CASH_${cur}`, user_id: req.user.id, type: "CASH", ticker: `CASH-${cur}`, name: `Cash (${cur})`, units: 1, purchase_price: cash, current_price: cash, currency: cur, source: "snaptrade", source_account: acctId, brokerage_name: brokerageName, ...(memberId && { member_id: memberId }), last_synced: now, price_fetched_at: now, start_date: now.slice(0, 10) });
     }
 
-    console.log(`[SnapTrade import] to_insert=${newRows.length} skipped=${skipped} member_id=${memberId}`);
+    console.log(`[SnapTrade import] to_write=${newRows.length} skipped=${skipped} member_id=${memberId}`);
     if (newRows.length > 0) console.log("[ST row0]", JSON.stringify(newRows[0]).slice(0,300));
-    let imported = 0;
-    if (newRows.length > 0) {
-      const { error } = await insertHoldings(newRows);
-      if (error) { console.error("[ST insert ERR]:", error.message, error.details, error.hint); return sendError(res, error); }
-      imported = newRows.length;
+    // Collapse duplicate ids (same fund held twice in one account) so the upsert can't hit the same row twice.
+    const byId = new Map();
+    for (const r of newRows) {
+      const prev = byId.get(r.id);
+      if (!prev) { byId.set(r.id, { ...r }); continue; }
+      const u = prev.units + r.units;
+      prev.purchase_price = u ? (prev.purchase_price * prev.units + r.purchase_price * r.units) / u : prev.purchase_price;
+      prev.units = u; prev.current_price = r.current_price;
     }
+    const rows = [...byId.values()];
+    const { error } = await replaceAccountHoldings(req.user.id, acctId, rows);
+    if (error) { console.error("[ST replace ERR]:", error.message, error.details, error.hint); return sendError(res, error); }
+    const imported = rows.length;
     await updateLastSynced(req.user.id, now);
 
     res.json({ status: "refreshed", assets_imported: imported, assets_skipped: skipped, account_id: acctId, brokerage_name: brokerageName });

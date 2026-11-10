@@ -21,7 +21,7 @@ import { randomBytes, createHash } from "crypto";
 import { fileURLToPath }      from "url";
 import { dirname }            from "path";
 
-import { auth, sendError, uploadLimiter } from "../lib/auth.js";
+import { auth, sendError, uploadLimiter, IS_PROD } from "../lib/auth.js";
 import { allowExtensions } from "../lib/uploads.js";
 import { decrypt }            from "../lib/crypto.js";
 import { auditImport }        from "../lib/importLogger.js";
@@ -168,7 +168,7 @@ router.post(
     try {
       await writeFile(tmpFile, req.file.buffer);
     } catch (e) {
-      return res.status(500).json({ error: `Failed to write temp file: ${e.message}` });
+      return res.status(500).json({ error: IS_PROD ? "Failed to process upload" : `Failed to write temp file: ${e.message}` });
     }
 
     try {

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { auth, sendError } from "../lib/auth.js";
+import { auth, sendError, IS_PROD } from "../lib/auth.js";
 import { encrypt, decrypt } from "../lib/crypto.js";
 import {
   listConnections, getConnection, upsertConnection, insertStatement,
@@ -35,9 +35,9 @@ router.get("/status", auth, async (req, res) => {
   if (!PLAID_ENABLED) return res.json({ configured: false, env: PLAID_ENV });
   try {
     const { data: connections, error } = await listConnections(req.user.id);
-    if (error) return res.json({ configured: true, env: PLAID_ENV, connections: [], error: error.message });
+    if (error) return res.json({ configured: true, env: PLAID_ENV, connections: [], error: IS_PROD ? "Plaid lookup failed" : error.message });
     res.json({ configured: true, env: PLAID_ENV, connections: connections || [] });
-  } catch (e) { res.json({ configured: false, env: PLAID_ENV, connections: [], error: e.message }); }
+  } catch (e) { res.json({ configured: false, env: PLAID_ENV, connections: [], error: IS_PROD ? "Plaid lookup failed" : e.message }); }
 });
 
 router.post("/link-token", auth, async (req, res) => {
