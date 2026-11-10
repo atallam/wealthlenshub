@@ -195,7 +195,7 @@ export default function App() {
   useEffect(() => {
     setMoreSheetOpen(false);
     setExpandedHolding(null);
-  }, [tab]);
+  }, [tab, setMoreSheetOpen, setExpandedHolding]);
 
   const { supported: pushSupported, subscribed: pushSubscribed, loading: pushLoading, toggle: togglePush } = usePushNotifications();
 
@@ -429,16 +429,23 @@ ${alertsText}`;
   // through HoldingsTab/holding-row components down to it. We own both
   // `tab`/`setTab` and the `ai` hook here, so this is the natural place to
   // switch tabs, pre-fill the question, and kick off the Advisor call.
+  // Refs always point at this render's buildPortfolioContext/ai, so the listener
+  // (registered once) never builds the advisor context from stale goals/alerts.
+  const askAdvisorRef = useRef(null);
+  askAdvisorRef.current = { ai, buildPortfolioContext };
   useEffect(() => {
     function handleAskAdvisor(e) {
       const question = e.detail?.question;
       if (!question) return;
       setTab('advisor');
-      setTimeout(() => ai.askAI(buildPortfolioContext(), aiBottomRef, question), 60);
+      setTimeout(() => {
+        const { ai: latestAi, buildPortfolioContext: build } = askAdvisorRef.current;
+        latestAi.askAI(build(), aiBottomRef, question);
+      }, 60);
     }
     window.addEventListener('wl:ask-advisor', handleAskAdvisor);
     return () => window.removeEventListener('wl:ask-advisor', handleAskAdvisor);
-  }, [ai, allHoldings, allMembers, valINRCache, invINRCache, xirrCache]);
+  }, [setTab]);
 
   // ── buildSuggestedQuestions — portfolio-state-aware advisor prompts ──────────
   function buildSuggestedQuestions() {

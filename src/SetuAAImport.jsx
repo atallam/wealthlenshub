@@ -59,6 +59,7 @@ export default function SetuAAImport({ onClose, onImported, members, api, mode =
         setStep("mobile");
       } catch (e) { setError(e.message); setStep("error"); }
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: check config and load past consents once; mode is fixed for the modal's lifetime
   }, []);
 
   async function createConsent() {

@@ -228,6 +228,7 @@ export default function ConcallPanel({ holding, onClose }) {
   useEffect(() => {
     loadLatest();
     loadHistory();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when the holding changes; loaders read the current holding
   }, [holding.id]);
 
   async function loadLatest() {

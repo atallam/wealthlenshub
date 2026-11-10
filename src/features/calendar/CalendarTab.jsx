@@ -200,11 +200,12 @@ export default function CalendarTab({ holdings, goals, calMonth, setCalMonth }) 
 
   // ── Upcoming sorted list ────────────────────────────────────────────────────
   const { upcoming, filterCounts } = useMemo(() => {
+    const nowD   = new Date();
     const cutoff = new Date(Date.now() + upcomingDays * 864e5);
     const list   = [];
     for (const [d, evs] of Object.entries(upcomingEvents)) {
       const dt = new Date(d);
-      if (dt >= now && dt <= cutoff)
+      if (dt >= nowD && dt <= cutoff)
         evs.forEach(e => list.push({ date: d, ...e }));
     }
     list.sort((a, b) => a.date.localeCompare(b.date));

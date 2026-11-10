@@ -59,6 +59,7 @@ export default function GoalPlanModal({ open, onClose, goals, members, holdings,
     if (!open) { setPlan(''); setError(''); return; }
     generate();
     return () => abortRef.current?.abort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- regenerate only when the modal opens, not on every goals/holdings change
   }, [open]);
 
   async function generate() {

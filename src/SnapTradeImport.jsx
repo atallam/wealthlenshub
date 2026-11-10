@@ -95,6 +95,7 @@ export default function SnapTradeImport({ onClose, members = [] }) {
   const [disconnecting,      setDisconnecting]      = useState(false);
   const [memberMap,          setMemberMap]          = useState({});
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only status check
   useEffect(() => { checkStatus(); }, []);
 
   const checkStatus = useCallback(async () => {

@@ -351,7 +351,7 @@ function ImportWizard({ fb, members }) {
     fbBanks: banks, loadBanks, uploadStatement, previewImport, fbStatements: statements, loadStatements } = fb;
   const dropRef = useRef(null);
 
-  useEffect(() => { if (banks.length === 0) loadBanks(); if (statements.length === 0) loadStatements(); }, []);
+  useEffect(() => { if (banks.length === 0) loadBanks(); if (statements.length === 0) loadStatements(); }, [banks.length, statements.length, loadBanks, loadStatements]);
 
   const regions = [...new Set(banks.map(b => b.region))].filter(Boolean).sort();
   const banksForRegion = form.region ? banks.filter(b => b.region === form.region) : [];
@@ -1021,28 +1021,28 @@ export default function FamilyBudgetTab({ members = [] }) {
     loadGoals();
     loadBanks();
     loadStatements();
-  }, []);
+  }, [loadCategories, loadGoals, loadBanks, loadStatements]);
 
   // Reload analytics + merchants + recurring when person/period/month changes
   useEffect(() => {
     loadAnalytics(period, month, memberFilter);
     loadMerchants(period, month, memberFilter);
     loadRecurring(memberFilter);
-  }, [memberFilter, period, month]);
+  }, [memberFilter, period, month, loadAnalytics, loadMerchants, loadRecurring]);
 
   // Per-member category limit overrides only depend on who's selected, not
   // the period/month — reload separately so switching periods doesn't
   // re-fetch them needlessly.
   useEffect(() => {
     loadCategoryLimits(memberFilter);
-  }, [memberFilter]);
+  }, [memberFilter, loadCategoryLimits]);
 
   // Reload transactions when filters change
   useEffect(() => {
     if (view === 'transactions') {
       loadTransactions(period, month, memberFilter, fbTxnCat, fbTxnSearch);
     }
-  }, [view, memberFilter, period, month, fbTxnCat, fbTxnSearch]);
+  }, [view, memberFilter, period, month, fbTxnCat, fbTxnSearch, loadTransactions]);
 
   const SUB_TABS = [
     { key: 'overview',      label: '📊 Overview' },

@@ -77,6 +77,7 @@ export function usePortfolio(user) {
       api("/api/snapshots?months=24").then(d => setWealthSnapshots(d?.snapshots || [])).catch(() => {});
       api("/api/budget/benchmark?period=1Y").then(d => setBenchmark(d)).catch(() => {});
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when the user changes; toast is used only in the error path and its identity changes each render
   }, [user]);
 
   // ── Persist portfolio config (debounced) ── Lines 1328–1347

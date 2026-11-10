@@ -29,7 +29,8 @@ export default function MFOverlapPanel({ mfHoldings = [] }) {
     [mfHoldings]
   );
 
-  useEffect(() => { setResult(null); setError(null); }, [schemeCodes.join(",")]);
+  const schemeKey = schemeCodes.join(",");
+  useEffect(() => { setResult(null); setError(null); }, [schemeKey]);
 
   async function analyse() {
     if (schemeCodes.length < 2) return;
