@@ -7,7 +7,7 @@
  * DELETE /api/notifications/clear  — delete all read notifications
  */
 import { Router } from "express";
-import { auth } from "../lib/auth.js";
+import { auth, sendError } from "../lib/auth.js";
 import * as notifications from "../services/notifications.service.js";
 
 const router = Router();
@@ -20,7 +20,7 @@ router.get("/", auth, async (req, res) => {
     const result = await notifications.list(req.user.id, { limit, unreadOnly });
     res.json(result);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendError(res, e);
   }
 });
 
@@ -29,7 +29,7 @@ router.post("/:id/read", auth, async (req, res) => {
   try {
     res.json(await notifications.markRead(req.user.id, req.params.id));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendError(res, e);
   }
 });
 
@@ -38,7 +38,7 @@ router.post("/read-all", auth, async (req, res) => {
   try {
     res.json(await notifications.markAllRead(req.user.id));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendError(res, e);
   }
 });
 
@@ -47,7 +47,7 @@ router.delete("/clear", auth, async (req, res) => {
   try {
     res.json(await notifications.clearRead(req.user.id));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendError(res, e);
   }
 });
 

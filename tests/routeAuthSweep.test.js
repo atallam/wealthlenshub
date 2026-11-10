@@ -48,3 +48,25 @@ describe("every API route requires authentication", () => {
     expect(open).toEqual([]);
   });
 });
+
+describe("upload and analysis routes are rate limited", () => {
+  it("every route that accepts a file has a limiter in its handler chain", async () => {
+    const { strictLimiter, uploadLimiter, analysisLimiter } = await import("../lib/auth.js");
+    const limiters = new Set([strictLimiter, uploadLimiter, analysisLimiter]);
+    const unlimited = [];
+    let uploadRoutes = 0;
+    for (const file of fs.readdirSync(routesDir).filter(f => f.endsWith(".js"))) {
+      const router = (await import(pathToFileURL(path.join(routesDir, file)).href)).default;
+      for (const layer of router?.stack || []) {
+        if (!layer.route) continue;
+        if (!layer.route.stack.some(h => h.name === "multerMiddleware")) continue;
+        uploadRoutes++;
+        if (!layer.route.stack.some(h => limiters.has(h.handle))) {
+          unlimited.push(`${file}: ${Object.keys(layer.route.methods)[0].toUpperCase()} ${layer.route.path}`);
+        }
+      }
+    }
+    expect(uploadRoutes).toBeGreaterThanOrEqual(8);
+    expect(unlimited).toEqual([]);
+  });
+});

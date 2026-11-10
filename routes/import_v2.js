@@ -21,7 +21,8 @@ import { randomBytes, createHash } from "crypto";
 import { fileURLToPath }      from "url";
 import { dirname }            from "path";
 
-import { auth }    from "../lib/auth.js";
+import { auth, sendError, uploadLimiter } from "../lib/auth.js";
+import { allowExtensions } from "../lib/uploads.js";
 import { decrypt }            from "../lib/crypto.js";
 import { auditImport }        from "../lib/importLogger.js";
 import { getUnlockContextRows } from "../services/import.service.js";
@@ -34,6 +35,7 @@ const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: allowExtensions(["pdf"]),
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -150,6 +152,7 @@ function runCasparser(pdfPath, password) {
 router.post(
   "/detect-casparser",
   auth,
+  uploadLimiter,
   auditImport("CASPARSER_DETECT"),
   upload.single("file"),
   async (req, res) => {
@@ -240,7 +243,7 @@ router.post(
     } catch (err) {
       await unlink(tmpFile).catch(() => {});
       console.error("[import_v2] detect-casparser error:", err);
-      return res.status(500).json({ error: err.message || "Smart Parser failed" });
+      return sendError(res, err);
     }
   },
 );

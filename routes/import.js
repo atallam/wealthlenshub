@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
-import { auth, IS_PROD } from "../lib/auth.js";
+import { auth, IS_PROD, uploadLimiter } from "../lib/auth.js";
+import { allowExtensions } from "../lib/uploads.js";
 import {
   getUnlockContextRows, countCasHoldings, listHoldingsBasic, listHoldingsWithValues,
 } from "../services/import.service.js";
@@ -66,9 +67,13 @@ function mapHoldersByPan(holderNames = [], holderPans = [], panToMember) {
 }
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: allowExtensions(["csv", "txt", "xlsx", "xls", "pdf"]),
+});
 
-router.post("/detect", auth, auditImport("FILE_DETECT"), upload.single("file"), async (req, res) => {
+router.post("/detect", auth, uploadLimiter, auditImport("FILE_DETECT"), upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file" });
   const ext = req.file.originalname.split(".").pop().toLowerCase();
 

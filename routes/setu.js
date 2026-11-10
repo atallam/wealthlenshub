@@ -152,7 +152,7 @@ if (!SETU_ENABLED) {
       if (!cr.ok) { console.error("Setu consent error:", cr.status, JSON.stringify(cd).slice(0, 300)); return res.status(cr.status >= 500 ? 502 : cr.status).json({ error: setuMsg(cd, "Consent creation failed") }); }
       await insertConsent({ user_id: req.user.id, consent_id: cd.id, status: cd.status || "PENDING", fi_types: CONSENT_FI_TYPES, data_range_from: from, data_range_to: to, redirect_url: cd.url });
       res.json({ consent_id: cd.id, url: cd.url, status: cd.status });
-    } catch (e) { if (e.code === "SETU_AUTH") return res.status(502).json({ error: e.message }); sendError(res, e); }
+    } catch (e) { if (e.code === "SETU_AUTH") { console.error("[setu] auth failed:", e.message); return res.status(502).json({ error: "Account Aggregator authentication failed. Please try again later." }); } sendError(res, e); }
   });
 
   router.get("/consent/:consentId", auth, async (req, res) => {
@@ -199,7 +199,7 @@ if (!SETU_ENABLED) {
         return row;
       });
       const { error } = await upsertHoldings(rows);
-      if (error) return res.status(500).json({ error: error.message });
+      if (error) return sendError(res, error);
       if (consent_id) await updateConsent(req.user.id, consent_id, { holdings_count: rows.length, updated_at: new Date().toISOString() });
       res.json({ imported: rows.length });
     } catch (e) { sendError(res, e); }
@@ -215,12 +215,12 @@ if (!SETU_ENABLED) {
       const fr = await fetch(`${SETU_BASE}/v2/sessions/${req.params.sessionId}`, { headers: { ...setuHeaders(), Authorization: `Bearer ${token}` } });
       const fd = await readJson(fr);
       res.status(fr.ok ? 200 : (fr.status >= 500 ? 502 : fr.status)).json({ summary: sessionSummary(fd), raw: fd });
-    } catch (e) { if (e.code === "SETU_AUTH") return res.status(502).json({ error: e.message }); sendError(res, e); }
+    } catch (e) { if (e.code === "SETU_AUTH") { console.error("[setu] auth failed:", e.message); return res.status(502).json({ error: "Account Aggregator authentication failed. Please try again later." }); } sendError(res, e); }
   });
 
   router.get("/consents", auth, async (req, res) => {
     const { data, error } = await listConsents(req.user.id);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return sendError(res, error);
     res.json({ consents: data || [] });
   });
 
@@ -365,7 +365,7 @@ if (!SETU_ENABLED) {
         redirect_url: cd.url,
       });
       res.json({ consent_id: cd.id, url: cd.url, status: cd.status });
-    } catch (e) { if (e.code === "SETU_AUTH") return res.status(502).json({ error: e.message }); sendError(res, e); }
+    } catch (e) { if (e.code === "SETU_AUTH") { console.error("[setu] auth failed:", e.message); return res.status(502).json({ error: "Account Aggregator authentication failed. Please try again later." }); } sendError(res, e); }
   });
 
   // POST /api/setu/fetch-transactions/:consentId
@@ -491,7 +491,7 @@ if (!SETU_ENABLED) {
   // List saved connections (wealth + budget) for the current user
   router.get("/connections", auth, async (req, res) => {
     const { data, error } = await listConnections(req.user.id);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return sendError(res, error);
     res.json({ connections: data || [] });
   });
 
@@ -499,7 +499,7 @@ if (!SETU_ENABLED) {
   // Remove a saved connection (does NOT revoke the consent at Setu)
   router.delete("/connections/:id", auth, async (req, res) => {
     const { error } = await deleteConnection(req.user.id, req.params.id);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return sendError(res, error);
     res.json({ ok: true });
   });
 }

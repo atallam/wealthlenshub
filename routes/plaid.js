@@ -45,7 +45,7 @@ router.post("/link-token", auth, async (req, res) => {
     const plaid = await getPlaidClient();
     const response = await plaid.linkTokenCreate({ user: { client_user_id: req.user.id }, client_name: "WealthLens Hub", products: ["transactions"], country_codes: ["US"], language: "en" });
     res.json({ link_token: response.data.link_token, expiration: response.data.expiration });
-  } catch (e) { res.status(500).json({ error: e?.response?.data?.error_message || e.message }); }
+  } catch (e) { sendError(res, new Error(e?.response?.data?.error_message || e.message)); }
 });
 
 router.post("/exchange", auth, async (req, res) => {
@@ -61,7 +61,7 @@ router.post("/exchange", auth, async (req, res) => {
     const institution_name = metadata?.institution?.name || "US Bank";
     await upsertConnection({ id: connId, user_id: req.user.id, item_id, access_token: encrypt(access_token), institution_id: metadata?.institution?.institution_id || "", institution_name, accounts, status: "active", updated_at: new Date().toISOString() });
     res.json({ ok: true, connection_id: connId, institution_name, accounts: accounts.map(a => ({ name: a.name, type: a.type, mask: a.mask })) });
-  } catch (e) { res.status(500).json({ error: e?.response?.data?.error_message || e.message }); }
+  } catch (e) { sendError(res, new Error(e?.response?.data?.error_message || e.message)); }
 });
 
 router.post("/sync/:connectionId", auth, async (req, res) => {
@@ -92,7 +92,7 @@ router.post("/sync/:connectionId", auth, async (req, res) => {
     res.json({ ok: true, added: added.length, modified: modified.length, removed: removed.length });
   } catch (e) {
     await updateConnectionError(req.user.id, req.params.connectionId, { status: "error", error_code: e?.response?.data?.error_code || e.message, updated_at: new Date().toISOString() });
-    res.status(500).json({ error: e?.response?.data?.error_message || e.message });
+    sendError(res, new Error(e?.response?.data?.error_message || e.message));
   }
 });
 

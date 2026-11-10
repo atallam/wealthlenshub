@@ -24,7 +24,7 @@
 
 import { Router }    from "express";
 import multer        from "multer";
-import { auth, sendError } from "../lib/auth.js";
+import { auth, sendError, analysisLimiter } from "../lib/auth.js";
 import { findTranscript, debugTranscript } from "../lib/concall/providers.js";
 import { extractPdf, prepareTranscript } from "../lib/concall/extractor.js";
 import { validateTranscript }            from "../lib/concall/validate.js";
@@ -80,7 +80,7 @@ function isEquity(type) {
 
 // ── POST /api/concall/:holdingId/analyze ─────────────────────────────────────
 
-router.post("/:holdingId/analyze", auth, async (req, res) => {
+router.post("/:holdingId/analyze", auth, analysisLimiter, async (req, res) => {
   try {
     const { holdingId } = req.params;
     const { force = false } = req.body;
@@ -153,7 +153,7 @@ router.post("/:holdingId/analyze", auth, async (req, res) => {
 
 // ── POST /api/concall/:holdingId/analyze-text ─────────────────────────────────
 
-router.post("/:holdingId/analyze-text", auth, upload.single("file"), async (req, res) => {
+router.post("/:holdingId/analyze-text", auth, analysisLimiter, upload.single("file"), async (req, res) => {
   try {
     const { holdingId } = req.params;
     const userId = req.user.id;

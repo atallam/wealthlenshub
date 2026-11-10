@@ -220,7 +220,14 @@ export function runPostImport(userId, casStatementDate) {
 
 /** Create a manual holding (+ optional first transaction). */
 export async function create(userId, body) {
-  const { first_transaction, purchase_nav, current_nav, ...holdingData } = body;
+  // The body is client-controlled: drop provenance/ownership columns so a manual entry
+  // can't pose as an imported holding (source / CAS natural-key columns) or backdate itself.
+  const {
+    first_transaction, purchase_nav, current_nav,
+    source: _src, source_date: _sd, import_method: _im, holding_status: _hs, created_at: _ca,
+    depository: _dep, account_id: _acct, user_id: _uid,
+    ...holdingData
+  } = body;
   const isMF = holdingData.type === "MF";
   if (!holdingData.notes?.includes("__demo__"))
     await supabase.from("holdings").delete().eq("user_id", userId).like("notes", "%__demo__%");

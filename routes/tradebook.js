@@ -8,13 +8,18 @@
  */
 import { Router } from "express";
 import multer from "multer";
-import { auth, sendError } from "../lib/auth.js";
+import { auth, sendError, uploadLimiter } from "../lib/auth.js";
+import { allowExtensions } from "../lib/uploads.js";
 import { auditImport } from "../lib/importLogger.js";
 import { xlsxBufferToCSV } from "../lib/parsers.js";
 import * as tb from "../services/tradebook.service.js";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: allowExtensions(["csv", "txt", "xlsx", "xls"]),
+});
 
 async function fileToCsv(file) {
   if (!file) { const e = new Error("No file uploaded"); e.status = 400; throw e; }
@@ -25,14 +30,14 @@ async function fileToCsv(file) {
   const e = new Error("Upload a .csv or .xlsx tradebook"); e.status = 400; throw e;
 }
 
-router.post("/preview", auth, upload.single("file"), async (req, res) => {
+router.post("/preview", auth, uploadLimiter, upload.single("file"), async (req, res) => {
   try {
     const csv = await fileToCsv(req.file);
     res.json(await tb.preview(req.user.id, { csv, memberId: req.body?.member_id || null }));
   } catch (e) { sendError(res, e, e.status); }
 });
 
-router.post("/commit", auth, auditImport("TRADEBOOK"), upload.single("file"), async (req, res) => {
+router.post("/commit", auth, uploadLimiter, auditImport("TRADEBOOK"), upload.single("file"), async (req, res) => {
   try {
     const csv = await fileToCsv(req.file);
     const out = await tb.commit(req.user.id, { csv, memberId: req.body?.member_id || null, filename: req.file.originalname });

@@ -1,16 +1,21 @@
 import { Router } from "express";
 import multer from "multer";
-import { auth, sendError, IS_PROD } from "../lib/auth.js";
+import { auth, sendError, IS_PROD, uploadLimiter } from "../lib/auth.js";
+import { allowExtensions } from "../lib/uploads.js";
 import * as budget from "../services/budget.service.js";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: allowExtensions(["csv", "txt", "xlsx", "xls", "pdf"]),
+});
 
 router.get("/banks", auth, async (req, res) => {
   try { res.json(budget.listBanks()); } catch (e) { sendError(res, e); }
 });
 
-router.post("/upload", auth, upload.single("file"), async (req, res) => {
+router.post("/upload", auth, uploadLimiter, upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file" });
   try {
     res.json(await budget.uploadStatement(req.user.id, req.file, req.body, IS_PROD));
@@ -20,7 +25,7 @@ router.post("/upload", auth, upload.single("file"), async (req, res) => {
   }
 });
 
-router.post("/debug-pdf", auth, upload.single("file"), async (req, res) => {
+router.post("/debug-pdf", auth, uploadLimiter, upload.single("file"), async (req, res) => {
   // Dev-only: disabled in production to prevent exposure of internal parsing internals
   if (IS_PROD) return res.status(404).json({ error: "Not found" });
   if (!req.file) return res.status(400).json({ error: "No file" });

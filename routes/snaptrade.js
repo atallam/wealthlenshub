@@ -225,7 +225,7 @@ router.post("/import/:accountId", auth, async (req, res) => {
     let imported = 0;
     if (newRows.length > 0) {
       const { error } = await insertHoldings(newRows);
-      if (error) { console.error("[ST insert ERR]:", error.message, error.details, error.hint); return res.status(500).json({ error: error.message, details: error.details, hint: error.hint }); }
+      if (error) { console.error("[ST insert ERR]:", error.message, error.details, error.hint); return sendError(res, error); }
       imported = newRows.length;
     }
     await updateLastSynced(req.user.id, now);
