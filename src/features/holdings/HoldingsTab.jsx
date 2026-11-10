@@ -160,7 +160,7 @@ function HoldingAlertPanel({ holding, alerts, setAlerts, onClose }) {
 const CONCALL_TYPES = new Set(["IN_STOCK", "IN_ETF", "US_STOCK", "US_ETF"]);
 
 // Manual holdings — no live feed, need periodic user updates
-const STALE_DEFAULTS = { FD:90, PPF:90, EPF:90, REAL_ESTATE:180, CASH:14, INSURANCE:365, OTHER:60 };
+const STALE_DEFAULTS = { IN_BOND:45, FD:90, PPF:90, EPF:90, REAL_ESTATE:180, CASH:14, INSURANCE:365, OTHER:60 };
 
 function daysSinceUpdate(h) {
   const last = h.updated_at ? new Date(h.updated_at) : h.created_at ? new Date(h.created_at) : new Date(0);
@@ -575,7 +575,7 @@ export default function HoldingsTab({
 
                   const cbUnknown = h.cost_basis==="unknown";
                   const cbApprox  = h.cost_basis==="approx";
-                  const canSetCost = (cbUnknown||cbApprox) && (h.type==="IN_STOCK"||h.type==="IN_ETF"||h.type==="US_STOCK"||h.type==="US_ETF") && !demoMode;
+                  const canSetCost = (cbUnknown||cbApprox) && (h.type==="IN_STOCK"||h.type==="IN_ETF"||h.type==="IN_BOND"||h.type==="US_STOCK"||h.type==="US_ETF") && !demoMode;
                   const costBtn = canSetCost
                     ? <button title={cbUnknown?"Purchase cost is unknown (depository statement) — set your average buy price":"Cost is approximate — click to revise"}
                         onClick={()=>setCostBasisHolding(h)}
@@ -900,7 +900,7 @@ export default function HoldingsTab({
                         <div className="m-hc-cell" style={{textAlign:"right"}}>
                           <span className="m-hc-lbl">Invested</span>
                           <span className="m-hc-val">{inv==null?"— (CAS import)":<>{h.cost_basis==="approx"&&<span title="Approximate cost basis" style={{color:"#c9a84c"}}>≈ </span>}{fmtCrNative(inv,h)}</>}</span>
-                          {(h.cost_basis==="unknown"||h.cost_basis==="approx")&&!demoMode&&(h.type==="IN_STOCK"||h.type==="IN_ETF"||h.type==="US_STOCK"||h.type==="US_ETF")&&(
+                          {(h.cost_basis==="unknown"||h.cost_basis==="approx")&&!demoMode&&(h.type==="IN_STOCK"||h.type==="IN_ETF"||h.type==="IN_BOND"||h.type==="US_STOCK"||h.type==="US_ETF")&&(
                             <button onClick={()=>setCostBasisHolding(h)} style={{marginTop:3,padding:"1px 6px",fontSize:".62rem",fontWeight:600,borderRadius:4,cursor:"pointer",background:"rgba(201,168,76,.15)",color:"#c9a84c",border:"1px solid rgba(201,168,76,.4)"}}>
                               {h.cost_basis==="unknown"?"Set cost":"Edit"}
                             </button>
