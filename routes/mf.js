@@ -69,6 +69,7 @@ async function resolvePortfolio(schemeCode) {
   const name     = await getFundMeta(schemeCode);
   const holdings = await fetchFromAmfi(schemeCode);
   const entry    = { name: name || `Fund ${schemeCode}`, holdings, fetchedAt: Date.now() };
+  if (portfolioCache.size >= 500) portfolioCache.delete(portfolioCache.keys().next().value); // bound memory (oldest first)
   portfolioCache.set(schemeCode, entry);
   return entry;
 }
@@ -107,11 +108,15 @@ function computePairOverlap(holdingsA, holdingsB) {
 
 // ── POST /api/mf/overlap ───────────────────────────────────────────────────
 router.post("/overlap", async (req, res) => {
-  const { schemeCodes } = req.body;
+  const { schemeCodes } = req.body || {};
   if (!Array.isArray(schemeCodes) || schemeCodes.length < 2 || schemeCodes.length > 10) {
     return res.status(400).json({ error: "Provide 2–10 scheme codes." });
   }
   const codes = [...new Set(schemeCodes.map(String))];
+  // AMFI scheme codes are numeric; reject anything else before it reaches an outbound URL or the cache.
+  if (!codes.every(c => /^\d{3,8}$/.test(c))) {
+    return res.status(400).json({ error: "Scheme codes must be numeric." });
+  }
 
   // Fetch all portfolios in parallel
   const resolved = await Promise.all(codes.map(async c => ({ code: c, ...(await resolvePortfolio(c)) })));
