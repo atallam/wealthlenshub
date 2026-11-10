@@ -27,7 +27,7 @@ import { decrypt }            from "../lib/crypto.js";
 import { auditImport }        from "../lib/importLogger.js";
 import { getUnlockContextRows } from "../services/import.service.js";
 import { getAmfiList } from "../lib/prices.js";
-import { enrichMfFromAmfi } from "../lib/casEnrich.js";
+import { enrichMfFromAmfi, reclassifyDematEtfs } from "../lib/casEnrich.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -209,11 +209,17 @@ router.post(
 
       // Demat MFs arrive as "HDFC MUTUAL FUND" (AMC only) - resolve the scheme by ISIN.
       // Best effort and time-boxed: a slow AMFI download must never stall or fail an import.
+      let amfi = [];
       try {
-        const amfi = await Promise.race([getAmfiList(), new Promise((r) => setTimeout(() => r([]), 6000))]);
+        amfi = await Promise.race([getAmfiList(), new Promise((r) => setTimeout(() => r([]), 6000))]);
+        // Re-type demat ETFs first so they never get an AMFI scheme_code/NAV.
+        const e = reclassifyDematEtfs(result.holdings || [], amfi);
+        if (e) console.log(`[import_cas] reclassified ${e} demat ETF row(s) MF -> IN_ETF`);
         const n = enrichMfFromAmfi(result.holdings || [], amfi);
         if (n) console.log(`[import_cas] AMFI enrichment: ${n} MF row(s) named/coded by ISIN`);
-      } catch (e) { console.warn("[import_cas] AMFI enrichment skipped:", e.message); }
+      } catch (err) { console.warn("[import_cas] AMFI enrichment skipped:", err.message); }
+      // ETF re-typing must not depend on the AMFI download succeeding.
+      try { reclassifyDematEtfs(result.holdings || [], amfi); } catch { /* best effort */ }
 
       // Content hash → idempotent re-imports (see casImport.service findPriorImport)
       const statementHash = createHash("sha256").update(req.file.buffer).digest("hex");
