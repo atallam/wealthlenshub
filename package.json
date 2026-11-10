@@ -15,7 +15,7 @@
     "format": "prettier --write \"**/*.{js,jsx,json,css,md}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "pip install casparser casparser-isin pymupdf --break-system-packages --quiet || true"
+    "postinstall": "pip install casparser==1.4.1 casparser-isin pymupdf --break-system-packages --quiet || true"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

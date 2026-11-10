@@ -6,6 +6,8 @@ on:
   schedule:
     - cron: "30 3 * * 1,4"   # Mon & Thu, 03:30 UTC (09:00 IST)
   workflow_dispatch: {}       # allow manual runs from the Actions tab
+  push:                       # self-test whenever this workflow changes
+    paths: [".github/workflows/supabase-keepalive.yml"]
 
 jobs:
   ping:
@@ -33,7 +35,14 @@ jobs:
             "${SUPABASE_URL%/}/rest/v1/rpc/keepalive" \
             -H "apikey: ${SUPABASE_ANON_KEY}" -H "Content-Type: application/json" \
             -d '{}' "${auth[@]}")
-          if [ "$status" -ge 300 ]; then echo "Response body: $(head -c 300 /tmp/body.txt)"; fi
+          if [ "$status" -ge 300 ]; then
+            echo "Response body: $(head -c 300 /tmp/body.txt)"
+            case "$status" in
+              401|403) echo "::error::Supabase rejected the key - update the SUPABASE_ANON_KEY repo secret (Settings > Secrets > Actions)";;
+              404)     echo "::error::keepalive() RPC not found - run migrations/keepalive_migration.sql in Supabase SQL Editor (or the project is paused: restore it in the dashboard)";;
+              000|5??) echo "::error::Supabase unreachable - the project is probably paused; restore it in the Supabase dashboard";;
+            esac
+          fi
           echo "Supabase responded with HTTP ${status}"
           [ "$status" -ge 200 ] && [ "$status" -lt 300 ]
 

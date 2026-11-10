@@ -25,6 +25,8 @@ import { auth, sendError }    from "../lib/auth.js";
 import { decrypt }            from "../lib/crypto.js";
 import { auditImport }        from "../lib/importLogger.js";
 import { getUnlockContextRows } from "../services/import.service.js";
+import { getAmfiList } from "../lib/prices.js";
+import { enrichMfFromAmfi } from "../lib/casEnrich.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -201,6 +203,14 @@ router.post(
         }
         return res.status(400).json({ error: "password_required", message: "This PDF is password-protected. Enter your PAN to unlock.", needs_password: true });
       }
+
+      // Demat MFs arrive as "HDFC MUTUAL FUND" (AMC only) - resolve the scheme by ISIN.
+      // Best effort and time-boxed: a slow AMFI download must never stall or fail an import.
+      try {
+        const amfi = await Promise.race([getAmfiList(), new Promise((r) => setTimeout(() => r([]), 6000))]);
+        const n = enrichMfFromAmfi(result.holdings || [], amfi);
+        if (n) console.log(`[import_v2] AMFI enrichment: ${n} MF row(s) named/coded by ISIN`);
+      } catch (e) { console.warn("[import_v2] AMFI enrichment skipped:", e.message); }
 
       // Content hash → idempotent re-imports (see casImport.service findPriorImport)
       const statementHash = createHash("sha256").update(req.file.buffer).digest("hex");

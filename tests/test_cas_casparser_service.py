@@ -110,6 +110,46 @@ class Reconciliation(unittest.TestCase):
         self.assertAlmostEqual(r["nps_not_imported"], 50000.00)
 
 
+class Tolerance(unittest.TestCase):
+    def test_a_missed_thousand_rupees_is_flagged_on_a_large_account(self):
+        d = {"accounts": [{"type": "CDSL Demat Account", "name": "BIG", "dp_id": "1", "client_id": "2",
+                           "balance": 2354636.25}]}
+        h = [{"account_id": "1/2", "current_value": 2354636.25 - 1000.0}]
+        self.assertFalse(svc.reconcile_nsdl(d, h, stated_total=2354636.25)["ok"])
+
+    def test_rounding_noise_is_tolerated(self):
+        d = {"accounts": [{"type": "CDSL Demat Account", "name": "BIG", "dp_id": "1", "client_id": "2",
+                           "balance": 2354636.25}]}
+        h = [{"account_id": "1/2", "current_value": 2354636.25 - 0.40}]
+        self.assertTrue(svc.reconcile_nsdl(d, h, stated_total=2354636.25)["ok"])
+
+
+class EtfClassification(unittest.TestCase):
+    def _run(self, names):
+        d = {"file_type": "NSDL", "investor_info": {"name": "X"}, "statement_period": {"from_": "01-Oct-2026", "to": "31-Oct-2026"},
+             "accounts": [{"type": "NSDL Demat Account", "name": "ICICI", "dp_id": "IN303028", "client_id": "1",
+                           "owners": [], "balance": 0, "equities": [], "bonds": [],
+                           "mutual_funds": [{"name": n, "isin": f"INF00000000{i}", "balance": 10, "nav": 100.0,
+                                             "value": 1000.0, "type": ""} for i, n in enumerate(names)]}]}
+        holdings, *_ = svc.parse_nsdl(d)
+        return {h["isin"]: h for h in holdings}
+
+    def test_gold_etf_becomes_in_etf_with_clean_name(self):
+        out = self._run(["ICICI PRUDENTIAL MUTUAL FUND GOLD EXCHANGE TRADED FUND OPEN ENDED--"])
+        h = next(iter(out.values()))
+        self.assertEqual(h["type"], "IN_ETF")
+        self.assertEqual(h["name"], "ICICI PRUDENTIAL GOLD EXCHANGE TRADED FUND")
+
+    def test_plain_and_fund_of_fund_stay_mf(self):
+        out = self._run(["HDFC MUTUAL FUND", "XYZ Gold ETF Fund of Fund - Direct Plan"])
+        self.assertEqual({h["type"] for h in out.values()}, {"MF"})
+
+    def test_bees_and_etf_names(self):
+        self.assertTrue(svc.is_exchange_traded_fund("NIPPON INDIA ETF NIFTY BEES"))
+        self.assertTrue(svc.is_exchange_traded_fund("Mirae Asset Nifty 50 ETF"))
+        self.assertFalse(svc.is_exchange_traded_fund("Parag Parikh Flexi Cap Fund - Regular Plan Growth"))
+
+
 class Dates(unittest.TestCase):
     def test_dd_mon_yyyy_to_iso(self):
         self.assertEqual(svc.fmt_date("31-Oct-2026"), "2026-10-31")

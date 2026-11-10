@@ -2,6 +2,7 @@
 // Improvements: AI explain, goal-conflict warnings, FD maturity, goal-behind-schedule,
 // per-holding LTCG drill-down, undo-on-delete, inline preset desc, copy plan, SIP redirect hint
 
+import { computeTrades } from './rebalanceMath.js';
 import { useState, useMemo, useRef, Fragment } from 'react';
 import { supabase } from '../../supabase.js';
 import { goalStatusCalc } from '../goals/goalMath.js';
@@ -395,14 +396,8 @@ export default function StrategyTab({
     normTarget[k] = tSum > 0 ? (+v || 0) / tSum * 100 : 0;
   }
 
-  const trades = Object.keys(AT).map(type => {
-    const cur    = curAlloc[type] || 0;
-    const curPct = rTotal > 0 ? (cur / rTotal) * 100 : 0;
-    const tgtPct = normTarget[type] || 0;
-    const tgtAmt = totalWithCash * (tgtPct / 100);
-    const delta  = tgtAmt - cur;
-    return { type, cur, curPct, tgtPct, tgtAmt, delta };
-  }).filter(r => r.tgtPct > 0 || r.cur > 0);
+  // Types with no target key (e.g. a newly added asset type) are held, not sold - see rebalanceMath.js
+  const trades = computeTrades({ types: Object.keys(AT), curAlloc, normTarget, targetAlloc, rTotal, totalWithCash });
 
   const totalBuy    = trades.filter(t => t.delta > 500).reduce((s, t) => s + t.delta, 0);
   const totalSell   = trades.filter(t => t.delta < -500).reduce((s, t) => s + Math.abs(t.delta), 0);
@@ -810,6 +805,11 @@ export default function StrategyTab({
                           {showEffPct && (
                             <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', textAlign: 'right', marginTop: 2 }}>
                               ≈{normTarget[t.type].toFixed(0)}% effective
+                            </div>
+                          )}
+                          {!Object.prototype.hasOwnProperty.call(targetAlloc, t.type) && (
+                            <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', textAlign: 'right', marginTop: 2 }}>
+                              no target set · held
                             </div>
                           )}
                         </td>

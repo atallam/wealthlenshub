@@ -64,6 +64,23 @@ def _patch_casparser_for_nsdl_2026():
         pass
 
 
+def is_exchange_traded_fund(name: str) -> bool:
+    """Exchange-traded funds sit in the NSDL/CDSL "Mutual Funds (M)" section (INF ISINs) but
+    trade like stocks. Fund-of-funds that merely invest in an ETF are ordinary MFs."""
+    n = name or ""
+    if re.search(r"fund\s+of\s+funds?|\bFOF\b", n, re.I):
+        return False
+    return bool(re.search(r"exchange[\s-]*traded|\bETF\b|\bBEES\b", n, re.I))
+
+
+def clean_etf_name(raw: str) -> str:
+    """'ICICI PRUDENTIAL MUTUAL FUND GOLD EXCHANGE TRADED FUND OPEN ENDED--' ->
+    'ICICI PRUDENTIAL GOLD EXCHANGE TRADED FUND'."""
+    n = re.sub(r"\s+MUTUAL\s+FUND\b", "", (raw or "").strip(), count=1, flags=re.I)
+    n = re.sub(r"\s*[-\u2013]*\s*OPEN\s*ENDED\b.*$", "", n, flags=re.I)
+    return re.sub(r"\s+", " ", n).strip(" -")
+
+
 def _account_id(acc: dict) -> str:
     """Natural-key account id: demat accounts are dpid/clientid; the "Mutual Fund
     Folios" section of a depository CAS has neither."""
@@ -74,6 +91,12 @@ def _account_id(acc: dict) -> str:
     if "mutual fund" in str(acc.get("type") or "").lower():
         return "MF-FOLIOS"
     return acc.get("name") or "UNKNOWN"
+
+
+# Statement values are sums of paise-rounded rows and reconciled exactly on every real
+# NSDL/CDSL file tested, so allow only rounding noise. A percentage tolerance would let a
+# missed holding slip through on a large portfolio (0.05% of Rs 27L is Rs 1,355).
+RECON_TOLERANCE_INR = 2.0
 
 
 def read_stated_total(pdf_path: str, password: str):
@@ -115,7 +138,7 @@ def reconcile_nsdl(d: dict, holdings: list, stated_total=None):
             continue
         aid = _account_id(acc)
         parsed = round(by_acc.get(aid, 0.0), 2)
-        ok = abs(stmt - parsed) <= max(1.0, abs(stmt) * 0.0005)
+        ok = abs(stmt - parsed) <= RECON_TOLERANCE_INR
         rows.append({"account_id": aid, "name": acc.get("name") or str(acc.get("type") or aid),
                      "type": str(acc.get("type") or ""), "statement_value": round(stmt, 2),
                      "parsed_value": parsed, "ok": ok})
@@ -123,7 +146,7 @@ def reconcile_nsdl(d: dict, holdings: list, stated_total=None):
     statement_total = acc_stmt_total + nps_val
     if stated_total is not None:
         unread = round(stated_total - acc_stmt_total - nps_val, 2)
-        if abs(unread) > max(1.0, abs(stated_total) * 0.0005):
+        if abs(unread) > RECON_TOLERANCE_INR:
             rows.append({"account_id": "__undetected__", "name": "Accounts not detected in the PDF",
                          "type": "", "statement_value": unread, "parsed_value": 0.0, "ok": False})
             ok_all = False
@@ -413,6 +436,19 @@ def parse_nsdl(d: dict) -> tuple:
                 # Fully redeemed folio still listed for the period. Not a holding;
                 # the import diff marks any previously stored copy as exited.
                 warnings.append(f"{name}: zero balance at statement date (fully redeemed) - not imported")
+                continue
+
+            if account_id != "MF-FOLIOS" and is_exchange_traded_fund(name):
+                etf_name = clean_etf_name(name)
+                holdings.append({
+                    "name": etf_name, "type": "IN_ETF", "ticker": isin, "scheme_code": isin,
+                    "units": units, "purchase_nav": None, "current_nav": nav,
+                    "purchase_price": None, "current_price": nav, "purchase_value": None,
+                    "current_value": value, "source": "cas", "brokerage_name": broker,
+                    "currency": "INR", "isin": isin, "account_id": account_id,
+                    "asset_class": classify_scheme(etf_name, None), "transactions": [],
+                    "_folio": folio, "_pan": acc_owner_pan or pan, "_holder_name": acc_owner_name,
+                })
                 continue
 
             holdings.append({
