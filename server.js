@@ -155,7 +155,10 @@ app.get("*", (_, res) => {
   });
 });
 
-app.listen(PORT, "0.0.0.0", () => {
+// Tests import `app` without opening a port (Vitest sets VITEST); production and
+// `node server.js` are unaffected.
+export { app };
+if (!process.env.VITEST) app.listen(PORT, "0.0.0.0", () => {
   console.log(`WealthLens Hub running on port ${PORT}`);
   const SETU_ENABLED = process.env.SETU_ENABLED === "true";
   console.log(`Setu AA: ${SETU_ENABLED ? "ENABLED" : "disabled (set SETU_ENABLED=true to activate)"}`);

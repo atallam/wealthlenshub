@@ -24,6 +24,11 @@ jobs:
         run: pip install casparser==1.4.1 casparser-isin pymupdf
       - name: Lint
         run: npx eslint . --quiet
+      - name: Build (same command Render runs)
+        run: npx vite build
+      - name: Dependency audit (non-blocking - surfaces new advisories)
+        run: npm audit --omit=dev --audit-level=critical
+        continue-on-error: true
       - name: JS tests
         run: npx vitest run
       - name: Python tests
