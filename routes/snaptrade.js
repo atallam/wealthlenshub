@@ -54,6 +54,14 @@ function snapHoldingType(symbolObj) {
   if (["pm"].includes(code)||desc.includes("precious metal")) return "GOLD";
   if (["ut"].includes(code)||desc.includes("unit trust")||desc.includes("unit")) return isIndia?"MF":"US_ETF";
   if (ticker.includes("-USD")||ticker.includes("-USDT")||ticker.includes("-BTC")) return "CRYPTO";
+  // 401(k)/retirement-plan funds (collective trusts, target-date, index funds) often arrive with no
+  // SnapTrade type and no exchange, so fall back to the fund's own description. There is no US
+  // mutual-fund asset type, so equity-style funds use US_ETF (counted as equity everywhere).
+  const fundDesc = String(symbolObj?.description || "").toLowerCase();
+  if (!isIndia && fundDesc) {
+    if (/\b(bond|fixed income|treasury|tips|income fund)\b/.test(fundDesc)) return "US_BOND";
+    if (/\b(index|equity|stock|growth|value|target|retirement|balanced|trust|fund|\d{4})\b/.test(fundDesc)) return "US_ETF";
+  }
   return "OTHER";
 }
 
