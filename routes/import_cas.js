@@ -1,5 +1,5 @@
 /**
- * routes/import_v2.js
+ * routes/import_cas.js
  * -------------------
  * NEW parallel CAS import route using the casparser Python library.
  * Does NOT modify or replace routes/import.js — existing functionality untouched.
@@ -212,8 +212,8 @@ router.post(
       try {
         const amfi = await Promise.race([getAmfiList(), new Promise((r) => setTimeout(() => r([]), 6000))]);
         const n = enrichMfFromAmfi(result.holdings || [], amfi);
-        if (n) console.log(`[import_v2] AMFI enrichment: ${n} MF row(s) named/coded by ISIN`);
-      } catch (e) { console.warn("[import_v2] AMFI enrichment skipped:", e.message); }
+        if (n) console.log(`[import_cas] AMFI enrichment: ${n} MF row(s) named/coded by ISIN`);
+      } catch (e) { console.warn("[import_cas] AMFI enrichment skipped:", e.message); }
 
       // Content hash → idempotent re-imports (see casImport.service findPriorImport)
       const statementHash = createHash("sha256").update(req.file.buffer).digest("hex");
@@ -242,7 +242,7 @@ router.post(
       });
     } catch (err) {
       await unlink(tmpFile).catch(() => {});
-      console.error("[import_v2] detect-casparser error:", err);
+      console.error("[import_cas] detect-casparser error:", err);
       return sendError(res, err);
     }
   },

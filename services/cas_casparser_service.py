@@ -1,7 +1,7 @@
 """
 cas_casparser_service.py
 ------------------------
-Production service script — called by routes/import_v2.js via child_process.spawn.
+Production service script — called by routes/import_cas.js via child_process.spawn.
 
 Accepts a CAS PDF (NSDL/CDSL or CAMS/Kfintech) + password, parses it with
 casparser, and writes a JSON response to stdout matching the shape returned

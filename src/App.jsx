@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, BarChart2, Target, Compass,
   Users, CalendarDays, MessageSquare,
@@ -36,26 +36,17 @@ import { useAuth } from './hooks/useAuth.js';
 // ── Tab components ───────────────────────────────────────────────
 import OverviewTab from './features/overview/OverviewTab.jsx';
 import { useOverviewState } from './features/overview/useOverviewState.js';
-import HoldingsTab from './features/holdings/HoldingsTab.jsx';
 import { useHoldingActions } from './features/holdings/useHoldingActions.js';
 import { useHoldingForm } from './features/holdings/useHoldingForm.js';
 import HoldingFormModal from './features/holdings/HoldingFormModal.jsx';
-import GoalsTab from './features/goals/GoalsTab.jsx';
 import GoalFormModal from './features/goals/GoalFormModal.jsx';
 import { useGoalForm } from './features/goals/useGoalForm.js';
-import StrategyTab from './features/strategy/StrategyTab.jsx';
 import { useAlertForm } from './features/strategy/useAlertForm.js';
 import AlertFormModal from './features/strategy/AlertFormModal.jsx';
 import { useRebalanceState } from './features/strategy/useRebalanceState.js';
-import MembersTab from './features/members/MembersTab.jsx';
 import { useMemberForm } from './features/members/useMemberForm.js';
 import MemberFormModal from './features/members/MemberFormModal.jsx';
-import FamilyBudgetTab from './features/budget/FamilyBudgetTab.jsx';
-import CalendarTab from './features/calendar/CalendarTab.jsx';
 import { useCalendarState } from './features/calendar/useCalendarState.js';
-import AdvisorTab from './features/AdvisorTab.jsx';
-import NewsTab      from './features/NewsTab.jsx';
-import AuditLogPanel from './features/AuditLogPanel.jsx';
 
 // ── Shared components ────────────────────────────────────────────
 import AppHeader from './components/shared/AppHeader.jsx';
@@ -64,19 +55,12 @@ import LoginScreen from './components/shared/LoginScreen.jsx';
 import LoadingSkeleton from './components/shared/LoadingSkeleton.jsx';
 import LiabilitiesPanel from './components/shared/LiabilitiesPanel.jsx';
 import HoldingsPicker from './components/shared/HoldingsPicker.jsx';
-import TransactionPanel from './components/shared/TransactionPanel.jsx';
-import ArtifactPanel from './components/shared/ArtifactPanel.jsx';
 import { Overlay, FG, MA } from './components/shared/Overlay.jsx';
-import CASImportModal from './components/modals/CASImportModal.jsx';
 import DonutChart from './components/shared/DonutChart.jsx';
 import FmtInput from './components/shared/FmtInput.jsx';
 import FDScanSheet from './components/shared/FDScanSheet.jsx';
 
 // ── Modals ───────────────────────────────────────────────────────
-import GoalPlanModal from './components/modals/GoalPlanModal.jsx';
-import ImportModal from './components/modals/ImportModal.jsx';
-import ImportHub from './components/modals/ImportHub.jsx';
-import TradebookImportModal from './features/holdings/TradebookImportModal.jsx';
 import SettingsModal from './components/modals/SettingsModal.jsx';
 
 // ── Context ──────────────────────────────────────────────────────
@@ -92,6 +76,36 @@ import NotificationBell from './components/shared/NotificationBell.jsx';
 import { usePushNotifications } from './hooks/usePushNotifications.js';
 import ExportPanel from './components/shared/ExportPanel.jsx';
 import { useToast } from './components/shared/Toast.jsx';
+
+// ── Code-splitting ────────────────────────────────────────────────────────────
+// Tabs and modals are loaded on first use instead of shipping in the first bundle (the Overview
+// tab and the shell stay eager so first paint is fast). Each one is wrapped in its own
+// <Suspense> so a chunk loading never blanks the rest of the page; a failed chunk load throws
+// into the surrounding ErrorBoundary like any render error. After the first load the chunks are
+// pre-fetched when the browser is idle, so switching tabs does not flash a skeleton.
+const split = (loader, fallback = null) => {
+  const C = lazy(loader);
+  const Wrapped = (props) => <Suspense fallback={fallback}><C {...props} /></Suspense>;
+  Wrapped.preload = loader;
+  return Wrapped;
+};
+const HoldingsTab = split(() => import('./features/holdings/HoldingsTab.jsx'), <LoadingSkeleton />);
+const GoalsTab = split(() => import('./features/goals/GoalsTab.jsx'), <LoadingSkeleton />);
+const StrategyTab = split(() => import('./features/strategy/StrategyTab.jsx'), <LoadingSkeleton />);
+const MembersTab = split(() => import('./features/members/MembersTab.jsx'), <LoadingSkeleton />);
+const FamilyBudgetTab = split(() => import('./features/budget/FamilyBudgetTab.jsx'), <LoadingSkeleton />);
+const CalendarTab = split(() => import('./features/calendar/CalendarTab.jsx'), <LoadingSkeleton />);
+const AdvisorTab = split(() => import('./features/AdvisorTab.jsx'), <LoadingSkeleton />);
+const NewsTab = split(() => import('./features/NewsTab.jsx'), <LoadingSkeleton />);
+const AuditLogPanel = split(() => import('./features/AuditLogPanel.jsx'));
+const CASImportModal = split(() => import('./components/modals/CASImportModal.jsx'));
+const ImportModal = split(() => import('./components/modals/ImportModal.jsx'));
+const ImportHub = split(() => import('./components/modals/ImportHub.jsx'));
+const TradebookImportModal = split(() => import('./features/holdings/TradebookImportModal.jsx'));
+const GoalPlanModal = split(() => import('./components/modals/GoalPlanModal.jsx'));
+const TransactionPanel = split(() => import('./components/shared/TransactionPanel.jsx'));
+const ArtifactPanel = split(() => import('./components/shared/ArtifactPanel.jsx'));
+const PRELOAD = [HoldingsTab, GoalsTab, StrategyTab, MembersTab, FamilyBudgetTab, CalendarTab, AdvisorTab, NewsTab];
 
 // ── API helper imported from lib/api.js (see top imports) ────────
 
@@ -204,6 +218,15 @@ export default function App() {
     holdings, setHoldings, members, goals, alerts, liabilities, setLiabilities, loaded,
     syncSt, priceRefreshing, lastPriceRefresh, wealthSnapshots, benchmark, demoMode,
   } = portfolio;
+
+  // Once the portfolio is on screen, quietly fetch the other tabs' code when the browser is idle.
+  useEffect(() => {
+    if (!loaded) return;
+    const run = () => PRELOAD.forEach((T) => T.preload().catch(() => {}));   // a failed prefetch just retries on click
+    if (typeof requestIdleCallback === 'function') { const id = requestIdleCallback(run, { timeout: 4000 }); return () => cancelIdleCallback(id); }
+    const t = setTimeout(run, 2000);
+    return () => clearTimeout(t);
+  }, [loaded]);
 
   // ── Computed / memoized values ────────────────────────────────
 

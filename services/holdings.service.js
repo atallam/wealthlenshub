@@ -209,7 +209,7 @@ export function runPostImport(userId, casStatementDate) {
         try {
           const price = await indianStockPrice(h.ticker);
           if (price && price > 0) {
-            await supabase.from("holdings").update({ current_price: price, current_value: (h.units || 0) * price, price_fetched_at: new Date().toISOString() }).eq("id", h.id);
+            await supabase.from("holdings").update({ current_price: price, current_value: (h.units || 0) * price, price_fetched_at: new Date().toISOString() }).eq("id", h.id).eq("user_id", userId);
           }
         } catch { /* skip */ }
         await new Promise((r) => setTimeout(r, 1200));

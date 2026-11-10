@@ -15,6 +15,7 @@ import { getAmfiList, yahooPrice, resolveIsinSymbol, indianStockPrice } from "..
 import { pLimit } from "../lib/utils.js"; // P2-2 — moved out of lib/refresh.js, generic concurrency helper
 import { auditImport } from "../lib/importLogger.js";
 import { decrypt } from "../lib/crypto.js";
+import casRouter from "./import_cas.js";
 
 /**
  * Build the CAS-unlock context for this request. All PAN decryption happens
@@ -298,5 +299,9 @@ router.post("/detect", auth, uploadLimiter, auditImport("FILE_DETECT"), upload.s
   if (dupCount > 0) holdingsResult.warnings.push(`${dupCount} holding(s) already exist in your portfolio`);
   res.json({ ...holdingsResult, detected_type: "holdings", accounts: holdingsResult.accounts || [] });
 });
+
+// CAS PDFs (casparser): POST /api/import/detect-casparser. Kept in its own file because it
+// spawns the Python parser; mounted here so /api/import is one router.
+router.use(casRouter);
 
 export default router;

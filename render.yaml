@@ -43,6 +43,11 @@ services:
       - key: PLAID_ENV
         value: sandbox
       # Setu (optional — set SETU_ENABLED=true to activate)
+      # Hardening switches - see Project Docs/ROLLOUT_ENFORCEMENT.md before changing.
+      - key: BODY_SCHEMA_MODE
+        value: log            # -> enforce once no [validate] warnings appear in the logs
+      - key: CSP_MODE
+        value: report-only    # -> enforce once no [csp] lines appear in the logs
       - key: SETU_ENABLED
         value: "false"
       - key: SETU_CLIENT_ID

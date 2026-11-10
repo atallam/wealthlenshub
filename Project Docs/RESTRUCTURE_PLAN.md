@@ -246,7 +246,7 @@ executed rather than reviewed by reading code. Two real problems surfaced, both 
   as designed, not a bug.
 
 **Not yet verified live:** the 15 P3-2 route/service extractions from earlier in this
-session (notifications, push, tax, audit, watchlist, concall, analytics, import/import_v2,
+session (notifications, push, tax, audit, watchlist, concall, analytics, import/import_cas,
 ai, export, plaid, snaptrade's non-status endpoints, setu's non-status endpoints, cron),
 and the export.js FD-filter behavior change. These still only have manual-review +
 `grep` verification, not a live run.

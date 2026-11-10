@@ -28,7 +28,7 @@ Authentication → Providers → Google → Enable.
 Add your Google OAuth Client ID and Secret (from Google Cloud Console).
 
 ### 4. Run the migration
-Paste `hub_migration.sql` into Supabase SQL Editor → Run.
+Paste `migrations/hub_migration.sql` into Supabase SQL Editor → Run.
 
 This creates:
 - `profiles` — one row per user, stores display name + currency

@@ -4,7 +4,56 @@
 // ownership (theme, showSettings, confirmSignOut, ...) all stays
 // in App.jsx and is passed in as props.
 
-import { Download, Activity, Sun, Moon, LogOut } from 'lucide-react';
+import { useState } from 'react';
+import { Download, Activity, Sun, Moon, LogOut, Trash2 } from 'lucide-react';
+
+// Permanent account deletion (DELETE /api/account). Two steps so it can't happen by accident:
+// open the section, then type your own email. On success the session is ended.
+function DeleteAccount({ email, api, signOut }) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const matches = typed.trim().toLowerCase() === String(email || '').toLowerCase();
+
+  async function run() {
+    setBusy(true); setErr('');
+    try {
+      await api('/api/account', { method: 'DELETE', body: JSON.stringify({ confirm_email: typed.trim() }) });
+      try { await signOut(); } catch { /* the login is already gone; clearing the local session is enough */ }
+      window.location.reload();
+    } catch (e) {
+      setErr(e.message || 'Could not delete your account. Please try again.');
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button className="btn-o" style={{ color: 'var(--loss)', borderColor: 'rgba(220,38,38,.25)' }} onClick={() => setOpen(true)}>
+        <Trash2 size={13} strokeWidth={2} /> Delete account…
+      </button>
+    );
+  }
+  return (
+    <div style={{ flexBasis: '100%', border: '1px solid rgba(220,38,38,.35)', borderRadius: 10, padding: '.8rem', marginTop: '.5rem' }}>
+      <div style={{ fontSize: '.82rem', color: 'var(--loss)', fontWeight: 700, marginBottom: '.35rem' }}>Delete your account and all data</div>
+      <div style={{ fontSize: '.75rem', color: 'var(--text-dim)', lineHeight: 1.5, marginBottom: '.6rem' }}>
+        This permanently erases your holdings, transactions, budget data, uploaded documents, notes and sign-in, and disconnects any linked brokers or banks. It cannot be undone. Export anything you want to keep first.
+      </div>
+      <input className="fi" type="email" autoComplete="off" placeholder={`Type ${email} to confirm`} value={typed}
+        onChange={(e) => setTyped(e.target.value)} disabled={busy} style={{ width: '100%', marginBottom: '.5rem' }} />
+      {err && <div role="alert" style={{ fontSize: '.75rem', color: 'var(--loss)', marginBottom: '.5rem' }}>{err}</div>}
+      <div style={{ display: 'flex', gap: '.5rem' }}>
+        <button className="btn-o" disabled={!matches || busy} onClick={run}
+          style={{ color: '#fff', background: 'var(--loss)', borderColor: 'var(--loss)', opacity: matches && !busy ? 1 : .45 }}>
+          {busy ? 'Deleting…' : 'Permanently delete'}
+        </button>
+        <button className="btnc" disabled={busy} onClick={() => { setOpen(false); setTyped(''); setErr(''); }}>Cancel</button>
+      </div>
+    </div>
+  );
+}
 
 export default function SettingsModal({
   showSettings, setShowSettings,
@@ -150,6 +199,9 @@ export default function SettingsModal({
             <LogOut size={13} strokeWidth={2}/> Sign Out
           </button>
         )}
+      </div>
+      <div style={{borderTop:'1px solid var(--border)',marginTop:'1rem',paddingTop:'1rem',display:'flex',flexWrap:'wrap'}}>
+        <DeleteAccount email={user.email} api={api} signOut={signOut} />
       </div>
     </Overlay>
   );

@@ -1,25 +1,61 @@
 # Migrations
 
-Apply these **in numeric order** against the Supabase Postgres database. Each file
-is idempotent (`IF NOT EXISTS` / `DO $$` guards) so re-running is safe.
+Everything here lives in this folder. Apply in the order below against the Supabase Postgres
+database. Each file is idempotent (`IF NOT EXISTS` / `DO $$` guards), so re-running is safe.
+There is no applied-state tracking, so on an **existing** database run only the files you have
+not run yet (the Supabase SQL Editor's history is the record).
+
+## Fresh install - run in this order
+
+1. `database.sql` - original base schema (portfolio, holdings, artifacts, transactions). *Legacy:* its RLS and `artifacts` shape are superseded by the next two files and by 0009.
+2. `hub_migration.sql` - canonical tables, RLS policies and indexes.
+3. `budget_migration.sql` - budget statements / transactions / categories.
+4. `transactions_migration.sql` - `transactions` table + `user_id`.
+5. `gmail_migration.sql` - `email_imports` (Gmail CAS auto-import).
+6. `fx_rate_migration.sql` - drops the stale default on `usd_inr_rate`.
+7. `security_migration.sql` - enables RLS on all user-data tables, `import_logs`.
+8. `keepalive_migration.sql` - keep-alive RPC (stops the free Supabase project pausing).
+9. The numbered files `0009` ... `0035`, in order (table below).
+
+## Numbered migrations
+
+Two numbers are used twice (`0010`, `0011`). Within each pair the files are independent of each
+other, so either order works.
 
 | # | File | Purpose |
 |---|------|---------|
-| — | `../database.sql` | Original base schema (portfolio, holdings, artifacts, transactions). *Legacy — superseded by hub_migration for RLS.* |
-| — | `../hub_migration.sql` | Canonical table definitions + RLS policies + indexes. |
-| — | `../budget_migration.sql` | Budget statements/transactions/categories. |
-| — | `../transactions_migration.sql` | Transactions table + `user_id`. |
-| — | `../gmail_migration.sql` | `email_imports`. |
-| — | `../fx_rate_migration.sql` | FX rate column. |
-| — | `../security_migration.sql` | Enables RLS on all user-data tables. |
-| **0009** | `0009_reconcile_artifacts_and_security.sql` | **Reconciles schema drift:** adds/backfills `artifacts.user_id`, aligns RLS. Run after all of the above. |
-| **0010** | `0010_budget_member_assignment.sql` | Adds `budget_statements.member_id` so a statement can be attributed to a family member. Run after 0009. |
-| **0011** | `0011_budget_account_aliases.sql` | Adds `budget_account_aliases` (card/account last-4 → member), so imports from the same card/account auto-assign after the first confirmation. Run after 0010. |
-| **0029** | `0029_cas_natural_key.sql` | **CAS import rewrite.** Adds `holdings.depository / account_id / isin / holding_status / exited_at / exit_snapshot / last_import_id`, a unique natural key on CAS rows, `import_logs.statement_hash`, and the `apply_cas_snapshot()` RPC that replaces delete-and-reinsert with one atomic keyed reconcile. NSDL, CDSL and CAMS/KFin statements for the same member now coexist; holding ids (and their transactions/artifacts) survive re-imports. Existing CAS rows are tagged `depository='LEGACY'` and retired on the next import for that member. **Required** — the server refuses CAS imports until this is applied. |
-| **0030** | `0030_transaction_ledger.sql` | **Transaction ledger.** Adds `transactions.source / source_type / external_key / description / balance_after / import_id` and `holdings.asset_class`; re-creates `apply_cas_snapshot()` so detailed CAMS/KFintech statements write their transactions (idempotent on `external_key`, opening-balance placeholders replaced when a since-inception CAS arrives). Powers `/api/analytics` (XIRR, FIFO lots) and asset-class-aware tax rules. Run after 0029. |
-| **0031** | `0031_ledger_inference.sql` | **Ledger from monthly statements.** Adds `transactions.superseded_by / superseded_snapshot`; re-creates `apply_cas_snapshot()` so a detailed CAS (a) zeroes and links hand-entered rows for the same event and (b) deletes app-inferred rows inside its window. Pairs with `services/ledgerInfer.service.js`, which infers a BUY/SELL from unit changes on summary/depository statements. Run after 0030. |
-| **0032** | `0032_budget_category_member_limits.sql` | **Per-member category limits.** `budget_category_limits` overrides `budget_categories.monthly_limit` for one family member; no override falls back to the shared limit. Run before using the per-member limit field in Family Budget → Categories. |
-| **0033** | `0033_budget_transaction_splits.sql` | **Split transactions.** `budget_transaction_splits` shares one transaction between family members (shares must total the amount — enforced in `setSplits()`). Until it is applied the Family Budget works unchanged and Split saves fail with a missing-table error. |
+| 0009 | `0009_reconcile_artifacts_and_security.sql` | Reconciles schema drift: adds/backfills `artifacts.user_id`, aligns RLS. |
+| 0010 | `0010_add_liabilities_column.sql` | `portfolio.liabilities` (without it, portfolio upserts fail with PGRST204). |
+| 0010 | `0010_budget_member_assignment.sql` | `budget_statements.member_id` - attribute a statement to a family member. |
+| 0011 | `0011_budget_account_aliases.sql` | `budget_account_aliases`: card/account last-4 -> member, so repeat imports auto-assign. |
+| 0011 | `0011_drop_portfolio_sharing.sql` | Removes the unused portfolio-sharing feature. |
+| 0012 | `0012_concall_analyses.sql` | Earnings-call analysis cache. |
+| 0013 | `0013_cash_events.sql` | Cash-event support on `transactions`. |
+| 0014 | `0014_fd_currency.sql` | Multi-currency Fixed Deposits. |
+| 0015 | `0015_insurance_fields.sql` | Insurance columns on `holdings`. |
+| 0016 | `0016_watchlist.sql` | Watchlist of tickers not yet owned. |
+| 0017 | `0017_concall_holding_id_text.sql` | No-op (superseded by the fix inside 0012). |
+| 0018 | `0018_holdings_user_id_backfill.sql` | Ensures `holdings.user_id` exists and is populated. |
+| 0019 | `0019_holdings_import_method.sql` | `holdings.import_method`. |
+| 0020 | `0020_audit_logs.sql` | Universal audit trail. |
+| 0021 | `0021_budget_goals.sql` | Budget goals. |
+| 0022 | `0022_holdings_cas_import_columns.sql` | Columns for the Gmail CAS auto-import cron. |
+| 0023 | `0023_email_imports_matched_members.sql` | `email_imports.matched_members`. |
+| 0024 | `0024_push_subscriptions.sql` | Web Push subscriptions. |
+| 0025 | `0025_notifications.sql` | In-app notifications. |
+| 0026 | `0026_budget_category_essential.sql` | `budget_categories.is_essential`. |
+| 0027 | `0027_setu_connections.sql` | Setu Account Aggregator tables. Run before `SETU_ENABLED=true`. |
+| 0028 | `0028_fd_maturity.sql` | Explicit post-maturity lifecycle for FDs. |
+| 0029 | `0029_cas_natural_key.sql` | **CAS import rewrite** - keyed, atomic `apply_cas_snapshot()`. **Required**: the server refuses CAS imports without it. |
+| 0030 | `0030_transaction_ledger.sql` | Transaction ledger; powers `/api/analytics` (XIRR, FIFO lots). After 0029. |
+| 0031 | `0031_ledger_inference.sql` | Infers BUY/SELL from monthly statements. After 0030. |
+| 0032 | `0032_budget_category_member_limits.sql` | Per-member category limits. |
+| 0033 | `0033_budget_transaction_splits.sql` | Split transactions between family members. |
+| 0034 | `0034_cas_multi_statement.sql` | Multi-statement CAS import. After 0031. |
+| 0035 | `0035_cas_retire_overlap.sql` | "Keep newest only" for a fund listed by two depositories. After 0034. |
+
+`tests/migrationsDocs.test.js` fails if a `.sql` file is added here without a row above, or a row
+points at a file that does not exist.
 
 ## Important: RLS vs. the service key
 

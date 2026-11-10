@@ -54,7 +54,8 @@ function orPredicate(expr) {
 }
 
 export function createFakeDb({ users = {} } = {}) {
-  const state = { tables: {}, storage: { uploads: [], removed: [], signed: [] } };
+  const initialUsers = { ...users };
+  const state = { tables: {}, deletedAuthUsers: [], storage: { uploads: [], removed: [], signed: [] } };
 
   const rowsOf = (t) => (state.tables[t] ||= []);
 
@@ -144,6 +145,13 @@ export function createFakeDb({ users = {} } = {}) {
         const user = users[token];
         return user ? { data: { user }, error: null } : { data: { user: null }, error: { message: "invalid token" } };
       },
+      admin: {
+        deleteUser: async (id) => {
+          state.deletedAuthUsers.push(id);
+          for (const [t, u] of Object.entries(users)) if (u.id === id) delete users[t];
+          return { data: {}, error: null };
+        },
+      },
     },
     storage: {
       from: (bucket) => ({
@@ -158,10 +166,13 @@ export function createFakeDb({ users = {} } = {}) {
   return {
     client,
     storage: state.storage,
+    get deletedAuthUsers() { return state.deletedAuthUsers; },
     reset(seed = {}) {
+      for (const k of Object.keys(users)) delete users[k];
+      Object.assign(users, initialUsers);     // a test that deleted an auth user must not affect the next one
       state.tables = {};
       for (const [t, rows] of Object.entries(seed)) state.tables[t] = rows.map(clone);
-      state.storage.uploads.length = state.storage.removed.length = state.storage.signed.length = 0;
+      state.storage.uploads.length = state.storage.removed.length = state.storage.signed.length = state.deletedAuthUsers.length = 0;
     },
     /** Deep copy of every table, optionally ignoring some (e.g. audit_logs). */
     snapshot(ignore = []) {

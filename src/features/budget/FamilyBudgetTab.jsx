@@ -11,6 +11,7 @@ import { useFamilyBudget } from '../../hooks/useFamilyBudget.js';
 import SetuAAImport from '../../SetuAAImport.jsx';
 import { AA_ENABLED } from '../../components/modals/ImportHub.jsx';
 import { useToast } from '../../components/shared/Toast.jsx';
+import { supabase } from '../../supabase.js';
 
 // ── Tiny format helpers ───────────────────────────────────────────
 const GOLD = '#c9a84c', GREEN = '#4caf9a', RED = '#e07c5a', BLUE = '#5a8ee0', PURPLE = '#9b7ae0';
@@ -464,7 +465,7 @@ function ImportWizard({ fb, members }) {
               mode="budget"
               members={members}
               api={async (url, opts = {}) => {
-                const { data: { session } } = await import('../../supabase.js').then(m => m.supabase.auth.getSession());
+                const { data: { session } } = await supabase.auth.getSession();
                 const token = session?.access_token;
                 const r = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts.headers || {}) } });
                 const d = await r.json();

@@ -33,8 +33,8 @@ async function listIsinTickerHoldingsForUser(userId) {
 }
 
 /** Persist a resolved trading symbol onto holdings.ticker (leaves holdings.isin, the CAS natural key, untouched). Returns the raw { error }. */
-function updateHoldingTicker(id, ticker) {
-  return supabase.from("holdings").update({ ticker }).eq("id", id);
+function updateHoldingTicker(userId, id, ticker) {
+  return supabase.from("holdings").update({ ticker }).eq("id", id).eq("user_id", userId);
 }
 
 const VALID_DEPOSITORIES = new Set(["NSDL", "CDSL", "CAMS", "KFINTECH"]);
@@ -151,7 +151,7 @@ export async function applyCasImport(userId, body) {
   if ((r.inserted || 0) + (r.updated || 0) > 0) {
     try {
       const holdings = await listIsinTickerHoldingsForUser(userId);
-      isinBackfill = await backfillIsinTickers(holdings, updateHoldingTicker);
+      isinBackfill = await backfillIsinTickers(holdings, (id, ticker) => updateHoldingTicker(userId, id, ticker));
       if (isinBackfill.candidates) {
         console.log(`[casImport] ISIN backfill: ${isinBackfill.resolved}/${isinBackfill.candidates} resolved`);
       }

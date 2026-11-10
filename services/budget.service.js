@@ -84,7 +84,7 @@ async function saveAccountAlias(userId, bankKey, last4, memberId) {
   if (selErr) { console.error("saveAccountAlias (select):", describeDbError(selErr).friendly); return; }
   if (existing) {
     if (existing.member_id !== memberId) {
-      const { error } = await supabase.from("budget_account_aliases").update({ member_id: memberId, updated_at: new Date().toISOString() }).eq("id", existing.id);
+      const { error } = await supabase.from("budget_account_aliases").update({ member_id: memberId, updated_at: new Date().toISOString() }).eq("id", existing.id).eq("user_id", userId);
       if (error) console.error("saveAccountAlias (update):", describeDbError(error).friendly);
     }
     return;
@@ -405,7 +405,7 @@ export async function setCategoryLimit(userId, categoryId, memberId, monthlyLimi
     .eq("user_id", userId).eq("category_id", categoryId).eq("member_id", memberId).single();
   if (existing) {
     const { error } = await supabase.from("budget_category_limits")
-      .update({ monthly_limit: limit, updated_at: new Date().toISOString() }).eq("id", existing.id);
+      .update({ monthly_limit: limit, updated_at: new Date().toISOString() }).eq("id", existing.id).eq("user_id", userId);
     if (error) throw new Error(error.message);
   } else {
     const { error } = await supabase.from("budget_category_limits").insert({

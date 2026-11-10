@@ -198,7 +198,7 @@ if (!SETU_ENABLED) {
         for (const c of COLS) if (h[c] !== undefined && h[c] !== null && h[c] !== "") row[c] = h[c];
         return row;
       });
-      const { error } = await upsertHoldings(rows);
+      const { error } = await upsertHoldings(req.user.id, rows);
       if (error) return sendError(res, error);
       if (consent_id) await updateConsent(req.user.id, consent_id, { holdings_count: rows.length, updated_at: new Date().toISOString() });
       res.json({ imported: rows.length });

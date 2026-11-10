@@ -6,6 +6,7 @@
  * handling, and FI-data parsing stay in the route.
  */
 import { supabase } from "../lib/db.js";
+import { idsTakenByOthers } from "../lib/guards.js";
 
 /** Insert a new setu_consents row (used by both wealth and budget consent flows). Errors are not checked — matches original fire-and-forget behavior. */
 export async function insertConsent(row) {
@@ -35,8 +36,12 @@ export async function updateConsentUnscoped(consentId, patch) {
 }
 
 /** Upsert parsed holdings from a completed FI session. Returns the raw { error } — the route branches on it. */
-export async function upsertHoldings(rows) {
-  const { error } = await supabase.from("holdings").upsert(rows, { onConflict: "id" });
+export async function upsertHoldings(userId, rows) {
+  // The client may send its own holding ids. If one already belongs to another user, the upsert
+  // would overwrite that row and hand it to the caller — give those rows fresh ids instead.
+  const taken = await idsTakenByOthers("holdings", rows.map((r) => r.id), userId);
+  const safe = rows.map((r) => (taken.has(r.id) ? { ...r, id: crypto.randomUUID() } : r));
+  const { error } = await supabase.from("holdings").upsert(safe, { onConflict: "id" });
   return { error };
 }
 
@@ -63,6 +68,10 @@ export async function insertBudgetTransaction(row) {
 
 /** Upsert a setu_connections row (for future re-sync). Errors are not checked — matches original fire-and-forget behavior. */
 export async function upsertConnection(row) {
+  // The id is derived from a client-supplied consent_id; never overwrite another user's row.
+  if ((await idsTakenByOthers("setu_connections", [row.id], row.user_id)).has(row.id)) {
+    row = { ...row, id: `${row.id}_${String(row.user_id).slice(0, 8)}` };
+  }
   await supabase.from("setu_connections").upsert(row, { onConflict: "id" });
 }
 

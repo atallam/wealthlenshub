@@ -129,7 +129,7 @@ See [Project Docs/TOOLS_AND_TECH.md](Project%20Docs/TOOLS_AND_TECH.md) for the f
 
 ### 1. Supabase Project
 1. [supabase.com](https://supabase.com) → New project → Region: South Asia (Mumbai)
-2. SQL Editor → paste `database.sql` → Run
+2. SQL Editor → paste `migrations/database.sql` → Run
 3. Run incremental migrations from `migrations/` in order
 
 ### 2. Auth Providers
@@ -206,7 +206,7 @@ Detailed documentation lives in the [`Project Docs/`](Project%20Docs/) folder:
 
 Core tables: `portfolio` · `holdings` · `transactions` · `profiles` · `asset_types` · `artifacts` · `portfolio_shares` · `net_worth_snapshots` · `snaptrade_connections` · `plaid_connections` · `watchlist` · `concall_analyses`
 
-Initial schema: `database.sql` · Incremental changes: `migrations/`
+Initial schema: `migrations/database.sql` · Incremental changes: `migrations/` (see `migrations/README.md` for the order)
 
 ---
 

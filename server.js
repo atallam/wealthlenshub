@@ -3,10 +3,12 @@
 // runs this file directly and injects real env vars via its own dashboard, and
 // there's no .env file in that deployment for this to find.
 import "dotenv/config";
+import "./lib/env.js";            // validates process.env before anything else loads
 
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import path from "path";
 import { fileURLToPath } from "url";
 import { apiLimiter, IS_PROD } from "./lib/auth.js";
@@ -17,6 +19,7 @@ import holdingsRouter     from "./routes/holdings.js";
 import transactionsRouter from "./routes/transactions.js";
 import tradebookRouter    from "./routes/tradebook.js";
 import profileRouter      from "./routes/profile.js";
+import accountRouter      from "./routes/account.js";
 import pricesRouter       from "./routes/prices.js";
 import aiRouter           from "./routes/ai.js";
 import artifactsRouter    from "./routes/artifacts.js";
@@ -24,7 +27,6 @@ import snaptradeRouter    from "./routes/snaptrade.js";
 import plaidRouter        from "./routes/plaid.js";
 import setuRouter         from "./routes/setu.js";
 import importRouter       from "./routes/import.js";
-import importV2Router     from "./routes/import_v2.js";    // casparser parallel path
 import budgetRouter       from "./routes/budget.js";
 import snapshotsRouter    from "./routes/snapshots.js";
 import fdRouter           from "./routes/fd.js";
@@ -77,6 +79,9 @@ const cspDirectives = {
   objectSrc: ["'none'"],
   baseUri: ["'self'"],
   formAction: ["'self'"],
+  // Browsers POST violations here; see the /csp-report handler below. Lets us confirm in the
+  // server logs that nothing legitimate would be blocked before switching to CSP_MODE=enforce.
+  reportUri: ["/csp-report"],
 };
 app.use(helmet({
   contentSecurityPolicy: CSP_MODE === "off" ? false : { useDefaults: false, reportOnly: CSP_MODE !== "enforce", directives: cspDirectives },
@@ -101,6 +106,19 @@ app.use("/api/", auditMiddleware);   // ── Audit trail (fire-and-forget on a
 // the catch-all SPA route. Render uses this path (render.yaml healthCheckPath).
 app.get("/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
+// ── CSP violation reports ────────────────────────────────────────────────────
+// Unauthenticated by necessity (the browser sends it), so: tiny body, per-IP limit, nothing
+// stored, and only a few non-sensitive fields logged (never the full page URL query string).
+const cspReportLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
+app.post("/csp-report", cspReportLimiter,
+  express.json({ type: ["application/csp-report", "application/reports+json", "application/json"], limit: "10kb" }),
+  (req, res) => {
+    const r = req.body?.["csp-report"] || {};
+    const strip = (u) => String(u || "").split(/[?#]/)[0].slice(0, 200);
+    console.warn(`[csp] ${r["violated-directive"] || r["effective-directive"] || "?"} blocked=${strip(r["blocked-uri"])} page=${strip(r["document-uri"])}`);
+    res.status(204).end();
+  });
+
 // ── Serve built React app ────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, "dist")));
 
@@ -110,14 +128,14 @@ app.use("/api/holdings",      holdingsRouter);
 app.use("/api/transactions",  transactionsRouter);
 app.use("/api/tradebook",     tradebookRouter);
 app.use("/api/profile",       profileRouter);
+app.use("/api/account",       accountRouter);
 app.use("/api",               pricesRouter);       // mounts /api/forex, /api/mf, /api/stock, /api/prices
 app.use("/api/ai",            aiRouter);
 app.use("/api/artifacts",     artifactsRouter);
 app.use("/api/snaptrade",     snaptradeRouter);
 app.use("/api/plaid",         plaidRouter);
 app.use("/api/setu",          setuRouter);
-app.use("/api/import",        importRouter);
-app.use("/api/import",        importV2Router);   // casparser route: POST /detect-casparser
+app.use("/api/import",        importRouter);     // POST /detect (files) + POST /detect-casparser (CAS PDFs, mounted inside import.js)
 app.use("/api/budget",        budgetRouter);
 app.use("/api/snapshots",     snapshotsRouter);
 app.use("/api/fd",            fdRouter);
