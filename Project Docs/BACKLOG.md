@@ -1,6 +1,6 @@
 # WealthLens Hub — Product Backlog
 
-> Last reviewed: September 2026  
+> Last reviewed: November 2026  
 > P0 security items audited — all confirmed resolved, removed from backlog.  
 > Items 1 (Mobile PWA) and 5 (MF Overlap) shipped August 2026 and moved to Completed.
 > Value Masker (P1 Item 1) shipped August 2026 and moved to Completed; remaining P1 items renumbered.  
@@ -13,72 +13,39 @@
 > September 2026: Production-readiness review — P0-1, P0-2, P1-1, P1-2 shipped Sep 18; P2-2, P2-4 shipped shortly after. All six moved to Completed (Production-Readiness Fixes, Sep 2026); remaining P2 items renumbered.
 > September 2026: Concall Trend Agent, portfolio-wide Concall Calendar, and Concall Insights shipped — moved to Completed (Concall Intelligence Extensions, Sep 2026).
 > September 2026: Six items added following a backlog brainstorm — P1 Item 4 (AI Concall Chat via Advisor tool-use), P2-4..P2-6 (YouTube transcript fallback, News-to-Portfolio Impact Agent, Weekly Portfolio Copilot digest), P3 Items 10-11 (LangGraph Portfolio Advisor Agent, Multi-user Goal Tracker).
+> November 2026: Backlog cleaned to match the codebase. Removed items whose features no longer exist (Gmail CAS auto-import and its polling/job-store items, GitHub Actions cron alerting — the scheduled jobs and `routes/cron.js` were removed in Oct 2026). Moved CSP headers and the Advisor concall tools to Completed. Portfolio sharing, the Watchlist tab and the Tax tab were also removed from the product. Items below that mention cron, Watchlist, sharing or Kite/Breeze in the Completed section are historical.
 
 ---
 
 ## 🟠 P1 — High Value / Near-term
 
-### 1. Recurring Transaction Templates (SIP Automation)
+### P1-1 · Recurring Transaction Templates (SIP Automation)
 Users manually log every monthly SIP transaction. A recurring-transaction template would:
 - Let users define a template (fund, amount, day-of-month)
 - Auto-create a pending transaction entry on schedule with a one-click confirm step
 - Distinct from Budget2Tab's recurring *detection* — this creates portfolio transactions
 
-### 2. Family Consolidated Tax Report (Excel)
+### P1-2 · Family Consolidated Tax Report (Excel)
 Export a per-member and consolidated LTCG/STCG summary as a multi-sheet Excel workbook formatted for CA filing — including grandfathering calculations and a summary row matching ITR Schedule 112A format.
-
-### 3. Gmail check-now — frontend polling integration
-`routes/gmail.js` now returns `{job_id}` immediately (P1-1 above), but the Gmail status panel frontend still expects the old synchronous response structure.  
-Update the Gmail status panel in the frontend to:
-- Call `POST /api/gmail/check-now` and get `{started, job_id}`
-- Show a "Checking…" spinner
-- Poll `GET /api/gmail/job/:id` every 3 s until status is `done` or `error`
-- Surface the result (emails found, CAS imported, errors) as before
-
-### 4. AI Concall Chat — as Advisor tool-use, not a separate chat surface
-**Recommendation from architecture review (Sep 2026):** don't build a standalone chat UI inside `ConcallPanel.jsx`, and don't fork `AdvisorTab.jsx` into a "concall mode." The Advisor already runs a full agentic tool-use loop (`routes/ai.js` — `ADVISOR_TOOLS` + streaming SSE + tool-call chips already rendered in `AdvisorTab.jsx`) with conversation history and persistence solved. Adding transcript-grounded Q&A is a two-tool extension of that existing loop, not a new feature surface:
-- `get_concall_analysis(holding)` — cheap Supabase read of the latest stored `concall_analyses` row (score, signal, summary, bull/bear points, trend if already computed). No network call.
-- `get_concall_transcript(holding, quarter)` — runs the existing provider chain (`lib/concall/providers.js`) live for direct quote-level Q&A ("what exactly did management say about margins"). No new persistence needed for v1 — re-fetches on demand, same reliability profile as the existing `/analyze` endpoint. Revisit if latency/flakiness becomes a problem (store the prepared transcript text in Supabase Storage alongside the existing `artifacts` bucket).
-
-This means a user can ask "What did Infosys say about margins last quarter?" in the same Advisor chat they already use for portfolio questions, and get the tool-call chip UI for free.
-**Optional follow-up:** a "💬 Ask the Advisor" button in `ConcallPanel.jsx` that switches to the Advisor tab with the holding + quarter baked into a pre-filled question, for discoverability from the panel where the user is already looking at one holding's call.
-**Files:** `routes/ai.js` (ADVISOR_TOOLS array + switch/case dispatcher + system prompt mention), `services/ai-tools.service.js` (new data-fetcher functions, same pattern as `getHoldingsData` etc.).
 
 ---
 
 ## 🟡 P2 — Medium Priority
 
-### P2-1 · CSP Headers
-**File:** `server.js`  
-Helmet CSP is currently disabled (`contentSecurityPolicy: false`) to avoid breaking the Vite SPA. No content security policy in production is an audit finding.  
-**Fix:** Audit exact asset origins (Supabase, Yahoo Finance, CDN scripts) and enable Helmet CSP with a tight allowlist.  
-**Effort:** Medium — needs SPA asset origin audit first.
-
-### P2-2 · Gmail `pendingJobs` — persistent / multi-instance store
-**File:** `routes/gmail.js`  
-`pendingJobs` is an in-process `Map` — lost on server restart, not shared across Render instances if scaled horizontally.  
-**Fix:** Store job state in a `gmail_jobs` Supabase table (or Redis). Add TTL-based cleanup for old jobs.  
-**Effort:** Medium.
-
-### P2-3 · GitHub Actions cron — add failure alerting
-**File:** `.github/workflows/scheduled-jobs.yml`  
-Cron failures are silent unless the user monitors the GitHub Actions tab.  
-**Fix:** Add `on-failure` step that POSTs to a Slack/email webhook, or enable GitHub Actions email notifications for workflow failures.  
-**Effort:** Low.
-
-### P2-4 · YouTube-recording transcript fallback provider
+### P2-1 · YouTube-recording transcript fallback provider
 **File:** `lib/concall/providers.js`  
 Small/midcap concalls often only get an IR-channel YouTube recording, no PDF transcript — NSE (Cloudflare), BSE, Screener, and Tickertape can all come up empty for these. Add a 5th provider that searches the company's official IR YouTube channel (YouTube Data API v3 — needs `YOUTUBE_API_KEY`) and pulls the public auto-caption track for the most recent earnings-call video.  
 **Note:** this is the company's own official video and its own public captions — distinct from, and not to be confused with, scraping a third-party site like Concall.in (whose Terms of Service explicitly forbid that; see the Sep 2026 conversation where that was ruled out).  
 **Effort:** Medium — new provider class + caption-fetch helper, no schema changes.
 
-### P2-5 · News-to-Portfolio Impact Agent
+### P2-2 · News-to-Portfolio Impact Agent
 **File:** `routes/news.js`, `src/features/NewsTab.jsx`  
 The News tab shows a flat chronological feed. Add a per-article relevance pass: for each article tied to a portfolio ticker, ask Claude whether it's likely to move the investment thesis (earnings-relevant, regulatory, management change, competitive threat) and surface a compact impact tag instead of making the user read everything.  
 **Pairs naturally with Concall Insights** — same "is my thesis at risk" framing, different data source (news flow vs. quarterly calls).  
 **Effort:** Medium — one Claude call per new article batch, cached like the existing 15-min RSS cache.
 
-### P2-6 · Weekly Portfolio Copilot digest
+### P2-3 · Weekly Portfolio Copilot digest
+**Prerequisite:** a scheduler — the cron endpoints were removed in Oct 2026, so this needs a new job runner (GitHub Actions schedule or Render cron) first.  
 **Files:** new `routes/cron.js` endpoint, reuses `services/ai-tools.service.js`, `lib/concall/trend.js`, `routes/news.js`, `insertNotification()`  
 Orchestrate the AI features that already exist per-tab (Overview morning brief, AI Tax Strategy, News, Concall Insights) into one scheduled agent run producing a single weekly digest, delivered via the existing notification centre / email digest infrastructure. Only surfaces sections with something to say — skip tax if nothing changed since last week, skip concall if no signal flipped — rather than always running every sub-agent.  
 **Effort:** Medium-High — first genuinely multi-tool orchestration run on a schedule rather than on-demand; a good candidate for the LangGraph experiment below if that's built first.
@@ -103,7 +70,7 @@ High-net-worth users may hold AIF or PMS products. Model these as a new asset ty
 Compare transactions recorded in WealthLens Hub against broker contract note PDFs to surface discrepancies — missing trades, price differences, or quantity mismatches.
 
 ### 9. Collaborative Budget (Shared Budget View)
-Extend portfolio sharing to the Budget tab so couples or families can view, categorise, and annotate joint expenses together.
+Portfolio sharing was removed in Oct 2026 (see `migrations/0011_drop_portfolio_sharing.sql`); the Family Budget already attributes spend per family member. A true multi-login shared budget would need a new sharing model so couples or families can view, categorise, and annotate joint expenses together.
 
 ### 10. AI Portfolio Advisor Agent — Python/LangGraph microservice
 From the original Hub/Pro backlog — never built. A standalone FastAPI service running an actual LangGraph graph (pull holdings → pull Concall Insights + News → reason about cross-holding correlations → produce a cited recommendation), called from `routes/ai.js` the same way `services/cas_casparser_service.py` is already shelled out to for CAS parsing.  
@@ -111,6 +78,15 @@ From the original Hub/Pro backlog — never built. A standalone FastAPI service 
 
 ### 11. Multi-user Goal Tracker (shared/collaborative goals)
 GoalsTab currently models one goal per member with scenario modelling. Extend to shared family goals (e.g. a joint house-down-payment goal) with per-member contribution tracking and a shared progress view, building on the existing portfolio-sharing viewer/editor role infrastructure rather than a new permissions model.
+
+### 12. Upgrade `zod` 3 → 4
+`npm audit` flags `zod` < 4.6.6 (memory use on oversized arrays; GHSA-mrhx-c7xc-m3w5). Mitigated today by capping validation at 5,000 rows in `lib/validate.js`, but the real fix is the zod 4 major upgrade (schema API changes — run the validation tests).
+
+### 13. Split the two remaining long parser functions
+`lib/parsing/cas.js` and `lib/parsing/bank.js` are each ~350 lines in one function. Left alone deliberately during the Nov 2026 refactor to keep behaviour identical; split when next changing CAS or bank parsing.
+
+### 14. Share grouping logic between the desktop and mobile holdings views
+`HoldingsDesktopTable.jsx` and `HoldingsMobileList.jsx` duplicate the grouping and subtotal logic with slightly different groupings. A shared grouping helper would remove the duplication.
 
 ---
 
@@ -143,6 +119,18 @@ XIRR captures the aggregate effect of SIPs but there is no breakdown showing whi
 ## ✅ Completed (Reference)
 
 > These are shipped and live — do not re-add to the active backlog.
+
+### Quality, Security & Structure (Oct–Nov 2026)
+- ✅ **Two code audits** (`AUDIT_2026-11.md`): dependency triage (27 → 1 advisory), route auth sweep, two-user ownership tests, upload/analysis rate limits, body validation (zod, log mode), ownership guards on all update-by-id writes, delete-account flow, CSP in report-only mode with `/csp-report`.
+- ✅ **CSP headers** (was P2-1) — live in `report-only`; see `ROLLOUT_ENFORCEMENT.md` for flipping to enforce.
+- ✅ **AI Concall Chat via Advisor tool-use** (was P1-4) — `get_concall_analysis` and `get_concall_transcript` tools in `routes/ai.js`.
+- ✅ **CAS import rewrite** — keyed atomic `apply_cas_snapshot()`, multi-statement files, keep-newest overlap retirement, demat ETFs classified as `IN_ETF` with AMFI-enriched names.
+- ✅ **SnapTrade** — atomic per-account replace on sync, fund-description classification for US ETFs / bonds, 401(k) support.
+- ✅ **Family Budget** — split transactions across members, per-member category limits, account-alias auto-assignment, essential / discretionary flag.
+- ✅ **Fixed deposits** — explicit maturity lifecycle (Renew / Convert / Close), multi-currency FDs, FD ladder planner.
+- ✅ **Setu Account Aggregator** — consent flow, webhook, geo-block relay (`tools/setu-relay`).
+- ✅ **File-structure refactor** — `App.jsx` 1,019 → ~300 lines; `parsers.js`, `FamilyBudgetTab.jsx`, `providers.js`, `budget.service.js`, `HoldingsTab.jsx`, `StrategyTab.jsx` split into focused modules behind unchanged facades.
+- ✅ **Guard rails in CI** — lint with zero warnings, `react/jsx-no-undef` as an error (it would have caught the missing-import crashes), file-size check, Dependabot.
 
 ### Production-Readiness Fixes (Sep 2026)
 Identified in the Sep 2026 production-readiness review.
@@ -246,18 +234,18 @@ StrategyTab — target allocation sliders, buy/sell amounts, AI rebalancing expl
 - XIRR → CAGR → Simple return cascade
 - CAS PDF import (NSDL/CDSL), SIP bulk import with historical NAVs
 - SnapTrade US brokerage linking; Plaid US bank transaction import
-- Zerodha Kite, Breeze Connect, Setu AA integrations
-- 14+ bank CSV/Excel/PDF parsers (ImportHub); Gmail CAS auto-import (6-hourly)
+- Setu AA integration (Zerodha Kite and Breeze Connect were later removed)
+- 14+ bank CSV/Excel/PDF parsers (ImportHub); Gmail CAS auto-import (6-hourly; removed Oct 2026)
 - AI Advisor — agentic tool use, streaming SSE, conversation persistence
 - Portfolio Morning Brief (streaming); Per-holding AI Analysis; Concall Analysis
-- LTCG/STCG calculator — FIFO lot matching, grandfathering; AI Tax Strategy
+- LTCG/STCG calculator — FIFO lot matching, grandfathering (the Tax tab was removed; the maths now backs the Advisor's tax tool)
 - Budget Tracker — AI Spend Insights, Investment Nudge
 - Goals Tab — scenario modelling, AI gap analysis
-- Watchlist Tab with live price enrichment
+- Watchlist Tab with live price enrichment (removed from the UI)
 - Net worth snapshots — 24-month history, Nifty/S&P benchmark
 - Dividends, Bonus Shares, Rights Issues, SWP tracking
 - Insurance policy tracking; Liabilities panel (true net worth)
-- Portfolio sharing (viewer/editor roles); Excel and PDF export
+- Portfolio sharing (viewer/editor roles; removed Oct 2026); Excel and PDF export
 - Holding-level price and return alerts with email digest
 - FD maturity alerts (7/30/60 days); Stale holdings nudge
 - Calendar Tab with Month Briefing; Members Tab with AI Family Allocation Narrative

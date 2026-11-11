@@ -1,6 +1,6 @@
 # WealthLens Hub — Tools & Technologies
 
-> Version 2.1.0 · Last updated August 2026
+> Version 2.1.0 · Last updated November 2026
 
 A full inventory of every tool, library, API, and service used to build and run WealthLens Hub.
 
@@ -15,7 +15,7 @@ A full inventory of every tool, library, API, and service used to build and run 
 | **Lucide React** | 1.21 | Icon library |
 | **Supabase JS** | 2.108 | Auth client and database queries from the browser |
 
-The frontend is a **single-page application** (SPA) in React 18 using functional components and hooks. The main UI lives in `src/App.jsx` with feature tabs split into `src/features/`. Styling is done with **inline styles** — no CSS framework or component library — giving full control with no extra dependency.
+The frontend is a **single-page application** in React 18 using functional components and hooks. `src/App.jsx` is a thin shell (about 300 lines) that owns state and composes `AppMain` (the tab router), `AppModals`, and the hooks in `src/hooks/`. Each tab lives in `src/features/<tab>/`; tabs and heavy modals are lazy-loaded. Styling is plain CSS with variables (`src/styles.css`), with light and dark themes.
 
 ---
 
@@ -23,7 +23,7 @@ The frontend is a **single-page application** (SPA) in React 18 using functional
 
 | Tool | Version | Purpose |
 |---|---|---|
-| **Node.js** | ≥ 20 | Server runtime |
+| **Node.js** | ≥ 22 | Server runtime |
 | **Express.js** | 4.22 | HTTP server and REST API routing |
 | **express-rate-limit** | 8.5 | Per-route rate limiting |
 | **Helmet** | 8.1 | HTTP security headers (CSP, HSTS, etc.) |
@@ -44,7 +44,7 @@ The backend is a single **ES-module Express server** (`server.js`) with route mo
 | **Supabase Storage** | File storage for document attachments (bucket: `artifacts`) |
 
 ### Database Tables
-`portfolio` · `holdings` · `transactions` · `profiles` · `asset_types` · `artifacts` · `portfolio_shares` · `net_worth_snapshots` · `snaptrade_connections` · `plaid_connections` · `watchlist` · `concall_analyses`
+`portfolio` · `holdings` · `transactions` · `profiles` · `asset_types` · `artifacts` · `net_worth_snapshots` · `snaptrade_connections` · `plaid_connections` · `setu_connections` · `setu_consents` · `concall_analyses` · `budget_statements` · `budget_transactions` · `budget_categories` · `budget_category_limits` · `budget_goals` · `budget_transaction_splits` · `budget_account_aliases` · `audit_logs` · `notifications` · `push_subscriptions` · `import_logs`
 
 ---
 
@@ -96,9 +96,7 @@ Claude is used in **agentic tool-use mode** in the Advisor tab — it can call p
 |---|---|---|
 | **SnapTrade** | OAuth SDK (`snaptrade-typescript-sdk`) | Link US brokerage accounts (Robinhood, Schwab, etc.) and sync holdings |
 | **Plaid** | REST API + Link UI | Link US bank accounts and import transactions |
-| **Zerodha Kite** | API / CSV | Import Indian equity holdings directly |
-| **Breeze Connect (ICICI)** | API | Import ICICI Demat holdings |
-| **Setu Account Aggregator** | AA consent flow + webhook | RBI-compliant aggregation of Indian bank/investment accounts |
+| **Setu Account Aggregator** | AA consent flow + webhook | RBI-compliant aggregation of Indian bank/investment accounts; Setu blocks non-India IPs, so requests go through the small relay in `tools/setu-relay` |
 
 ---
 
@@ -106,7 +104,8 @@ Claude is used in **agentic tool-use mode** in the Advisor tab — it can call p
 
 | Tool | Purpose |
 |---|---|
-| **Resend** | Transactional email delivery for alerts, FD reminders, and stale nudges |
+| **Resend** | Transactional email delivery for alert digests |
+| **web-push (VAPID)** | Browser push notifications |
 | **alert-mailer.js** | Internal service that formats and dispatches alert digest emails |
 
 ---
@@ -128,10 +127,13 @@ Claude is used in **agentic tool-use mode** in the Advisor tab — it can call p
 
 | Tool | Purpose |
 |---|---|
-| **Vitest** | Unit test runner |
+| **Vitest** 4 | Test runner for ~30 suites (~350 tests) |
 | **tests/parsers.test.js** | Tests for all bank statement CSV/PDF parsers |
 | **tests/tax.test.js** | Tests for LTCG/STCG calculation logic and FIFO lot matching |
 | **tests/guards.test.js** | Tests for ownership guard logic |
+| **tests/ownership.test.js** | Drives ~30 routes as a second user to prove no cross-user reads or writes |
+| **tests/unscopedWrites.test.js** | Fails if a database write is not scoped to its owner or an id-keyed upsert skips the ownership check |
+| **tests/migrationsDocs.test.js** | Fails if a migration is not listed in `migrations/README.md` |
 
 ---
 
@@ -140,9 +142,8 @@ Claude is used in **agentic tool-use mode** in the Advisor tab — it can call p
 | Tool | Purpose |
 |---|---|
 | **Render** | Primary cloud deployment (`render.yaml` included) |
-| **Railway** | Alternative deployment (`railway.json` included) |
-| **Replit** | Quick-start / prototype deployment (`.replit` included) |
-| **Supabase** | Managed PostgreSQL + Auth + Storage (no self-hosting required) |
+| **GitHub Actions** | CI (lint with zero warnings, build, `npm audit`, JS and Python tests) and a twice-weekly Supabase keep-alive |
+| **Dependabot** | Weekly npm and monthly GitHub Actions update PRs || **Supabase** | Managed PostgreSQL + Auth + Storage (no self-hosting required) |
 
 ---
 
@@ -154,6 +155,7 @@ Claude is used in **agentic tool-use mode** in the Advisor tab — it can call p
 | **eslint-plugin-react** | 7.37 | React-specific lint rules |
 | **eslint-plugin-react-hooks** | 5.0 | Hooks rule enforcement |
 | **Prettier** | 3.3 | Code formatting |
+| **scripts/check-file-size.mjs** | — | Warns about source files over 800 lines (`npm run check:size`) |
 | **Python (pip)** | ≥ 3.x | Used by `casparser` — installed as a postinstall step |
 
 ---
@@ -186,6 +188,6 @@ Supabase Storage       ├── AMFI / MFAPI (MF NAV)
                        ├── SnapTrade / Plaid (brokers)
                        ├── Setu AA (Indian banks)
                        ├── Resend (email)
-                       └── Gmail API (CAS emails)
+                       └── Web Push (VAPID)
 ```
 

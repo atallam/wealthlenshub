@@ -1,5 +1,8 @@
 # WealthLens Hub — Codebase Audit & Remediation Plan
 
+> **Historical (July 2026).** Superseded by [AUDIT_2026-11.md](AUDIT_2026-11.md), which records what was fixed since and the latest results. Kept for reference.
+
+
 **Audit date:** 2026-07-02
 **Scope:** Full codebase — maintainability, CRUD correctness, security, UI/UX
 **Status:** Audit only. No code changed. This document is the plan to review before touching code.

@@ -1,5 +1,7 @@
 # Deep Restructure — Execution Plan (P3-2, P3-3, P3-5, P4-2)
 
+> **Status (November 2026): complete.** P3-2 (service layer) and P3-3 (marked obsolete) are done. P3-5 is done: `App.jsx` went from 1,126 lines to ~300 and now composes `AppMain`, `AppModals` and hooks; the large tabs and services were later split further (see `AUDIT_2026-11.md`, Phase 6). P4-2: `ImportHub` is the single import entry point with `SourceStatus` banners. The text below is the original plan and progress log, kept for history. Mentions of Kite, Breeze, Gmail, cron and Watchlist refer to features removed in Oct 2026.
+
 These four items are large and cross-file. Do them **with a running build/test loop**
 (`npm run dev` + `npm test`), one commit per numbered step, so each change is
 verifiable before the next. Order matters: backend first (P3-2, P3-3), then the

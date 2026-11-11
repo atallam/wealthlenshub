@@ -1,259 +1,201 @@
 # WealthLens Hub — Feature Reference
 
-> Version 2.1.0 · Last updated August 2026
+> Version 2.1.0 · Last updated November 2026
 
-This document describes every feature available in WealthLens Hub in detail, organised by the tab/module in which it appears.
+This document describes what the app does today, organised by the tab or module where each feature appears. For setup see the [README](../README.md); for what is planned see [BACKLOG.md](BACKLOG.md).
+
+The app has nine tabs: **Overview, Holdings, Goals, Strategy, Family, Family Budget, Calendar, Advisor, News**. On mobile the bottom bar shows Overview, Holdings, Family Budget and Advisor; the rest sit in a "more" sheet.
+
+Features that were removed and are *not* in the app any more: the Tax tab (tax maths now backs the Advisor's tax tool), the Watchlist tab, portfolio sharing, Zerodha Kite / Breeze Connect imports, Gmail CAS auto-import, and the scheduled cron jobs.
 
 ---
 
 ## 1. Overview Tab
 
-The landing screen users see after login. It gives an at-a-glance financial pulse for the day.
-
-- **Portfolio Morning Brief** — AI-generated streaming narrative (powered by Claude) summarising overnight market moves, top movers in the portfolio, and actionable notes for the day.
-- **Net Worth KPI tiles** — Total invested, current value, absolute gain/loss, and overall return % displayed as prominent cards.
-- **Asset-class breakdown** — Pie / donut split of portfolio by asset class (Indian stocks, US stocks, Mutual Funds, FD, PPF, EPF, Real Estate, Crypto, etc.).
-- **Top gainers / losers** — Holdings sorted by absolute and percentage return for quick scanning.
-- **Benchmark comparison** — Net worth plotted against Nifty 50 and S&P 500 over the past 24 months.
-- **Stale holdings banner** — Amber alert if any manual holdings (FD, PPF, Cash, etc.) haven't been updated past their staleness threshold.
+- **Net worth tiles** — invested, current value, gain/loss and return %, with INR and USD handled per holding
+- **AI morning brief** — a short streaming portfolio summary from Claude
+- **Asset allocation** — donut split by asset class
+- **Member breakdown** — value and share per family member
+- **Wealth progression** — net worth over time against Nifty 50 and S&P 500
+- **Health score** — a summary score of diversification and portfolio hygiene
+- **SIP analytics** — what you invest monthly and how it has performed
+- **Liabilities panel** — loans with amortisation, so net worth is assets minus liabilities
+- **Protection coverage** — insurance cover held against what you have entered
+- **NRI summary** — appears when the portfolio has NRI-relevant holdings
+- **Data freshness** — which member / depository statement each imported holding came from and how old it is
 
 ---
 
 ## 2. Holdings Tab
 
-The core portfolio management screen.
+### 2a. Holding management
+- Add, edit and delete holdings across stocks, ETFs, mutual funds, FD, PPF, EPF, bonds, crypto, cash, real estate, insurance and other; add custom asset types in Settings
+- Assign each holding to a family member
+- Holdings are grouped into **US**, **Indian** and **Other** assets with a total, invested amount and gain per group; US assets stay in USD with an INR equivalent
+- Filter by asset type; sort by any column; switch to a stale-only view
+- Mobile shows swipeable cards instead of the table
+- **Demo mode** loads sample data for exploring
 
-### 2a. Holding Management
-- Add, edit, and delete holdings across **13 asset types**: IN_STOCK, IN_ETF, US_STOCK, US_ETF, MF, FD, PPF, EPF, REAL_ESTATE, CRYPTO, US_BOND, CASH, OTHER.
-- Custom asset types — create your own categories beyond the built-in 13.
-- Per-holding **document attachments** — upload PDFs, images, or statements (up to 15 MB per file) stored in Supabase Storage with 5-minute signed URL access.
-- Assign each holding to a **family member** for multi-member attribution.
-- **Liabilities panel** — enter loan balances or other liabilities; the dashboard shows true net worth (assets − liabilities).
-
-### 2b. Live Price Refresh
-| Asset Class | Primary Source | Fallback |
-|---|---|---|
-| Indian Stocks | Twelve Data (.NS / .BO) | Yahoo Finance |
-| US Stocks / ETFs | Twelve Data | Yahoo Finance |
-| Mutual Fund NAV | AMFI → MFAPI | — |
-| USD/INR FX rate | exchangerate-api | Yahoo USDINR=X |
-
-Price refresh also auto-triggers a net-worth snapshot.
-
-### 2c. Return Calculation
-Returns cascade through three methods until one succeeds:
-1. **XIRR** — Newton-Raphson from the full transaction history (most accurate).
-2. **CAGR** — Compounded annual growth using purchase date and quantity.
-3. **Simple return** — (current − invested) / invested.
-
-### 2d. Per-Holding AI Analysis
-- "✦ Analyse" button on each holding opens an AI panel.
-- Claude analyses the holding in the context of the full portfolio and provides a structured view: valuation, risk, recommendation, and fit within the user's overall allocation.
-
-### 2e. Concall Analysis
-- "✦ Concall" panel fetches the latest earnings call transcript from a multi-provider chain: **NSE filings → BSE filings → Tickertape → Screener → Motley Fool**.
-- AI summarises key management commentary, guidance, risks, and standout quotes.
-- Supports 250+ BSE stock codes with dynamic fallback ticker search.
-
-### 2f. Holding-Level Alerts
-- Set price-threshold or return-threshold alerts on any holding.
-- Bell icon in the desktop row opens an inline `HoldingAlertPanel`.
-- Scheduled evaluation and email digests were removed along with the cron jobs (Oct 2026); alerts are not evaluated automatically.
-
-### 2g. Stale Holdings Nudge
-> Scheduled email nudges were removed with the cron jobs (Oct 2026).
-
-Detects manual holdings that haven't been updated past per-type thresholds:
-
-| Type | Threshold |
+### 2b. Live prices
+| Asset | Source |
 |---|---|
-| FD, PPF, EPF | 90 days |
-| Real Estate | 180 days |
-| Cash | 14 days |
-| Insurance | 365 days |
-| Other | 60 days |
+| Indian and US stocks / ETFs | Twelve Data, falling back to Yahoo Finance |
+| Mutual fund NAV | AMFI, falling back to MFAPI |
+| USD/INR | exchangerate-api, falling back to Yahoo |
 
-An amber in-app banner appears with one-click filter to view only stale rows. A weekly email digest lists all stale holdings sorted most-stale first.
+A badge shows when prices last refreshed and lists holdings that did not update with the latest run. Refreshing also saves a net-worth snapshot.
+
+### 2c. Returns
+XIRR from the transaction ledger where possible, then CAGR, then simple return. Cost basis is lot-based (FIFO) and viewable per holding.
+
+### 2d. Transactions
+- Per-holding transaction list: buys, sells, SIP instalments, dividends, bonus shares, rights issues and **SWP** (tracked separately from sells so withdrawals do not distort returns)
+- Mutual fund transaction form with historical NAV lookup
+- Broker **tradebook import** for transaction history
+- Ledger inference can build BUY/SELL history from successive monthly statements
+
+### 2e. Fixed deposits
+- FD scan: upload a certificate and AI fills in the details
+- FD ladder planner
+- **Matured FD banner** at the top of the tab with Renew (next term), Convert to cash and Mark closed
+
+### 2f. Holding-level tools
+- **Alerts** — set a price or return threshold from the bell icon on any row
+- **Documents** — attach PDFs and images to a holding
+- **AI analysis** — valuation, risk and portfolio fit for one holding
+- **Concall analysis** — fetch the latest earnings-call transcript (NSE, BSE, Screener, Tickertape, then Motley Fool; US stocks try API Ninjas and EarningsCalls.dev first when keys are set) and get an AI summary with a signal and score, plus a quarter-on-quarter trend
+- **Mutual fund overlap** — appears with two or more funds and shows shared stocks pairwise
+
+### 2g. Stale-data nudges
+Manual holdings are flagged when they pass a per-type threshold (FD / PPF / EPF 90 days, real estate 180, cash 14, insurance 365, other 60 — configurable in Settings). An amber banner offers a one-click filter. Scheduled email nudges were removed with the cron jobs.
+
+### 2h. Export
+An Export menu downloads an Excel workbook or opens a print-ready PDF report, either for the rows currently on screen or for everything.
 
 ---
 
-## 3. Members Tab
+## 3. Goals Tab
 
-- **Add / manage family members** — each member has a name and optional avatar.
-- **Member-filtered views** — all tabs (Holdings, Tax, Goals) can be scoped to one member.
-- **AI Family Allocation Narrative** — streaming Claude summary of how assets are distributed across family members, with diversification commentary.
-- **Allocation chart** — visual split of portfolio value per member.
+- Create goals with a target amount, date and member
+- Status against target using portfolio value and expected returns
+- **Goal planner** — models the gap and what would close it, with AI commentary
+- Goal-behind-schedule and goal-conflict warnings also surface in Strategy
 
 ---
 
-## 4. Import Hub
+## 4. Strategy Tab
 
-Unified import interface supporting multiple data sources.
+- **Alerts** — price and return thresholds, FD maturity and other rules, shown with a human-readable description; deleting an alert offers undo; an **email digest** button sends the currently triggered alerts
+- **Triggered alerts** panel for anything firing right now
+- **Rebalancing** — choose a member, set a target allocation (with presets) and a cash amount, and get a buy/sell trade list; **AI explanation** of the plan; copy the plan to the clipboard; hints for redirecting SIPs
+- **Long-term-gain drill-down** — see which holdings a trim would come from and their holding periods
+- **Warnings** — goal conflicts, goals behind schedule, FD maturity
 
-| Source | Format | Notes |
+---
+
+## 5. Family Tab
+
+- Add and edit family members; filter every tab by member
+- Member summary with allocation and totals
+- AI narrative on how assets are spread across the family
+
+---
+
+## 6. Family Budget Tab
+
+Sub-views: **Overview, Transactions, Categories, Goals, Import**.
+
+- **Import** — CSV, Excel and PDF statements from 14+ Indian and US banks (HDFC, ICICI, SBI, Axis, Kotak, PNB, Bank of Baroda, Canara, Union Bank, IDFC First, IndusInd, Yes Bank, RBL, Standard Chartered, HSBC, IDBI, Federal Bank and US banks); duplicate statements are detected; the account holder is matched to a family member, and card / account last-4 aliases are remembered so repeat imports assign themselves
+- **Plaid** — optional US bank transaction sync
+- **Categories** — auto-categorisation from editable keywords, manual recategorise, rename (existing transactions follow), essential vs. discretionary flag, icon and colour
+- **Split transactions** — divide one transaction across family members
+- **Limits** — a monthly limit per category, with optional per-member overrides
+- **Insights** — essential / goals / discretionary view, merchant rollup, recurring-spend detection, cash-flow and trend charts, period selector (month, quarter, year, all time) and member filter
+- **Budget goals** — savings targets tracked inside the budget
+- Transaction descriptions and balances are encrypted at rest
+
+---
+
+## 7. Calendar Tab
+
+- Month view of FD and policy maturities, insurance premiums, SIP dates and your alerts
+- Standing India tax and savings dates: advance-tax instalments, ITR deadlines, PPF contribution dates, 80C / ELSS last date
+- **Concall outlook** — expected next earnings-call windows for holdings, upgraded to confirmed dates when a board-meeting notice is found
+- Filter by event type
+
+---
+
+## 8. Advisor Tab
+
+- Streaming chat with **tool use**: Claude calls tools to fetch holdings, portfolio summary, transactions, goal progress, tax summary (current Indian LTCG/STCG rules), budget summary, net-worth history, FD maturities, and concall analysis or transcripts
+- Tool calls are shown as chips so you can see where an answer came from
+- Dynamic suggested questions based on the current portfolio
+
+---
+
+## 9. News Tab
+
+- Headlines tied to your holdings (Yahoo Finance), plus Indian market and macro RSS feeds including ET Markets, Livemint, RBI and SEBI
+- Category filter (All / Indian / US / Macro) and per-stock chips
+
+---
+
+## 10. Import Hub
+
+Opened from the header and the Holdings tab. Sources:
+
+| Group | Source | Notes |
 |---|---|---|
-| CAS PDF (NSDL/CDSL) | PDF | PAN-based password, multi-holder mapping |
-| SIP Bulk Import | Manual entry | Fetches historical NAVs month-by-month from MFAPI |
-| SnapTrade | OAuth brokerage link | Robinhood, Schwab, and others |
-| Plaid | OAuth bank link | US bank transaction import |
-| Zerodha Kite | API / CSV | Direct broker import |
-| Breeze Connect (ICICI) | API | Direct broker import |
-| Setu Account Aggregator | AA consent flow | RBI-compliant Indian account data |
-| ImportHub | CSV / Excel / PDF | 14+ Indian and US bank statement parsers |
-| Gmail CAS Auto-import | Gmail OAuth | Scans inbox for CAS emails every 6 hours |
+| India | **NSDL / CDSL CAS** | PAN-protected PDF read with `casparser`. Imports are keyed and atomic, support multi-statement files and let you keep only the newest of a fund held at two depositories. Demat ETFs are classified as ETFs, and fund names and NAVs come from AMFI |
+| India | **Broker tradebook** | Transaction history |
+| India | **Fixed deposit** | Manual or AI scan |
+| India | **Account Aggregator (Setu)** | RBI consent flow for bank and investment data |
+| US / Global | **SnapTrade** | Read-only brokerage sync including 401(k); each sync replaces that account's positions atomically |
+| Manual | **CSV / Excel** | 20+ broker formats auto-detected (Zerodha, Groww, ICICI Direct, HDFC Securities, Upstox, Angel One, Schwab, Fidelity, Robinhood, Vanguard, IBKR, E*TRADE, Coinbase, Merrill, JPMorgan, Webull, SoFi, Wealthfront, Betterment, Firstrade, Ally, Public, Tastytrade) plus a generic fallback |
+| Manual | **Add manually** | Any holding by hand |
+
+Connected sources show a status banner (connected, needs re-auth, last synced). Rows are validated on import and problems are flagged without blocking the rest.
 
 ---
 
-## 5. Budget Tracker (Budget Tab)
+## 11. Net Worth Snapshots
 
-Comprehensive expense tracking with bank-statement import and AI insights.
-
-- **14+ bank parsers** — supports CSV, Excel, and PDF statements from HDFC, ICICI, SBI, Axis, Kotak, Zerodha, and major US banks.
-- **Plaid sync** — real-time US bank transaction pull (sandbox / development / production).
-- **Auto-categorisation** — transactions are bucketed into categories (Food, Transport, EMI, etc.) automatically.
-- **Manual categorisation** — edit, split, or recategorise any transaction.
-- **Server-side search + deduplication** — prevents double-importing the same statement.
-- **AI Spend Insights** — after each import, Claude generates a streaming spend narrative: top categories, anomalies, and a Spending→Investment Nudge suggesting what portion of discretionary spend could be redirected to savings.
-- **Editable CAGR** — set a personalised expected return rate used in nudge calculations.
+Saved on every price refresh with a rolling history, charted against Nifty 50 and S&P 500.
 
 ---
 
-## 6. Tax Tab
+## 12. Notifications & PWA
 
-Full Indian capital-gains tax analytics.
-
-- **LTCG / STCG calculator** — FIFO lot matching across all holdings.
-- **Financial year selector** — view tax liability for any past or current year.
-- **Grandfathering** — January 2018 fair-value grandfathering for equity LTCG.
-- **Tax-loss harvesting hints** — identifies holdings where realising a loss now would offset gains.
-- **LTCG exemption headroom** — shows how much of the ₹1 lakh LTCG exemption remains.
-- **AI Tax Strategy (streaming)** — Claude generates a 3-step personalised action plan covering LTCG exemption usage, harvest candidates, FD renewal timing, and regime-switch analysis.
+- **In-app notification centre** from the header bell, with unread badge and mark-read / clear
+- **Web Push** (VAPID) notifications, toggled in Settings
+- Installable PWA with a service worker, offline cache and an offline queue for transactions entered without a connection
+- Mobile navigation, swipe gestures and touch-sized controls
 
 ---
 
-## 7. Goals & Planning Tab
+## 13. Settings & Privacy
 
-Goal-based financial planning with AI gap analysis.
-
-- **Create goals** — set a target amount, target date, and link to a specific member.
-- **Progress tracking** — current portfolio value vs. goal target shown as a progress bar with projected shortfall/surplus.
-- **AI Goal Gap Analysis** — Claude explains what rate of return or SIP amount is needed to close any gap.
-- **Scenario modelling** — Goal Plan Modal lets users model different contribution amounts and expected returns.
-- **Amortisation calculator** — compute EMI, total interest, and amortisation schedule for loans or FDs.
-- **FD Scan Sheet** — lists all FDs with maturity dates, expected interest, and days-to-maturity.
-- **FD maturity alerts** — email reminders 7, 30, and 60 days before FD maturity.
+- **Appearance** — light and dark theme
+- **Value masker** — an eye toggle in the header hides amounts on screen (session only)
+- **Balance refresh reminders** — staleness thresholds per asset type
+- **Government scheme rates** — PPF / EPF rates used for projections
+- **Push notifications** toggle
+- **Delete your account and all data** — typed-email confirmation; removes Plaid / SnapTrade links, stored files and every per-user table
 
 ---
 
-## 8. Watchlist Tab
+## 14. Audit Log
 
-- Add any stock, ETF, or MF to a personal watchlist independent of holdings.
-- **Live price enrichment** — prices refreshed from the same sources as holdings.
-- **Target price notes** — annotate each watchlist item with a buy-target or thesis note.
-- CRUD operations backed by the `watchlist` Supabase table.
+Every data-changing action is recorded with timestamp, action and affected record; secrets are redacted by key pattern. The Audit Log panel supports date-range filtering and CSV export.
 
 ---
 
-## 9. AI Advisor Tab
+## 15. Security
 
-A full conversational AI interface with deep portfolio awareness.
+- Supabase Auth with Google, GitHub and email / password; a JWT is required on every `/api` route (the Setu webhook uses its own shared secret)
+- Ownership checks on every write; tests fail when a write is not scoped to its owner
+- AES-256-GCM encryption for PAN, tokens and budget data
+- Zod request-body validation (`BODY_SCHEMA_MODE`), Content-Security-Policy (`CSP_MODE`), `helmet`, global and per-user upload / analysis rate limits
+- Uploads are filtered by extension and size; errors are masked in production
 
-- **Agentic tool-use loop** — Claude can call portfolio tools (fetch holdings, run tax calc, look up a price) mid-conversation and return grounded answers.
-- **Streaming responses** — token-by-token output for a real-time feel.
-- **Conversation persistence** — chat history stored per session; users can resume prior conversations.
-- **Dynamic suggested questions** — context-aware question chips change based on the current portfolio state.
-- **Full portfolio context** — all holdings, transactions, member allocations, and recent market data are available to the AI on every turn.
-
----
-
-## 10. Strategy Tab
-
-- **Investment strategy builder** — Claude helps craft a personalised investment policy statement (IPS) based on member goals, risk tolerance, and current allocation.
-- Outputs a structured strategy document the user can save and revisit.
-
----
-
-## 11. Calendar Tab
-
-- **Monthly financial calendar** — events plotted on a calendar (FD maturities, SIP dates, dividend expected dates, alert trigger dates).
-- **Month Briefing (streaming)** — at the start of each month, Claude generates a narrative covering upcoming events, what to act on, and which holdings to review.
-
----
-
-## 12. Net Worth Snapshots
-
-- Automated 24-month rolling history of total net worth.
-- Snapshots auto-triggered on every price refresh.
-- Charted against Nifty 50 and S&P 500 benchmarks for relative performance view.
-
----
-
-## 13. Dividends & Cash Events
-
-- Track dividends received per holding.
-- Distinct event types: **Dividend**, **Bonus Shares**, **Rights Issue**, **Other Cash Event**.
-- **SWP (Systematic Withdrawal Plan)** tracked separately from SELL transactions so withdrawals don't distort return calculations.
-
----
-
-## 14. Insurance Tracker
-
-- Track **term life** and **health insurance** policies alongside investment assets.
-- Fields: insurer, policy number, sum assured, annual premium, renewal date.
-- Renewal reminders integrated with the alert/email system.
-
----
-
-## 15. Portfolio Sharing & Collaboration
-
-- Invite any email address as a **viewer** or **editor** on your portfolio.
-- Viewers see the full dashboard in read-only mode via a shared link.
-- Editors can add/edit holdings.
-- Permissions managed per-user via `portfolio_shares` table.
-- Sharing can be revoked at any time.
-
----
-
-## 16. Export
-
-| Format | Endpoint | Contents |
-|---|---|---|
-| Excel (XLSX) | `GET /api/export/xlsx` | 4 sheets: Holdings, Transactions, FDs, Summary |
-| PDF Report | `GET /api/export/report` | Print-optimised HTML → browser PDF |
-
----
-
-## 17. Alert System
-
-- **Holding price alerts** — trigger when a holding crosses a set price.
-- **Holding return alerts** — trigger when a holding's return crosses a set % threshold.
-- **FD maturity alerts** — 7 / 30 / 60-day advance reminders.
-- **Stale holdings nudge** — weekly digest for un-updated manual holdings.
-- All alert emails sent via **Resend** with configurable sender domain.
-
----
-
-## 18. Progressive Web App (PWA)
-
-- Full PWA with service worker and install prompt.
-- Works offline for cached portfolio data.
-- Add-to-home-screen support on iOS and Android.
-- Mobile UX audited: correct font sizes, touch targets, bottom navigation, and modal behaviour on small screens.
-
----
-
-## 19. Audit Log
-
-- Every data-changing operation (add holding, edit transaction, import, delete) is recorded in an audit log.
-- `AuditLogPanel` in the UI lets admins review recent activity with timestamp, action type, and affected record.
-
----
-
-## 20. Authentication & Security
-
-- **Google OAuth** and **GitHub OAuth** via Supabase Auth.
-- **Email / password** login with email verification.
-- All `/api/*` routes protected by JWT Bearer token.
-- Sensitive fields (PAN, Plaid tokens, budget data) encrypted with **AES-256-GCM** using `BUDGET_ENCRYPT_KEY`.
-- Rate limiting on all API routes via `express-rate-limit`.
-- Security headers via `helmet`.
+See [ROLLOUT_ENFORCEMENT.md](ROLLOUT_ENFORCEMENT.md) for moving validation and CSP from log-only to enforce.

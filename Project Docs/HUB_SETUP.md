@@ -28,7 +28,7 @@ Authentication → Providers → Google → Enable.
 Add your Google OAuth Client ID and Secret (from Google Cloud Console).
 
 ### 4. Run the migration
-Paste `migrations/hub_migration.sql` into Supabase SQL Editor → Run.
+Paste `migrations/database.sql` (or `hub_migration.sql` for a Hub-only setup) into the Supabase SQL Editor and run it, then run the numbered migrations in `migrations/` in order (see `migrations/README.md`). Migration 0029 is required for CAS import.
 
 This creates:
 - `profiles` — one row per user, stores display name + currency
@@ -68,7 +68,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
 ### Build & Start
-- Build command: `npm install --include=dev && npx vite build`
+- Use the included `render.yaml` (Node 22, region Singapore, health check `/health`). Its build command also installs the Python CAS parser:
+  `pip install casparser==1.4.1 casparser-isin pymupdf --break-system-packages --quiet && npm install --include=dev && npx vite build`
 - Start command: `node server.js`
 
 ---
@@ -129,19 +130,19 @@ Default types can be edited but not deleted.
 
 ---
 
-## Import Position Options
+## Import Options
 
-### Currently supported
-- CSV from any Indian broker (HDFC Sec, ICICI Direct, Zerodha, Groww, Upstox)
-- Excel/XLSX (holdings export)
-- Bank statements (HDFC, ICICI, Axis, SBI, Kotak) — for Budget module
+Open **Import Hub** from the header or the Holdings tab.
 
-### Recommended for best experience
-- **Zerodha Console**: Holdings → Export CSV
-- **Groww**: Portfolio → Download
-- **CDSL/NSDL CAS**: Request via cdslIndia.com — covers ALL brokers in one file
+- **NSDL / CDSL CAS PDF** — covers all brokers and mutual funds in one file (request it from cdslindia.com or nsdl.co.in); parsed with `casparser`
+- **Broker holdings CSV / Excel** — 20+ formats auto-detected (Zerodha, Groww, ICICI Direct, HDFC Securities, Upstox, Angel One, Schwab, Fidelity, Robinhood, and more)
+- **Broker tradebook** — transaction history
+- **SnapTrade** — US brokerage sync
+- **Account Aggregator (Setu)** — RBI consent flow (set `SETU_ENABLED=true` after running migration 0027)
+- **Fixed deposits** — manual or AI scan; **manual entry** for anything else
+- **Bank statements** (HDFC, ICICI, Axis, SBI, Kotak and others, India and US) — in the Family Budget tab
 
-### On the roadmap
-- CDSL CAS automatic parser
-- Account Aggregator (AA) integration via Setu/Finvu
-- Kuvera direct import
+## Optional production settings
+
+- `BODY_SCHEMA_MODE` and `CSP_MODE` start in permissive modes; see `ROLLOUT_ENFORCEMENT.md` before switching to enforce.
+- `VAPID_*` keys enable push notifications; `RESEND_API_KEY` enables alert emails.
