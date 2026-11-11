@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import {
   LayoutDashboard, BarChart2, Target, Compass,
   Users, CalendarDays, MessageSquare,
@@ -6,7 +6,7 @@ import {
   AlertTriangle,
   Newspaper, TrendingUp,
 } from 'lucide-react';
-import { supabase, signOut } from './supabase.js';
+import { signOut } from './supabase.js';
 import { api } from './lib/api.js';
 import SnapTradeImport from './SnapTradeImport.jsx';
 import NotificationCentre from './components/NotificationCentre.jsx';
@@ -17,8 +17,7 @@ import SetuAAImport from './SetuAAImport.jsx';
 import {
   fmt, fmtCr, fmtINR, fmtUSD, fmtPct,
   fmtCrINR, fmtCrUSD, fmtNative, fmtCrNative, ago, fmtSize,
-  getVal, getInv, getValINR, getInvINR, getInvINRHist,
-  getXIRR, isUSDHolding, getLiveUsdInr, setPpfRate, setEpfRate,
+  isUSDHolding,
 } from './utils.js';
 import { AT, BF, BT, BG, BA, SEED } from './constants.js';
 import './styles.css';
