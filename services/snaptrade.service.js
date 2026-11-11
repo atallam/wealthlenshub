@@ -6,6 +6,7 @@
  */
 import { supabase } from "../lib/db.js";
 import { decrypt } from "../lib/crypto.js";
+import { idsTakenByOthers } from "../lib/guards.js";
 
 /** The user's SnapTrade connection (decrypted secret). Throws if missing — same as before. */
 export async function getSnapConn(userId) {
@@ -50,6 +51,12 @@ export async function deleteAccountHoldings(userId, accountId) {
  */
 export async function replaceAccountHoldings(userId, accountId, rows) {
   if (!rows.length) return deleteAccountHoldings(userId, accountId);
+  // Row ids embed the (client-supplied) account id. An id-keyed upsert with the service key would
+  // overwrite and re-assign another user's row if an id collided, so refuse the whole write instead.
+  try {
+    const taken = await idsTakenByOthers("holdings", rows.map(r => r.id), userId);
+    if (taken.size) return { error: new Error("Import refused: a holding id belongs to another account.") };
+  } catch (e) { return { error: e }; }
   const { error } = await supabase.from("holdings").upsert(rows, { onConflict: "id" });
   if (error) return { error };
   // ids are sanitised to [A-Za-z0-9_-] by the route, so quoting them in the filter is safe

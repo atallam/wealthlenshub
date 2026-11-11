@@ -52,12 +52,18 @@ describe("service-key writes are owner-scoped", () => {
   });
 
   it("only server-generated or ownership-checked ids are used with upsert onConflict:'id'", () => {
-    const allowedFiles = new Set(["services/plaid.service.js", "services/setu.service.js"]); // plaid: id is server-made; setu: idsTakenByOthers()
+    const allowedFiles = new Set(["services/plaid.service.js", "services/setu.service.js", "services/snaptrade.service.js"]); // plaid: id is server-made; setu + snaptrade: idsTakenByOthers()
     const offenders = DIRS.flatMap(files).map((f) => f.replaceAll("\\", "/")).filter((rel) => {
       const s = fs.readFileSync(path.join(ROOT, rel), "utf8");
       return /onConflict:\s*"id"/.test(s) && !allowedFiles.has(rel);
     });
     expect(offenders).toEqual([]);
+  });
+
+  it("snaptrade.service guards its id-keyed upsert with idsTakenByOthers", () => {
+    const s = fs.readFileSync(path.join(ROOT, "services/snaptrade.service.js"), "utf8");
+    expect((s.match(/idsTakenByOthers\(/g) || []).length).toBeGreaterThanOrEqual(1);
+    expect(s.indexOf("idsTakenByOthers(")).toBeLessThan(s.indexOf('onConflict: "id"'));
   });
 
   it("setu.service guards its id-keyed upserts with idsTakenByOthers", () => {
