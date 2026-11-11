@@ -1,4 +1,5 @@
-// HoldingsTab.jsx — lines 2866–3205 of App.jsx
+// HoldingsTab.jsx — Holdings tab: filters, export menu, grouped table (desktop) and cards (mobile).
+// Large pieces live beside it: holdingsParts.jsx, HoldingsDesktopTable.jsx, HoldingsMobileList.jsx, StaleHoldingsBanner.jsx.
 
 import { useState } from "react";
 import MFOverlapPanel from "./MFOverlapPanel.jsx";

@@ -6,7 +6,7 @@ import { FG } from './Overlay.jsx';
 
 /* ══════════════════════════════════════════════
    TRANSACTION PANEL (per holding)
-   Extracted from App.jsx lines 452–727
+   Extracted from App.jsx
 ══════════════════════════════════════════════ */
 const USD_TYPES = new Set(["US_STOCK","US_ETF","US_BOND","CRYPTO"]);
 

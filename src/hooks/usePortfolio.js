@@ -35,7 +35,6 @@ export function usePortfolio(user) {
   const loadSucceeded = useRef(false);
 
   // ── Load data when signed in (fully parallelized) ──
-  // Lines 1163–1213 in App.jsx
   useEffect(() => {
     if (!user) return;
     (async () => {

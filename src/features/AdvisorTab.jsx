@@ -1,4 +1,4 @@
-// AdvisorTab.jsx — lines 4580–4685 of App.jsx
+// AdvisorTab.jsx — AI advisor chat tab.
 
 const FALLBACK_QUESTIONS = [
   "What is my total portfolio value today?",

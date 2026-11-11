@@ -4,8 +4,8 @@ import { BA } from "../../constants.js";
 /**
  * useAlertForm — Strategy tab "Add Alert" form state.
  * Extracted from App.jsx (P3-5). Modal visibility stays in useUiState's shared
- * `modal` state; the modal's markup itself is still inline in App.jsx (not yet
- * extracted to its own component) — this hook only owns the form fields.
+ * `modal` state; the modal markup is AlertFormModal.jsx (rendered by AppModals.jsx)
+ * — this hook only owns the form fields.
  */
 export function useAlertForm() {
   const [alertForm, setAlertForm] = useState(BA);

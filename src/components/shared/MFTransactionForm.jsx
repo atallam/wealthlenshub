@@ -4,7 +4,7 @@ import { FG, MA } from './Overlay.jsx';
 
 /* ══════════════════════════════════════════════
    MF TRANSACTION FORM
-   Extracted from App.jsx lines 729–869
+   Extracted from App.jsx
 ══════════════════════════════════════════════ */
 export default function MFTransactionForm({ holding, isMF, isUS, fx, txnForm, setTxnForm, onAddTxn, onClose, onFetchFx, fxLoading }) {
   const [mfAmount,   setMfAmount]   = useState("");

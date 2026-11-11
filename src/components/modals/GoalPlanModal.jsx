@@ -6,7 +6,7 @@ import { readSSEStream } from '../../hooks/useGoalAI.js';
 
 /* ══════════════════════════════════════════════
    GOAL PLAN MODAL — AI-generated goal fulfillment plan
-   Extracted from App.jsx lines 6189–6344
+   Extracted from App.jsx
 ══════════════════════════════════════════════ */
 
 /**

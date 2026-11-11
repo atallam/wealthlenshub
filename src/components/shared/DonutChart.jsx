@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════════════
    DONUT CHART — pure SVG donut chart
-   Extracted from App.jsx lines 6345–6370
+   Extracted from App.jsx
 ══════════════════════════════════════════════ */
 
 // AT asset type map must be passed in or imported from a shared constants file.

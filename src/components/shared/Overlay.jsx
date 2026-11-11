@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════════════
    OVERLAY / FG / MA — shared layout helpers
-   Extracted from App.jsx lines 6743–6745
+   Extracted from App.jsx
 ══════════════════════════════════════════════ */
 
 import { useEffect, useRef } from "react";

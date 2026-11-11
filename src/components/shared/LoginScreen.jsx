@@ -3,7 +3,7 @@ import { signInWithGoogle, signInWithGitHub, signInWithEmail, signUpWithEmail, r
 
 /* ══════════════════════════════════════════════
    LOGIN SCREEN
-   Extracted from App.jsx lines 233–450
+   Extracted from App.jsx
 ══════════════════════════════════════════════ */
 export default function LoginScreen({ error: initError }) {
   const [mode,setMode]=useState("signin");

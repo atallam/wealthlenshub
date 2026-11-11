@@ -5,7 +5,7 @@ import { useToast } from './Toast.jsx';
 
 /* ══════════════════════════════════════════════
    ARTIFACT PANEL (per holding)
-   Extracted from App.jsx lines 871–964
+   Extracted from App.jsx
 ══════════════════════════════════════════════ */
 
 // api helper — fetches its own session token from Supabase

@@ -2,7 +2,7 @@ import { Overlay } from '../shared/Overlay.jsx';
 
 /* ══════════════════════════════════════════════
    IMPORT MODAL — multi-step CSV/PDF import wizard
-   Extracted from App.jsx lines 6371–6742
+   Extracted from App.jsx
 ══════════════════════════════════════════════ */
 
 /**

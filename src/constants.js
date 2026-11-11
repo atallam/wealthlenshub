@@ -1,5 +1,5 @@
 // Static form blanks and seed data extracted from App.jsx
-// Import in App.jsx: import { AT, BF, BT, BG, BA, SEED } from './constants.js'
+// Import what you need by name: import { AT, BF, BT, BG, BA, SEED } from './constants.js'
 
 // ── Asset type metadata ───────────────────────────────────────────
 export const AT = {

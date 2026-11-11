@@ -1,4 +1,4 @@
-// OverviewTab.jsx — lines 2480–2865 of App.jsx
+// OverviewTab.jsx — Overview tab: net worth, allocation, benchmark and member summary.
 // Props: all from parent App component (no local-only state to extract)
 
 import { useState, useRef, useEffect } from 'react';

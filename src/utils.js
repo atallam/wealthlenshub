@@ -1,5 +1,5 @@
 // Pure utility functions extracted from App.jsx
-// Import this in App.jsx: import { calcFD, calcAccr, isUSDHolding, getVal, getInv, toINR, toINRCurrent, toUSD, fxFor, getValINR, getInvINR, xirr, getXIRR, fmtINR, fmtUSD, fmtCrINR, fmtCrUSD, fmtNative, fmtCrNative, fmt, fmtCr, fmtSec, fmtCrSec, fmtPct, uid, ago, fmtSize, setLiveUsdInr } from './utils.js'
+// Import what you need by name: import { calcFD, isUSDHolding, fmtINR, ... } from './utils.js'
 
 // ── FX live rate — call setLiveUsdInr(rate) on app load ──────────
 let _liveUsdInr = 94.5; // overwritten by /api/forex/usdinr on load

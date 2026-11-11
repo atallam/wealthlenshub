@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════════════
    FMT INPUT — INR number input with live comma-formatted preview
-   Extracted from App.jsx lines 967–982
+   Extracted from App.jsx
 ══════════════════════════════════════════════ */
 export default function FmtInput({value, onChange, placeholder, className, style}){
   const num = value !== "" && !isNaN(+value) ? +value : null;
