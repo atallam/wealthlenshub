@@ -22,8 +22,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Install CAS parser (pinned, same as production)
         run: pip install casparser==1.4.1 casparser-isin pymupdf
-      - name: Lint
-        run: npx eslint . --quiet
+      - name: Lint (warnings fail the build)
+        run: npx eslint . --max-warnings 0
+      - name: File size check (warn-only)
+        run: node scripts/check-file-size.mjs
       - name: Build (same command Render runs)
         run: npx vite build
       - name: Dependency audit (non-blocking - surfaces new advisories)
