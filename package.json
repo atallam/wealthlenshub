@@ -48,7 +48,7 @@
     "eslint-plugin-react-hooks": "^5.0.0",
     "globals": "^15.11.0",
     "prettier": "^3.3.3",
-    "vitest": "^4.1.11"
+    "vitest": "^5.1.0"
   },
   "overrides": {
     "axios": "^1.18.1",
